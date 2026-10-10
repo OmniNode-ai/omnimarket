@@ -1,0 +1,65 @@
+
+ROUTE: band=B4 score=15 dims=S2A2R3V3N1C2J2 dest=opus-lane model=opus effort=high
+{{common}}
+LANE: arch-discovery-adjudicate. Run date: {{date}}.
+READ-ONLY on Linear — this phase creates no ticket, files nothing, and flips no state. It classifies.
+Read $OMNI_HOME/../omnibase_internal/docs/workflows/architecture-work-discovery/README.md for the adjudication contract before you act.
+
+INPUTS (read all four first):
+  linear:      {{linear}}
+  marketplace: {{marketplace}}
+  plans:       {{plans}}
+  process:     {{process}}
+
+{{rules}}
+
+TASK: apply the rules to the gathered material and produce the classified output. The scanners
+proposed verdicts; you are the adjudicator and you OVERRULE any verdict whose cited evidence does not
+support it. A verdict whose citation you cannot check is demoted to UNKNOWN — never promoted.
+
+1. DEDUPE ACROSS SOURCES. The same work will appear as a Linear ticket, a plan work item, and an
+   unintegrated artifact. Merge them into ONE item carrying all three citations. A duplicate row is
+   a defect: it inflates the backlog and it can slate the same work to two people.
+
+2. RE-APPLY RULE 2 to every item, including the ones that arrived from the plans and marketplace
+   lanes with no Linear ticket. If the sprint did not resolve live, mark every item BETA-CRITICAL,
+   empty the slate, and record the failing command — do not soften this.
+
+3. APPLY RULE 3 to every NON-BETA item. For each, print the verdict and, when it is not EXECUTABLE,
+   the exact clause (E1..E6) that failed. E5 and E6 are the operator's actual constraint: an item
+   that needs someone to join a planning conversation, or that the operator must unblock mid-flight,
+   is NOT executable no matter how technically clean it looks.
+
+4. APPLY RULE 4's fail-closed gate: nothing from a CLOSED or UNSTATED plan reaches the slate. List
+   those separately as gated, with the quoted gate sentence.
+
+5. APPLY RULE 5's verdicts from the process lane, overruling any DELEGABLE row that lacks a named
+   machine verification (that is a D2 failure) or that was classified against an endpoint the probe
+   could not reach (D5).
+
+6. BUILD THE SLATE per RULE 6. PROFILES SUPPLIED THIS RUN (verbatim — apply exactly, never invent or
+   drop one): {{profiles}}
+   Lane order: {{slate_order}}. Every row: assignee (or "unassigned" when no profiles were
+   supplied) | item | why it suits them (the matched surface, or the excluded_domains /
+   planning_loop_eligible clause that excluded it) | the machine-checkable acceptance check | the
+   citations. A row with no acceptance check does not go on the slate — move it to excluded with
+   clause E2. An EMPTY profile lane is a legitimate and important finding: emit it with the one-line
+   reason the eligible items failed that profile's suitability test, never by stretching an
+   ineligible item to fill the space.
+
+7. HANDOFF. Mint a scratch path (lane_scratch.py --label "arch-discovery adjudication" --suffix .json):
+{ "run_date": "{{date}}", "sprint_resolved": <bool>,
+  "unintegrated": [ {"artifact":"...","verdict":"...","signals":[...],"integration_delta":"...",
+                     "beta_dependence":"...","executability":"...","failing_clause":"...|null","citations":[...]} ],
+  "non_beta_backlog": [ {"item":"...","tickets":["OMN-XXXX"],"state":"...","owner":"...|OWNERLESS",
+                         "age_days":<n>,"executability":"...","failing_clause":"...|null","citations":[...]} ],
+  "automation_candidates": [ {"row":"...","verdict":"DELEGABLE|NOT-DELEGABLE","failing_clause":"...|null",
+                              "task_type":"...","verification":"...","citations":[...]} ],
+  "automation_delta": [ {"what":"...","file":"...","seam":"...","executability":"..."} ],
+  "slate": [ {"person":"...","item":"...","why_suits":"...","acceptance_check":"...","citations":[...]} ],
+  "gated_plans": [ {"file":"...","gate":"CLOSED|UNSTATED","gate_quote":"..."} ],
+  "excluded": [ {"item":"...","rule":"RULE2|RULE3-E<n>|RULE4|RULE5-D<n>|RULE6|FENCE","reason":"..."} ],
+  "overruled": [ {"item":"...","scanner_verdict":"...","adjudicated_verdict":"...","why":"..."} ] }
+Return handoff_path as the ABSOLUTE path. Do NOT write the report and do NOT commit — the report
+phase owns both.
+Ledger rows (CLAIM then TERMINAL). Return per schema.

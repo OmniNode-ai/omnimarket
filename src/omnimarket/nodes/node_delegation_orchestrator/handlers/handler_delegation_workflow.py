@@ -26,7 +26,7 @@ import logging
 import re
 import time
 from collections.abc import Callable, Mapping, MutableMapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, cast
@@ -98,9 +98,11 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_task_class_deliverable_contract,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_instruction import (
@@ -532,12 +534,11 @@ class _BoundaryFailureLeg:
 # OMN-17445. ``reports_recorded_inference`` decides what the terminal says about
 # tokens, and it is not cosmetic: the delegation and savings projections are
 # built from these numbers. A routing- or inference-leg failure means the
-# CURRENT attempt returned nothing, so it served no tokens and the terminal says
-# zero -- ``workflow.inference_*`` at that moment holds a SUPERSEDED attempt's
-# counts, already banked into ``cumulative_attempt_*`` by the escalation path,
-# and reporting them here would double-count them against a call that never
-# happened. A gate-leg failure is the opposite case: the inference did return
-# and was metered, and zeroing it would understate real served tokens.
+# CURRENT attempt returned nothing; ``workflow.inference_*`` may still hold an
+# earlier attempt's counts, already banked into ``cumulative_attempt_*``.
+# Such a failure retains the last served attempt and subtracts its usage from
+# the banked totals before terminal pricing. A gate-leg failure instead reports
+# the current response plus all banked usage.
 _BOUNDARY_FAILURE_LEGS: Mapping[str, _BoundaryFailureLeg] = {
     leg.origin_topic: leg
     for leg in (
@@ -792,6 +793,11 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # provider answered is matched first.
     if "provider http 401" in normalized or "provider http 403" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+    # OMN-20712: the same rule for an unavailable provider. The call's URL can
+    # carry "401" in its port (127.0.0.1:44011) and read a 503 as a rejected
+    # credential through the generic marker below.
+    if "provider http 503" in normalized:
+        return EnumDelegationFailureClass.MODEL_UNAVAILABLE
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,
@@ -871,6 +877,7 @@ _CONTENT_FLOOR_CHECKS: frozenset[str] = frozenset(
         TRUNCATION_CHECK_NAME,
         UNRESOLVED_PREAMBLE_CHECK_NAME,
         RESIDUAL_REASONING_TAG_CHECK_NAME,
+        LEADING_REASONING_TRACE_CHECK_NAME,
     }
 )
 
@@ -1101,6 +1108,11 @@ def _extract_effective_deliverable(
     workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
+    if has_leading_reasoning_trace(segment_reasoning_preamble(response.content)):
+        # OMN-18278: the gate judges the raw provider text, so the
+        # no_leading_reasoning_trace floor sees the trace and refuses it; the
+        # caller still receives only the extracted deliverable.
+        workflow.gate_content_override = response.content
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None
     # OMN-19525: the routing decision carries the shape the prompt declared.
@@ -1841,8 +1853,9 @@ def _inference_failure_cause(
     exceeded call budget is ``timeout``, and a response the provider cut off at
     ``finish_reason=length`` is ``quality_gate_refused``: the output-budget rule
     refused an answer the provider did give, and the rung records the stop
-    reason and the truncated flag that tell it apart from a rule's veto. Any
-    other final failure states no cause rather than inventing one.
+    reason and the truncated flag that tell it apart from a rule's veto. An
+    empty body or choices is ``provider_error``. Any other final failure
+    states no cause rather than inventing one.
     """
     if ladder_is_gate_decided(
         [
@@ -1859,6 +1872,12 @@ def _inference_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if failure_class is EnumDelegationFailureClass.TIMEOUT:
         return EnumDelegationTerminalFailureCause.TIMEOUT
+    if workflow.escalation_history and any(
+        marker in reason.lower()
+        for reason in workflow.escalation_history[-1].failure_reasons
+        for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
+    ):
+        return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
 
 
@@ -2243,6 +2262,9 @@ class DelegationWorkflowState:
     # still contributes its real ``cost_usd`` to the projection — the prior
     # behavior dropped it, leaving the row at ``cost_usd=0`` despite a real
     # metered cloud call.
+    # Preserve the last banked call's evidence when a later leg returns nothing.
+    last_served_attempt: ModelDelegationEscalationAttempt | None = None
+    last_served_routing_decision: ModelRoutingDecision | None = None
     cumulative_attempt_cost_usd: float = 0.0
     cumulative_attempt_prompt_tokens: int = 0
     cumulative_attempt_completion_tokens: int = 0
@@ -2854,6 +2876,27 @@ class HandlerDelegationWorkflow:
             if leg.reports_recorded_inference
             else 0
         )
+        cost_tier_name = workflow.current_tier_name or ""
+        prior_cost_usd = workflow.cumulative_attempt_cost_usd
+        prior_prompt_tokens = workflow.cumulative_attempt_prompt_tokens
+        prior_completion_tokens = workflow.cumulative_attempt_completion_tokens
+        # A later routing/inference boundary failure produced no current usage.
+        # Report the last real call, including free-tier calls, without pricing
+        # its already-banked usage twice. Gate failures keep nonzero current usage.
+        last_served = workflow.last_served_attempt
+        last_route = workflow.last_served_routing_decision
+        reuse_last_served = (
+            not leg.reports_recorded_inference or prompt_tokens + completion_tokens == 0
+        )
+        if reuse_last_served and last_served is not None:
+            model_used = last_served.model_used
+            endpoint_url = last_route.endpoint_url if last_route is not None else "none"
+            prompt_tokens = last_served.prompt_tokens
+            completion_tokens = last_served.completion_tokens
+            cost_tier_name = last_served.tier_name
+            prior_cost_usd -= last_served.cost_usd
+            prior_prompt_tokens -= prompt_tokens
+            prior_completion_tokens -= completion_tokens
         total_tokens = prompt_tokens + completion_tokens
         # The boundary already sanitized this string
         # (``util_error_sanitization.sanitize_error_message``) before publishing
@@ -2884,6 +2927,8 @@ class HandlerDelegationWorkflow:
         # inference the terminal cannot support.
         if leg.routing_decision_present:
             routed_backend_ref, routed_manifest_version = _route_identity(workflow)
+            if reuse_last_served and last_served is not None:
+                routed_backend_ref = last_served.backend_ref
             unrouted_reason = None
         else:
             routed_backend_ref, routed_manifest_version = (None, None)
@@ -2913,13 +2958,9 @@ class HandlerDelegationWorkflow:
             # OMN-17445: what this leg's failure means about tokens, declared
             # per leg rather than assumed. A routing- or inference-leg failure
             # means the CURRENT attempt returned nothing, so zero is the
-            # measured truth — and ``workflow.inference_*`` at that moment holds
-            # a SUPERSEDED attempt's counts, already banked into
-            # ``cumulative_attempt_*``, which reporting here would double-count
-            # against a call that never happened. A gate-leg failure is the
-            # opposite case: the inference did return and was metered, and
-            # zeroing it would understate real served tokens on the terminal the
-            # savings and delegation projections are built from.
+            # measured truth for that attempt. When an earlier call served
+            # tokens, the last-served snapshot above reports it separately from
+            # the remaining banked usage. Gate failures use the current response.
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
@@ -2927,7 +2968,10 @@ class HandlerDelegationWorkflow:
             failure_reason=failure_reason,
             tokens_to_compliance=0,
             compliance_attempts=workflow.compliance_attempts or 1,
-            cost_tier_name=workflow.current_tier_name or "",
+            cost_tier_name=cost_tier_name,
+            prior_attempt_cost_usd=prior_cost_usd,
+            prior_attempt_prompt_tokens=prior_prompt_tokens,
+            prior_attempt_completion_tokens=prior_completion_tokens,
             premium_counterfactual=None,
             escalation_count=workflow.escalation_count,
             # Serialized the same way every other terminal site serializes it —
@@ -2945,7 +2989,7 @@ class HandlerDelegationWorkflow:
             quality_gates_failed=[],
             # OMN-17445: the upstream call id belongs to the terminal only when
             # a response was actually folded — the gate leg. On the routing and
-            # inference legs there is no call of this attempt's to name.
+            # inference legs the current attempt has no returned call id.
             llm_call_id=(
                 workflow.inference_llm_call_id if leg.reports_recorded_inference else ""
             ),
@@ -2999,6 +3043,16 @@ class HandlerDelegationWorkflow:
         The provider facts are recorded first so the attempt row this response
         produces carries them.
         """
+        # A provider may return no text without an error field. Classify the
+        # raw response before extraction: withholding a nonempty deliverable
+        # is a content rejection, but absent output has nothing to grade.
+        if not response.error_message and not response.content.strip():
+            response = response.model_copy(
+                update={
+                    "content": "",
+                    "error_message": "API returned empty message content",
+                }
+            )
         observation = self._observe_provider_call(response)
         events = self._handle_inference_response(response)
         if observation is None:
@@ -3339,6 +3393,7 @@ class HandlerDelegationWorkflow:
                 ]
 
             # No escalation possible: terminal FAILED.
+            self._settle_final_rung_as_terminate(workflow)
             # OMN-13408/OMN-13365: _record_inference_response reconciles the
             # served tokens onto workflow.inference_* (deriving total from
             # prompt + completion so a reasoning model's bundled total cannot
@@ -3423,6 +3478,7 @@ class HandlerDelegationWorkflow:
                 backend_ref=_route_identity(workflow)[0],
                 pricing_manifest_version=_route_identity(workflow)[1],
             )
+            terminal_inputs = self._retain_last_served_usage(workflow, terminal_inputs)
             self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
 
@@ -3628,7 +3684,35 @@ class HandlerDelegationWorkflow:
         # carried to the three places that would otherwise buy the same answer
         # again: the typed decision recorded on the attempt, the free-tier
         # re-draft, and the up-tier escalation.
-        no_rung_can_satisfy = result.no_rung_can_satisfy
+        # Compare declared rule identities, not Python parser error wording.
+        # A second identical floor failure is evidence to review the class;
+        # missing evidence, truncation and changing failures still permit retry.
+        deterministic_failure_rules = (
+            tuple(
+                sorted(
+                    evaluation.rule
+                    for evaluation in result.rule_evaluations
+                    if not evaluation.passed
+                    and evaluation.enforcement == "blocking"
+                    and evaluation.rule in workflow.routing_decision.dod_deterministic
+                )
+            )
+            if pre_filter_rejected
+            else ()
+        )
+        repeated_deterministic_floor = (
+            bool(deterministic_failure_rules)
+            and result.finish_reason is not EnumProviderFinishReason.LENGTH
+            and bool(workflow.escalation_history)
+            and all(
+                attempt.acceptance_reason
+                is EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED
+                and not attempt.truncated
+                and attempt.deterministic_failure_rules == deterministic_failure_rules
+                for attempt in workflow.escalation_history
+            )
+        )
+        no_rung_can_satisfy = result.no_rung_can_satisfy or repeated_deterministic_floor
         acceptance_decision, acceptance_reason = self._acceptance_decision(
             pre_filter_rejected=pre_filter_rejected,
             gate_passed=result.passed,
@@ -3737,6 +3821,7 @@ class HandlerDelegationWorkflow:
                 authority_source=required_bar_authority.authority_source,
                 score_source=required_bar_authority.score_source,
                 failure_reasons=tuple(result.failure_reasons),
+                deterministic_failure_rules=deterministic_failure_rules,
                 latency_ms=elapsed_ms,
                 fallback_recommended=True,
                 acceptance_decision=acceptance_decision,
@@ -3806,7 +3891,9 @@ class HandlerDelegationWorkflow:
             # same refusal.
             error_retryable=not no_rung_can_satisfy,
             non_retryable_reason=(
-                _NO_RUNG_CAN_SATISFY_REASON
+                "repeated_deterministic_floor"
+                if repeated_deterministic_floor
+                else _NO_RUNG_CAN_SATISFY_REASON
                 if no_rung_can_satisfy
                 else "non_retryable_quality_result"
             ),
@@ -3872,6 +3959,7 @@ class HandlerDelegationWorkflow:
             ]
 
         # Cannot escalate: terminal FAILED with reason.
+        self._settle_final_rung_as_terminate(workflow)
         terminal_inputs = self._gate_terminal_inputs(
             workflow,
             result,
@@ -3880,10 +3968,16 @@ class HandlerDelegationWorkflow:
             compliance_attempts,
             completed=False,
             fallback_to_claude=True,
-            failure_reason=self._score_vs_bar_reason(
-                result,
-                required_bar_authority,
-                pre_filter_rejected=pre_filter_rejected,
+            failure_reason=(
+                f"repeated_deterministic_floor: task_class={workflow.request.task_type}; "
+                "review task classification; "
+                f"failed_rules={','.join(deterministic_failure_rules)}"
+                if repeated_deterministic_floor
+                else self._score_vs_bar_reason(
+                    result,
+                    required_bar_authority,
+                    pre_filter_rejected=pre_filter_rejected,
+                )
             ),
             terminal_failure_reason=terminal_failure_reason,
             required_bar_authority=required_bar_authority,
@@ -4161,7 +4255,17 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.request is not None
         return [
-            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+            # OMN-19215: a quality retry after transport failover must retain
+            # the unavailable same-model rung's routing exclusion. The set holds
+            # only backends whose call failed in transport on this workflow, so
+            # it is empty when none did; the escalation intents carry the same set.
+            ModelRoutingIntent(
+                payload=workflow.request,
+                min_tier_name=tier,
+                excluded_backend_refs=tuple(
+                    sorted(workflow.transport_failed_backend_refs)
+                ),
+            ),
         ]
 
     def _build_escalation_event(
@@ -4347,7 +4451,9 @@ class HandlerDelegationWorkflow:
         """
         if pre_filter_rejected:
             return (
-                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceDecision.TERMINATE
+                if no_rung_can_satisfy
+                else EnumDelegationAcceptanceDecision.CLIMB,
                 EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED,
             )
         if not gate_passed:
@@ -4433,7 +4539,10 @@ class HandlerDelegationWorkflow:
             f"{prefix}: actual_score={result.quality_score:.3f} "
             f"required_bar={required_bar_authority.required_bar:.3f} "
             f"score_vs_bar={'below_bar' if score_below_bar else 'at_or_above_bar'} "
-            f"authority_source={required_bar_authority.authority_source} "
+            # The terminal's conservative redactor matches "auth" anywhere.
+            # Keep the structured authority_source field; use a neutral label
+            # in prose so harmless gate diagnostics survive that redactor.
+            f"bar_source={required_bar_authority.authority_source} "
             f"score_source={required_bar_authority.score_source}"
         )
         # OMN-18295. When the score CLEARED the bar and the run failed anyway,
@@ -4514,6 +4623,27 @@ class HandlerDelegationWorkflow:
             inference_sequence,
         )
 
+    @staticmethod
+    def _settle_final_rung_as_terminate(workflow: DelegationWorkflowState) -> None:
+        """Record the rung the ladder ended on as TERMINATE, not CLIMB (OMN-18978).
+
+        A rung is recorded when it is judged, before the escalation decision is
+        made. Called on the branches that go on to emit a terminal, it turns the
+        last rung's ``climb`` into ``terminate``, because no rung followed it.
+        The reason is left as recorded; only the decision changes.
+        """
+        history = workflow.escalation_history
+        if (
+            history
+            and history[-1].acceptance_decision
+            is EnumDelegationAcceptanceDecision.CLIMB
+        ):
+            history[-1] = history[-1].model_copy(
+                update={
+                    "acceptance_decision": EnumDelegationAcceptanceDecision.TERMINATE
+                }
+            )
+
     def _record_escalation_attempt(
         self,
         workflow: DelegationWorkflowState,
@@ -4574,6 +4704,9 @@ class HandlerDelegationWorkflow:
         ``final_tier_cost + cumulative`` so a metered tier that was attempted then
         escalated past still contributes its real cost to the projection row.
         """
+        if prompt_tokens + completion_tokens > 0 and workflow.escalation_history:
+            workflow.last_served_attempt = workflow.escalation_history[-1]
+            workflow.last_served_routing_decision = workflow.routing_decision
         workflow.cumulative_attempt_cost_usd += cost_usd
         workflow.cumulative_attempt_prompt_tokens += prompt_tokens
         workflow.cumulative_attempt_completion_tokens += completion_tokens
@@ -4994,6 +5127,36 @@ class HandlerDelegationWorkflow:
             return [delegation_result]
         return [delegation_result, v2_terminal]
 
+    @staticmethod
+    def _retain_last_served_usage(
+        workflow: DelegationWorkflowState,
+        inputs: TerminalEmissionInputs,
+    ) -> TerminalEmissionInputs:
+        """Keep banked usage when a failed final attempt reported no tokens."""
+        last_served = workflow.last_served_attempt
+        last_route = workflow.last_served_routing_decision
+        if inputs.completed or inputs.total_tokens > 0 or last_served is None:
+            return inputs
+        return replace(
+            inputs,
+            model_used=last_served.model_used,
+            model_name=last_served.model_used,
+            endpoint_url=last_route.endpoint_url if last_route is not None else "none",
+            prompt_tokens=last_served.prompt_tokens,
+            completion_tokens=last_served.completion_tokens,
+            total_tokens=last_served.prompt_tokens + last_served.completion_tokens,
+            cost_tier_name=last_served.tier_name,
+            backend_ref=last_served.backend_ref,
+            # The builder prices this attempt once; remove its banked contribution.
+            prior_attempt_cost_usd=inputs.prior_attempt_cost_usd - last_served.cost_usd,
+            prior_attempt_prompt_tokens=(
+                inputs.prior_attempt_prompt_tokens - last_served.prompt_tokens
+            ),
+            prior_attempt_completion_tokens=(
+                inputs.prior_attempt_completion_tokens - last_served.completion_tokens
+            ),
+        )
+
     def _gate_terminal_inputs(
         self,
         workflow: DelegationWorkflowState,
@@ -5079,7 +5242,7 @@ class HandlerDelegationWorkflow:
             completed=completed,
             response_contract_declared=workflow.effective_response_contract is not None,
         )
-        return TerminalEmissionInputs(
+        terminal_inputs = TerminalEmissionInputs(
             completed=completed,
             correlation_id=result.correlation_id,
             task_type=workflow.request.task_type,
@@ -5154,6 +5317,7 @@ class HandlerDelegationWorkflow:
             backend_ref=_route_identity(workflow)[0],
             pricing_manifest_version=_route_identity(workflow)[1],
         )
+        return self._retain_last_served_usage(workflow, terminal_inputs)
 
     def handle_agent_task_lifecycle(
         self,
@@ -5177,6 +5341,16 @@ class HandlerDelegationWorkflow:
         }:
             return []
 
+        # OMN-18928: lifecycle completion is not evidence of returned content.
+        # Decide before advancing the FSM so a missing artifact closes FAILED
+        # once, rather than manufacturing a perfect score from the status text.
+        # An empty artifact map also contains no returned answer.
+        missing_final_artifact = (
+            next_state is EnumDelegationState.COMPLETED and not lifecycle_event.artifact
+        )
+        if missing_final_artifact:
+            next_state = EnumDelegationState.FAILED
+
         if workflow.state != next_state:
             self._advance(workflow, next_state)
 
@@ -5191,8 +5365,21 @@ class HandlerDelegationWorkflow:
         )
         content = self._render_lifecycle_content(lifecycle_event)
         failure_reason = lifecycle_event.error or ""
+        if missing_final_artifact:
+            content = ""
+            failure_reason = (
+                failure_reason or "remote agent completed without a final artifact"
+            )
 
         completed = next_state is EnumDelegationState.COMPLETED
+        # A lifecycle error/status is operational evidence, never answer text.
+        # Reuse the inference path's retained-answer provenance when this agent
+        # returned no artifact; its final verdict and score remain unscored.
+        content, history_dicts = _terminal_response_fields(
+            workflow,
+            content if lifecycle_event.artifact else "",
+            retain_best=not completed,
+        )
         # OMN-13396/OMN-13475: the remote-agent (A2A) lifecycle carries no token
         # counts and no serving tier — it is not a tier-routed LLM inference. The
         # single terminal builder still prices it through the same typed-tier-cost
@@ -5209,11 +5396,13 @@ class HandlerDelegationWorkflow:
             quality_passed=completed,
             # OMN-18928 (K1): a remote agent that did not complete returned no
             # final content, so it carries no score and a not-applicable
-            # verdict. A completion keeps the lifecycle's own acceptance, which
-            # is what this path has always reported.
+            # verdict. Only an artifact-bearing completion keeps the
+            # lifecycle's own acceptance.
             quality_score=1.0 if completed else None,
-            operational_outcome=_a2a_operational_outcome(
-                lifecycle_event.lifecycle_type
+            operational_outcome=(
+                EnumDelegationOperationalOutcome.INFERENCE_FAILED
+                if missing_final_artifact
+                else _a2a_operational_outcome(lifecycle_event.lifecycle_type)
             ),
             content_verdict=(
                 EnumDelegationContentVerdict.USABLE
@@ -5231,7 +5420,9 @@ class HandlerDelegationWorkflow:
             cost_tier_name=workflow.current_tier_name or "",
             premium_counterfactual=None,
             escalation_count=0,
-            escalation_history=(),
+            # Historical grades remain evidence about answered attempts,
+            # independent of this lifecycle's unscored final response.
+            escalation_history=history_dicts,
             terminal_failure_reason=None,
             routing_tiers_hash=None,
             escalation_config_hash=None,

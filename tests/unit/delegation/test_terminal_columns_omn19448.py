@@ -9,8 +9,9 @@ model (``omnibase_core`` ``ModelDelegationResult``):
 * ``routed_model``       <- ``model_used``
 * ``answering_backend``  <- ``route``
 
-``requested_model``, ``queue_wait_ms`` and ``execution_ms`` have no field on
-that wire model today, so no column exists for them.
+``requested_model``, ``queue_wait_ms`` and ``execution_ms`` now have producer
+fields: the skill terminal carries ``attempts[0].model_id``, ``queue_wait_ms``
+and ``execution_duration_ms``. Canonical payloads may explicitly name them.
 
 The falsifier: apply the migration, project a terminal, assert each column.
 The SQL file is checked statically here; the real-Postgres twin below applies
@@ -32,6 +33,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 _MIGRATIONS = (
     Path(__file__).resolve().parents[3]
@@ -48,6 +53,7 @@ def _terminal(
     route: str | None = "local-qwen",
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "_event_type": event_type,
         "correlation_id": str(uuid4()),
         "task_type": "test",
@@ -83,22 +89,35 @@ def test_a_migration_adds_each_new_column_idempotently() -> None:
 
 
 @pytest.mark.unit
-def test_no_column_is_minted_for_a_field_the_terminal_does_not_carry() -> None:
-    text = "\n".join(path.read_text() for path in _MIGRATIONS.glob("*.sql"))
-    for absent in (
-        "requested_model",
-        "queue_wait_ms",
-        "execution_ms",
+def test_only_migration_0058_adds_requested_model_and_timing() -> None:
+    name = "0058_delegation_events_requested_model_and_timing.sql"
+    for column, sql_type in (
+        ("requested_model", "TEXT"),
+        ("queue_wait_ms", "INTEGER"),
+        ("execution_ms", "INTEGER"),
     ):
-        assert not re.search(rf"ADD COLUMN IF NOT EXISTS {absent}\b", text), (
-            f"{absent} has no producer field yet"
+        owners = [
+            path
+            for path in _MIGRATIONS.glob("*.sql")
+            if re.search(
+                rf"ADD\s+COLUMN\s+(?:IF NOT EXISTS\s+)?{column}\b", path.read_text()
+            )
+        ]
+        assert [path.name for path in owners] == [name], (
+            f"only migration 0058 may add {column}"
         )
+        sql = owners[0].read_text()
+        assert re.search(rf"ADD COLUMN IF NOT EXISTS {column}\s+{sql_type}\b", sql)
+        assert "BEGIN;" in sql
+        assert "COMMIT;" in sql
+    assert (_MIGRATIONS.parent / "rollback" / name).is_file()
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("event_type", ["delegation-failed", "delegation-completed"])
 def test_inmemory_row_carries_trace_model_and_backend(event_type: str) -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     payload = _terminal(event_type=event_type)
     correlation_id = payload["correlation_id"]
     HandlerProjectionDelegation().handle({**payload, "_db": db})
@@ -115,6 +134,7 @@ def test_inmemory_row_carries_trace_model_and_backend(event_type: str) -> None:
 @pytest.mark.unit
 def test_sqlite_local_store_row_carries_the_same_columns(tmp_path: Path) -> None:
     db = SqliteDatabaseAdapter(tmp_path / "local.db")
+    seed_tenant_registry(db)
     payload = _terminal()
     correlation_id = payload["correlation_id"]
     HandlerProjectionDelegation().handle({**payload, "_db": db})
@@ -130,6 +150,7 @@ def test_sqlite_local_store_row_carries_the_same_columns(tmp_path: Path) -> None
 @pytest.mark.unit
 def test_a_terminal_without_trace_or_route_leaves_them_null() -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     payload = _terminal(trace_id=None, route=None)
     HandlerProjectionDelegation().handle({**payload, "_db": db})
     (row,) = db.query(TABLE, {"correlation_id": payload["correlation_id"]})
@@ -141,6 +162,7 @@ def test_a_terminal_without_trace_or_route_leaves_them_null() -> None:
 @pytest.mark.unit
 def test_a_later_terminal_without_trace_does_not_erase_the_recorded_one() -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     first = _terminal()
     HandlerProjectionDelegation().handle({**first, "_db": db})
     later = _terminal(trace_id=None, route=None)

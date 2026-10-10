@@ -57,10 +57,15 @@ performed; no worker is dispatched in a draining repo.
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from omnimarket.handlers.cause_signature import (
+    CAUSE_PREFIX,
+    UNREAD,
+    cause_key,
+    normalize_signature,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
     CAUSE_EXCLUDED_SUSPENSIONS,
@@ -133,21 +138,6 @@ _CAUSE_RESULT_KINDS: frozenset[EnumLandingResultKind] = frozenset(
 )
 
 
-CAUSE_PREFIX = "cause:"
-UNREAD = "unread"
-SIGNATURE_TEXT_LIMIT = 300
-
-_GENERIC_EXIT = re.compile(r"^Process completed with exit code \d+\.?$")
-_TIMESTAMP = re.compile(
-    r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?"
-)
-_SHA = re.compile(r"\b(?=[0-9a-f]*\d)[0-9a-f]{7,64}\b")
-_PR_NUMBER = re.compile(r"#\d+")
-_BRACKETED = re.compile(r"\[[^\[\]]*\]")
-_DIGITS = re.compile(r"\d+")
-_SPACE = re.compile(r"\s+")
-
-
 def is_cause(subject: str) -> bool:
     """Whether a subject is a cause key rather than a PR."""
     return subject.startswith(CAUSE_PREFIX)
@@ -158,42 +148,6 @@ def repo_of(subject: str) -> str:
     if is_cause(subject):
         return subject[len(CAUSE_PREFIX) :].rsplit(":", 1)[0]
     return subject.split("#", 1)[0]
-
-
-def cause_key(repo: str, signature: str) -> str:
-    """``cause:<owner>/<repo>:<signature>``."""
-    return f"{CAUSE_PREFIX}{repo}:{signature}"
-
-
-def normalize_annotation(text: str) -> str:
-    """A failure annotation with everything that varies per PR or per run replaced.
-
-    The generic "Process completed with exit code N" line is skipped;
-    timestamps, shas, ``#n`` references, bracketed id lists and digit runs are
-    replaced; whitespace is collapsed; the result is cut to 300 characters.
-    """
-    lines = (line.strip() for line in text.splitlines())
-    out = " ".join(line for line in lines if line and not _GENERIC_EXIT.match(line))
-    out = _TIMESTAMP.sub("<ts>", out)
-    out = _SHA.sub("<sha>", out)
-    out = _PR_NUMBER.sub("#<n>", out)
-    out = _BRACKETED.sub("[<ids>]", out)
-    out = _DIGITS.sub("<n>", out)
-    return _SPACE.sub(" ", out).strip()[:SIGNATURE_TEXT_LIMIT]
-
-
-def normalize_signature(check: str, text: str | None) -> str:
-    """The failure signature of one red check: 12 hex of sha256(check, normalized text).
-
-    A check with no annotation, or one that normalizes to nothing, is
-    ``unread`` and never clusters.
-    """
-    if text is None:
-        return UNREAD
-    normalized = normalize_annotation(text)
-    if not normalized:
-        return UNREAD
-    return hashlib.sha256(f"{check}\n{normalized}".encode()).hexdigest()[:12]
 
 
 def rebuild_key(target_repo: str, members: tuple[ModelLandingMemberRef, ...]) -> str:
@@ -1766,15 +1720,10 @@ class HandlerPrLandingDecision:
 
 
 __all__: list[str] = [
-    "CAUSE_PREFIX",
-    "UNREAD",
     "HandlerPrLandingDecision",
     "blocker_fingerprint",
-    "cause_key",
     "decide_landing",
     "is_cause",
-    "normalize_annotation",
-    "normalize_signature",
     "rebuild_key",
     "repo_of",
 ]

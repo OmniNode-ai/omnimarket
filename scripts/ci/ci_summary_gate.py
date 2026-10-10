@@ -121,9 +121,10 @@ classification — see ``tests/unit/scripts/ci/test_ci_summary_gate.py``'s
 ``EXEMPT_CONTEXTS`` and its completeness test
 (``test_every_pr_triggered_job_is_classified``), which enumerates every job
 reachable from ``on.pull_request`` across ``.github/workflows/*.yml`` and
-proves STRICT | SKIPPABLE | EXTERNAL | EXEMPT covers it — a new, unclassified
-workflow job fails that test until it is triaged into one of the four
-buckets.
+proves STRICT | SKIPPABLE | EXTERNAL | EXEMPT covers it, apart from the two
+retained OCC validator workflows whose contexts OMN-20073 S6 explicitly
+retires. The test pins that exact uncovered census; a new, unclassified
+workflow job fails until it is triaged.
 
 COVERAGE HONESTY — what ``CI Summary`` does not see even with L4
 ------------------------------------------------------------------
@@ -145,6 +146,7 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from fnmatch import fnmatchcase
 
 # The poller's own job — excluded to avoid self-deadlock.
 SELF_JOB_NAME = "CI Summary"
@@ -219,14 +221,6 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Topic Enum Drift Check",  # topic-enum-drift — needs occ-preflight, no if: (strict per OMN-14590)
     "contract-topic-graph",  # unconditional (OMN-14582/14640), no needs/if: — strict
     "Merge Reason-Code Gate",  # merge-reason-code-gate — no needs/if: (strict per OMN-14765)
-    # OMN-15427 (port of the OMN-15214 canary / OMN-15221 omniclaude port):
-    # every OCC evidence citation in the PR body must be MERGED/durable before
-    # this product PR may merge. Unconditional in ci.yml (no needs/if:), so a
-    # skipped/cancelled conclusion is anomalous and fails closed here — the
-    # strict slot IS the enforcement (detection alone is rule-5 noncompliance).
-    # omnimarket#1953 cited a CLOSED-unmerged companion (OCC#5487) and no
-    # omnimarket CI surface caught it; this row is what makes that RED.
-    "OCC Companion Merged Gate (OMN-15214)",
     # OMN-15483: the consumer-independent merge-hold enforcement point. The
     # merge NODE honoring the hold marker binds one consumer; the foreground
     # Codex controller that performed every merge in OMN-15483's incident
@@ -350,6 +344,7 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
     "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
     "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
     "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
+    "Generated Event Chains (walker paths)",  # if: docs_only != 'true'
     # OMN-19684: merge-test-durations combines every full-suite shard's
     # recorded durations into the one cache entry the next run's balancer
     # reads. Its own `if:` is
@@ -422,7 +417,7 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
 # ``tests-gate`` already applies per-upstream (OMN-15315). Every gate outside
 # this tier must still be exactly ``success`` on a docs-only diff, which is what
 # keeps the contract/doc/evidence gates (``Contract Compliance Check``, the
-# sweeps, ``Leaked Literals Gate``, the OCC gates) running -- the half of the
+# sweeps, ``Leaked Literals Gate``) running -- the half of the
 # operator ruling that is not about saving minutes.
 DOCS_ONLY_MARKER_JOB = "Docs-Only Marker (OMN-16662)"
 
@@ -481,8 +476,7 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # receipt exits 1, real committed receipt exits 0). Pinned by
 # `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
-    # OMN-20073: repo-owned evidence is enforced beside OCC during cutover.
-    # Retiring the OCC contexts requires OR.2 queue support and pilot proof.
+    # OMN-20073 S6: repo-owned evidence gates PR admission without OCC contexts.
     "repo-evidence / dod-verify",
     # OMN-18434: git-env-scrub.yml, standalone and unconditional on
     # pull_request, so it carries no paths filter and is always present. A test
@@ -515,6 +509,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Canonical Inference Gate",
     "CI Naming Convention",
     "Dep Provenance Gate",
+    # OMN-20287 (deployment-fact-gate.yml): no new deployment fact (backend,
+    # endpoint, model name, secret ref, provider, tier or per-class order) in
+    # the packaged routing configs. Its own workflow file, so this L4 assertion
+    # is its enforcement surface, as for `Routing Tier Bindability` below.
+    "Deployment Fact Gate",
     "Ecosystem Integration Validation",
     "Enforce validator-requirements.yaml (OMN-13291)",
     "Hostile Review Gate",
@@ -524,6 +523,13 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "No Faked Boundary Gate",
     # OMN-20173: enforce the standalone endpoint validator before merge.
     "No Coding Plan Endpoint",
+    # OMN-20073 S6: branch protection no longer requires these two, but they
+    # test omnimarket's own OCC companion emitter and its schema compatibility
+    # against a pinned onex_change_control checkout. Neither reads a PR's
+    # companion, so CI Summary keeps enforcing them until the emitter itself is
+    # retired (plan S7 to S9). OMN-20885: the schema-compatibility job now
+    # reads the ticket-contract schema from omnibase_core, its owner, and checks
+    # out no onex_change_control; it keeps its context name.
     "OCC Emitter Golden Gate",
     "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
@@ -542,7 +548,9 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Stale TODO Gate",
     "URL Authority Gate",
     "call / validate-docs",
-    "call-reject-skip-token / occ-preflight / eligibility",
+    # OMN-20073: the scan's reusable no longer nests the change-control
+    # preflight (omniclaude#2540), so `call-reject-skip-token / occ-preflight /
+    # eligibility` has no producer. S6 also retires the standalone preflight.
     "call-reject-skip-token / scan / reject-skip-gate-token",
     "contract-validation",
     # OMN-19451 (delegation-health-check.yml): the delegation-health check on
@@ -585,8 +593,15 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "node-drift-gate",
     "node-migration-vendor-parity-gate",
     "non-dev-base-guard",
-    "occ-preflight / eligibility",
     "pr-title / check-title",
+    # OMN-20781 (public-repo-hygiene.yml): five internal-content classes fail
+    # the run on the lines a pull request adds. The caller is a single job with
+    # no `name:` over the reusable's job `public-repo-hygiene`, so the check-run
+    # reads "<caller job id> / <called job name>". It was exempt while the gate
+    # recorded findings and exited 0; it blocks now, and on this repo the CI
+    # Summary umbrella IS the enforcement surface, so a context missing from
+    # this tuple is silently unenforced.
+    "public-repo-hygiene / public-repo-hygiene",
     "receipt-honesty",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
     # model for two message categories. Same workflow file and same L4 reasoning as
@@ -597,7 +612,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "state-coverage-gate",
     "subscriber-dispatcher-resolution",
     "validate",
-    "verify / verify",
     # OMN-18865 (wheel-content-parity.yml): the pre-merge twin of the
     # OMN-14631 workspace content-parity gate, calling an omnibase_infra
     # composite ACTION pinned by commit. It proves this repository's built
@@ -663,7 +677,7 @@ EXTERNAL_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
 # to re-run it: a PR-body PATCH fires a second `pull_request` run of a workflow
 # whose `types:` include `edited`, GitHub cancels the in-flight first run under
 # the same concurrency group, and the replacement posts its own check-run
-# seconds later. Five of this repository's own producers carry `edited` in
+# seconds later. This repository's body-reading producers carry `edited` in
 # their `pull_request` `types:` (see `drop_superseded_skips`), so the door is
 # the same one OMN-18062 came through.
 #
@@ -715,10 +729,11 @@ EXTERNAL_FAILURE_SUPERSESSION_GRACE_S: int = 1200
 #: same unmerged companion is SKIPPED rather than run, so its row is a statement
 #: about its DEPENDENCY, never about this head. Its rerun concluded `success` 38
 #: seconds after `CI Summary` had already recorded FAILURE on the stale skip.
-#: This repository is exposed to exactly that shape:
-#: `call-reject-skip-token / scan / reject-skip-gate-token` is in
-#: :data:`EXPECTED_EXTERNAL_CONTEXTS` and its job `needs:` the occ-preflight
-#: gate that is also there.
+#: This repository was exposed to exactly that shape while
+#: `call-reject-skip-token / scan / reject-skip-gate-token`'s job `needs:`-ed
+#: a nested occ-preflight gate; the pinned reusable dropped that edge under
+#: OMN-20073 (omniclaude#2540), and any other producer that `needs:` a failed
+#: gate keeps the same exposure.
 #:
 #: THIS DOES NOT REOPEN THE SKIP-AS-PASS VECTOR (OMN-15057 / OMN-14854). That
 #: vector is `skipped` read as SUCCESS. Here it is read as NO VERDICT YET: the
@@ -1249,8 +1264,7 @@ def drop_superseded_skips(
     (OCC autobind stamps, union-resolves) pays a re-push cycle. This repo is
     exposed through the same door: ``call-reject-skip.yml``,
     ``pr-title-check.yml``, ``main-target-guard.yml``, ``non-dev-base-guard.yml``
-    and ``call-occ-preflight.yml`` all carry ``edited`` in their
-    ``pull_request`` ``types:``.
+    all carry ``edited`` in their ``pull_request`` ``types:``.
 
     A ``skipped`` row is evidence about a WORKFLOW RUN — a job's ``if:`` was
     false for that run's event — not about the head. When a non-skipped row for
@@ -1293,17 +1307,11 @@ def _resolution_key(state: CheckRunState) -> tuple[str, int, int]:
     which is what lets a rerun clear a transient red instead of a red wedging
     the gate forever.
 
-    ``severity`` SECOND, and deliberately ahead of ``id`` -- this is where
-    omnimarket differs from the sibling copies in omnibase_core and
-    omnibase_infra, which resolve on ``(started_at, id)`` alone. Those repos do
-    not assert a context that ~52 independent caller workflows all mint against
-    one SHA; this one does, twice over (``occ-preflight / eligibility`` and its
-    ``call-reject-skip-token`` alias are both in
-    :data:`EXPECTED_EXTERNAL_CONTEXTS`). Those producers post within the same
-    second, so ``started_at`` ties routinely and a tie is NOT a rerun history.
-    Resolving such a tie by id would pick one caller arbitrarily and could hide
-    a red sibling behind a green one -- the OMN-15112 ANY-vs-ALL exposure. The
-    more-blocking row wins instead, exactly as before this change.
+    ``severity`` SECOND, and deliberately ahead of ``id``: when producers
+    post within the same second, ``started_at`` ties are not a rerun history.
+    The more-blocking row wins so id ordering cannot hide a simultaneous red
+    behind a green row. This preserves the existing fail-closed tie policy
+    after OMN-20073 retires the multiply-produced OCC preflight context.
 
     ``id`` LAST, and it is the only thing this change adds to the ordering.
     Before OMN-16332 a tie on ``(started_at, severity)`` was resolved by
@@ -1534,80 +1542,356 @@ def verdict_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
     )
 
 
-#: OMN-18962/OMN-18963: the events on which the L4 layer is the enforcement
-#: surface, and therefore the only events on which it is asserted.
-#:
-#: `ci.yml` runs on `push` to main and hotfix branches as well as on
-#: `pull_request` and `merge_group`. Layer 4 asserts check-run contexts minted
-#: by OTHER workflow files, strictly, with no accepted absence. The triggers of
-#: the workflows owning those contexts were enumerated live on 2026-09-21:
-#: 32 of the 53 declare only some combination of `pull_request`,
-#: `merge_group`, `workflow_dispatch` and `schedule`, and NONE of those 32
-#: declares `push`. On a push run they cannot mint a check-run at all, so the
-#: poller waits for contexts nothing will ever produce and its deadline turns
-#: the required verdict red.
-#:
-#: That is not a hypothetical. `main` here is release-synced: `release.yml`
-#: fast-forwards it to an already-green dev commit, which fires `ci.yml` on
-#: `push`. Every recent CI run on branch `main` in this repository has failed
-#: for exactly this reason, on a sha whose own pull request was green, and the
-#: shared sha is simultaneously the `dev` head -- so the failure reads as a red
-#: dev head to anything looking up check state by commit.
-#:
-#: WHY AN EVENT CLASS AND NOT A PER-CONTEXT EVENT MAP. The sibling change in
-#: omnibase_core declares the minting events per entry, which is sound there:
-#: three entries, each a single unconditional job whose workflow triggers
-#: settle the question. Here they do not. `occ-preflight / eligibility` is
-#: produced by a job name that appears in seven workflow files, and several
-#: asserted contexts sit behind job-level `if:` conditions, so a workflow's
-#: trigger list does NOT determine whether a context can appear. A per-entry
-#: map would be prose no test could honestly verify, and a wrong entry either
-#: wedges the branch again or silently drops a context from enforcement.
-#:
-#: WHAT THIS DOES NOT DO. It does not relax anything on a pull request or in
-#: the merge queue: on those events every context in the tuple is asserted
-#: exactly as before. It narrows WHERE the layer is asserted, never WHETHER a
-#: context must succeed, and an unrecognised or absent event asserts the layer,
-#: fail-closed. Merge admission is unchanged, because merge admission happens
-#: on a pull request.
-MERGE_ADMISSION_EVENTS: frozenset[str] = frozenset({"pull_request", "merge_group"})
+# OMN-18963: pinned producer triggers, checked against workflow YAML in CI.
+# Branch filters matter: a main-only producer cannot mint on a dev push.
+# The merge-group bridge keeps the existing queue policy; it is not a push
+# producer. Admission events retain their current asserted set below.
+@dataclass(frozen=True)
+class ExternalContextProducer:
+    workflow: str
+    events: tuple[str, ...]
+    push_branches: tuple[str, ...]
 
-#: Events `ci.yml` can actually run on that are NOT merge-admission events.
-#: Listed explicitly so an event nobody considered falls through to "assert",
-#: not to "skip".
+
+EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
+    context: ExternalContextProducer(workflow, events, push_branches)
+    for workflow, events, push_branches, contexts in (
+        (
+            "advisory-job-gate.yml",
+            ("pull_request",),
+            (),
+            ("advisory-job-gate / advisory-job-gate",),
+        ),
+        (
+            "byok-catalogue-no-house-entry.yml",
+            ("pull_request",),
+            (),
+            ("BYOK Catalogue No House Entry",),
+        ),
+        (
+            "call-reject-skip.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("call-reject-skip-token / scan / reject-skip-gate-token",),
+        ),
+        (
+            "call-repo-evidence-gate.yml",
+            ("pull_request_target",),
+            (),
+            ("repo-evidence / dod-verify",),
+        ),
+        (
+            "canonical-inference-gate.yml",
+            ("pull_request",),
+            (),
+            ("Canonical Inference Gate",),
+        ),
+        (
+            "contract-topic-closure.yml",
+            ("pull_request", "push", "merge_group"),
+            ("main",),
+            (
+                "handler-event-type-source",
+                "local-ingress-alias-collision",
+                "mixed-category-routing",
+                "no-baseline-refreeze",
+                "no-literal-event-type-in-tests",
+                "key-grain-declared",
+                "routing-input-model-fit",
+            ),
+        ),
+        (
+            "contract-validation.yml",
+            ("pull_request", "merge_group", "workflow_dispatch"),
+            (),
+            ("contract-validation",),
+        ),
+        (
+            "delegation-health-check.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("delegation-health-check / Delegation Health Check",),
+        ),
+        (
+            "dep-provenance-gate.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("Dep Provenance Gate",),
+        ),
+        (
+            "deploy-gate.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("deploy-gate / deploy-gate",),
+        ),
+        (
+            "deployment-fact-gate.yml",
+            ("pull_request",),
+            (),
+            ("Deployment Fact Gate",),
+        ),
+        (
+            "dispatcher-route-coverage.yml",
+            ("pull_request", "push", "merge_group"),
+            ("main",),
+            ("dispatcher-route-coverage",),
+        ),
+        (
+            "docs-validate.yml",
+            ("pull_request", "push"),
+            ("main", "hotfix/**"),
+            ("call / validate-docs",),
+        ),
+        (
+            "git-env-scrub.yml",
+            ("pull_request",),
+            (),
+            ("Git env scrub gate",),
+        ),
+        (
+            "hostile-reviewer.yml",
+            ("pull_request",),
+            (),
+            ("Hostile Review Gate", "Hostile Reviewer (adversarial gate)"),
+        ),
+        (
+            "imperative-contract-guard.yml",
+            ("pull_request", "push"),
+            ("main",),
+            ("imperative-contract-guard / Imperative Contract Guard",),
+        ),
+        (
+            "main-target-guard.yml",
+            ("pull_request",),
+            (),
+            ("main-target-guard",),
+        ),
+        (
+            "no-coding-plan-endpoint.yml",
+            ("pull_request",),
+            (),
+            ("No Coding Plan Endpoint",),
+        ),
+        (
+            "no-faked-boundary.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("No Faked Boundary Gate",),
+        ),
+        (
+            "node-drift-gate.yml",
+            ("pull_request", "merge_group", "workflow_dispatch"),
+            (),
+            ("node-drift-gate",),
+        ),
+        (
+            "node-migration-vendor-parity-gate.yml",
+            ("pull_request",),
+            (),
+            ("node-migration-vendor-parity-gate",),
+        ),
+        (
+            "non-dev-base-guard.yml",
+            ("pull_request",),
+            (),
+            ("non-dev-base-guard",),
+        ),
+        (
+            "occ-emitter-golden-gate.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("OCC Emitter Golden Gate",),
+        ),
+        (
+            "omni-standards-compliance.yml",
+            ("push", "pull_request", "workflow_dispatch"),
+            ("main", "hotfix/**"),
+            (
+                "CI Naming Convention",
+                "Ecosystem Integration Validation",
+                "Legacy Compatibility Check",
+                "Omni Standards Gate",
+                "Repository Structure Validation",
+            ),
+        ),
+        (
+            "onex-schema-compat.yml",
+            ("push", "pull_request", "workflow_dispatch"),
+            ("main", "hotfix/**"),
+            ("ONEX Change Control Schema Compatibility",),
+        ),
+        (
+            "pin-resolvability-gate.yml",
+            ("pull_request", "merge_group", "schedule", "workflow_dispatch"),
+            (),
+            ("pypi-pin-resolvability",),
+        ),
+        (
+            "pr-arch-review.yml",
+            ("pull_request",),
+            (),
+            (
+                "Architectural Compliance Lint",
+                "PR Arch Review Gate",
+                "Resolve Bot Token",
+            ),
+        ),
+        (
+            "pr-title-check.yml",
+            ("pull_request",),
+            (),
+            ("pr-title / check-title",),
+        ),
+        (
+            "precommit-fail-loud-gate.yml",
+            ("push", "pull_request", "workflow_dispatch"),
+            ("main", "dev", "hotfix/**"),
+            ("Precommit Fail-Loud Gate",),
+        ),
+        (
+            "projection-exposure-drift-gate.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("Projection Exposure Drift Gate",),
+        ),
+        (
+            "public-repo-hygiene.yml",
+            ("pull_request",),
+            (),
+            ("public-repo-hygiene / public-repo-hygiene",),
+        ),
+        (
+            "receipt-honesty.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("receipt-honesty",),
+        ),
+        (
+            "reject-leaked-literals.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("Leaked Literals Gate",),
+        ),
+        (
+            "required-check-skip-guard-caller.yml",
+            ("pull_request", "merge_group", "schedule"),
+            (),
+            ("required-check-skip-guard / check-skip-vectors",),
+        ),
+        (
+            "routing-tier-bindability.yml",
+            ("pull_request",),
+            (),
+            ("Routing Tier Bindability",),
+        ),
+        (
+            "skill-mapping-input-coverage-gate.yml",
+            ("pull_request", "workflow_dispatch"),
+            (),
+            ("skill-mapping-input-coverage-gate",),
+        ),
+        (
+            "stale-todo-gate.yml",
+            ("pull_request",),
+            (),
+            ("Stale TODO Gate",),
+        ),
+        (
+            "state-coverage-gate.yml",
+            ("pull_request", "merge_group", "workflow_dispatch"),
+            (),
+            ("state-coverage-gate",),
+        ),
+        (
+            "subscriber-dispatcher-resolution.yml",
+            ("pull_request", "push", "merge_group"),
+            ("main",),
+            ("subscriber-dispatcher-resolution",),
+        ),
+        (
+            "url-authority-gate.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("URL Authority Gate",),
+        ),
+        (
+            "validate-validator-requirements.yml",
+            ("push", "pull_request", "workflow_dispatch"),
+            ("main", "dev"),
+            ("Enforce validator-requirements.yaml (OMN-13291)",),
+        ),
+        (
+            "validator-fsm-handler-drift.yml",
+            ("push", "pull_request"),
+            ("main", "develop", "dev", "hotfix/**"),
+            ("fsm-handler-drift",),
+        ),
+        (
+            "validator-runtime-profiles.yml",
+            ("push", "pull_request"),
+            ("main", "develop", "dev", "hotfix/**"),
+            ("validate",),
+        ),
+        (
+            "wheel-content-parity.yml",
+            ("pull_request", "merge_group"),
+            (),
+            ("wheel-content-parity",),
+        ),
+    )
+    for context in contexts
+}
+
+
+MERGE_ADMISSION_EVENTS: frozenset[str] = frozenset({"pull_request", "merge_group"})
 _KNOWN_NON_ADMISSION_EVENTS: frozenset[str] = frozenset(
     {"push", "schedule", "workflow_dispatch"}
 )
 
 
 def external_layer_applies(event: str | None) -> bool:
-    """Whether the L4 layer is asserted for a run of this event.
+    """Whether the event has asserted contexts; absent/unknown is strict."""
 
-    FAIL-CLOSED: an absent or unrecognised event asserts the layer. A caller
-    that forgets to pass the event gets the strict, pre-OMN-18963 reading
-    rather than a silent skip.
-    """
-
-    if event is None:
-        return True
-    return event in MERGE_ADMISSION_EVENTS or event not in _KNOWN_NON_ADMISSION_EVENTS
+    return bool(expected_external_contexts(event))
 
 
-def expected_external_contexts(event: str | None) -> tuple[str, ...]:
-    """Keep existing queue enforcement until OR.2 supports caller evidence there.
+def expected_external_contexts(
+    event: str | None, *, ref_name: str | None = None
+) -> tuple[str, ...]:
+    """Resolve mintable contexts without changing PR or queue admission.
 
-    The pinned repo-evidence reusable currently refuses merge_group, and its
-    caller does not trigger on that event. Only that explicit event keeps the
-    previous required set; missing or unknown events require repo evidence.
+    Producer event and push-branch declarations are pinned above and verified
+    against their workflow files. Missing event or branch information retains
+    the stricter set. A producer trigger is necessary for minting, never proof
+    of a successful check: each applicable context must still be observed.
     """
 
     if event == "merge_group":
+        # The existing repo-evidence caller cannot produce queue evidence.
         return tuple(
             context
             for context in EXPECTED_EXTERNAL_CONTEXTS
             if context != "repo-evidence / dod-verify"
         )
-    return EXPECTED_EXTERNAL_CONTEXTS
+    if event not in _KNOWN_NON_ADMISSION_EVENTS:
+        return EXPECTED_EXTERNAL_CONTEXTS
+
+    applicable: list[str] = []
+    for context in EXPECTED_EXTERNAL_CONTEXTS:
+        producer = EXTERNAL_CONTEXT_PRODUCERS[context]
+        if event not in producer.events:
+            continue
+        if (
+            event == "push"
+            and ref_name
+            and producer.push_branches
+            and not any(
+                fnmatchcase(ref_name, pattern) for pattern in producer.push_branches
+            )
+        ):
+            continue
+        applicable.append(context)
+    return tuple(applicable)
 
 
 def evaluate_external(
@@ -1791,10 +2075,14 @@ def main(argv: list[str] | None = None) -> int:
         "--event",
         default=None,
         help="github.event_name for the current run. The L4 external-context "
-        "layer is asserted on merge-admission events (pull_request, "
-        "merge_group); on a push, schedule or workflow_dispatch run the "
-        "workflows owning those contexts do not fire at all, so there is "
-        "nothing to wait for. Omitting it asserts the layer, fail-closed.",
+        "set on non-admission events includes only producers declaring that "
+        "trigger. Omitting it asserts the full layer, fail-closed.",
+    )
+    parser.add_argument(
+        "--ref-name",
+        default=None,
+        help="github.ref_name; resolves producer branch filters on push. "
+        "Omitting it retains every push producer, fail-closed.",
     )
     parser.add_argument(
         "--report-only",
@@ -1854,19 +2142,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(report)
 
-    if args.check_runs_file is not None and not external_layer_applies(args.event):
-        # Stated, never implied. A layer that stops being asserted must say so
-        # by name, with the event and the reason, or the next reader cannot
-        # tell a scoped gate from a disabled one.
-        print(
-            "External contexts verdict: NOT ASSERTED\n"
-            f"  event={args.event} is not a merge-admission event "
-            f"({', '.join(sorted(MERGE_ADMISSION_EVENTS))}); the workflows "
-            f"owning the {len(EXPECTED_EXTERNAL_CONTEXTS)} L4 contexts do not "
-            "fire on it, so no check-run can exist to assert. Merge admission "
-            "is unaffected: every one of them is asserted on a pull request."
-        )
-    elif args.check_runs_file is not None:
+    if args.check_runs_file is not None:
         check_runs = _load_check_runs(args.check_runs_file)
         # The observation time the OMN-17864 / OMN-18355 windows are measured
         # against. It is the process's own wall clock and has NO CLI surface --
@@ -1883,7 +2159,7 @@ def main(argv: list[str] | None = None) -> int:
         # test green.
         ext_code, ext_report = evaluate_external(
             check_runs,
-            expected=expected_external_contexts(args.event),
+            expected=expected_external_contexts(args.event, ref_name=args.ref_name),
             actor=args.actor,
             now=observation_time,
             head_workflow_runs=_load_workflow_runs(args.head_workflow_runs_file),

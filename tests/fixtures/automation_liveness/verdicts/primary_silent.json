@@ -1,0 +1,12 @@
+{
+  "process_id": "host-c/watchdog-primary",
+  "host": "host-c",
+  "verdict": "primary_silent",
+  "state": "stale",
+  "reason": "primary_heartbeat_missed",
+  "previous_verdict": "healthy",
+  "verdict_since": "2026-10-09T02:10:00Z",
+  "evaluated_at": "2026-10-09T02:31:00Z",
+  "contract_digest": "e75884c5dd000dfa9ffebc48814c526ef87ebb7411ad16a26f85726d881cb179",
+  "detail": "example primary_silent verdict"
+}

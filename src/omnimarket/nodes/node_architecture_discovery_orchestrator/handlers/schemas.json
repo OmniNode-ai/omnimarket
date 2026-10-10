@@ -1,0 +1,196 @@
+{
+  "Scan": {
+    "type": "object",
+    "required": [
+      "handoff_path",
+      "sources_read",
+      "item_count",
+      "unreadable_sources",
+      "ledger_rows",
+      "delegation"
+    ],
+    "properties": {
+      "handoff_path": {
+        "type": "string"
+      },
+      "sources_read": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "item_count": {
+        "type": "number"
+      },
+      "unreadable_sources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "Adjudicate": {
+    "type": "object",
+    "required": [
+      "handoff_path",
+      "unintegrated",
+      "non_beta_backlog",
+      "automation_candidates",
+      "slate",
+      "excluded",
+      "ledger_rows",
+      "delegation"
+    ],
+    "properties": {
+      "handoff_path": {
+        "type": "string"
+      },
+      "unintegrated": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "non_beta_backlog": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "automation_candidates": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "slate": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "excluded": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "Report": {
+    "type": "object",
+    "required": [
+      "report_path",
+      "state_path",
+      "commit_sha",
+      "slate_summary",
+      "ledger_rows",
+      "delegation"
+    ],
+    "properties": {
+      "report_path": {
+        "type": "string"
+      },
+      "state_path": {
+        "type": "string"
+      },
+      "commit_sha": {
+        "type": "string"
+      },
+      "slate_summary": {
+        "type": "string"
+      },
+      "ledger_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -23,18 +23,18 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
 from omnibase_core.models.delegation.wire import EnumDelegationOperationalOutcome
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
     ProtocolDelegationDispatchPort,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
-    ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
@@ -298,14 +298,19 @@ def test_run_45661dd1_three_refused_local_answers_then_a_provider_timeout(
     terminal = _delegate_skill_terminal(failed[0])
     assert terminal.response == _DRAFTS[0]
     assert terminal.status == "failed"
+    source = terminal.model_dump(mode="json").get("response_source_attempt")
+    assert source == {
+        "attempt_index": 0,
+        "tier": "local",
+        "backend_id": history[0]["backend_ref"],
+    }
 
 
 @pytest.mark.parametrize(
-    ("scores", "truncated_index", "empty_index", "source_index"),
+    ("scores", "truncated_index", "source_index"),
     [
         pytest.param(
             (0.567, 0.567, 0.567, 0.433, 0.433),
-            None,
             None,
             0,
             id="recorded_shape_first_wins_ties",
@@ -313,22 +318,17 @@ def test_run_45661dd1_three_refused_local_answers_then_a_provider_timeout(
         pytest.param(
             (0.3, 0.567, 0.567, 0.433, 0.433),
             None,
-            None,
             1,
             id="highest_score_then_first_tie",
         ),
         pytest.param(
-            (0.3, 0.4, 0.5, 0.6, 0.567), None, None, 3, id="best_answer_can_be_frontier"
+            (0.3, 0.4, 0.5, 0.6, 0.567), None, 3, id="best_answer_can_be_frontier"
         ),
         pytest.param(
             (0.9, 0.567, 0.5, 0.433, 0.433),
             0,
-            None,
             1,
             id="exclude_output_length_truncation",
-        ),
-        pytest.param(
-            (0.9, 0.567, 0.5, 0.433, 0.433), None, 0, 1, id="exclude_empty_draft"
         ),
     ],
 )
@@ -336,7 +336,6 @@ def test_failed_terminal_keeps_best_answered_rung(
     ladder: tuple[hw.HandlerDelegationWorkflow, UUID],
     scores: tuple[float, ...],
     truncated_index: int | None,
-    empty_index: int | None,
     source_index: int,
 ) -> None:
     handler, cid = ladder
@@ -345,7 +344,7 @@ def test_failed_terminal_keeps_best_answered_rung(
             handler,
             cid,
             index,
-            "" if index == empty_index else _DRAFTS[index],
+            _DRAFTS[index],
             score,
             truncated=index == truncated_index,
         )
@@ -388,6 +387,13 @@ def test_failed_terminal_keeps_best_answered_rung(
     ]
     terminal = _delegate_skill_terminal(failed[0])
     assert terminal.response == _DRAFTS[source_index]
+    assert terminal.response_source_attempt is not None
+    assert terminal.response_source_attempt.attempt_index == source_index
+    assert terminal.response_source_attempt.tier == history[source_index]["tier_name"]
+    assert (
+        terminal.response_source_attempt.backend_id
+        == history[source_index]["backend_ref"]
+    )
     assert terminal.status == "failed"
     assert terminal.quality_gate_passed is False
 
@@ -443,6 +449,7 @@ def test_all_provider_failures_keep_empty_content_and_no_source(
     assert handler.workflows[cid].state is EnumDelegationState.FAILED
     terminal = _delegate_skill_terminal(failed[0])
     assert terminal.response == ""
+    assert terminal.response_source_attempt is None
     assert terminal.status == "failed"
     assert terminal.quality_gate_passed is False
 
@@ -476,3 +483,62 @@ def test_banked_draft_survives_the_durable_state_roundtrip(
         (0, "local", payload["escalation_history"][0]["backend_ref"])
     ]
     assert "response_source_attempt" not in payload
+
+
+@pytest.mark.parametrize(
+    "invalid_source",
+    [
+        "provider_failure",
+        "no_stop_reason",
+        "transport_failure",
+        "negative_index",
+        "missing_attempt",
+        "wrong_tier",
+        "wrong_backend",
+        "empty_response",
+    ],
+)
+def test_failed_wire_terminal_refuses_a_source_without_an_answer(
+    invalid_source: str,
+) -> None:
+    payload = {
+        "correlation_id": str(uuid4()),
+        "status": "failed",
+        "task_type": "document",
+        "response": "retained answer",
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder",
+                "model_id": "local-model",
+                "quality_gate_passed": False,
+                "finish_reason": "stop",
+                "acceptance_reason": "deterministic_floor_failed",
+            }
+        ],
+        "response_source_attempt": {
+            "attempt_index": 0,
+            "tier": "local",
+            "backend_id": "local-coder",
+        },
+    }
+    if invalid_source == "provider_failure":
+        payload["attempts"][0].update(
+            finish_reason=None, acceptance_reason="provider_call_failed"
+        )
+    elif invalid_source == "no_stop_reason":
+        payload["attempts"][0]["finish_reason"] = None
+    elif invalid_source == "transport_failure":
+        payload["attempts"][0]["failure_class"] = "model_unavailable"
+    elif invalid_source == "negative_index":
+        payload["response_source_attempt"]["attempt_index"] = -1
+    elif invalid_source == "missing_attempt":
+        payload["response_source_attempt"]["attempt_index"] = 1
+    elif invalid_source == "wrong_tier":
+        payload["response_source_attempt"]["tier"] = "cheap_cloud"
+    elif invalid_source == "wrong_backend":
+        payload["response_source_attempt"]["backend_id"] = "other-coder"
+    else:
+        payload["response"] = ""
+    with pytest.raises(ValidationError, match="response_source_attempt"):
+        ModelDelegateSkillFailed.model_validate(payload)

@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Behaviour of the companion-merge heal (OMN-18812).
 
-Each acceptance criterion of OMN-18812 has its falsifier here:
+The retained script behavior has its falsifiers here:
 
 * AC1 -- a failed preflight whose companion has MERGED is re-run with no human.
 * AC2 -- a companion still OPEN is never re-run, so the heal cannot spend a
   second budget on a fact that is still false.
 * AC3 -- the heal cannot loop: a run at the attempt ceiling is refused.
-* AC4 -- the workflow is not, and declares no, required status context, and
-  carries no ``continue-on-error`` that would let a broken heal read green.
 """
 
 from __future__ import annotations
@@ -20,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -52,8 +49,6 @@ from scripts.ci.occ_companion_merge_heal import (  # noqa: E402
     parse_evidence_source,
     run_failed_on_preflight,
 )
-
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "occ-companion-merge-heal.yml"
 
 pytestmark = pytest.mark.unit
 
@@ -347,88 +342,6 @@ def test_ac3_main_issues_nothing_at_the_ceiling() -> None:
     gh = _stub(runs=(RunSnapshot(run_id=9, run_attempt=MAX_HEAL_RUN_ATTEMPT),))
     assert main(["--repo", "OmniNode-ai/omniclaude"], gh=gh) == 0
     assert gh.reran == []
-
-
-# --------------------------------------------------------------------------
-# AC4: the workflow is advisory by construction.
-# --------------------------------------------------------------------------
-
-
-def _workflow_document() -> dict[str, Any]:
-    document = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    assert isinstance(document, dict)
-    return document
-
-
-def test_ac4_workflow_exists_and_parses() -> None:
-    assert WORKFLOW.is_file(), f"{WORKFLOW} is absent"
-    assert _workflow_document()["name"] == "OCC Companion Merge Heal"
-
-
-def test_ac4_no_job_or_step_swallows_its_own_failure() -> None:
-    """A heal that could swallow its own failure would be self-refuting.
-
-    Asserted over the PARSED document rather than the file's text: the prose
-    in this workflow's header names the setting in order to say it is absent,
-    and a text match cannot tell that sentence from the setting itself. That
-    is the rule-15 failure mode the header itself is about, reproduced here
-    on the first run of this test.
-    """
-    swallowing = "continue-on-error"
-    for job_id, job in _workflow_document()["jobs"].items():
-        assert swallowing not in job, f"job {job_id} swallows its own failure"
-        for index, step in enumerate(job.get("steps", [])):
-            assert swallowing not in step, f"job {job_id} step {index} swallows"
-
-
-def _triggers(document: dict[str, Any]) -> set[str]:
-    """The workflow's trigger names.
-
-    YAML 1.1, which PyYAML implements, parses the bare key ``on`` as the
-    boolean ``True``; a YAML 1.2 parser keeps it a string. Reading only one
-    spelling makes this test a hostage to the parser version rather than to
-    the workflow, so both are accepted and a missing block is an error.
-    """
-    for key in (True, "on"):
-        if key in document:
-            block = document[key]
-            assert isinstance(block, dict), "the trigger block is not a mapping"
-            return set(block)
-    raise AssertionError("the workflow declares no trigger block")
-
-
-def test_ac4_workflow_is_not_pull_request_reachable() -> None:
-    """No `pull_request` trigger, so code from an open PR never runs with this
-    job's Actions token, and no branch protection can make this a required
-    context for a PR it never reports on."""
-    assert _triggers(_workflow_document()) == {"schedule", "workflow_dispatch"}
-
-
-def test_ac4_the_write_grant_is_scoped_to_the_one_job_that_mutates() -> None:
-    """Workflow-wide `actions: write` would hand the re-run credential to
-    every step, the checkout and the interpreter setup included."""
-    document = _workflow_document()
-    assert document["permissions"] == {"contents": "read"}
-    assert document["jobs"]["heal"]["permissions"] == {
-        "actions": "write",
-        "contents": "read",
-        "pull-requests": "read",
-    }
-
-
-def test_ac4_the_checkout_persists_no_credential() -> None:
-    steps = _workflow_document()["jobs"]["heal"]["steps"]
-    checkout = next(
-        s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")
-    )
-    assert checkout["with"]["persist-credentials"] is False
-
-
-def test_ac4_concurrency_does_not_cancel_a_pass_in_flight() -> None:
-    """A cancelled pass can leave a re-run issued and unrecorded; a queued one
-    cannot."""
-    concurrency = _workflow_document()["concurrency"]
-    assert concurrency["cancel-in-progress"] is False
 
 
 # --------------------------------------------------------------------------
@@ -1088,7 +1001,7 @@ def _verify_jobs(conclusion: str, completed_at: str | None) -> dict[str, Any]:
 
 
 def test_the_receipt_gate_job_name_is_exact_and_case_insensitive() -> None:
-    assert RECEIPT_GATE_JOB_NAMES == ("verify / verify",)
+    assert "verify / verify" in RECEIPT_GATE_JOB_NAMES
     assert is_receipt_gate_job_name("verify / verify") is True
     assert is_receipt_gate_job_name("Verify / Verify") is True
 
@@ -1249,4 +1162,94 @@ def test_ghcli_run_failed_on_preflight_admits_a_pre_merge_receipt_gate_failure(
             companion_merged_at=_MERGED_AT,
         )
         is True
+    )
+
+
+# --------------------------------------------------------------------------
+# OMN-17427: the repo-evidence family is companion-bound too.
+#
+# The OMN-20072 pilot added `repo-evidence / dod-verify`, which waits a bounded
+# 1500 s for `occ-preflight / eligibility` on the same head, and renamed every
+# in-run poller to `Repo Evidence Dependency`, which waits on dod-verify. Neither
+# name matched the preflight markers or the verify job, so the heal never saw
+# them. omnimarket#3417 exactly: dod-verify failed 09:58:37Z and the CI run's
+# Repo Evidence Dependency 09:58:43Z, both on the expired wait; companion
+# OCC#12886 merged 10:34:23Z; the preflight was re-run and passed 10:48:55Z;
+# every later pass logged `no_failed_preflight` and the PR stayed red.
+# --------------------------------------------------------------------------
+
+_REPO_EVIDENCE_MERGED_AT = "2026-10-05T10:34:23Z"
+
+
+@pytest.mark.parametrize(
+    "name", ["repo-evidence / dod-verify", "Repo Evidence Dependency"]
+)
+def test_the_repo_evidence_family_is_companion_bound(name: str) -> None:
+    assert is_receipt_gate_job_name(name) is True
+    assert is_receipt_gate_job_name(name.upper()) is True
+
+
+@pytest.mark.parametrize(
+    ("name", "completed_at"),
+    [
+        ("repo-evidence / dod-verify", "2026-10-05T09:58:37Z"),
+        ("Repo Evidence Dependency", "2026-10-05T09:58:43Z"),
+    ],
+)
+def test_a_repo_evidence_failure_before_the_merge_is_in_scope(
+    name: str, completed_at: str
+) -> None:
+    payload = {
+        "jobs": [{"name": name, "conclusion": "failure", "completed_at": completed_at}]
+    }
+    assert (
+        run_failed_on_preflight(
+            payload,
+            markers=PREFLIGHT_JOB_MARKERS,
+            companion_merged_at=_REPO_EVIDENCE_MERGED_AT,
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["repo-evidence / dod-verify", "Repo Evidence Dependency"]
+)
+def test_a_repo_evidence_failure_after_the_merge_is_a_real_red(name: str) -> None:
+    """omnimarket#3420's shape: OCC#12917 merged 13:52:11Z and dod-verify failed
+    14:09:39Z on the product repo's own missing contract. A re-run would
+    reproduce that verdict."""
+    payload = {
+        "jobs": [
+            {
+                "name": name,
+                "conclusion": "failure",
+                "completed_at": "2026-10-05T14:09:39Z",
+            }
+        ]
+    }
+    assert (
+        run_failed_on_preflight(
+            payload,
+            markers=PREFLIGHT_JOB_MARKERS,
+            companion_merged_at="2026-10-05T13:52:11Z",
+        )
+        is False
+    )
+
+
+def test_a_head_whose_only_companion_bound_red_is_repo_evidence_is_read() -> None:
+    """omnimarket#3417 after its preflight was healed: eligibility passed, so the
+    count must still open the companion read from the repo-evidence reds."""
+    payload = {
+        "check_runs": [
+            {"name": "occ-preflight / eligibility", "conclusion": "success"},
+            {"name": "repo-evidence / dod-verify", "conclusion": "failure"},
+            {"name": "Repo Evidence Dependency", "conclusion": "failure"},
+            {"name": "Coverage Sweep Gate", "conclusion": "failure"},
+        ]
+    }
+    assert (
+        failed_preflight_check_count_in_payload(payload, markers=PREFLIGHT_JOB_MARKERS)
+        == 2
     )

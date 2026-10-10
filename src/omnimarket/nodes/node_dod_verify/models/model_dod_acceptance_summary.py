@@ -29,6 +29,13 @@ class ModelDodAcceptanceSummary(BaseModel):
         default=(),
         description="Labels whose falsifier no machine can run (prose, query).",
     )
+    undeclared_runner: tuple[tuple[str, str], ...] = Field(
+        default=(),
+        description=(
+            "OMN-20332: (label, repo) pairs whose holder repository declares "
+            "no test runner, in contract order."
+        ),
+    )
     derived_item_ids: tuple[str, ...] = Field(
         default=(),
         description="Evidence ids of the derived items, in label order.",
@@ -38,6 +45,15 @@ class ModelDodAcceptanceSummary(BaseModel):
         description=(
             "OMN-17427: self-accepted bindings without independent acceptance, "
             "in contract order."
+        ),
+    )
+    retired_bindings: tuple[str, ...] = Field(default=())
+    refused_retirements: tuple[str, ...] = Field(default=())
+    unbound_criteria: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "OMN-20070: declared acceptance criterion ids that no dod_evidence item "
+            "(declared or derived) binds through binds_ac, in contract order."
         ),
     )
 

@@ -92,12 +92,15 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    LEADING_REASONING_TRACE_CHECK_NAME,
+    LEADING_REASONING_TRACE_GATE_FAILURE_REASON,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
     RESIDUAL_REASONING_TAG_GATE_FAILURE_REASON,
     UNRESOLVED_PREAMBLE_CHECK_NAME,
     UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
     EnumReasoningBoundaryRule,
     ModelReasoningSegmentation,
+    has_leading_reasoning_trace,
     segment_reasoning_preamble,
 )
 from omnimarket.delegation.response_contract_conformance import (
@@ -1130,6 +1133,42 @@ def _check_compiles_without_errors(content: str) -> str | None:
     return None
 
 
+def _check_pytest_tests_present(content: str) -> str | None:
+    """Require a test definition under pytest's default collection names.
+
+    A unit marker can be present on an otherwise empty module or on a helper.
+    Neither supplies a test artifact. Inspect module-level test functions and
+    test methods in collectable classes; nested helpers and string literals
+    do not count. This is structural evidence, not an executed test result.
+    """
+    blocks = _extract_fenced_code_blocks_with_lang(content)
+    candidates = (
+        [body for language, body in blocks if language in _PYTHON_FENCE_LANG_TAGS]
+        if blocks
+        else [content]
+    )
+    for code in candidates:
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                if node.name.startswith("test_"):
+                    return None
+            elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+                methods = [
+                    statement
+                    for statement in node.body
+                    if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef)
+                ]
+                if any(method.name == "__init__" for method in methods):
+                    continue
+                if any(method.name.startswith("test_") for method in methods):
+                    return None
+    return "TASK_MISMATCH: no collectable pytest tests; fails pytest_tests_present"
+
+
 def _check_final_artifact_only(content: str) -> str | None:
     """Deterministic: code/test tasks must return the artifact, not deliberation."""
     if _extract_fenced_code_blocks(content) and _remove_fenced_code_blocks(content):
@@ -1149,6 +1188,17 @@ _UNIT_MARK_ASSIGNMENT = re.compile(
 )
 
 
+def _pytest_attribute_exists(attr: str) -> bool | None:
+    """OMN-12717: ``attr`` on the installed pytest module; None if absent."""
+    import importlib
+
+    try:
+        module = importlib.import_module("pytest")
+    except ImportError:
+        return None
+    return hasattr(module, attr)
+
+
 def _check_uses_pytest_mark_unit(content: str) -> str | None:
     """Deterministic: delegated tests must carry the unit-test marker (OMN-19524).
 
@@ -1162,7 +1212,9 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
 
     The code is read with ``ast``. Code that does not parse is read with
     ``tokenize`` with comments and strings dropped; only when even that yields
-    nothing is the old substring test used.
+    nothing is the old substring test used. A ``pytest.<name>`` read naming an
+    attribute the installed pytest lacks (``pytest.mark_unit``) is refused
+    first (OMN-12717).
     """
     blocks = _extract_fenced_code_blocks(content)
     code = "\n".join(blocks) if blocks else content
@@ -1170,6 +1222,17 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
         tree = ast.parse(code)
     except SyntaxError:
         return _unit_mark_by_tokens(code)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "pytest"
+            and _pytest_attribute_exists(node.attr) is False
+        ):
+            return (
+                f"TASK_MISMATCH: pytest.{node.attr} does not exist; "
+                "test module would fail to import"
+            )
     scopes: list[ast.Module | ast.ClassDef] = [tree]
     for node in ast.walk(tree):
         if isinstance(
@@ -1725,6 +1788,8 @@ def _evaluate_deterministic_checks(
             reason = _check_code_artifact_present(content, grounding_source)
         elif check == "final_artifact_only":
             reason = _check_final_artifact_only(content)
+        elif check == "pytest_tests_present":
+            reason = _check_pytest_tests_present(content)
         elif check == "uses_pytest_mark_unit":
             reason = _check_uses_pytest_mark_unit(content)
         elif check == "docstring_present":
@@ -1789,6 +1854,7 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         "signature_preserved",
         "task_completed",
         "uses_pytest_mark_unit",
+        "pytest_tests_present",
     }
 )
 
@@ -2263,6 +2329,10 @@ def _evaluate_response_contract(
     acceptance authority.
     """
     deliverable_contract = resolve_deliverable_contract(response_contract)
+    extraction = extract_deliverable(
+        gate_input.llm_response_content,
+        deliverable_contract,
+    )
     evidence = gate_input.deliverable_evidence
     if evidence is not None:
         content = gate_input.llm_response_content
@@ -2282,6 +2352,9 @@ def _evaluate_response_contract(
                 failure_reasons=(
                     "DELIVERABLE_EVIDENCE_MISMATCH: cleaned content does not match "
                     "the declared extraction evidence",
+                    # A refused extraction withholds the deliverable while the
+                    # gate grades raw content. Keep its label diagnostics too.
+                    *extraction.contract_failure_reasons,
                 ),
                 fallback_recommended=True,
             )
@@ -2305,10 +2378,6 @@ def _evaluate_response_contract(
                 failure_reasons=(),
                 fallback_recommended=False,
             )
-    extraction = extract_deliverable(
-        gate_input.llm_response_content,
-        deliverable_contract,
-    )
     if (
         extraction.refusal is not None
         and extraction.refusal
@@ -2890,6 +2959,29 @@ def _unresolved_preamble_result(
     )
 
 
+def _leading_reasoning_trace_result(
+    gate_input: ModelQualityGateInput,
+) -> ModelQualityGateResult:
+    """Refuse a leading trace even when an answer can be recovered (OMN-18278)."""
+    reasons = (LEADING_REASONING_TRACE_GATE_FAILURE_REASON,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=LEADING_REASONING_TRACE_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=LEADING_REASONING_TRACE_GATE_FAILURE_REASON,
+            ),
+        ),
+    )
+
+
 def _residual_reasoning_tag_result(
     gate_input: ModelQualityGateInput, tag: str
 ) -> ModelQualityGateResult:
@@ -3027,7 +3119,7 @@ def delta(
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     reasoning_stripped_chars: int = 0,
 ) -> ModelQualityGateResult:
-    """Segment off a leaked reasoning preamble, then evaluate the answer.
+    """Refuse leaked reasoning at the deterministic floor, then grade clean output.
 
     OMN-18379. Every check below this line judges the ANSWER SEGMENT, never the
     scratchpad a local model sometimes ships in front of it. The defect this
@@ -3042,6 +3134,8 @@ def delta(
     resolves, the WHOLE response is evaluated exactly as before this ticket and
     the result says ``no_boundary_found`` — text is never dropped on a guess.
 
+    OMN-18278: a resolved leading preamble, or the adapter receipt that one
+    was removed, vetoes acceptance even when a complete answer follows it.
     The stripped preamble travels on the result so a verdict can be audited
     against precisely the text it judged.
 
@@ -3112,6 +3206,10 @@ def delta(
     elif residual_tag is not None:
         # Inspect the answer before any paired-tag strip can hide a trace.
         result = _residual_reasoning_tag_result(gate_input, residual_tag)
+    elif reasoning_stripped_chars > 0 or has_leading_reasoning_trace(segmentation):
+        # Extraction must not erase the evidence the deterministic floor judges.
+        # An adapter receipt is equally conclusive when the trace is already gone.
+        result = _leading_reasoning_trace_result(gate_input)
     else:
         segmented_input = (
             gate_input

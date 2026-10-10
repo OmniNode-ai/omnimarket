@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingStrictPlanCompute
+#
+# The strict-base ordering of one landing-controller tick as a pure definition-B compute:
+#
+#   handle(ModelLandingStrictPlanRequest) -> ModelLandingStrictPlanResult
+#
+# On a base whose branch protection requires the branch up to date, every merge makes every other head
+# behind. From the decision's merge and update-branch actions, the live read of each PR, the base settings
+# the caller has read, the strict-slot memory, the declared cause fixes and the M4 delegation PRs, this node
+# ranks the actions on each such base, holds them behind a declared fix, defers the surplus updates and
+# derives the strict-slot view the next tick remembers. The read of a base's setting is an effect and stays
+# with the caller. The live controller keeps ordering its own copy; the two are compared on recorded input
+# before any caller moves. No clock (the tick's time is in the request), no I/O, no model.
+name: "node_pr_landing_strict_plan_compute"
+contract_name: "node_pr_landing_strict_plan_compute"
+node_name: "node_pr_landing_strict_plan_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B ordering of one landing tick's merges and branch updates on
+  the bases that require branches up to date: a declared cause fix first, then
+  the M4 delegation PRs, a PR that yielded the update slot last; the others held
+  behind a fix that acts or is pending under an hour; one update a base a tick
+  less its merges; and the strict-slot view the next tick remembers.
+input_model:
+  name: "ModelLandingStrictPlanRequest"
+  module: "omnimarket.nodes.node_pr_landing_strict_plan_compute.models.model_landing_strict_plan"
+  description: "The decision's actions, the live read of each PR, the base settings read, the strict-slot memory, the declared fixes, the M4 PRs and the clock."
+output_model:
+  name: "ModelLandingStrictPlanResult"
+  module: "omnimarket.nodes.node_pr_landing_strict_plan_compute.models.model_landing_strict_plan"
+  description: "The order to perform the actions in, the deferred and held ones, the bases looked up and the next strict-slot view."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_strict_plan_compute.handlers.handler_pr_landing_strict_plan"
+  class: "HandlerPrLandingStrictPlan"
+  input_model: "omnimarket.nodes.node_pr_landing_strict_plan_compute.models.model_landing_strict_plan.ModelLandingStrictPlanRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_strict_plan_compute.handlers.handler_pr_landing_strict_plan:HandlerPrLandingStrictPlan"
+  handlers:
+    - operation: "plan_strict_order"
+      handler:
+        name: "HandlerPrLandingStrictPlan"
+        module: "omnimarket.nodes.node_pr_landing_strict_plan_compute.handlers.handler_pr_landing_strict_plan"
+# Addressable the way the other directly-invoked compute nodes are; the topics are
+# declared here and no caller publishes the command until the controller switches.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-strict-plan-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-strict-plan-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-strict-plan-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  deterministic: true
+metadata:
+  description: "Strict-base order of one landing tick's merges and branch updates."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-09"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - strict-base
+    - pure

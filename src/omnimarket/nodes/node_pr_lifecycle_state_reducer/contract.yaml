@@ -105,6 +105,12 @@ handler_routing:
       handler:
         name: HandlerPrLifecycleStateReducer
         module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.ci-red-triage-decided.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
 
 descriptor:
   node_archetype: reducer
@@ -254,6 +260,7 @@ event_bus:
     # Repo-health lane (OMN-13585): additive fold only — does not drive FSM transitions
     - onex.evt.omnimarket.repo-health-classified.v1
     - onex.evt.omnimarket.repo-health-repair-emitted.v1
+    - onex.evt.omnimarket.ci-red-triage-decided.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
     # OMN-13321 / F5: per-iteration durable PR ledger projection snapshot.
@@ -308,6 +315,16 @@ projection:
     - evidence
     - final_state
     - next_check_at
+
+# An owner claim row (evidence "claim=owner ...", written from ci-red-triage-decided)
+# is a lease: its next_check_at is found_at + ttl_seconds, and every owner read
+# (node_pr_lifecycle_orchestrator's claims, the landing controller's bus owner read)
+# counts the claim only before it. An owner that never closes, such as a lane whose
+# TERMINAL the ledger refused, stops owning its PRs at the TTL. The handler refuses
+# a missing or unknown TTL at load. 5400 s is node_pr_landing_decision_compute's
+# cause_lease_seconds.
+owner_claim_lease:
+  ttl_seconds: 5400
 
 projection_api:
   expose: true

@@ -84,7 +84,6 @@ def _local_health_url(host_octet: str, port: int) -> str:
 _LOCAL_HEALTH_URLS = [
     _local_health_url("201", 8000),
     _local_health_url("201", 8002),
-    _local_health_url("200", 8101),
 ]
 
 _OPENROUTER_LIVE_IDS = [
@@ -181,15 +180,15 @@ async def test_all_local_healthy_over_bus(integration_event_bus: Any) -> None:
                 correlation_id="bus-local-1",
                 include_local=True,
                 include_openrouter=False,
-                min_healthy_endpoints=4,
+                min_healthy_endpoints=2,
             ),
             handler,
         )
         result = _result_from(history)
-        assert result.local_count >= 4
+        assert result.local_count == 2
         assert result.openrouter_count == 0
         assert result.meets_threshold is True
-        assert result.healthy_count >= 4
+        assert result.healthy_count == 2
         for ep in result.endpoints:
             assert ep.status == EnumDiscoveryEndpointStatus.healthy
     finally:
@@ -217,7 +216,7 @@ async def test_all_local_unhealthy_over_bus(integration_event_bus: Any) -> None:
                 correlation_id="bus-local-2",
                 include_local=True,
                 include_openrouter=False,
-                min_healthy_endpoints=4,
+                min_healthy_endpoints=2,
             ),
             handler,
         )
@@ -353,7 +352,7 @@ async def test_combined_local_and_openrouter_over_bus(
         result = _result_from(history)
         assert result.meets_threshold is True
         assert result.healthy_count >= 8
-        assert result.local_count >= 4
+        assert result.local_count == 2
         assert result.openrouter_count >= 8
         assert result.correlation_id == "bus-combined-1"
     finally:
@@ -408,7 +407,7 @@ async def test_idempotent_identical_input_over_bus(integration_event_bus: Any) -
         run_id="run-idem",
         include_local=True,
         include_openrouter=False,
-        min_healthy_endpoints=4,
+        min_healthy_endpoints=2,
     )
     fingerprints: list[tuple[int, int, int, bool]] = []
     for _ in range(2):

@@ -22,13 +22,20 @@ and the sizing claim is itself asserted by exact computation below.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import subprocess
 import sys
+from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from omnimarket.delegation.shadow_comparison import (
     ModelShadowPrompt,
@@ -43,6 +50,9 @@ from omnimarket.models.ranges import (
     EnumRangeSampleOutcome,
     ModelComparisonMethod,
     ModelComparisonPair,
+)
+from omnimarket.nodes.node_model_comparison_runner.models.model_comparison_request import (
+    ModelComparisonRequest,
 )
 from omnimarket.ranges import (
     compare_paired_outcomes,
@@ -284,6 +294,49 @@ class TestHarness:
         assert len(seen) == 2 * len(prompts)
         assert result.verdict is EnumComparisonVerdict.NO_DIFFERENCE
 
+    @pytest.mark.parametrize(
+        "sample", ["empty", "undersized", "undersized-method", "declared-size"]
+    )
+    def test_ac3_refusal_precedes_rung_and_grader_calls(self, sample: str) -> None:
+        required = _method().sample_size
+        method = _method()
+        count = required - 1
+        if sample == "empty":
+            count = 0
+        elif sample == "undersized-method":
+            count = required
+            method = _method(n=required - 1)
+        elif sample == "declared-size":
+            count = required
+            method = _method(n=required + 1)
+
+        calls: list[str] = []
+
+        def rung(prompt: ModelShadowPrompt) -> ModelShadowRungAnswer:
+            calls.append("rung")
+            return ModelShadowRungAnswer(content="answer")
+
+        def grader(prompt: ModelShadowPrompt, content: str) -> tuple[float, float]:
+            calls.append("grader")
+            return (1.0, 0.8)
+
+        result = run_shadow_comparison(
+            "preflight",
+            self._prompts(count),
+            rung_a=rung,
+            rung_b=rung,
+            grader=grader,
+            method=method,
+        )
+        assert result.verdict is EnumComparisonVerdict.REFUSED
+        assert result.required_n == max(required, method.sample_size)
+        assert any(
+            f"required n={result.required_n}" in reason for reason in result.reasons
+        )
+        assert result.observed_n == count
+        assert result.incomplete_a == result.incomplete_b == count
+        assert calls == []
+
     def test_a_transport_failure_is_incomplete_never_graded(self) -> None:
         graded: list[str] = []
 
@@ -355,3 +408,213 @@ class TestCli:
         )
         assert completed.returncode == 2, completed.stdout + completed.stderr
         assert "REFUSED" in completed.stdout
+
+
+class TestBusHandler:
+    """Exercise the handler and wire models selected by the existing contract."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("degraded", [False, True])
+    async def test_stored_prompts_are_replayed_and_compared(
+        self, tmp_path: Path, degraded: bool
+    ) -> None:
+        method = _method()
+        prompt_text = "Explain why a write-ahead log makes a database crash-safe."
+        answer = (
+            "A write-ahead log records changes before the database writes its "
+            "data files. After a crash the database replays committed log records "
+            "to recover changes that had not yet reached the data files."
+        )
+        path = _store(
+            tmp_path,
+            [
+                (
+                    i,
+                    f"c{i}",
+                    "document",
+                    prompt_text,
+                    "recorded answer must not be reused",
+                )
+                for i in range(method.sample_size)
+            ],
+        )
+        prompts = read_shadow_prompts(path, limit=method.sample_size, selection_seed=7)
+        calls: list[tuple[str, str]] = []
+
+        async def infer(request: Any) -> SimpleNamespace:
+            model = request.model
+            content = request.messages[0]["content"]
+            calls.append((model, content))
+            return SimpleNamespace(
+                generated_text="" if degraded and model == "rung-b" else answer,
+                usage=SimpleNamespace(
+                    tokens_input=10, tokens_output=20, tokens_total=30
+                ),
+                latency_ms=1,
+            )
+
+        effect = AsyncMock()
+        effect.handle.side_effect = infer
+        result = await self._handle(prompts, method, effect, same_model=not degraded)
+        comparison = result.shadow_comparison
+        assert comparison is not None
+        assert comparison.confidence == method.confidence
+        assert comparison.observed_n == method.sample_size
+        assert comparison.passes_a == method.sample_size
+        assert comparison.incomplete_a == comparison.incomplete_b == 0
+        assert len(calls) == 2 * method.sample_size
+        assert all(content == prompt_text for _, content in calls)
+        assert {model for model, _ in calls} == (
+            {"rung-a", "rung-b"} if degraded else {"rung-a"}
+        )
+        assert result.winner_label is None
+        if degraded:
+            assert comparison.verdict is EnumComparisonVerdict.DIFFERENCE
+            assert comparison.p_value < 1.0 - method.confidence
+            assert comparison.interval_high < 0.0
+        else:
+            assert comparison.verdict is EnumComparisonVerdict.NO_DIFFERENCE
+            assert comparison.p_value == 1.0
+            assert comparison.interval_low <= 0.0 <= comparison.interval_high
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "sample", ["empty", "undersized", "undersized-method", "declared-size"]
+    )
+    async def test_undersized_wire_request_refuses_before_inference(
+        self, sample: str
+    ) -> None:
+        method = _method()
+        required = method.sample_size
+        count = required - 1
+        if sample == "empty":
+            count = 0
+        elif sample == "undersized-method":
+            count = required
+            method = _method(n=required - 1)
+        elif sample == "declared-size":
+            count = required
+            method = _method(n=required + 1)
+        effect = AsyncMock()
+        result = await self._handle(TestHarness()._prompts(count), method, effect)
+        comparison = result.shadow_comparison
+        assert comparison is not None
+        assert comparison.verdict is EnumComparisonVerdict.REFUSED
+        assert comparison.required_n == max(required, method.sample_size)
+        assert any(
+            f"required n={comparison.required_n}" in r for r in comparison.reasons
+        )
+        effect.handle.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("no_answer", ["exception", "missing-text"])
+    async def test_missing_answers_are_counted_incomplete(self, no_answer: str) -> None:
+        effect = AsyncMock()
+        if no_answer == "exception":
+            effect.handle.side_effect = TimeoutError("inference timeout")
+        else:
+            effect.handle.return_value = SimpleNamespace(generated_text=None)
+        method = _method()
+        result = await self._handle(
+            TestHarness()._prompts(method.sample_size), method, effect
+        )
+        assert result.shadow_comparison.incomplete_a == method.sample_size
+        assert result.shadow_comparison.incomplete_b == method.sample_size
+        assert (
+            result.shadow_comparison.passes_a == result.shadow_comparison.passes_b == 0
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancellation_propagates(self) -> None:
+        effect = AsyncMock()
+        effect.handle.side_effect = asyncio.CancelledError()
+        method = _method()
+        with pytest.raises(asyncio.CancelledError):
+            await self._handle(
+                TestHarness()._prompts(method.sample_size), method, effect
+            )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_prompts_fail_before_inference(self) -> None:
+        effect = AsyncMock()
+        method = _method()
+        prompts = TestHarness()._prompts(method.sample_size)
+        prompts[-1] = prompts[0]
+        with pytest.raises(ValueError, match="duplicate case_id"):
+            await self._handle(prompts, method, effect)
+        effect.handle.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "invalid", ["one-arm", "duplicate-label", "implicit-system"]
+    )
+    def test_ambiguous_shadow_requests_are_rejected(self, invalid: str) -> None:
+        models = [
+            {
+                "model_id": "same-model",
+                "label": label,
+                "endpoint": "http://injected",
+                "provider": "local",
+            }
+            for label in ("a", "b")
+        ]
+        if invalid == "one-arm":
+            models.pop()
+        elif invalid == "duplicate-label":
+            models[1]["label"] = "a"
+        payload = {
+            "task_description": "replay",
+            "models": models,
+            "shadow_comparison": {"prompts": [], "method": _method().model_dump()},
+        }
+        if invalid != "implicit-system":
+            payload["system_prompt"] = ""
+        with pytest.raises(ValidationError, match="shadow comparison"):
+            ModelComparisonRequest.model_validate(payload)
+
+    async def _handle(
+        self,
+        prompts: list[ModelShadowPrompt],
+        method: ModelComparisonMethod,
+        effect: AsyncMock,
+        *,
+        same_model: bool = False,
+    ) -> Any:
+        root = Path(__file__).resolve().parents[1]
+        contract = yaml.safe_load(
+            (
+                root / "src/omnimarket/nodes/node_model_comparison_runner/contract.yaml"
+            ).read_text()
+        )
+        module_name, model_name = contract["handler"]["input_model"].rsplit(".", 1)
+        model = getattr(import_module(module_name), model_name)
+        request = model.model_validate(
+            {
+                "task_description": "offline delegation replay",
+                "system_prompt": "",
+                "models": [
+                    {
+                        "model_id": "rung-a" if same_model else f"rung-{rung}",
+                        "label": rung,
+                        "endpoint": "http://injected",
+                        "provider": "local",
+                    }
+                    for rung in ("a", "b")
+                ],
+                "shadow_comparison": {
+                    "prompts": [p.model_dump(mode="json") for p in prompts],
+                    "method": method.model_dump(mode="json"),
+                },
+            }
+        )
+        handler_spec = contract["handler"]
+        handler = getattr(import_module(handler_spec["module"]), handler_spec["class"])
+        result = await handler(effect_handler=effect).handle(request)
+        assert "shadow_comparison" in contract["inputs"]
+        assert "shadow_comparison" in contract["outputs"]
+        assert type(result).model_validate_json(result.model_dump_json()) == result
+        assert (
+            contract["runtime_dispatch"]["command_topic"]
+            in contract["event_bus"]["subscribe_topics"]
+        )
+        assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
+        return result

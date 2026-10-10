@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20669"
+title: "The remote-lane runner's placement, closing and ref-resolution decisions are the nodes node_remote_lane_compute and node_remote_lane_effect"
+summary: "The first shard of OMN-20669 adds the pure compute node node_remote_lane_compute, which ports the runner's placement and closing decisions, and the effect node node_remote_lane_effect, which resolves a landing ref through a git port with every git option before the remote. The old runner stays the live path. AC1 to AC3 are bound to the focused tests of the two nodes and the entry-point and metadata tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-remote-lane-compute-node"
+    statement: "The runner's placement and closing decisions are the pure node node_remote_lane_compute, equal to the runner's own functions over generated inputs."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: placement and closing decisions of node_remote_lane_compute equal the runner's own functions on the recorded parity cases -- falsifier: uv run pytest tests/nodes/node_remote_lane_compute -q fails on a broken rank"
+  - id: "req-remote-lane-effect-node"
+    statement: "The landing ref resolution is the effect node node_remote_lane_effect behind a git port, with every git option placed before the remote."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: node_remote_lane_effect resolves the landing branch from a real git repository and ignores inherited GIT_DIR -- falsifier: uv run pytest tests/nodes/node_remote_lane_effect -q"
+  - id: "req-remote-lane-registration"
+    statement: "Both nodes are registered as package-form entry points with valid metadata."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: both entry points are package-form and both metadata files pass the schema test -- falsifier: uv run pytest tests/test_remote_lane_registration.py -q"
+  - id: "req-remote-lane-close-node"
+    statement: "The closing decision is its own compute node node_remote_lane_close_compute, so each remote-lane compute contract declares one operation on its own command topic."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: placement, closing and ref resolution run through RuntimeLocal from each packaged contract, one operation per compute contract on its own topic -- falsifier: uv run pytest tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused tests of both remote-lane nodes."
+    command: "uv run pytest tests/nodes/node_remote_lane_compute tests/nodes/node_remote_lane_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20669-ac1-compute-parity"
+    description: "AC1 compute node parity tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_remote_lane_parity.py tests/nodes/node_remote_lane_compute/test_golden_chain_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_error_chain_remote_lane_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20669-ac2-effect-ref"
+    description: "AC2 effect node ref resolution tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_effect/test_golden_chain_remote_lane_effect.py tests/nodes/node_remote_lane_effect/test_error_chain_remote_lane_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20669-ac3-registration"
+    description: "AC3 entry point and metadata tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_lane_registration.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20669-ac4-runtime-local"
+    description: "AC4 RuntimeLocal tests of the split placement and closing compute nodes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

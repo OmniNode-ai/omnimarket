@@ -1,6 +1,6 @@
 name: node_model_comparison_runner
-version: "1.0.0"
-description: "EFFECT node — runs side-by-side model comparison via injected LLM handler"
+version: "1.1.0"
+description: "EFFECT node — single-task and paired delegation shadow comparison via injected inference"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -19,7 +19,7 @@ dependencies:
   - "pydantic>=2.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "model-comparison", "llm", "cost", "evaluation"]
+tags: ["effect", "model-comparison", "llm", "cost", "evaluation", "shadow-comparison"]
 pack: "ab_compare"
 display_name: "Model Comparison Runner"
 node_role: "effect"

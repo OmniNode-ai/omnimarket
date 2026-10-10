@@ -140,6 +140,10 @@ def _routed_gh(
 
     def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
         argv = [str(a) for a in (list(args[0]) if args else [])]
+        # OMN-20696: the contract-subject lookup of the fixture's loose
+        # contract, which is in no checkout.
+        if argv == ["git", "rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(argv, 128, stdout="", stderr="")
         joined = " ".join(argv)
         if "view" in argv:
             # Keyed on ``headRefName``, not on ``state,mergedAt``: the WIDE

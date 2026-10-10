@@ -8,13 +8,15 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
   side_effect_class: write
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["delegation", "routing", "tenant-overlay", "house-tenant", "effect"]

@@ -158,6 +158,14 @@ db_io:
       # The declaration must cover what the handler actually does.
       access: read_write
       role: budget_state
+    # OMN-20613: identity of each event applied to delegation_budget_state, so a
+    # replay is recognised by the event and not only by the last one applied.
+    - name: delegation_budget_applied_events
+      database_ref: application
+      schema: public
+      migration: "0056_delegation_budget_applied_events.sql"
+      access: write
+      role: budget_applied_events
     # OMN-16804: the slug -> canonical-UUID lookup this handler performs before
     # every delegation write. READ ONLY -- node_projection_tenant_registry owns
     # the relation and is the only writer; this node asks it a question and
@@ -333,6 +341,7 @@ projection_api:
         - pricing_manifest_version
         - timestamp
         - created_at
+        - data_source
       order_by: created_at DESC
       freshness_column: created_at
       limit: 500
@@ -360,6 +369,7 @@ projection_api:
         - escalation_count
         - authority_source
         - pricing_manifest_version
+        - data_source
       order_by: timestamp DESC
       freshness_column: timestamp
       limit: 100
@@ -392,6 +402,11 @@ projection_api:
         # Tier Distribution reads tier from the projection (deletes modelTier.ts).
         - cost_tier_name
         - cost_tier_type
+        # OMN-20753: the run's terminal outcome (migration 0029) and its measured
+        # cost, so Runs shows what the receipt recorded instead of Not recorded.
+        # cost_usd is null for a run whose cost was never measured.
+        - terminal_ok
+        - cost_usd
         - created_at
         # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
         - data_source
@@ -404,9 +419,18 @@ projection_api:
         # answering_backend (the terminal's route) does not name (migration 0054).
         - backend_id
         - host
+        # OMN-20606: the delegation this one falls back or escalates from, the
+        # kind of relation and why the parent failed (migration 0055).
+        - parent_correlation_id
+        - lineage_kind
+        - parent_failure_cause
         # OMN-19448: the deciding terminal's stop reason (migration 0053).
         - finish_reason
         - truncated
+        # OMN-19448: requested model and measured terminal timings (migration 0058).
+        - requested_model
+        - queue_wait_ms
+        - execution_ms
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model
@@ -512,9 +536,22 @@ projection_api:
         - response_text
         - timestamp
         - created_at
+        # Keep fixture provenance on the detail page as well as the Runs list.
+        - data_source
+        # The tenant identity, declared as `tenant_column` below. This surface
+        # serves prompt_text/response_text, so it is tenant-scoped; the model
+        # refuses a scoped exposure that does not return its scoping column.
+        - tenant_id
       order_by: created_at ASC
       freshness_column: created_at
       limit: 100
+      # The writer republishes the stored row onto this exposure as well as
+      # onto decisions.v1 (a per-row publish for every bus_backed exposure over
+      # delegation_events), keyed on the table's own conflict key.
+      bus_backed: true
+      key_columns:
+        - correlation_id
+      tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.summary.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       key_grain: "mutable"
       table: projection_delegation_summary

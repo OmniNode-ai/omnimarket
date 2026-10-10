@@ -28,9 +28,12 @@ durable table instead of from memory:
 Tenant scoping (OMN-15797 AC2) is enforced twice, because the tables differ:
 the row's own ``tenant_column`` is compared in the WHERE clause, and
 ``app.tenant_id`` is set for the transaction so an RLS policy on the relation
-agrees with it. Rows are serialised the way the writers serialised them onto
-the snapshot topics (timestamps as ISO strings, UUIDs and decimals as strings,
-``json_columns`` decoded), so a client sees the same row shape it always did.
+agrees with it. Both are given the tenant in the form the writer stored it: a
+slug is resolved to its registry UUID before either is set (OMN-19972, see
+:meth:`TableRowSource.registry_tenant_uuid`). Rows are serialised the way the
+writers serialised them onto the snapshot topics (timestamps as ISO strings,
+UUIDs and decimals as strings, ``json_columns`` decoded), so a client sees the
+same row shape it always did.
 
 Every failure is a typed :class:`ProjectionReadError` naming the relation, the
 route turns it into an explicit ``503`` (or ``422`` for a malformed ``since``),
@@ -55,8 +58,18 @@ import asyncpg
 
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.tenant_isolation import TENANT_GUC
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+    TenantRegistryResolutionError,
+    async_registry_tenant_uuid,
+)
 
 log = logging.getLogger(__name__)
+
+#: The refusal code for a tenant registry that could not be read. Distinct from
+#: ``tenant_context_unresolved`` (a 422 the caller can fix by naming a
+#: registered tenant): this is server state, so it is a 503.
+TENANT_REGISTRY_UNREADABLE = "tenant_registry_unreadable"
 
 #: The cache's eviction cap was ``limit * 4`` rows per exposure. A read serves
 #: the same window size, so every page, cursor and truncation flag a client
@@ -579,6 +592,17 @@ class ProtocolProjectionRowSource(Protocol):
 
     def unavailable(self, topic: str) -> tuple[str, str] | None: ...
 
+    async def registry_tenant_uuid(
+        self, cfg: ProjectionTableConfig, tenant_slug: str
+    ) -> UUID | None:
+        """The UUID ``tenant_registry_mirror`` records for ``tenant_slug``.
+
+        ``None`` when the mirror holds no row for it, or when the store has no
+        such relation (the write path's reading of the same two facts).
+        Raises :class:`ProjectionReadError` when the mirror cannot be read or
+        holds a value that is not a UUID -- never ``None`` for those.
+        """
+
     async def rows(
         self,
         cfg: ProjectionTableConfig,
@@ -801,6 +825,41 @@ class TableRowSource:
         )
         self._unique_keys[relation] = (now, found)
         return found
+
+    async def registry_tenant_uuid(
+        self, cfg: ProjectionTableConfig, tenant_slug: str
+    ) -> UUID | None:
+        """The registry UUID for ``tenant_slug``, read the way the writer reads it.
+
+        OMN-19972. The writer stamps the UUID ``tenant_registry_mirror``
+        records for a slug (:func:`async_registry_tenant_uuid`), so the reader
+        asks the same relation the same question, through the database this
+        exposure is read from. A relation the lane has not created reads as
+        ``None`` there and here; any other failure is a named refusal, never a
+        ``None`` that would let the caller fall back to the slug.
+        """
+        pool = await self._pool(cfg)
+        try:
+            # One SELECT and no transaction, as the writer issues it: a lane
+            # without the relation answers 42P01, which the lookup reads as
+            # "no row", and there is no aborted transaction left to close.
+            async with pool.acquire() as connection:
+                return await async_registry_tenant_uuid(connection, tenant_slug)
+        except TenantRegistryResolutionError as exc:
+            raise ProjectionReadError(
+                TENANT_REGISTRY_UNREADABLE,
+                f"{TENANT_REGISTRY_MIRROR_TABLE} holds a value for the requested "
+                "tenant that is not a UUID",
+            ) from exc
+        except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+            log.warning(
+                "tenant registry read through %s failed: %r", dsn_env_for(cfg), exc
+            )
+            raise ProjectionReadError(
+                TENANT_REGISTRY_UNREADABLE,
+                f"reading {TENANT_REGISTRY_MIRROR_TABLE} through "
+                f"{dsn_env_for(cfg)} failed",
+            ) from exc
 
     async def rows(
         self,
@@ -1034,9 +1093,29 @@ class TableRowSource:
             # Both reads inside the one ``try``: a refusal from either names
             # this exposure failed, and the page still renders every other.
             try:
-                rows = await self.rows(
-                    cfg, order_spec=cfg.order_by_spec, tenant_id=scoped
-                )
+                if any(reader.read_all_rows for reader in cfg.backend_readers):
+                    # Current inventories must include every key, not only the
+                    # newest retained window. Use the existing bounded cursor
+                    # walk instead of a second unbounded SQL read path.
+                    assert cfg.cursor_column is not None
+                    rows = []
+                    since = None
+                    while True:
+                        chunk = await self.rows(
+                            cfg,
+                            order_spec=((cfg.cursor_column, "ASC", None),),
+                            tenant_id=scoped,
+                            since=since,
+                            selection="walk",
+                        )
+                        rows.extend(chunk)
+                        if len(chunk) < cfg.limit * RETAINED_WINDOW_FACTOR:
+                            break
+                        since = str(chunk[-1][cfg.cursor_column])
+                else:
+                    rows = await self.rows(
+                        cfg, order_spec=cfg.order_by_spec, tenant_id=scoped
+                    )
                 latest = await self.latest_event_at(
                     cfg, tenant_id=scoped, window_rows=rows
                 )
@@ -1078,7 +1157,21 @@ class TableRowSource:
             try:
                 pool = await self._pool(cfg)
                 relation = qualified_relation(cfg)
-                async with pool.acquire() as connection:
+                async with (
+                    pool.acquire() as connection,
+                    connection.transaction(readonly=True),
+                ):
+                    # SET LOCAL on a previous scoped read leaves an empty
+                    # custom GUC after commit. UUID RLS policies may cast it
+                    # while planning even this LIMIT 0 query (OMN-20666).
+                    # This context is only for the zero-row schema probe;
+                    # it supplies no identity to a served read or write.
+                    if cfg.tenant_column is not None:
+                        await connection.execute(
+                            "SELECT set_config($1, $2, true)",
+                            TENANT_GUC,
+                            str(UUID(int=0)),
+                        )
                     # The exposure's own column list, so a contract that
                     # declares a column the table lacks is not ready either.
                     await connection.execute(
@@ -1125,8 +1218,10 @@ class TableRowSource:
         }
 
     def health(self, topic_map: dict[str, ProjectionTableConfig]) -> dict[str, object]:
+        served = sorted(t for t, c in topic_map.items() if c.bus_backed)
         return {
             "status": "ok",
             "backing": self.backing,
-            "served_topics": sorted(t for t, c in topic_map.items() if c.bus_backed),
+            "served_topics": served,
+            "bus_backed_topics": served,
         }

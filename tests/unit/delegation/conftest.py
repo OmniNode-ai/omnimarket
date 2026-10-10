@@ -190,10 +190,10 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning]
-      - backend_id: local-ds-v4-flash
+      - backend_id: local-fixture-sibling
         provider: local
         endpoint_url: "http://local.test:8101/v1/chat/completions"
-        model_name: ds-v4-flash
+        model_name: fixture-model-a
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning]
@@ -305,20 +305,11 @@ def frontier_unconfigured_bifrost(
 def routing_tiers_with_local_sibling(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> Iterator[None]:
-    """Bind a tiers file in which a local rung HAS a distinct same-tier sibling.
+    """Bind the committed tier with a distinct synthetic retry sibling.
 
-    OMN-16833: the committed ``routing_tiers.yaml`` no longer gives any task
-    class two DISTINCT local backends — the fleet's only second local endpoint
-    (.200:8101) is stopped, every lane renders it ``endpoint_url: null``, and
-    ``local-coder``/``local-heavy-reasoning`` are two ids on the SAME endpoint.
-    OMN-14402's same-tier fallback is therefore unexercisable against the
-    committed config, and the tests that proved it were green on a rung the
-    whole fleet skips.
-
-    The mechanism still has to be proven, so it is proven against the world in
-    which .200:8101 is back: the committed tiers with the parked rung restored.
-    The synthetic bifrost contract above already gives ``local-ds-v4-flash`` a
-    concrete endpoint.
+    The packaged chat backends share one physical endpoint. The synthetic
+    bifrost contract above supplies the fixture sibling on a .test host, so
+    these tests prove fallback mechanics without reviving a retired service.
     """
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,

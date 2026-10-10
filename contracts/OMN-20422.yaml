@@ -1,0 +1,103 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20422"
+title: "The Hostile Reviewer's second voter is Qwen3.6-35B-A3B on the Studio's :8131"
+summary: "The hostile-review job sets LLM_GPT_OSS_REVIEW_URL at job level to the Studio's second llama-server on port 8131 (Qwen3.6-35B-A3B), so the gpt-oss-review voter is a different model from qwen3-review. LLM_ENDPOINT_CIDR_ALLOWLIST moves to the same job-level env block. The voter names and quorum rule are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-second-voter-8131"
+    statement: |-
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must carry a job-level env that points LLM_GPT_OSS_REVIEW_URL at port 8131 and holds LLM_ENDPOINT_CIDR_ALLOWLIST, and must still request both qwen3-review and gpt-oss-review.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the job-level env names LLM_GPT_OSS_REVIEW_URL on :8131 and a non-empty LLM_ENDPOINT_CIDR_ALLOWLIST, and both voter models are still requested -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q
+  - id: "req-reviewer-pin-and-key"
+    statement: |-
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 33a29cdfba6f14be6f94c3c77a05e29f345c692b (the dev tip carrying the failed-vote parse fix and the registry key rename), name the second voter local-studio-planner at every roster site, and resolve its URL from LLM_LOCAL_STUDIO_PLANNER_URL on :8131.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the omniintelligence clone is pinned to 33a29cdfba6f14be6f94c3c77a05e29f345c692b, the retired gpt-oss-review key and LLM_GPT_OSS_REVIEW_URL are gone, and local-studio-planner is requested at the preflight, retry-budget and review sites -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q
+  - id: "req-shadow-review-runner"
+    statement: |-
+      node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (knowledge-base-internal never; GLM on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the shadow-review tick keeps the pre-registered scope and never posts -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q
+  - id: "req-reviewer-pin-self-negating-drop"
+    statement: |-
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 30f37eca07b692d7889692edfe99686c87612315, the dev tip that drops a reviewer finding whose own text says there is no defect before the quorum and records it as dropped with a reason.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: the omniintelligence clone is pinned to 30f37eca07b692d7889692edfe99686c87612315 -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The workflow voter tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+  - kind: "tests"
+    description: "The workflow pin and roster-key tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+  - kind: "tests"
+    description: "The shadow-review node tests pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q"
+  - kind: "tests"
+    description: "The workflow clones omniintelligence at 30f37eca at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-second-voter-8131-ac1"
+    description: "The hostile-review job env names the :8131 voter URL and the CIDR allowlist, and both models are requested."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-reviewer-pin-and-key-ac2"
+    description: "The workflow clones omniintelligence at the parse-fix sha and names the renamed second voter at every roster site."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-shadow-review-runner-ac3"
+    description: "node_shadow_review_effect selects the pre-registered sample, drops secret-pattern diffs before any call, runs A2 on public PRs only, and writes one record per PR without posting."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_shadow_review_effect/test_shadow_review_selection.py tests/nodes/node_shadow_review_effect/test_shadow_review_handler.py tests/nodes/node_shadow_review_effect/test_golden_chain_shadow_review.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-reviewer-pin-self-negating-drop-ac4"
+    description: "The workflow clones omniintelligence at 30f37eca, the dev tip that drops a self-negating reviewer finding before the quorum."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20422-ac1-second-voter-url-from-variable"
+    description: "The hostile-review job env sets LLM_LOCAL_STUDIO_PLANNER_URL from the repository variable, which this pull request introduces; the test fails on the merge base, where the value is a literal :8131 address."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voter_omn20422.py -q -k test_second_voter_url_is_the_repository_variable"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20422-ac2-roster-url-from-variable"
+    description: "The renamed second voter resolves its URL from the LLM_LOCAL_STUDIO_PLANNER_URL repository variable at the workflow level, which this pull request introduces; the test fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_omn20422.py -q -k test_second_voter_url_is_the_registry_env_var_from_a_variable"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

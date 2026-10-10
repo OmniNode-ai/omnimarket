@@ -15,3 +15,7 @@ class ModelDeclaredFormatParams(BaseModel):
     fence_allow_phrases: tuple[str, ...]
     one_fence_pattern: str = Field(min_length=1)
     first_line_pattern: str = Field(min_length=1)
+    single_word_pattern: str = Field(min_length=1)
+    json_choice_pattern: str = Field(min_length=1)
+    echo_field_pattern: str = Field(min_length=1)
+    facts_object_pattern: str = Field(min_length=1)

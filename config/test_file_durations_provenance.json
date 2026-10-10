@@ -1,0 +1,16 @@
+{
+  "ticket": "OMN-19684",
+  "record": "config/test_file_durations.json",
+  "unit": "seconds of pytest setup, call and teardown, summed per test file",
+  "basis": "mean over the runs below of each file's summed per-test seconds",
+  "source_runs": [
+    {"run_id": 37932017787, "head_sha": "2c8324fc8cf6ca52c66b15c5ef4fb19fe8e76f46", "event": "pull_request", "attempt": 1},
+    {"run_id": 37933529792, "head_sha": "c618e6245b63bf08df993e41d5a768582f5956d2", "event": "pull_request", "attempt": 1},
+    {"run_id": 37940218989, "head_sha": "20a59e918b31b113e681c2b71a006ead4f53da44", "event": "pull_request", "attempt": 1}
+  ],
+  "recorded_on": "2026-10-09",
+  "runner": "GitHub-hosted ubuntu-latest, 20-way full-suite ci.yml `test` job",
+  "file_count": 2603,
+  "planner": "scripts/ci/merge_test_durations.py plan",
+  "refresh": "gh run download <run-id> -p 'test-durations-shard-*' -D <dir>; python3 scripts/ci/merge_test_durations.py record --artifacts-dir <dir> [--artifacts-dir <dir> ...]"
+}

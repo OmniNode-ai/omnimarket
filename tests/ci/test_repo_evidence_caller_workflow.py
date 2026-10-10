@@ -130,7 +130,8 @@ def test_every_repo_contract_binds_every_criterion() -> None:
 # OMN-20543: omnibase_core#1886, a descendant of #1884, gives that job a
 # Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, so a bound
 # test that needs a database runs at the head and in the merge-base control.
-_EXEMPT_REUSABLE_SHA = "39ad8e5c88f607aed6a035a3241c96ed36d547a0"
+# The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032).
+_EXEMPT_REUSABLE_SHA = "4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa"
 
 
 def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
@@ -142,20 +143,23 @@ def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
     )
 
 
-# OMN-20072 (S5 pilot, AC3): while repo-evidence / dod-verify is required beside
-# the OCC contexts, the caller turns on the reusable's difference step, and the
-# pinned verifier is a release that ships the classifier the step runs
-# (node_dod_verify occ-difference, omnimarket#3277; 0.4.294 is the first release
-# whose published wheel was read to carry services/occ_verdict_difference.py).
+# OMN-20073 (S6 cut-over, AC5): the S5 pilot met its bar and dev branch
+# protection no longer requires any OCC context, so the caller turns the
+# reusable's difference step off. With it on, the step waits for an
+# occ-preflight / eligibility verdict on the head and fails closed without one,
+# so the PR that deletes the OCC callers could never pass. The pinned verifier
+# stays a release that ships the classifier (omnimarket#3277, 0.4.294), so the
+# step can be turned back on by this one input if the cut-over is rolled back.
 _DIFFERENCE_CLASSIFIER_FLOOR = (0, 4, 294)
 
 
-def test_caller_compares_with_occ_during_the_s5_pilot() -> None:
+def test_caller_stops_comparing_with_occ_after_the_s6_cutover() -> None:
     job = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
         "repo-evidence"
     ]
-    assert job["with"].get("compare-with-occ") == "true", (
-        'the S5 pilot requires compare-with-occ: "true" (a quoted string input)'
+    assert job["with"].get("compare-with-occ") == "false", (
+        'after the S6 cut-over the caller passes compare-with-occ: "false" '
+        "(a quoted string input): there is no OCC verdict left to compare"
     )
     version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
     assert version >= _DIFFERENCE_CLASSIFIER_FLOOR, (
@@ -164,11 +168,32 @@ def test_caller_compares_with_occ_during_the_s5_pilot() -> None:
     )
 
 
+# OMN-20070 (AC3): omnimarket#3511 (e565ba5ba) makes the verifier refuse a
+# contract that leaves one acceptance criterion unbound, first released in
+# 0.4.303. A caller pinned before that release admits such a contract, so the
+# required repo-evidence / dod-verify check would pass a half-bound contract.
+# 0.4.305 is the release omnibase_infra and omnibase_core run: it ships that
+# refusal, the occ-difference classifier and the release-cut classifiers.
+_UNBOUND_REFUSAL_FLOOR = (0, 4, 305)
+
+
+def test_caller_pins_a_verifier_that_refuses_unbound_criteria() -> None:
+    job = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
+        "repo-evidence"
+    ]
+    version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
+    assert version >= _UNBOUND_REFUSAL_FLOOR, (
+        "verifier-version must ship the unbound-criteria refusal "
+        f"(omnimarket#3511, >= {'.'.join(map(str, _UNBOUND_REFUSAL_FLOOR))})"
+    )
+
+
 # OMN-20543 (AC3): the pinned reusable is the one whose dod-verify job gives a
 # database test its database. A pin before omnibase_core#1886 runs that test
 # with none, so a contract can only scope it local_done_gate, which the hosted
 # control refuses as a control that did not run (omnimarket#3369).
-_DATABASE_REUSABLE_SHA = "39ad8e5c88f607aed6a035a3241c96ed36d547a0"
+# The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032).
+_DATABASE_REUSABLE_SHA = "4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa"
 
 
 def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:

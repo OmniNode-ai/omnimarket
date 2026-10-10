@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_plan_compute
+version: 0.1.0
+description: Decide a lab-fill run from supplied facts - capacity, candidates, dispatch,
+  ownership, lane rendering, placement, engine fallbacks and status with idle diagnostics.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_fill_plan_compute: omnimarket.nodes.node_lab_fill_plan_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+- omnibase_infra
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- lab
+pack: operator_tooling
+display_name: Lab Fill Plan Compute
+node_role: compute

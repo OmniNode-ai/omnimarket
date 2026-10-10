@@ -50,7 +50,10 @@ from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.events.topics import PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1
+from omnimarket.events.topics import (
+    CI_RED_TRIAGE_DECIDED_TOPIC_V1,
+    PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1,
+)
 
 # The one subscribed topic whose producer emits a PR-scoped lifecycle
 # observation this reducer can project into pr_lifecycle_ledger_entries.
@@ -60,7 +63,9 @@ PR_LIFECYCLE_FIX_COMPLETED_TOPIC = PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1
 # Closed set. Adding a topic here is a decision that its producer emits a
 # PR-scoped observation carrying every required field below — never a way to
 # silence a DLQ row.
-PROJECTABLE_BUS_TOPICS: frozenset[str] = frozenset({PR_LIFECYCLE_FIX_COMPLETED_TOPIC})
+PROJECTABLE_BUS_TOPICS: frozenset[str] = frozenset(
+    {PR_LIFECYCLE_FIX_COMPLETED_TOPIC, CI_RED_TRIAGE_DECIDED_TOPIC_V1}
+)
 
 
 class ModelPrLifecycleBusObservation(BaseModel):

@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_close_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide how a finished remote lane closes from its engine exit code and final
+  message, without I/O: failed, rejected-no-delegation, or the outcome its final
+  report declares. A clean exit alone never proves the work is done. Its own
+  command topic, apart from the placement decision of node_remote_lane_compute,
+  so the runtime seeds this decision's request model.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: decide_remote_lane_close
+    handler:
+      name: HandlerRemoteLaneResult
+      module: omnimarket.nodes.node_remote_lane_close_compute.handlers.handler_remote_lane_result
+    input_model: omnimarket.nodes.node_remote_lane_close_compute.models.model_remote_lane_result.ModelRemoteLaneResultRequest
+    output_model: omnimarket.nodes.node_remote_lane_close_compute.models.model_remote_lane_result.ModelRemoteLaneResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.remote-lane-close-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.remote-lane-close-decided.v1
+terminal_event: onex.evt.omnimarket.remote-lane-close-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.remote-lane-close-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.remote-lane-close-decided.v1
+metadata:
+  ticket: OMN-20669
+  transport_type: kafka
+lifecycle: experimental

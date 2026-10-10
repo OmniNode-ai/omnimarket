@@ -13,6 +13,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.cost.cost_pricing import (
     COST_PRICING_CONTRACT_PATH,
@@ -79,8 +80,14 @@ def test_calculate_inference_cost_from_contract_entry() -> None:
     contract = load_cost_pricing()
     entry = lookup_cost_pricing(contract, "google", "gemini-2.5-flash")
     cost = calculate_inference_cost(entry, input_tokens=1000, output_tokens=500)
-    # 0.00000010 * 1000 + 0.00000040 * 500 = 0.0001 + 0.0002 = 0.0003
-    assert cost == Decimal("0.0003")
+    # OMN-20833: the rate is the omnibase_infra pricing manifest's, per 1K tokens.
+    manifest_entry = ModelPricingTable.from_yaml().get_entry("gemini-2.5-flash")
+    assert manifest_entry is not None
+    expected = (
+        Decimal(str(manifest_entry.input_cost_per_1k)) * 1000
+        + Decimal(str(manifest_entry.output_cost_per_1k)) * 500
+    ) / 1000
+    assert cost == expected
     assert cost > 0
 
 

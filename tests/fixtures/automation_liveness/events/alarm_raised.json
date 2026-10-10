@@ -1,0 +1,13 @@
+{
+  "episode_id": "6f1d2c3b-4a5e-4f60-8a71-9b8c7d6e5f40",
+  "process_id": "host-a/example-interval-job",
+  "host": "host-a",
+  "verdict": "missed",
+  "state": "stale",
+  "reason": "no_run_in_max_silence",
+  "severity": "high",
+  "opened_at": "2026-10-09T02:31:00Z",
+  "delivery_due_at": "2026-10-09T02:33:00Z",
+  "evidence_ref": "example-state/interval-job/fire-receipts.jsonl",
+  "action": "diagnose:host-a/example-interval-job"
+}

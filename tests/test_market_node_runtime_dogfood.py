@@ -67,19 +67,46 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
-    # OMN-19432: the typed-decision effect is unwired on purpose (no event_bus,
-    # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
-    # until a decision contract composes it.
-    "node_typed_decision_effect",
     # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # The host-reconcile effect is likewise run from the command line by a host
+    # timer; it subscribes to no topic and has no onex.nodes entry point.
+    "node_host_reconcile_effect",
+    # OMN-20712: hosted from the operator tooling repository, whose copy is
+    # still registered; called in process by its host scheduler, so it subscribes
+    # to no topic and has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_lab_fill_selection_compute",
+    # OMN-20712: hosted from the operator tooling repository, whose copy is
+    # still registered; called in process by its host scheduler, so it subscribes
+    # to no topic and has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_lab_disk_hygiene_effect",
+    # OMN-20674: hosted from the operator tooling repository, whose copy is
+    # still registered; its briefs, paths and lanes arrive through a deployment
+    # overlay, so it has no onex.nodes entry point until the registration
+    # hand-over (nodes-to-market plan step B).
+    "node_morning_friction_sweep_orchestrator",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
     "node_dev_seed_effect",
+    # OMN-19985: the local secret store runs from `onex secret set` / `onex
+    # secret delete`; it returns credential events for the CLI shim to fold and
+    # subscribes to no topic, so it has no onex.nodes entry point.
+    "node_local_secret_store_effect",
+    # OMN-20817: the model setup effect runs from `onex models`; it returns its
+    # status and test results to the CLI shim and subscribes to no topic, so it
+    # has no onex.nodes entry point.
+    "node_model_setup_effect",
 }
+
+# Node directories that hold migrations and no contract.yaml yet. Each entry
+# expires itself: a directory that gains a contract.yaml, or disappears, fails
+# the inventory until the entry is removed.
+MIGRATION_ONLY_NODE_DIRS: set[str] = set()
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -142,9 +169,16 @@ def _inventory_violations(inventory: _Inventory) -> list[str]:
     for node, target in sorted(inventory.entry_points.items()):
         if target.split(":", 1)[0] != f"omnimarket.nodes.{node}":
             violations.append(f"{node}: entry point targets {target}")
+    for node in sorted(MIGRATION_ONLY_NODE_DIRS - dirs):
+        violations.append(f"{node}: listed as migration-only but not on disk")
     for node in sorted(dirs):
         name = inventory.contract_names.get(node)
-        if name is None:
+        if node in MIGRATION_ONLY_NODE_DIRS:
+            if name is not None:
+                violations.append(
+                    f"{node}: listed as migration-only but has a contract"
+                )
+        elif name is None:
             violations.append(f"{node}: node directory has no contract.yaml")
         elif name not in {node, node.removeprefix("node_")}:
             violations.append(f"{node}: contract.yaml names {name!r}")
@@ -223,6 +257,18 @@ def test_market_node_inventory_fails_on_a_missing_or_extra_node(
     assert _inventory_violations(mutate(_real_inventory())) != []
 
 
+def test_migration_only_dir_fails_once_it_gains_a_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No directory is migration-only on this head, so the self-expiring entry
+    # is exercised against a directory that does have a contract: listing it
+    # must be reported.
+    node = "node_similarity_compute"
+    monkeypatch.setitem(globals(), "MIGRATION_ONLY_NODE_DIRS", {node})
+    violations = _inventory_violations(_real_inventory())
+    assert f"{node}: listed as migration-only but has a contract" in violations
+
+
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
     report = build_report()
     summary = report["summary"]
@@ -256,8 +302,17 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # experimental with no handler_routing and lands there too: 7 -> 8.
     # OMN-20604's node_lab_job_reducer is called in process by the lab job
     # orchestrator, like the landing reducer, so it is experimental with no
-    # handler_routing: 8 -> 9.
-    assert summary["skipped"] == 9
+    # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
+    # by the submit CLI and has no handler_routing either: 9 -> 10.
+    # node_prune_binding_effect is called in process by the two prune effects,
+    # so it is experimental with no handler_routing: 10 -> 11.
+    # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
+    # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
+    # OMN-20474's node_projection_delegation_judged_acceptance is a pure fold
+    # the writer calls in process, so it has no handler_routing: 17 -> 18.
+    # node_work_ledger_delegation_mirror is hosted by the single ledger serve
+    # process, not by a runtime, so it has no handler_routing: 18 -> 19.
+    assert summary["skipped"] == 19
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

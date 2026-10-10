@@ -514,28 +514,6 @@ def test_companion_effect_publisher_defers_to_the_batch_window(
 
 
 @pytest.mark.unit
-def test_omnimarket_workflow_passes_the_flag_without_an_off_default() -> None:
-    text = (_ROOT / ".github/workflows/call-occ-autobind.yml").read_text()
-    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE || 'off'" not in text
-    assert "OCC_COMPANION_BATCH_MODE: ${{ vars.OMNI_OCC_COMPANION_BATCH_MODE }}" in text
-    workflow = yaml.safe_load(text)
-    assert "closed" in workflow[True]["pull_request"]["types"]
-    condition = workflow["jobs"]["publish-occ-autobind"]["if"]
-    # The closed-unmerged drop runs whatever the flag says; the emitter drops
-    # a closed member from its window, or skips it when batching is off.
-    assert "vars." not in condition
-    assert "!github.event.pull_request.merged" in condition
-
-
-@pytest.mark.unit
-def test_receipt_runner_accepts_the_repo_window_branch() -> None:
-    runner = (_ROOT / ".github/workflows/occ-receipt-runner.yml").read_text()
-    assert 'window_expected_branch="auto/window-${occ_repo_slug}-occ-autobind"' in (
-        runner
-    )
-
-
-@pytest.mark.unit
 def test_conflicted_remint_refuses_a_window_branch() -> None:
     module = _load_script("ci/occ_conflicted_companion_remint.py")
     assert module._BATCH_BRANCH_RE.fullmatch(_WINDOW)

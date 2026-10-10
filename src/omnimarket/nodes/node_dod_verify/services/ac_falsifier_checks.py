@@ -30,6 +30,8 @@ What it refuses to do, on purpose:
 * **It never carries the author's text into a command.** The command is rebuilt
   from allowlisted tokens, so a falsifier cannot smuggle a shell metacharacter
   into the runner.
+* **It never guesses a runner.** A repository that declares none is reported
+  per label and the collector fails it by name (OMN-20332).
 * **It never hides a missing test.** A selector whose path exists in no
   candidate clone is still minted, against the first candidate, so pytest exits
   non-zero and the item reads FAILED (the OMN-19533 class).
@@ -57,6 +59,7 @@ __all__ = [
     "parse_falsifier_command",
     "self_accepted_bindings",
     "self_accepting_actor",
+    "unique_derived_id",
 ]
 
 #: Prefix of every derived evidence id. The label is appended lowercased.
@@ -64,6 +67,10 @@ DERIVED_ITEM_ID_PREFIX: Final[str] = "ac-falsifier-"
 
 _FALSIFIER_MARKER = re.compile(r"(?is).*(?:\bfalsifier\s*:|\bfalsified by\b)")
 _PYTEST_HEAD = re.compile(r"(?:\buv run\s+)?\bpytest\b")
+_JS_TEST_HEAD = re.compile(
+    r"\b(?:pnpm\s+(?:test\b|(?:exec\s+)?vitest\s+run\b)"
+    r"|(?:npx\s+)?vitest\s+run\b|npm\s+test\b)"
+)
 _REPO_HINT = re.compile(r"\bin (omni[a-z_]+|onex_change_control)\b")
 _PATH_TOKEN = re.compile(r"^[A-Za-z0-9_./-]+(::[A-Za-z0-9_\[\]-]+)?$")
 _K_EXPR = re.compile(r"^[A-Za-z0-9_ ()]+$")
@@ -82,22 +89,45 @@ def _is_test_path(token: str) -> bool:
     bare = token.split("::", 1)[0]
     if bare.startswith("/") or ".." in bare.split("/"):
         return False
-    return "/" in bare or bare.endswith(".py")
+    return "/" in bare or bare.endswith(
+        (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+    )
 
 
 def parse_falsifier_command(text: str) -> ModelAcFalsifierCommand | None:
-    """The runnable ``uv run pytest`` selector a falsifier names, or None.
+    """The test selector after the first pytest or JS test head, or None.
 
-    Reads the first ``pytest`` in the text and consumes tokens while they are a
-    test path, an allowlisted flag, or ``-k``/``-m`` with a plain expression.
+    Under pytest, consumes tokens while they are a test path, an allowlisted
+    flag, or ``-k``/``-m`` with a plain expression. Under a JS head, only test
+    paths are consumed; any flag or other token ends the selector (OMN-20332).
     The first token that is none of those ends the selector, which is how
     ``... -v selects no test`` and ``... -q in omnibase_internal`` parse to the
-    command without the prose after it. A selector with no test path is
+    selector without the prose after it. A selector with no test path is
     unrunnable: ``uv run pytest over the verifier tests`` names nothing.
     """
-    head = _PYTEST_HEAD.search(text)
-    if head is None:
-        return None
+    # OMN-20332: the earliest head that names a path wins, so a JS mention in
+    # prose ahead of a pytest command never hides the Python check.
+    heads = sorted(
+        (
+            (match, is_pytest)
+            for match, is_pytest in (
+                (_PYTEST_HEAD.search(text), True),
+                (_JS_TEST_HEAD.search(text), False),
+            )
+            if match is not None
+        ),
+        key=lambda pair: pair[0].start(),
+    )
+    for head, is_pytest in heads:
+        parsed = _selector_after(text, head, is_pytest=is_pytest)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _selector_after(
+    text: str, head: re.Match[str], *, is_pytest: bool
+) -> ModelAcFalsifierCommand | None:
     tokens = text[head.end() :].split()
     kept: list[str] = []
     paths: list[str] = []
@@ -105,9 +135,11 @@ def parse_falsifier_command(text: str) -> ModelAcFalsifierCommand | None:
     while index < len(tokens):
         raw = tokens[index]
         token = _strip(raw)
-        if token in _SAFE_FLAGS:
+        if not is_pytest and token.startswith("-"):
+            break
+        if is_pytest and token in _SAFE_FLAGS:
             kept.append(token)
-        elif token in _EXPR_FLAGS and index + 1 < len(tokens):
+        elif is_pytest and token in _EXPR_FLAGS and index + 1 < len(tokens):
             value = tokens[index + 1]
             consumed = 1
             if value[:1] in "\"'" and not (len(value) > 1 and value[-1] == value[0]):
@@ -137,7 +169,7 @@ def parse_falsifier_command(text: str) -> ModelAcFalsifierCommand | None:
         return None
     hint = _REPO_HINT.search(text[head.end() :])
     return ModelAcFalsifierCommand(
-        command="uv run pytest " + " ".join(kept),
+        selector=" ".join(kept),
         first_path=paths[0].split("::", 1)[0],
         repo_hint=hint.group(1) if hint else None,
     )
@@ -228,7 +260,9 @@ def _same_binding(
     return len(hashes) <= 1
 
 
-def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
+def self_accepted_bindings(
+    dod_items: Sequence[Any], *, retired: frozenset[tuple[str, str]] = frozenset()
+) -> tuple[str, ...]:
     """OMN-17427: every binding no second lane accepted, whatever else shares its label.
 
     A record whose ``accepted_by`` is its own author, or is absent, is reported
@@ -236,6 +270,17 @@ def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
     criterion text) by a different actor. Another record on the label, such as
     the original ``occ-autobind`` one, does not stand in for that acceptance.
     """
+    return tuple(
+        f"{item_id}:{label} accepted_by={shown}"
+        for item_id, label, shown in _self_accepted_binding_records(dod_items)
+        if (item_id, _canonical_label(label)) not in retired
+    )
+
+
+def _self_accepted_binding_records(
+    dod_items: Sequence[Any],
+) -> tuple[tuple[str, str, str], ...]:
+    """Structured pre-retirement bindings, preserving display spelling and order."""
     records: list[tuple[str, str, Mapping[str, Any]]] = []
     for index, item in enumerate(dod_items):
         if not isinstance(item, Mapping):
@@ -251,7 +296,7 @@ def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
             and isinstance(label := record.get("label"), str)
         )
     independent = [record for _, _, record in records if is_accepted_binding(record)]
-    bindings: list[str] = []
+    bindings: list[tuple[str, str, str]] = []
     for item_id, label, record in records:
         accepted_by = self_accepting_actor(record)
         if accepted_by is None and str(record.get("accepted_by") or "").strip():
@@ -260,7 +305,7 @@ def self_accepted_bindings(dod_items: Sequence[Any]) -> tuple[str, ...]:
         if any(_same_binding(other, record, canonical) for other in independent):
             continue
         shown = accepted_by or "<none>"
-        bindings.append(f"{item_id}:{label} accepted_by={shown}")
+        bindings.append((item_id, label, shown))
     return tuple(bindings)
 
 
@@ -285,6 +330,24 @@ def _declared_criteria(contract: Mapping[str, Any]) -> list[tuple[str, str]]:
     return found
 
 
+def _declared_criterion_ids(contract: Mapping[str, Any]) -> list[str]:
+    """OMN-20070: declared ids, including criteria without a string statement."""
+    requirements = contract.get("requirements")
+    if not isinstance(requirements, list):
+        return []
+    found: list[str] = []
+    for requirement in requirements:
+        if not isinstance(requirement, Mapping):
+            continue
+        acceptance = requirement.get("acceptance")
+        if not isinstance(acceptance, list):
+            continue
+        for criterion in acceptance:
+            if isinstance(criterion, Mapping) and isinstance(criterion.get("id"), str):
+                found.append(criterion["id"])
+    return found
+
+
 def _declared_item_ids(dod_items: Sequence[Any]) -> set[str]:
     return {
         item["id"]
@@ -293,7 +356,7 @@ def _declared_item_ids(dod_items: Sequence[Any]) -> set[str]:
     }
 
 
-def _unique_derived_id(label: str, taken: set[str]) -> str:
+def unique_derived_id(label: str, taken: set[str]) -> str:
     """OMN-19267: a derived id no declared item carries.
 
     ``ac-falsifier-<label>`` unless the contract already declares that id, in
@@ -320,6 +383,7 @@ def derive_falsifier_items(
     *,
     repo_candidates: Sequence[str],
     path_exists: Callable[[str, str], bool],
+    declared_runner: Callable[[str, str], str | None],
 ) -> tuple[list[dict[str, Any]], ModelDodAcceptanceSummary]:
     """One executable evidence item per accepted, runnable criterion falsifier.
 
@@ -327,11 +391,22 @@ def derive_falsifier_items(
     PR-bound items name, in contract order. ``path_exists(repo, path)`` says
     whether a clone holds the selector's first path; the repo that holds it
     runs it, and when none does the first candidate runs it and fails visibly.
+    ``declared_runner(repo, first_path)`` supplies that repository's test runner
+    prefix for the selector's first path (a bare Python form depends on it);
+    a repository that declares none is reported for the collector to fail.
     """
+    # Lazy import: the resolver uses the structured pre-retirement helpers here.
+    from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
+        resolve_retirements,
+    )
+
+    resolution = resolve_retirements(dod_items)
+    retired = resolution.pairs
     accepted = _accepted_labels(dod_items)
     taken_ids = _declared_item_ids(dod_items)
     items: list[dict[str, Any]] = []
     unrunnable: list[str] = []
+    undeclared_runner: list[tuple[str, str]] = []
     declared = 0
     for label, statement in _declared_criteria(contract):
         if label not in accepted:
@@ -365,31 +440,58 @@ def derive_falsifier_items(
         else:
             unrunnable.append(label)
             continue
-        item_id = _unique_derived_id(label, taken_ids)
+        runner = declared_runner(repo, parsed.first_path)
+        if runner is None:
+            # OMN-20332: no declared runner means a named failure, never a guess.
+            undeclared_runner.append((label, repo))
+            continue
+        command = f"{runner} {parsed.selector}"
+        item_id = unique_derived_id(label, taken_ids)
         taken_ids.add(item_id)
         items.append(
             {
                 "id": item_id,
                 "description": (
                     f"{label} falsifier, run from the ticket's own accepted "
-                    f"criterion: {parsed.command}"
+                    f"criterion: {command}"
                 ),
                 "source": "generated",
                 "checks": [
                     {
                         "check_type": "test_passes",
-                        "check_value": parsed.command,
+                        "check_value": command,
                         "cwd": "${OMNI_HOME}/" + repo,
                     }
                 ],
                 "binds_ac": [label],
             }
         )
+    bound_labels: set[str] = set()
+    for item in [*dod_items, *items]:
+        if not isinstance(item, Mapping):
+            continue
+        binds_ac = item.get("binds_ac")
+        if isinstance(binds_ac, list):
+            bound_labels.update(
+                _canonical_label(label)
+                for label in binds_ac
+                if isinstance(label, str)
+                and (item.get("id"), _canonical_label(label)) not in retired
+            )
+    unbound_criteria = tuple(
+        label
+        for label in dict.fromkeys(_declared_criterion_ids(contract))
+        if _canonical_label(label) not in bound_labels
+    )
     summary = ModelDodAcceptanceSummary(
         declared_falsifier_count=declared,
         runnable_count=len(items),
         unrunnable_labels=tuple(unrunnable),
+        undeclared_runner=tuple(undeclared_runner),
         derived_item_ids=tuple(str(item["id"]) for item in items),
-        self_accepted_bindings=self_accepted_bindings(dod_items),
+        self_accepted_bindings=self_accepted_bindings(dod_items, retired=retired),
+        retired_bindings=resolution.applied_summaries,
+        refused_retirements=resolution.refused,
+        unbound_criteria=unbound_criteria,
     )
     return items, summary

@@ -18,6 +18,8 @@ answer instead of writing it, and the loop's verdict would measure nothing.
 
 from __future__ import annotations
 
+import json
+
 from omnimarket.nodes.node_delegated_test_prompt_compute.models.model_delegated_test_prompt import (
     MAX_EXCERPT_CHARS,
     MAX_PREVIOUS_TEST_CHARS,
@@ -139,10 +141,11 @@ def build_prompt_bundle(
     ]
     prompt = "\n".join(lines) + "\n"
 
+    response_contract_text = json.dumps(RESPONSE_CONTRACT)
     for fragment in request.forbidden_fragments:
-        if fragment and fragment in prompt:
+        if fragment and (fragment in prompt or fragment in response_contract_text):
             raise DelegatedTestPromptRefusedError(
-                f"the prompt carries a forbidden fragment ({len(fragment)} chars); refused"
+                f"the bundle carries a forbidden fragment ({len(fragment)} chars); refused"
             )
     return ModelDelegatedTestPromptBundle(
         prompt=prompt,

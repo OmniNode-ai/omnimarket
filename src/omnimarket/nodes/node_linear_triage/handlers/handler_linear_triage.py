@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerLinearTriage — scan non-completed tickets, verify PR state, auto-mark done.
+"""HandlerLinearTriage — assess sprint tickets and gate Done writes on dod_verify.
 
 Uses GitHub REST API for PR lookups instead of ``gh`` CLI subprocess calls.
 The GitHub token is resolved at handler invocation time from the contract-declared
@@ -28,6 +28,7 @@ from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodRece
 from omnibase_core.validation.runtime_ops_verb_loader import (
     load_runtime_ops_verb_allowlist,
 )
+from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import ValidationError
 
 from omnimarket.config.service_endpoints import (
@@ -35,7 +36,12 @@ from omnimarket.config.service_endpoints import (
     GITHUB_REST_URL,
     LINEAR_GRAPHQL_URL,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+from omnimarket.inference.secret_store_resolver import (
+    SecretResolutionError,
+    SecretStoreConfigurationError,
+    resolve_api_key_async,
+    secret_store_from_config_path,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
     EnumTriageAction,
@@ -108,6 +114,7 @@ class LinearClientProtocol(Protocol):
         self,
         *,
         team: str,
+        project_id: str | None = None,
         state_not_in: list[str] | None = None,
         limit: int = 250,
         after: str | None = None,
@@ -129,7 +136,7 @@ class LinearClientProtocol(Protocol):
 class LinearHttpClient:
     """Real Linear HTTP client using the REST API v2 / GraphQL.
 
-    Reads LINEAR_API_KEY from the environment. This class is the only place
+    Receives a key resolved by the declared secret store. This class is the only place
     that touches the network — all other code works against the Protocol.
     """
 
@@ -163,18 +170,21 @@ class LinearHttpClient:
         self,
         *,
         team: str,
+        project_id: str | None = None,
         state_not_in: list[str] | None = None,
         limit: int = 250,
         after: str | None = None,
     ) -> Any:
         not_in = state_not_in or ["Done", "Cancelled", "Canceled"]
         filter_clause = ", ".join(f'"{s}"' for s in not_in)
-        after_clause = f', after: "{after}"' if after else ""
+        project_clause = "project: { id: { eq: $projectId } }" if project_id else ""
+        project_variable = ", $projectId: ID!" if project_id else ""
         query = f"""
-        query ListIssues($team: String!, $limit: Int!) {{
+        query ListIssues($team: String!, $limit: Int!, $after: String{project_variable}) {{
           issues(
-            first: $limit{after_clause},
+            first: $limit, after: $after,
             filter: {{
+              {project_clause}
               team: {{ name: {{ eq: $team }} }},
               state: {{ name: {{ nin: [{filter_clause}] }} }}
             }}
@@ -191,7 +201,10 @@ class LinearHttpClient:
           }}
         }}
         """
-        return self._post(query, {"team": team, "limit": limit})
+        variables: dict[str, object] = {"team": team, "limit": limit, "after": after}
+        if project_id:
+            variables["projectId"] = project_id
+        return self._post(query, variables)
 
     def list_children(
         self, *, parent_id: str, limit: int = 50, after: str | None = None
@@ -1280,29 +1293,38 @@ class HandlerLinearTriage:
         self._occ_receipt_probe = occ_receipt_probe
         self._dod_verdict_probe = dod_verdict_probe
 
-    def _get_client(self) -> LinearClientProtocol:
+    async def _resolve_credential(
+        self, name: str, store: ProtocolSecretStore | None
+    ) -> str:
+        ref = contract_secret_ref(_CONTRACT_PATH, name)
+        try:
+            secret = await resolve_api_key_async(ref, store=store)
+        except SecretResolutionError:
+            # Only the public ref and remediation survive terminal redaction;
+            # never expose the store's exception or any credential value.
+            raise SecretResolutionError(
+                f"Secret ref {ref!r} is missing from the declared secret store. "
+                "Add its mapping to ONEX_SECRET_RESOLVER_CONFIG_PATH, or select "
+                "secret_resolver_config_path explicitly. For exported local keys, "
+                "use node_linear_triage/local_secret_resolver.yaml (--local-secrets)."
+            ) from None
+        if secret is None:
+            raise SecretResolutionError(f"Secret ref {ref!r} resolved to no value")
+        return secret.get_secret_value()
+
+    async def _get_client(
+        self, store: ProtocolSecretStore | None = None
+    ) -> LinearClientProtocol:
         if self._client is not None:
             return self._client
-        api_key = os.environ.get("LINEAR_API_KEY", "")
-        if not api_key:
-            raise RuntimeError(
-                "LINEAR_API_KEY environment variable is not set. "
-                "Export it before running node_linear_triage."
-            )
-        return LinearHttpClient(api_key)
+        return LinearHttpClient(await self._resolve_credential("LINEAR_API_KEY", store))
 
-    async def _get_github_client(self) -> GitHubClientProtocol:
+    async def _get_github_client(
+        self, store: ProtocolSecretStore | None = None
+    ) -> GitHubClientProtocol:
         if self._github_client is not None:
             return self._github_client
-        # Ref-name sourced from contract (OMN-12856) — not a bare source literal.
-        _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        secret = await resolve_api_key_async(_github_ref)
-        if secret is None:
-            raise RuntimeError(
-                f"api_key_ref {_github_ref!r} resolved to None — "
-                "ensure GITHUB_TOKEN is set in the secret store."
-            )
-        return GitHubHttpClient(secret.get_secret_value())
+        return GitHubHttpClient(await self._resolve_credential("GITHUB_TOKEN", store))
 
     def _get_occ_receipt_probe(self) -> OccReceiptProbe:
         """Return the OCC-receipt probe, lazily constructing the git-backed default.
@@ -1344,8 +1366,47 @@ class HandlerLinearTriage:
         ``LocalRuntimeBusAdapter`` detects the awaitable return and ``await``s it
         automatically (OMN-13710).
         """
-        client = self._get_client()
-        gh = await self._get_github_client()
+        project_id: str | None = None
+        if request.scope == "sprint":
+            contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+            env_name = contract["config"]["active_sprint_project_id"]["env_var"]
+            project_id = (
+                request.project_id.strip() or os.environ.get(env_name, "").strip()
+            )
+            if not project_id:
+                return ModelLinearTriageResult(
+                    status="error",
+                    dry_run=request.dry_run,
+                    flag_only=request.flag_only,
+                    validation_errors=[
+                        f"Sprint scope requires project_id or declared config {env_name}. "
+                        "Use scope=backlog explicitly for a full backlog scan."
+                    ],
+                )
+        try:
+            store = (
+                secret_store_from_config_path(request.secret_resolver_config_path)
+                if request.secret_resolver_config_path
+                else None
+            )
+            client = await self._get_client(store)
+            gh = await self._get_github_client(store)
+        except SecretResolutionError as exc:
+            return ModelLinearTriageResult(
+                status="error",
+                dry_run=request.dry_run,
+                flag_only=request.flag_only,
+                validation_errors=[str(exc)],
+            )
+        except SecretStoreConfigurationError:
+            return ModelLinearTriageResult(
+                status="error",
+                dry_run=request.dry_run,
+                flag_only=request.flag_only,
+                validation_errors=[
+                    "Declared secret resolver config could not be loaded or validated; check secret_resolver_config_path / ONEX_SECRET_RESOLVER_CONFIG_PATH."
+                ],
+            )
         threshold = request.threshold_days
         dry_run = request.dry_run
         flag_only = request.flag_only
@@ -1356,11 +1417,12 @@ class HandlerLinearTriage:
                 "zero Linear state mutations will be executed"
             )
 
-        # --- Phase 1: Fetch all non-done tickets ---
+        # --- Phase 1: Fetch non-done tickets within the declared scope ---
         all_tickets: list[ModelLinearTicket] = []
         cursor: str | None = None
         while True:
             data = client.list_issues(
+                project_id=project_id,
                 team=request.team,
                 state_not_in=["Done", "Cancelled", "Canceled"],
                 limit=250,
@@ -1402,7 +1464,14 @@ class HandlerLinearTriage:
 
         # --- Phase 3: PR status check (active tickets only) ---
         pr_actions, marked_done, marked_done_superseded, pr_suppressed = (
-            self._phase_pr_check(all_tickets, gh, client, dry_run, flag_only)
+            self._phase_pr_check(
+                all_tickets,
+                gh,
+                client,
+                dry_run,
+                flag_only,
+                scoped=project_id is not None,
+            )
         )
         actions.extend(pr_actions)
         suppressed_closes.extend(pr_suppressed)
@@ -1472,6 +1541,8 @@ class HandlerLinearTriage:
         client: LinearClientProtocol,
         dry_run: bool,
         flag_only: bool,
+        *,
+        scoped: bool = False,
     ) -> tuple[list[ModelTriageAction], int, int, list[str]]:
         """Phase 3: check active tickets (_ACTIVE_STATES) against GitHub PR state.
 
@@ -1507,6 +1578,14 @@ class HandlerLinearTriage:
                 _log.info("PR check %d/%d", i + 1, len(pr_candidates))
 
             has_open_children = ticket.id in open_child_parent_ids
+            if scoped and not has_open_children:
+                # A scoped list omits open children outside the sprint. Read the
+                # complete child connection as evidence, never as mutation targets.
+                children = self._fetch_children(ticket, client)
+                has_open_children = children is None or any(
+                    child.get("state", {}).get("name", "") not in _DONE_STATES
+                    for child in children
+                )
 
             merged_pr = _find_merged_pr(
                 ticket.identifier,

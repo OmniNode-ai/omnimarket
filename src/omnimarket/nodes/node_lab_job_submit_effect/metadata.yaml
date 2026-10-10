@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_job_submit_effect
+version: "0.1.0"
+description: "Publishes a canonical lab job spec to the supervisor over the declared bus — EFFECT"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+# Registered for the node inventory; with no event_bus and no handler_routing
+# the runtime prepares it as SKIPPED. The submit CLI publishes the command.
+entry_points:
+  onex.nodes:
+    node_lab_job_submit_effect: "omnimarket.nodes.node_lab_job_submit_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.67"
+  - "click>=8.1.0"
+  - "pydantic>=2.0.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "lab-job", "OMN-20604"]
+pack: "pipeline"
+display_name: "Lab Job Submit Effect"
+node_role: "effect"

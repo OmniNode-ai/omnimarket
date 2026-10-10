@@ -14,31 +14,36 @@
 # passes a command only after its receipt is published. A lock beside the ledger
 # file admits one serve process per ledger. The handler dedups on the request's
 # req= cell, so a command redelivered after a crash is answered, never appended
-# twice (TLA+ model and review: omnibase_internal tla/ledger_bus_append). RULING
-# and OPERATOR-CONSENT rows are refused until requests carry a verifiable
-# principal (OMN-20282). The ledger host and append argv are deployment facts
+# twice (TLA+ model and review: omnibase_internal tla/ledger_bus_append).
+# OMN-20282: every request is signed with its principal's Ed25519 key and
+# verified against the issuer-owned public records supplied to serve. Unsigned,
+# forged and unknown identities fail before the append command. Every row is
+# stamped with the verified principal; RULING and OPERATOR-CONSENT require the
+# operator identity configured locally on the ledger host. Keys and that identity
+# are never trusted from the command envelope. Issuance and rollout stay gated.
+# The ledger host and append argv are deployment facts
 # given on the serve command line; nothing here names a machine.
 name: "node_work_ledger_append_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
-contract_version: {major: 0, minor: 1, patch: 0}
-node_version: "0.1.0"
+contract_version: {major: 0, minor: 3, patch: 0}
+node_version: "0.3.0"
 description: >
-  Appends exact rows built on a requesting lab host to the rolling ledger on
-  the ledger host, deduplicating by request id and returning line numbers.
+  Verifies signed lab-host rows, stamps their authenticated principal and appends
+  them on the ledger host, deduplicating by request id and returning line numbers.
 input_model:
   name: "ModelWorkLedgerAppendRequest"
-  module: "omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append"
-  description: "Request id, exact rows, ledger id, requesting lane, host and time."
+  module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
+  description: "Request id, rows, ledger id, lane, host, time, principal and Ed25519 signature."
 output_model:
   name: "ModelWorkLedgerAppendReceipt"
-  module: "omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append"
-  description: "Status, command exit code, output tail, ledger lines, host and duration."
+  module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
+  description: "Status, exit code, output tail, ledger lines, host, duration and verified principal."
 handler:
   module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
   class: "HandlerWorkLedgerAppendEffect"
-  input_model: "omnimarket.nodes.node_work_ledger_append_effect.models.model_work_ledger_append.ModelWorkLedgerAppendRequest"
+  input_model: "omnimarket.models.work_ledger_append.model_work_ledger_append.ModelWorkLedgerAppendRequest"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect:HandlerWorkLedgerAppendEffect"
@@ -64,6 +69,18 @@ published_events:
   - event_type: ModelWorkLedgerAppendCommandFailure
     topic: onex.evt.omnimarket.work-ledger-append-failed.v1
     description: "An unreadable command or handler crash."
+  # A refused TERMINAL leaves the CLAIM it would close open on the ledger. The
+  # host publishes this beside the refused receipt so the refusal is loud; the
+  # owner claim's lease (node_pr_lifecycle_state_reducer owner_claim_lease) ends
+  # the claim's hold on its PRs at the TTL.
+  - event_type: ModelWorkLedgerTerminalRefused
+    topic: onex.evt.omnimarket.work-ledger-terminal-refused.v1
+    description: "TERMINAL_REFUSED: a refused request carried TERMINAL rows; names their lanes, tickets and PRs."
+# TERMINAL_REFUSED is read off the bus by the orchestrator's lab readback and the
+# operator (rpk on the dev lane broker); no node acts on it, because the claim's
+# lease, not this event, ends the claim's hold on its PRs.
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-terminal-refused.v1
 metadata:
   transport_type: kafka
   description: "Hosted by the ledger-host serve process, never a shared runtime"

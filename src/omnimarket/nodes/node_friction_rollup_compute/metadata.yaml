@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_friction_rollup_compute
+version: "1.0.0"
+description: Deterministic ledger friction rollup parsing, window, class, cost, recurrence, trend and signal decisions
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_friction_rollup_compute: omnimarket.nodes.node_friction_rollup_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ledger, friction]
+node_role: compute
+pack: "routing"
+display_name: "Friction Rollup Compute"

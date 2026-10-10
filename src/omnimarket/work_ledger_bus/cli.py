@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``onex work-ledger``: serve on the ledger host or send rows (OMN-20275)."""
+"""``onex work-ledger``: serve on the ledger host, send rows (OMN-20275), or request a PR handoff (OMN-20636)."""
 
 from __future__ import annotations
 
@@ -17,14 +17,35 @@ from pathlib import Path
 from uuid import UUID
 
 import click
-from pydantic import ValidationError
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import BaseModel, ValidationError
 
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolBusMessage,
+    event_type_for,
+)
 from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.events.topics import (
+    PR_HANDOFF_ACCEPTED_TOPIC_V1,
+    PR_HANDOFF_FAILED_TOPIC_V1,
+    PR_HANDOFF_HANDED_OFF_TOPIC_V1,
+    PR_HANDOFF_REQUESTED_TOPIC_V1,
+)
+from omnimarket.lab_work.bus import _bytes, _subscribe
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.pr_handoff import (
+    ModelPrHandoffAccepted,
+    ModelPrHandoffFailed,
+    ModelPrHandoffHandedOff,
+    ModelPrHandoffRequested,
+)
+from omnimarket.models.work_ledger_append.model_work_ledger_append import (
+    ModelWorkLedgerPrincipalRecords,
+)
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
     HandlerWorkLedgerAppendEffect,
@@ -34,7 +55,11 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerAppendCommand,
     LocalLedgerFile,
 )
-from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller, WorkLedgerAppendHost
+from omnimarket.work_ledger_bus.bus import (
+    WorkLedgerAppendCaller,
+    WorkLedgerAppendHost,
+    load_work_ledger_signing_key,
+)
 
 
 @click.group("work-ledger")
@@ -55,6 +80,23 @@ def work_ledger_group(ctx: click.Context) -> None:
     required=True,
     help="Shell-quoted argv prefix, including the ledger path.",
 )
+@click.option(
+    "--principal-records",
+    envvar="ONEX_WORK_LEDGER_PRINCIPAL_RECORDS",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Trusted issuer-owned JSON containing principal -> base64 Ed25519 public key records.",
+)
+@click.option(
+    "--operator-principal",
+    envvar="ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL",
+    help="Operator identity in the issuer records, supplied by the ledger host.",
+)
+@click.option(
+    "--signing-key-file",
+    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Operator Ed25519 private key in PEM form; signs mirrored lab terminals.",
+)
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -63,6 +105,9 @@ def serve_command(
     host_name: str,
     ledger: Path,
     append_command: str,
+    principal_records: Path | None,
+    operator_principal: str | None,
+    signing_key_file: Path | None,
 ) -> None:
     """Serve commands using the local append command on the ledger host."""
     try:
@@ -71,6 +116,34 @@ def serve_command(
         raise click.UsageError(f"--append-command: {exc}") from exc
     if not argv:
         raise click.UsageError("--append-command must not be empty")
+    if principal_records is None or operator_principal is None:
+        raise click.UsageError(
+            "serve requires --principal-records and --operator-principal "
+            "(ONEX_WORK_LEDGER_PRINCIPAL_RECORDS, ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL)"
+        )
+    try:
+        records = ModelWorkLedgerPrincipalRecords.model_validate_json(
+            principal_records.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(
+            "cannot read valid issuer principal records"
+        ) from exc
+    public_keys = records.verification_keys()
+    if operator_principal not in public_keys:
+        raise click.UsageError(
+            "--operator-principal must have an issuer public key record"
+        )
+    mirror_key = None
+    if signing_key_file is not None:
+        try:
+            mirror_key = load_work_ledger_signing_key(signing_key_file)
+        except (OSError, ValueError, TypeError) as exc:
+            raise click.ClickException("cannot read an Ed25519 signing key") from exc
+        if mirror_key.public_key() != public_keys[operator_principal]:
+            raise click.UsageError(
+                "--signing-key-file does not match the operator principal's public key"
+            )
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
@@ -92,7 +165,11 @@ def serve_command(
         )
         sys.exit(75)
     handler = HandlerWorkLedgerAppendEffect(
-        LocalLedgerAppendCommand(argv), LocalLedgerFile(ledger), host_name
+        LocalLedgerAppendCommand(argv),
+        LocalLedgerFile(ledger),
+        host_name,
+        public_keys=public_keys,
+        operator_principal=operator_principal,
     )
 
     async def main() -> None:
@@ -107,7 +184,12 @@ def serve_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            host = WorkLedgerAppendHost(opened, handler)
+            host = WorkLedgerAppendHost(
+                opened,
+                handler,
+                mirror_principal=operator_principal if mirror_key else None,
+                mirror_signing_key=mirror_key,
+            )
             await host.start()
             try:
                 await stop.wait()
@@ -135,6 +217,13 @@ def serve_command(
     default=60.0,
     show_default=True,
 )
+@click.option("--principal", envvar="ONEX_WORK_LEDGER_PRINCIPAL")
+@click.option(
+    "--signing-key-file",
+    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Issuer-provisioned Ed25519 private key in PEM form; never sent over the bus.",
+)
 def append_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -145,8 +234,19 @@ def append_command(
     request_id: UUID,
     rows_file: str,
     timeout_s: float,
+    principal: str | None,
+    signing_key_file: Path | None,
 ) -> None:
     """Send exact rows, print one JSON receipt and exit with the outcome."""
+    if principal is None or signing_key_file is None:
+        raise click.UsageError(
+            "append requires --principal and --signing-key-file "
+            "(ONEX_WORK_LEDGER_PRINCIPAL, ONEX_WORK_LEDGER_SIGNING_KEY_FILE)"
+        )
+    try:
+        key = load_work_ledger_signing_key(signing_key_file)
+    except (OSError, ValueError, TypeError) as exc:
+        raise click.ClickException("cannot read an Ed25519 signing key") from exc
     try:
         with click.open_file(rows_file, "r", encoding="utf-8") as source:
             rows = source.read()
@@ -156,7 +256,7 @@ def append_command(
             requested_by_lane=lane,
             requesting_host=host,
             requested_at=datetime.now(UTC),
-        )
+        ).signed(principal, key)
     except (OSError, ValidationError) as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -181,6 +281,157 @@ def append_command(
         if receipt.status is EnumWorkLedgerAppendStatus.ERROR:
             return 70
         return receipt.exit_code
+
+    try:
+        code = asyncio.run(main())
+    except LabRunBusError as exc:
+        click.echo(f"bus: {exc}", err=True)
+        code = 69
+    sys.exit(code)
+
+
+# OMN-20636: the answers a handoff request waits for, by the event's class name.
+_HANDOFF_ANSWERS: dict[str, type[BaseModel]] = {
+    PR_HANDOFF_ACCEPTED_TOPIC_V1: ModelPrHandoffAccepted,
+    PR_HANDOFF_HANDED_OFF_TOPIC_V1: ModelPrHandoffHandedOff,
+    PR_HANDOFF_FAILED_TOPIC_V1: ModelPrHandoffFailed,
+}
+
+
+@work_ledger_group.command("handoff")
+@_with_bus_options
+@click.option(
+    "--request-file",
+    default="-",
+    type=click.Path(dir_okay=False, allow_dash=True),
+    help="One ModelPrHandoffRequested as JSON.",
+)
+@click.option(
+    "--wait-s",
+    type=click.FloatRange(min=0),
+    default=30.0,
+    show_default=True,
+    help="How long to wait for the orchestrator's first answer; 0 publishes only.",
+)
+@click.option(
+    "--settle-s",
+    type=click.FloatRange(min=0),
+    default=5.0,
+    show_default=True,
+    help=(
+        "After an acceptance, how long to keep listening for a terminal: a refusal "
+        "or a handoff decided in the same leg is published right behind it."
+    ),
+)
+def handoff_command(
+    omnibase_path: Path | None,
+    bus: BusKind,
+    bus_lane: str | None,
+    kafka_bootstrap: str | None,
+    request_file: str,
+    wait_s: float,
+    settle_s: float,
+) -> None:
+    """Publish one PR handoff request; print the orchestrator's answer as JSON.
+
+    The answer printed is a terminal (handed off or failed) when one arrives
+    within the wait, or within ``--settle-s`` of the acceptance; otherwise the
+    acceptance, after which the orchestrator answers on the bus alone.
+
+    The decision is node_pr_handoff_orchestrator's, on the PR watcher's live
+    observations; this verb decides nothing. Exit 0 accepted or handed off,
+    4 failed (the answer names the error_code), 75 no answer in time (the
+    request is published and will be answered on the bus), 69 bus error.
+    """
+    try:
+        with click.open_file(request_file, "r", encoding="utf-8") as source:
+            request = ModelPrHandoffRequested.model_validate_json(source.read())
+    except (OSError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    async def main() -> int:
+        async with open_lab_run_bus(
+            bus=bus,
+            lane=bus_lane,
+            kafka_bootstrap=kafka_bootstrap,
+            omni_home=omnibase_path,
+        ) as opened:
+            answers: asyncio.Queue[tuple[str, BaseModel]] = asyncio.Queue()
+            unsubscribes = []
+            group = f"pr-handoff-request.{request.correlation_id.hex[:12]}"
+            if wait_s > 0:
+                for topic, model in _HANDOFF_ANSWERS.items():
+
+                    async def on_message(
+                        message: ProtocolBusMessage,
+                        topic: str = topic,
+                        model: type[BaseModel] = model,
+                    ) -> None:
+                        try:
+                            raw = json.loads(message.value)
+                            payload = raw.get("payload", raw)
+                            answer = model.model_validate(payload)
+                        except (ValueError, AttributeError):
+                            return
+                        if (
+                            getattr(answer, "correlation_id", None)
+                            == request.correlation_id
+                        ):
+                            await answers.put((topic, answer))
+
+                    unsubscribes.append(
+                        await _subscribe(opened, topic, on_message, group, "latest")
+                    )
+            envelope = ModelEventEnvelope[dict[str, object]](
+                payload=request.model_dump(mode="json"),
+                correlation_id=request.correlation_id,
+                event_type=event_type_for(PR_HANDOFF_REQUESTED_TOPIC_V1),
+                payload_type=ModelPrHandoffRequested.__name__,
+            )
+            try:
+                await opened.publish(
+                    PR_HANDOFF_REQUESTED_TOPIC_V1,
+                    request.handoff_key.encode("utf-8"),
+                    _bytes(envelope),
+                )
+                if wait_s == 0:
+                    click.echo(
+                        json.dumps(
+                            {
+                                "status": "published",
+                                "correlation_id": str(request.correlation_id),
+                            }
+                        )
+                    )
+                    return 0
+                try:
+                    topic, answer = await asyncio.wait_for(
+                        answers.get(), timeout=wait_s
+                    )
+                    if isinstance(answer, ModelPrHandoffAccepted):
+                        # The same leg may refuse or hand off right behind the
+                        # acceptance; a lane told "accepted" must not miss it.
+                        with contextlib.suppress(TimeoutError):
+                            topic, answer = await asyncio.wait_for(
+                                answers.get(), timeout=settle_s
+                            )
+                except TimeoutError:
+                    click.echo(
+                        json.dumps(
+                            {
+                                "status": "pending",
+                                "correlation_id": str(request.correlation_id),
+                            }
+                        )
+                    )
+                    return 75
+            finally:
+                for unsubscribe in unsubscribes:
+                    await unsubscribe()
+        click.echo(
+            json.dumps({"topic": topic, "answer": answer.model_dump(mode="json")})
+        )
+        return 4 if isinstance(answer, ModelPrHandoffFailed) else 0
 
     try:
         code = asyncio.run(main())

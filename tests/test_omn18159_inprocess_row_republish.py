@@ -63,6 +63,9 @@ from omnimarket.projection.protocol_database import (
 )
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -108,6 +111,8 @@ class UpsertOnlyAdapter:
         )
 
 
+REAL_PG_TENANT_SLUG = "omn18159-real-pg-tenant"
+REAL_PG_TENANT_UUID = UUID("00000000-0000-4000-8000-000000018159")
 CORRELATION_ID = "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f80"
 
 
@@ -117,9 +122,10 @@ def _handler(
     return HandlerProjectionDelegation(publisher=publisher)
 
 
-def _task_delegated() -> ModelTaskDelegatedEvent:
+def _task_delegated(tenant_id: str | None = None) -> ModelTaskDelegatedEvent:
     return ModelTaskDelegatedEvent(
         correlation_id=CORRELATION_ID,
+        tenant_id=tenant_id,
         session_id="s1",
         task_type="code_review",
         delegated_to="local",
@@ -130,9 +136,12 @@ def _task_delegated() -> ModelTaskDelegatedEvent:
     )
 
 
-def _delegate_skill_terminal() -> ModelDelegateSkillTerminalProjection:
+def _delegate_skill_terminal(
+    tenant_id: str | None = None,
+) -> ModelDelegateSkillTerminalProjection:
     return ModelDelegateSkillTerminalProjection.from_payload(
         {
+            "tenant_id": tenant_id,
             "status": "completed",
             "correlation_id": CORRELATION_ID,
             "task_type": "code_generation",
@@ -152,6 +161,21 @@ def _quality_gate_result() -> ModelQualityGateResult:
     )
 
 
+def _seed_registry_tenant(db: Any) -> str:
+    """OMN-20651: the terminal refuses a write with no registry-resolved tenant."""
+    db.upsert(
+        TENANT_REGISTRY_MIRROR_TABLE,
+        "tenant_slug",
+        {
+            "tenant_slug": REAL_PG_TENANT_SLUG,
+            "tenant_uuid": REAL_PG_TENANT_UUID,
+            "status": "active",
+            "source_event_id": "c0000000-0000-0000-0000-0000000006f3",
+        },
+    )
+    return REAL_PG_TENANT_SLUG
+
+
 def _drive(handler: HandlerProjectionDelegation, path: str, db: Any) -> None:
     """Drive one of the three real delegation-table write paths.
 
@@ -159,10 +183,11 @@ def _drive(handler: HandlerProjectionDelegation, path: str, db: Any) -> None:
     handler: a seam that exists only for tests proves the seam, not the path
     a message actually takes.
     """
+    tenant_id = _seed_registry_tenant(db)
     if path == "terminal":
-        handler.project(_task_delegated(), db)
+        handler.project(_task_delegated(tenant_id), db)
     elif path == "delegate_skill_terminal":
-        handler.project_delegate_skill_terminal(_delegate_skill_terminal(), db)
+        handler.project_delegate_skill_terminal(_delegate_skill_terminal(tenant_id), db)
     elif path == "quality_gate_result":
         handler.project_quality_gate_result(
             _quality_gate_result(),

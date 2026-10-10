@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -14,7 +14,13 @@ from uuid import UUID
 
 import yaml
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
+)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
@@ -29,6 +35,15 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _CONFIG_KEY = "delegation_runtime_dispatch"
+_V2_TERMINAL_ADAPTER: TypeAdapter[
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+] = TypeAdapter(
+    ModelDelegationTerminalCompletedV2
+    | ModelDelegationTerminalFailedRoutedV2
+    | ModelDelegationTerminalFailedUnroutedV2
+)
 
 
 class ProtocolDelegationEventBus(Protocol):
@@ -104,7 +119,23 @@ class RuntimeDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
     ) -> dict[str, object]:
+        # OMN-20844: the canonical delegation request this port publishes has
+        # no model field at the Core floor this package locks, so a model the
+        # caller named cannot reach the consumer. Refused rather than dropped,
+        # so the call cannot run on a model the caller did not choose.
+        if model is not None:
+            raise ValueError(
+                "model is not carried by this dispatch port's delegation request; "
+                "a per-call model runs on your own key through the in-process "
+                "path (onex delegate --bus inmemory --model <id>)"
+            )
+        # OMN-20606: accepted and unused. This port publishes the request to a
+        # deployed lane, whose handler stamps the caller onto its own terminal;
+        # only the in-process port writes an evidence terminal of its own.
+        del attribution
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than
@@ -162,20 +193,30 @@ class RuntimeDelegationDispatchPort:
                 "quality_gate_passed": False,
             }
 
-        with dispatch_stage("subscribe"):
-            unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        try:
+            with dispatch_stage("subscribe"):
+                unsubscribe, queue = await self._subscribe_for_result(correlation_id)
+        except TimeoutError as exc:
+            return {
+                "status": "timeout",
+                "error_message": f"delegation timed out at stage=subscribe: {exc}",
+            }
+        timeout_stage = "publish"
         try:
             with dispatch_stage("publish"):
                 await self._publish_request(request)
             timeout_seconds = float(self._config.wait_timeout_seconds)
+            timeout_stage = "terminal_wait"
             with dispatch_stage("terminal_wait"):
                 terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
-        except TimeoutError:
+        except TimeoutError as exc:
             return {
                 "status": "timeout",
                 "error_message": (
                     f"timed out after {self._config.wait_timeout_seconds}s "
                     "at stage=terminal_wait waiting for delegation result"
+                    if timeout_stage == "terminal_wait"
+                    else f"delegation timed out at stage=publish: {exc}"
                 ),
             }
         finally:
@@ -227,26 +268,27 @@ class RuntimeDelegationDispatchPort:
                 return
             await queue.put(terminal)
 
-        unsubscribe_completed = await self._event_bus.subscribe(
+        unsubscribers = []
+        for topic in (
             self._config.topics.completed,
-            None,
-            on_message,
-            group_id=(
-                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-            ),
-        )
-        unsubscribe_failed = await self._event_bus.subscribe(
             self._config.topics.failed,
-            None,
-            on_message,
-            group_id=(
-                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-            ),
-        )
+            self._config.topics.failed_unrouted,
+        ):
+            if topic is not None:
+                unsubscribers.append(
+                    await self._event_bus.subscribe(
+                        topic,
+                        None,
+                        on_message,
+                        group_id=(
+                            f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
+                        ),
+                    )
+                )
 
         async def unsubscribe() -> None:
-            await unsubscribe_completed()
-            await unsubscribe_failed()
+            for unsubscribe_topic in unsubscribers:
+                await unsubscribe_topic()
 
         return unsubscribe, queue
 
@@ -273,8 +315,21 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
         topic = payload.get("topic")
         if isinstance(topic, str) and topic:
             flattened["terminal_topic"] = topic
-        return flattened
-    return payload
+        payload = flattened
+    if "routing_disposition" not in payload:
+        return payload
+    # V2 carries the routed backend identity and the producer's manifest version.
+    # Its quality evaluation is nested; expose the same facts to the receipt.
+    flattened = dict(payload)
+    flattened["provider"] = payload.get("backend_ref") or ""
+    flattened["pricing_manifest_version"] = payload.get("pricing_manifest_version", 0)
+    evaluation = payload.get("quality_bar_evaluation")
+    if isinstance(evaluation, dict):
+        flattened.update(evaluation)
+    failure = payload.get("terminal_failure_reason")
+    if isinstance(failure, str):
+        flattened["failure_reason"] = failure
+    return flattened
 
 
 def _short_topic_alias(topic: str) -> str | None:
@@ -308,6 +363,23 @@ def _parse_delegation_terminal(
     if not isinstance(envelope_payload, dict):
         return None
 
+    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
+    wire_payload = envelope_payload.get("payload", envelope_payload)
+    if isinstance(wire_payload, dict) and (
+        topic.endswith(".v2")
+        or any(
+            field in wire_payload
+            for field in ("routing_disposition", "terminal_outcome", "backend_ref")
+        )
+    ):
+        # Validate before flattening: correlation alone cannot make a URL-shaped
+        # backend, absent pricing version or contradictory gate result evidence.
+        # The released wire contracts own these invariants (OMN-17013).
+        try:
+            _V2_TERMINAL_ADAPTER.validate_python(wire_payload)
+        except ValidationError:
+            return None
+
     terminal_payload = _flatten_terminal_payload(
         cast(dict[str, object], envelope_payload)
     )
@@ -326,10 +398,10 @@ def _parse_delegation_terminal(
     # both the full topic (legacy / test-simulated shape) and its derived
     # alias so either form classifies correctly; ``failure_reason`` remains
     # the final fallback for shapes that carry neither.
-    topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
     failed_alias = _short_topic_alias(failed_topic)
     is_failed = (
-        topic == failed_topic
+        terminal_payload.get("terminal_outcome") == "failed"
+        or topic == failed_topic
         or (failed_alias is not None and topic == failed_alias)
         or bool(terminal_payload.get("failure_reason"))
     )

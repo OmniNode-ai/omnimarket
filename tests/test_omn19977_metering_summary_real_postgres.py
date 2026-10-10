@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
@@ -13,6 +14,10 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
+    ModelCounterfactualBaseline,
+    ModelMeteringRecord,
+)
 from omnimarket.nodes.node_projection_metering_summary import (
     ModelMeteringSummaryFoldRequest,
 )
@@ -23,10 +28,20 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projecti
     HandlerProjectionMeteringSummary,
 )
 
-_MIGRATION = (
+_MIGRATION_DIR = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_metering_summary"
-    / "migrations/0000_create_metering_summary.sql"
+    / "migrations"
+)
+# The table and every later column migration; 0001 is grants only and needs a
+# role this disposable schema does not create.
+_MIGRATIONS = tuple(
+    _MIGRATION_DIR / name
+    for name in (
+        "0000_create_metering_summary.sql",
+        "0002_metering_summary_savings_per_measured_run.sql",
+        "0003_metering_summary_compression_and_cache_hit.sql",
+    )
 )
 _SCHEMA = "omn19977_metering_summary_write_path_test"
 
@@ -61,18 +76,23 @@ class _ScopedConnectionAdapter:
         return [dict(row) for row in rows]
 
 
+def _scoped_writer(conn: asyncpg.Connection) -> MeteringSummaryProjectionWriter:
+    """The real writer, its statements run on ``conn`` in the disposable schema."""
+    writer = MeteringSummaryProjectionWriter.__new__(MeteringSummaryProjectionWriter)
+    writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+    writer._standalone_bindings = None
+    return writer
+
+
 @pytest.mark.integration
 async def test_replacement_and_replay_against_real_postgres() -> None:
     conn = await _connect_or_skip()
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
-        await conn.execute(_scoped(_MIGRATION.read_text(encoding="utf-8")))
-        writer = MeteringSummaryProjectionWriter.__new__(
-            MeteringSummaryProjectionWriter
-        )
-        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
-        writer._standalone_bindings = None
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        writer = _scoped_writer(conn)
         first = ModelMeteringSummaryFoldRequest(
             tenant_id="local",
             baseline_model="unresolved-model",
@@ -101,6 +121,57 @@ async def test_replacement_and_replay_against_real_postgres() -> None:
         assert replayed[0]["summary_json"].encode("utf-8") == replaced[0][
             "summary_json"
         ].encode("utf-8")
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_omn20009_the_writer_stores_the_saving_per_measured_run() -> None:
+    """OMN-20009 G9: the served column is written by the real upsert."""
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        writer = _scoped_writer(conn)
+        as_of = datetime(2026, 9, 28, 12, tzinfo=UTC)
+        baseline = ModelCounterfactualBaseline(
+            model="baseline-model",
+            price_in_per_1k=Decimal("1"),
+            price_out_per_1k=Decimal("2"),
+            as_of="2026-09-01",
+            pricing_manifest_version="1",
+            source="pricing_manifest",
+        )
+        request = ModelMeteringSummaryFoldRequest(
+            tenant_id="local",
+            baseline_model="baseline-model",
+            baseline=baseline,
+            as_of=as_of,
+            records=tuple(
+                ModelMeteringRecord(
+                    correlation_id=f"run-{index}",
+                    occurred_at=as_of - timedelta(hours=1, minutes=index),
+                    model="local-a",
+                    tokens_in=1000,
+                    tokens_out=0,
+                    spend_usd=Decimal(spend),
+                )
+                for index, spend in enumerate(("0", "0", "0.1"))
+            ),
+        )
+        await writer._project(request)
+        rows = await conn.fetch(
+            f"SELECT window_kind, savings_usd, savings_per_measured_run_usd "
+            f"FROM {_SCHEMA}.metering_summary WHERE window_kind = 'all'"
+        )
+        assert len(rows) == 1
+        assert Decimal(rows[0]["savings_usd"]) == Decimal("2.9")
+        assert rows[0]["savings_per_measured_run_usd"] == "0.966667"
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

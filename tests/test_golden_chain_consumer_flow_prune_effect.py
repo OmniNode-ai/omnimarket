@@ -160,7 +160,8 @@ def test_contract_declares_thirty_day_retention_on_consumer_flow_windows() -> No
     cfg = contract_config()
     assert cfg.retention_days == 30
     assert cfg.table == TABLE
-    assert cfg.dsn_env == "OMNINODE_INTERNAL_DB_URL"
+    assert cfg.binding.archive_dir is None
+    assert cfg.binding.database_url is None
     raw = yaml.safe_load(
         (
             Path(__file__).resolve().parents[1]
@@ -394,23 +395,43 @@ def test_a_retention_below_the_contract_floor_is_refused() -> None:
         ModelConsumerFlowPruneRequest(retention_days=29)
 
 
-def test_no_arg_construction_defers_the_sink_env_read_until_handle(
-    monkeypatch: pytest.MonkeyPatch,
+def test_unconfigured_sink_refuses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Runtime dispatch constructs the handler with no arguments at wiring
-    # time, before any tick fires, so the runtime-effects kernel can register
-    # this node's topic subscription. Reading local_dir_env eagerly there
-    # raises KeyError on any lane that has not bound ONEX_CONSUMER_FLOW_ARCHIVE_DIR
-    # yet, which under strict wiring mode (dev lane, dogfood) stops the whole
-    # runtime-effects process from booting -- the same defect class
-    # node_dead_letter_prune_effect's own pre-merge lab proof caught on two
-    # independent hosts (OMN-17001). Construction itself must not raise; the
-    # read is deferred to the first real use inside handle().
-    monkeypatch.setenv("OMNINODE_INTERNAL_DB_URL", "postgresql://unused/unused")
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("overlay_version: 1.0.0\nenvironment: test\nscope: env\n")
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
     monkeypatch.delenv("ONEX_CONSUMER_FLOW_ARCHIVE_DIR", raising=False)
-    handler = HandlerConsumerFlowPrune()  # must not raise
-    with pytest.raises(KeyError):
-        handler.handle(ModelConsumerFlowPruneRequest())
+    monkeypatch.delenv("OMNINODE_INTERNAL_DB_URL", raising=False)
+    monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+    h = HandlerConsumerFlowPrune()
+    result = h.handle(ModelConsumerFlowPruneRequest(as_of=AS_OF))
+    assert result.verdict == EnumConsumerFlowPruneVerdict.REFUSED
+    assert "archive_dir" in result.detail
+    assert result.sink_location is None
+    assert result.rows_pruned == 0
+
+
+def test_skipped_tick_never_resolves_sink() -> None:
+    class UnresolvableSink(MemorySink):
+        def __init__(self) -> None:
+            self.requires_encryption = False
+
+        @property
+        def location(self) -> str:
+            raise RuntimeError("sink resolution attempted")
+
+    h = HandlerConsumerFlowPrune(
+        store=FakeStore([]), sink=UnresolvableSink(), cipher=NoArchiveCipher()
+    )
+    first = tick(AS_OF)
+    with pytest.raises(RuntimeError, match="sink resolution attempted"):
+        h.handle(first)
+    later = AS_OF + dt.timedelta(seconds=60)
+    skipped = h.handle(tick(later))
+    assert skipped.verdict == EnumConsumerFlowPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
+    assert skipped.sink_location is None
 
 
 def test_the_contract_declares_the_database_transport_its_store_imports(
@@ -435,3 +456,148 @@ def test_the_contract_declares_the_database_transport_its_store_imports(
 
     assert result.handlers_scanned >= 1
     assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0, result.violations
+
+
+def test_overlay_binding_archives_and_prunes_without_value_env_vars(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_consumer_flow_prune_effect.handlers import (
+        postgres_consumer_flow_store as store_module,
+    )
+
+    store = seed()
+    seen: list[str] = []
+
+    def make_store(dsn: str) -> FakeStore:
+        seen.append(dsn)
+        return store
+
+    # Store construction is the effect boundary; the archive remains a real
+    # owner-only filesystem sink, exercising archive/verify/delete end to end.
+    monkeypatch.setattr(store, "close", lambda: None, raising=False)
+    monkeypatch.setattr(store_module, "PostgresConsumerFlowStore", make_store)
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "overlay_version": "1.0.0",
+                "environment": "test",
+                "scope": "env",
+                "services": {
+                    "prune": {
+                        "consumer_flow.archive_dir": str(tmp_path / "archive"),
+                        "consumer_flow.database_url": "postgresql://fixture/contract-binding",
+                    }
+                },
+            }
+        )
+    )
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
+    monkeypatch.delenv("OMNINODE_INTERNAL_DB_URL", raising=False)
+    monkeypatch.delenv("OMNIBASE_INFRA_DB_URL", raising=False)
+    h = HandlerConsumerFlowPrune()
+    assert seen == []  # no binding or effects during runtime construction
+    result = h.handle(ModelConsumerFlowPruneRequest(as_of=AS_OF))
+    assert seen == ["postgresql://fixture/contract-binding"]
+    assert result.verdict == EnumConsumerFlowPruneVerdict.PRUNED
+    assert result.rows_pruned == 4
+    assert list((tmp_path / "archive").rglob("*.manifest.json"))
+    h.close()
+
+
+def test_unconfigured_database_refuses_without_legacy_env_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("overlay_version: 1.0.0\nenvironment: test\nscope: env\n")
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
+    monkeypatch.setenv("OMNINODE_INTERNAL_DB_URL", "postgresql://ignored/legacy")
+    monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", "postgresql://ignored/legacy")
+    result = HandlerConsumerFlowPrune(sink=MemorySink()).handle(tick(AS_OF))
+    assert result.verdict == EnumConsumerFlowPruneVerdict.REFUSED
+    assert "database_url" in result.detail
+    assert result.rows_pruned == 0
+
+
+def test_refused_configuration_is_only_resolved_once_per_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_prune_binding_effect.handlers import (
+        handler_prune_binding as module,
+    )
+
+    seen: list[str] = []
+
+    def resolve(declared: object, kind: str) -> object:
+        seen.append(kind)
+        return declared
+
+    monkeypatch.setattr(module, "load_prune_binding", resolve)
+    h = HandlerConsumerFlowPrune()
+    assert h.handle(tick(AS_OF)).verdict == EnumConsumerFlowPruneVerdict.REFUSED
+    assert (
+        h.handle(tick(AS_OF + dt.timedelta(minutes=1))).verdict
+        == EnumConsumerFlowPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
+    )
+    assert seen == ["consumer_flow"]
+    assert (
+        h.handle(tick(AS_OF + dt.timedelta(days=1))).verdict
+        == EnumConsumerFlowPruneVerdict.REFUSED
+    )
+    assert seen == ["consumer_flow", "consumer_flow"]
+
+
+async def test_unconfigured_sink_refuses_through_runtime_dispatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnibase_infra.enums import EnumDispatchStatus
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        _make_dispatch_callback,
+    )
+    from omnibase_infra.runtime.auto_wiring.models import ModelHandlerRef
+
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("overlay_version: 1.0.0\nenvironment: test\nscope: env\n")
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
+    callback = _make_dispatch_callback(
+        HandlerConsumerFlowPrune(),
+        event_model=ModelHandlerRef(
+            name="ModelRuntimeTick",
+            module="omnibase_infra.runtime.models.model_runtime_tick",
+        ),
+    )
+    incoming = tick(AS_OF)
+    envelope = {
+        "payload": incoming.model_dump(mode="json"),
+        "correlation_id": str(incoming.correlation_id),
+    }
+    result = await callback(envelope)
+    assert result is not None
+    # Refusal is a successful dispatch carrying the typed domain outcome;
+    # dispatch failure handling (retry/DLQ) has nothing to route.
+    assert result.status == EnumDispatchStatus.SUCCESS
+    assert result.correlation_id == incoming.correlation_id
+    assert len(result.output_events) == 1
+    assert result.output_events[0].verdict == EnumConsumerFlowPruneVerdict.REFUSED
+
+
+def test_cli_unconfigured_database_writes_refusal_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_consumer_flow_prune_effect.__main__ import main
+
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("overlay_version: 1.0.0\nenvironment: test\nscope: env\n")
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
+    reports = tmp_path / "reports"
+    assert main(["--dry-run", "--report-dir", str(reports)]) == 1
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["verdict"] == "refused"
+    assert "database_url" in summary["detail"]
+    assert summary["pruned"] == 0
+    assert len(list(reports.glob("*.json"))) == 1
+    assert not (reports / "archive").exists()

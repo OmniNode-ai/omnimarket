@@ -14,10 +14,23 @@ requirements:
         statement: "AC1: Characterization tests pin current behaviour of every module the burn-down touches and pass unchanged before and after the refactor -- falsifier: uv run pytest on the characterization test files at the pre-refactor commit and at the PR head"
       - id: "AC2"
         statement: "AC2: Every baseline file the PR empties is deleted and its check fails on a planted violation with no baseline argument -- falsifier: uv run pytest tests covering each emptied ratchet with a planted violation"
+  - id: "req-topic-naming-baseline-and-kafka-topic-coverage"
+    statement: "The topic-naming baseline contains only the foreign topic, and platform readiness checks required Kafka topics."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: The topic-naming baseline contains only onex.tenant.events; required Kafka topics are unique onex.evt. topics ending in .v1 and declared by node contracts; topic coverage is healthy when all required topics are present, names a missing topic, and reports unknown health when rpk fails -- falsifier: uv run pytest tests/test_platform_readiness_kafka_topic_coverage.py -q"
+  - id: "req-action-ref-golden-ignores-line-shift"
+    statement: "The action-pin characterization compares each workflow uses line by file, action and resolved commit, so a step added to a workflow does not fail it."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: A uses line that moves to a different line number is no mismatch, and a uses line pinned to a different commit or dropped still is one -- falsifier: uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -k 'action_ref' -q fails on a tree whose ci.yml gained a step above a pinned use"
 evidence_requirements:
   - kind: "tests"
     description: "Run the characterization, plain-check and permanent-profile tests the burn-down adds or changes."
     command: "uv run pytest tests/ci/test_check_action_pins.py tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q"
+  - kind: "tests"
+    description: "AC3 tests assert the baseline contains only onex.tenant.events, required topics are unique and declared by node contracts, and topic coverage reports present, missing and failed broker checks."
+    command: "uv run pytest tests/test_platform_readiness_kafka_topic_coverage.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +44,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_check_action_pins.py tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20558-ac3-topic-naming-kafka-coverage"
+    description: "AC3 tests assert the baseline contains only onex.tenant.events, required topics are unique and declared by node contracts, and topic coverage reports present, missing and failed broker checks."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_platform_readiness_kafka_topic_coverage.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20558-ac4-action-ref-line-shift"
+    description: "AC4 hosted probe. The action-ref characterization passes when ci.yml carries an added step and keeps refusing a moved or dropped pin. It fails at the merge base, where the golden is keyed on line numbers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -k 'action_ref' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20071"
+title: "OR.3 S4: node_dod_verify's durable-evidence gate reads the product repository's contract and verdict"
+summary: "The DurableEvidenceGate's contract_on_occ_main check reads contracts/<ticket>.yaml from the repository each merged PR landed in, at the merge commit, takes the verdict from the repo-evidence / dod-verify check run on the newest merged contract-carrying PR's head per repository, and requires every labelled criterion bound; onex_change_control decides only for tickets whose contracts are there, and decides them exactly as before."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-durable-gate-repo-first"
+    statement: |-
+      The durable-evidence gate must decide a ticket with a product-repository contract from that contract and the check run on the merged head, keep refusing a missing, unbound or red repo contract, and decide an OCC-only ticket exactly as before.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: The gate looks for a ticket's contract first in the repository its PR merged into and takes the verdict from the S3 check run on the merged head, and treats onex_change_control as the source only for tickets whose contracts are there -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k admits or uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k refuses fails
+      - id: "AC5"
+        statement: |-
+          AC5: The gate still decides a ticket whose contract is only in onex_change_control exactly as it does today -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k replay fails
+      - id: "AC6"
+        statement: |-
+          AC6: The change adds no new non-canonical file -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k no_module fails
+evidence_requirements:
+  - kind: "tests"
+    description: "A cut-over-repository ticket with every criterion bound and a green check run on the newest merged head passes with no OCC contract, including over a red run on a superseded merged PR of the same repository and over an OCC copy that carries items the repo contract lacks."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k admits"
+  - kind: "tests"
+    description: "The same ticket is refused with one criterion unbound, a red or in-progress run, a contract changed after the verified head, an unreadable contract or check runs, no readable or labelled criterion, a missing repo contract and no OCC contract, a defect label with no prevention gate in the repo contract, no done-class label, or a merged but unreleased publishing-repo PR."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k refuses"
+  - kind: "tests"
+    description: "Fourteen OCC-only gate inputs whose decisions were recorded at 3fe55c842, before the change, replay to identical decisions through the changed gate."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k replay"
+  - kind: "tests"
+    description: "node_dod_verify's file set is unchanged and the repo-first resolution lives in the existing gate service and model modules."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k no_module"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-durable-gate-repo-first-admits"
+    description: "A bound repo contract with a green check run on the newest merged head is admitted with no OCC contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k admits"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-durable-gate-repo-first-refuses"
+    description: "A repo contract that is missing, leaves a criterion unbound, or whose newest run is not a completed success is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-durable-gate-occ-only-replay"
+    description: "Recorded OCC-only gate inputs replay to the decisions recorded before the change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k replay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-durable-gate-no-new-module"
+    description: "The change stays in node_dod_verify's existing gate modules; no module is added."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k no_module"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

@@ -1,0 +1,32 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-18939
+title: Autobind outcome distinguishes mint and no-op headlines
+summary: The autobind outcome check reports MINTED on success, NOOP for existing bindings and stamp repairs, and DECLINED only for policy refusals, using the lifecycle effect and action classifiers.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-autobind-headline
+  statement: The autobind outcome headline is chosen from the lifecycle effect and action classifiers, never from stamp verification, so success and no-op paths are not reported as DECLINED.
+  acceptance:
+  - id: AC1
+    statement: 'AC1 - the check payload reports the authored, no-op and declined actions without changing verification. -- falsifier: the headline tests fail if an authored companion without a verifier or an already-bound companion reports DECLINED.'
+evidence_requirements:
+- kind: tests
+  description: Headline classification for the tick and bus paths.
+  command: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_headline_omn18939.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-autobind-headline-ac1
+  description: 'AC1: autobind headline acceptance checks.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_autobind_headline_omn18939.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

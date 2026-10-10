@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_nl_intent_pipeline
+contract_name: node_nl_intent_pipeline
+node_name: node_nl_intent_pipeline
+
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+
+node_type: compute
+# Invoked in process; event-bus activation is a separate step.
+lifecycle: experimental
+description: Classify natural language into a typed intent object
+
+input_model:
+  name: ModelNlParseRequest
+  module: omnimarket.nodes.node_nl_intent_pipeline.models
+output_model:
+  name: ModelIntentObject
+  module: omnimarket.nodes.node_nl_intent_pipeline.models
+
+capabilities:
+  - name: nl.intent.pipeline.compute
+    description: Classify natural language into a typed intent object
+    version: 0.1.0
+
+io_operations:
+  - operation: parse_intent
+    description: Classify natural language into a typed intent object
+    protocol_method: handle
+    input_fields:
+      - request: ModelNlParseRequest
+    output_fields:
+      - result: ModelIntentObject
+    idempotent: false  # mints a uuid4 id per call
+
+handler:
+  module: omnimarket.nodes.node_nl_intent_pipeline.handlers.handler_nl_intent_default
+  class: HandlerNlIntentDefault
+  input_model: omnimarket.nodes.node_nl_intent_pipeline.models.ModelNlParseRequest
+  output_model: omnimarket.nodes.node_nl_intent_pipeline.models.ModelIntentObject
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: false  # mints a uuid4 id per call
+  timeout_ms: 1000
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-18008
+  maturity: alpha
+  tags: [compute, pipeline, nl-to-ticket]

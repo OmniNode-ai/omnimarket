@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Decode the immutable terminal shared by replay and reaper handoff."""
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
 )

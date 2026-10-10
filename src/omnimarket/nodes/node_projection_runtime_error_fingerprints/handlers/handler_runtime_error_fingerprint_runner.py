@@ -322,14 +322,18 @@ class RuntimeErrorFingerprintProjectionWriter(BaseProjectionRunner):
     async def _publish_snapshot_if_available(
         self, row: dict[str, Any] | None, meta: MessageMeta, data: dict[str, Any]
     ) -> None:
-        """Best-effort snapshot publish: a no-op unless this node declares a
-        bus_backed exposure AND the write returned a real row."""
+        """Require a declared snapshot publish before acknowledging the event.
+
+        The row is already durable, so immediate redelivery can retry the
+        publish without adding the same event's occurrences again. An unavailable
+        producer must surface as a recoverable failure rather than success.
+        """
         if self._snapshot_exposure is None or row is None:
             return
         source_event_id = str(
             data.get("event_id") or data.get("correlation_id") or meta.fallback_id
         )
-        await self.publish_snapshot_delta(
+        published = await self.publish_snapshot_delta(
             self._snapshot_exposure,
             op="upsert",
             row=_wire_row(row),
@@ -338,6 +342,11 @@ class RuntimeErrorFingerprintProjectionWriter(BaseProjectionRunner):
             source_partition=meta.partition,
             source_offset=meta.offset,
         )
+        if not published:
+            raise RuntimeError(
+                "Runtime-error fingerprint snapshot was not published to "
+                f"{self._snapshot_exposure.topic}; retry the source event"
+            )
 
 
 __all__ = ["RuntimeErrorFingerprintProjectionWriter"]

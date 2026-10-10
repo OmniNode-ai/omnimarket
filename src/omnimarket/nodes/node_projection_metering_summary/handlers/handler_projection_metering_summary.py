@@ -4,6 +4,7 @@
 
 import json
 from datetime import UTC, datetime, time, timedelta
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from typing import Literal
 
 from omnimarket.nodes.node_metering_summary_compute import (
@@ -16,6 +17,27 @@ from omnimarket.nodes.node_projection_metering_summary.models import (
     ModelMeteringSummaryFoldResult,
     ModelMeteringSummaryRow,
 )
+
+_MICRO_USD = Decimal("0.000001")
+
+
+def savings_per_measured_run(
+    savings_usd: Decimal | None, runs_measured: int
+) -> str | None:
+    """The average saving of a measured run, as decimal text to the millionth.
+
+    Only measured runs are summed into savings_usd, so only they divide it. A
+    row with no saving (no measured run, or no resolved baseline) has no
+    average either: null, never zero.
+    """
+    if savings_usd is None or runs_measured <= 0:
+        return None
+    with localcontext() as ctx:
+        ctx.prec = 28
+        quotient = (savings_usd / Decimal(runs_measured)).quantize(
+            _MICRO_USD, rounding=ROUND_HALF_EVEN
+        )
+    return str(quotient)
 
 
 class HandlerProjectionMeteringSummary:
@@ -81,6 +103,15 @@ class HandlerProjectionMeteringSummary:
                     spend_usd=payload["spend_usd"],
                     counterfactual_usd=payload["counterfactual_usd"],
                     savings_usd=payload["savings_usd"],
+                    savings_per_measured_run_usd=savings_per_measured_run(
+                        summary.savings_usd, summary.runs_measured
+                    ),
+                    # OMN-20226: no metering record carries a raw or compressed
+                    # token count or a semantic-cache answer, so there is
+                    # nothing to divide: null, never 0 or 1.00x.
+                    compression_ratio=None,
+                    cache_hit_rate=None,
+                    runs_cache_answered=None,
                     summary_json=json.dumps(
                         payload, sort_keys=True, separators=(",", ":")
                     ),

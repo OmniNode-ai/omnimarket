@@ -1,0 +1,966 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Definition-B decisions of the merge-throughput tick (OMN-20686).
+
+The retired throughput_tick.py and the loops_check.py checks it called mixed these
+decisions with launchctl, ps and file reads. Here the caller reads those and passes the
+facts; the handler returns the finding lines and the status line, byte-identical to the
+retired script for the controller, merges, floors, escalation and lab-headroom findings.
+
+The lab-headroom finding runs only when the caller supplies `lab_headroom` facts: the
+pool hosts with their limited and auth-expired marks, the runner's receipts, the live
+placement markers, and, per host, whether the placement module parsed each reading
+and the admission refusal it names (that parse stays in the placement module until its
+own shard).
+
+OMN-20840 (2026-10-09, 10 merges an hour with 182 open and every problem a NOTE): a park that holds
+a repository with zero merges past `park_max_hours` is MISSING with the manual-unblock fix; a lab
+host with no recent reading is UNKNOWN, never a quiet NOTE; a runner receipt that ended without
+running (no-host, host-limited, a guard limit, failed) is MISSING until a later receipt of its
+brief runs; and an open count rising across the last three tick runs is MISSING.
+
+OMN-20864 (operator ruling 2026-10-10T04:08:23Z): idle lab capacity is never left idle while PRs are
+open. Given `pr_land` facts, a free-slot FIX also names the pr-land lanes to dispatch through the
+lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule lab-fill selection runs
+(omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
+hold source is UNKNOWN and names no lane.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from omnibase_core.types import JsonType
+
+from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
+    ModelLabHeadroomFacts,
+    ModelLabMark,
+    ModelLabReceipt,
+    ModelThroughputTickRequest,
+    ModelThroughputTickResult,
+)
+
+CELLS = ("causes", "cause_leases", "cause_members", "cause_exhausted", "fixer_hold")
+CONTROLLER_LABEL = "ai.omninode.landing-controller"
+CONTROLLER_FIX = (
+    "the controller owns this fix: read its status through /omni:landing-controller "
+    "(landing_controller.py status); a fixer HOLD, a spent cause budget or no capacity is reported "
+    "there and released by the operator; the session starts no fix work for it"
+)
+CONTROLLER_STATUS_FIX = 'bash "$OMNIBASE_INTERNAL/launchd/landing-controller/install.sh" --status, then --act --g-act-dir <dir> once G-ACT verifies (/omni:landing-controller); never launch the retired Claude drain'
+CONTROLLER_REFUSAL_FIX = "env -u PYTHONPATH /opt/homebrew/bin/python3.13 ~/.omninode/landing-controller/skills/merge-drain/scripts/landing_controller.py status, then fix the refusal /omni:landing-controller names (a HASH-MISMATCH or G-ACT-MISSING is a skill PR and a re-install; QUOTA is the GitHub quota consumer); never launch the retired Claude drain"
+CONTROLLER_STALE_FIX = "launchctl kickstart -k gui/$(id -u)/ai.omninode.landing-controller, then read ~/.local/state/omni/landing/landing-controller.err.log; never launch the retired Claude drain"
+CONTROLLER_NOT_LOADED_FIX = 'bash "$OMNIBASE_INTERNAL/launchd/landing-controller/install.sh" --act --g-act-dir <G-ACT receipts dir> (see /omni:landing-controller); never launch the retired Claude drain'
+WATCHER_FIX = (
+    "launchctl kickstart -k gui/$(id -u)/ai.omninode.pr-watcher and read its err log"
+)
+MERGES_FIX = "the merge-throughput tick's procedure: find the cause live and dispatch ONE targeted fix lane for that cause (not a drain)"
+POLICY_FIX = "python3 plugins/omni/scripts/landing_policy.py, then fix ~/.config/onex/landing_policy.yaml (or $ONEX_LANDING_POLICY)"
+FLOOR_WINDOW = timedelta(hours=2)
+FLOOR_FIX = (
+    "find this repository's cause live (the controller's degraded list, its red required contexts, its "
+    "dev head; /omni:merge-drain's merge-pulse names them) and dispatch ONE targeted fix lane for that "
+    "cause (not a drain); pr_claim_registry_cli.py list first for a peer already on it"
+)
+# RULING 2026-10-09T04:10:56Z lane=orchestrator-9f8a: while the controller cannot re-dispatch a stuck cause
+# itself, the orchestrator sends a Codex or Opus fix lane for it. A park lasting hours over a repository that
+# has stopped landing is that case (OMN-20840: three repositories read as parked notes for 8 to 12 hours).
+PARK_FIX = (
+    "nothing lands in {repo} until the park ends at {until}: under RULING 2026-10-09T04:10:56Z "
+    "lane=orchestrator-9f8a the orchestrator dispatches ONE Codex or Opus fix lane for cause {key} now "
+    "(read the cause through /omni:landing-controller status first, and pr_claim_registry_cli.py list for a "
+    "peer already on it); gates still decide, no bypass; the tick dispatches nothing"
+)
+UNREAD_HOST_FIX = (
+    "read {host}'s live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; "
+    "it runs nothing); a free slot "
+    "there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host "
+    "that cannot be read is a lab fault to name to the operator, never free and never full"
+)
+NEVER_RAN = (
+    "no-host",
+    "host-limited",
+    "guard-memory-max",
+    "guard-runtime-max",
+    "failed",
+)
+RAN = ("running", "done")
+DISPATCH_FIX = (
+    "the lane never ran: report it as {status}, never as running; re-dispatch its brief ({brief}) through "
+    "the remote-lane runner once a lab-headroom line shows a free slot, or tell the operator it is waiting; "
+    "the tick dispatches nothing"
+)
+OPEN_TREND_FIX = (
+    "inflow exceeds landing: read the largest blocker class (/omni:queue-status, /omni:merge-drain's "
+    "merge-pulse) and dispatch ONE fix lane for that class under RULING 2026-10-09T04:10:56Z "
+    "lane=orchestrator-9f8a; the tick dispatches nothing"
+)
+PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
+ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
+
+
+def parse_stamp(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+@dataclass
+class Report:
+    lines: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)
+    checked: list[str] = field(default_factory=list)
+    # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
+    floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
+
+    def miss(self, loop: str, why: str, fix: str) -> None:
+        self.missing.append(loop)
+        self.lines.append(f"MISSING {loop} | {why} | FIX: {fix}")
+
+    def unk(self, loop: str, why: str, fix: str) -> None:
+        self.unknown.append(loop)
+        self.lines.append(f"UNKNOWN {loop} | {why} | FIX: {fix}")
+
+    def note(self, text: str) -> None:
+        self.lines.append(f"NOTE {text}")
+
+    def status(self, prefix: str, bad: str) -> str:
+        if not self.missing and not self.unknown:
+            return f"{prefix} OK checked={','.join(self.checked)}"
+        names = ", ".join(self.missing + self.unknown)
+        # n counts every finding, so a run of unknowns never reads as `n=0`, which looks healthy
+        return f"{prefix} {bad} n={len(self.missing) + len(self.unknown)} unknown={len(self.unknown)}: {names}"
+
+
+@dataclass
+class Cover:
+    """One cause that owns or parks its members."""
+
+    key: str
+    repo: str
+    members: set[str]
+    lease_id: str | None = None
+    parked_until: str | None = None
+
+    def note(self) -> str:
+        if self.lease_id:
+            lease = (
+                self.lease_id[1:] if self.lease_id.startswith("L") else self.lease_id
+            )
+            return f"owned by landing-L{lease} cause={self.key}"
+        return f"parked cause {self.key} until {self.parked_until}"
+
+
+def elapsed_minutes(etime: str | None) -> float | None:
+    """Minutes from `ps -o etime=` ([[dd-]hh:]mm:ss); None when unreadable."""
+    match = ETIME_RE.match(etime.strip()) if etime is not None else None
+    if match is None:
+        return None
+    days, hours, minutes, seconds = (int(g or 0) for g in match.groups())
+    return days * 1440 + hours * 60 + minutes + seconds / 60
+
+
+def tick_finished_at(
+    tick: dict[str, Any] | None, started: datetime | None, ts: str
+) -> datetime | None:
+    """When the last tick ENDED: its ts and heartbeat hold the start, the end adds timing.total_s."""
+    if started is None:
+        return None
+    total = ((tick or {}).get("timing") or {}).get("total_s")
+    if (tick or {}).get("ts") == ts and isinstance(total, (int, float)) and total > 0:
+        return started + timedelta(seconds=total)
+    return started
+
+
+def check_controller(
+    rep: Report,
+    request: ModelThroughputTickRequest,
+    now: datetime,
+    escalated: list[tuple[str, str]],
+) -> None:
+    rep.checked.append("controller")
+    before = len(rep.missing) + len(rep.unknown)
+    max_minutes = request.controller_max_minutes
+    run_max_minutes = request.controller_run_max_minutes
+    running: tuple[int, float] | None = None
+    if request.launchctl == "unavailable":
+        rep.unk(
+            "controller",
+            f"cannot run launchctl: {request.launchctl_error}",
+            CONTROLLER_STATUS_FIX,
+        )
+    elif request.launchctl == "not_loaded":
+        rep.miss(
+            "controller",
+            f"launchd job {CONTROLLER_LABEL} is not loaded",
+            CONTROLLER_NOT_LOADED_FIX,
+        )
+    else:
+        match = PID_RE.search(request.launchctl_stdout)
+        minutes_up = elapsed_minutes(request.pid_etime) if match else None
+        if match and minutes_up is not None:
+            running = (int(match.group(1)), minutes_up)
+    tick: dict[str, Any] | None = request.ticks[0] if request.ticks else None
+    if tick is None:
+        reason = request.ticks_error or "no complete tick line in the journal tail"
+        rep.unk("controller", f"cannot read last tick: {reason}", CONTROLLER_STATUS_FIX)
+    ts = ""
+    at: datetime | None
+    try:
+        if request.heartbeat_text is None:
+            raise ValueError("heartbeat unreadable")
+        ts = request.heartbeat_text.strip()
+        at = parse_stamp(ts)
+    except ValueError:
+        ts = (tick or {}).get("ts", "")
+        try:
+            at = parse_stamp(ts)
+        except (ValueError, TypeError):
+            rep.unk(
+                "controller",
+                "heartbeat and last tick timestamp unreadable",
+                CONTROLLER_STALE_FIX,
+            )
+            at = None
+    finished = tick_finished_at(tick, at, ts)
+    minutes = (now - finished).total_seconds() / 60 if finished else None
+    if running is not None and running[1] > run_max_minutes:
+        rep.miss(
+            "controller",
+            f"tick running as pid {running[0]} for {running[1]:.0f} min (> {run_max_minutes}): stuck",
+            CONTROLLER_STALE_FIX,
+        )
+    elif running is None and minutes is not None and minutes > max_minutes:
+        rep.miss(
+            "controller",
+            f"no tick running and the last tick {ts} ended {minutes:.0f} min ago (> {max_minutes})",
+            CONTROLLER_STALE_FIX,
+        )
+    if tick is not None:
+        mode, status = tick.get("mode", "?"), tick.get("status", "?")
+        refusal = tick.get("refusal")
+        where = f"mode={mode} status={status} at tick {tick.get('tick', '?')}"
+        if mode != "act":
+            rep.miss("controller", f"{where}: not acting", CONTROLLER_STATUS_FIX)
+        elif refusal or status not in ("OK", "DEGRADED"):
+            # A refused tick (HASH-MISMATCH, G-ACT-MISSING, QUOTA, a failed read) acted on nothing.
+            detail = " ".join(str(tick.get("detail") or "").split())[:200]
+            why = f"{where} refusal={refusal or '-'}" + (f" {detail}" if detail else "")
+            rep.miss(
+                "controller",
+                f"{why}: the tick acted on nothing",
+                CONTROLLER_REFUSAL_FIX,
+            )
+        elif status == "DEGRADED":
+            # A completed tick that escalated some PRs: the controller owns their fixes.
+            for item in tick.get("degraded") or []:
+                if isinstance(item, dict):
+                    escalated.append(
+                        (str(item.get("reason", "?")), str(item.get("subject", "?")))
+                    )
+    if before == len(rep.missing) + len(rep.unknown):
+        if running is not None:
+            rep.note(
+                f"controller live: tick running as pid {running[0]} for {running[1]:.0f} min "
+                f"(bound {run_max_minutes}); last tick {ts}"
+            )
+        else:
+            rep.note(
+                f"controller live: mode=act last tick {ts} ended {minutes:.0f} min ago"
+            )
+
+
+def check_merges(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> int | None:
+    """The merges finding; returns the open count when the watcher state is fresh, else None."""
+    rep.checked.append("merges")
+    path = request.watcher_path
+    if path is None:
+        rep.unk(
+            "merges",
+            "OMNI_HOME is not set and no --pr-watcher-state given",
+            WATCHER_FIX,
+        )
+        return None
+    max_minutes = request.watcher_max_minutes
+    minimum = request.min_merges_per_hour
+    try:
+        if request.watcher_read_error is not None:
+            raise ValueError(request.watcher_read_error)
+        data: Any = request.watcher_state
+        ts = data["last_tick"]
+        age = (now - parse_stamp(ts)).total_seconds() / 60
+        prs = data["prs"]
+        if not isinstance(prs, dict):
+            raise ValueError("prs must be an object")
+        opened = count = control = 0
+        for pr in prs.values():
+            facts = pr["facts"]
+            opened += facts.get("state") == "OPEN"
+            if facts.get("merged_at"):
+                elapsed = now - parse_stamp(facts["merged_at"])
+                count += timedelta(0) <= elapsed <= timedelta(hours=1)
+                control += timedelta(0) <= elapsed <= timedelta(days=7)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        rep.unk("merges", f"cannot read watcher state {path}: {exc}", WATCHER_FIX)
+        return None
+    if age > max_minutes:
+        rep.unk(
+            "merges",
+            f"stale watcher: last tick {ts} is {age:.0f} min old (> {max_minutes})",
+            WATCHER_FIX,
+        )
+        return None
+    if count == 0 and control == 0:
+        rep.unk(
+            "merges",
+            "zero merges in 60 min AND in 7 days (positive control failed)",
+            WATCHER_FIX,
+        )
+    elif count >= minimum:
+        rep.note(f"merges last 60 min: {count} (open {opened}, watcher tick {ts})")
+    elif opened == 0:
+        rep.note(
+            f"merges last 60 min: {count} (open 0, watcher tick {ts}); nothing to land"
+        )
+    else:
+        rep.miss(
+            "merges",
+            f"{count} merges in 60 min with {opened} open (< {minimum}/h is a stall)",
+            MERGES_FIX,
+        )
+    return opened
+
+
+def check_floors(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    rep.checked.append("floors")
+    if request.floors_per_repo is None:
+        rep.unk(
+            "floors",
+            f"cannot read the per-repo floors: {request.floors_error}",
+            "fix landing_floors.json",
+        )
+        return
+    path = request.watcher_path
+    if path is None:
+        rep.unk("floors", "no PR watcher state to read", WATCHER_FIX)
+        return
+    if request.policy_load_error is not None:
+        rep.unk(
+            "floors",
+            f"cannot load the landing policy: {request.policy_load_error}",
+            POLICY_FIX,
+        )
+        return
+    if request.policy_error:
+        rep.unk(
+            "floors",
+            f"cannot read the landing policy: {request.policy_error}",
+            POLICY_FIX,
+        )
+        return
+    lands_like = {login.strip().lower() for login in request.land_like_operator}
+    max_minutes = request.watcher_max_minutes
+    try:
+        if request.watcher_read_error is not None:
+            raise ValueError(request.watcher_read_error)
+        data: Any = request.watcher_state
+        ts = data["last_tick"]
+        operator = str(data["operator"])
+        age = (now - parse_stamp(ts)).total_seconds() / 60
+        merged: dict[str, list[datetime]] = {}
+        waiting: dict[str, int] = {}
+        report_only: dict[str, int] = {}
+        for pr in data["prs"].values():
+            facts, repo = pr["facts"], pr["facts"].get("repo")
+            if not repo:
+                continue
+            if facts.get("merged_at"):
+                merged.setdefault(repo, []).append(parse_stamp(facts["merged_at"]))
+            elif (
+                facts.get("state") == "OPEN"
+                and not facts.get("draft")
+                and pr.get("cls") != "held-excluded"
+            ):
+                # The controller cannot land a report-only author's PR, so it is not waiting on it.
+                login = str(facts.get("author") or "")
+                if bool(
+                    (operator and login == operator)
+                    or bool(facts.get("author_is_bot"))
+                    or (bool(login) and login.strip().lower() in lands_like)
+                ):
+                    waiting[repo] = waiting.get(repo, 0) + 1
+                else:
+                    report_only[repo] = report_only.get(repo, 0) + 1
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        rep.unk("floors", f"cannot read watcher state {path}: {exc}", WATCHER_FIX)
+        return
+    if age > max_minutes:
+        rep.unk(
+            "floors",
+            f"stale watcher: last tick {ts} is {age:.0f} min old (> {max_minutes})",
+            WATCHER_FIX,
+        )
+        return
+    healthy = []
+    for repo, floor in sorted(request.floors_per_repo.items()):
+        if floor <= 0 or not waiting.get(repo):
+            continue
+        stamps = merged.get(repo, [])
+        if not stamps:
+            rep.unk(
+                f"floor:{repo}",
+                f"no merged {repo} PR in the watcher state (positive control failed): "
+                "a zero here would be a guess",
+                WATCHER_FIX,
+            )
+            continue
+        recent = sum(timedelta(0) <= now - at <= FLOOR_WINDOW for at in stamps)
+        rate = recent / (FLOOR_WINDOW.total_seconds() / 3600)
+        since = (now - max(stamps)).total_seconds() / 3600
+        if rate < floor:
+            rep.floor_stats[f"floor:{repo}"] = (recent, waiting[repo])
+            rep.miss(
+                f"floor:{repo}",
+                f"{repo} merged {recent} in 2h ({rate:g}/h, floor {floor:g}/h) with "
+                f"{waiting[repo]} PRs waiting; last merge {since:.1f}h ago",
+                FLOOR_FIX,
+            )
+        else:
+            healthy.append(f"{repo} {rate:g}/h")
+    if healthy:
+        rep.note("floors met: " + ", ".join(healthy))
+    if report_only:
+        rep.note(
+            "floors do not count report-only authors' PRs (landing policy): "
+            + ", ".join(f"{repo} {n}" for repo, n in sorted(report_only.items()))
+        )
+
+
+def _bare_repo(text: str) -> str:
+    """`Owner/repo#n`, `cause:Owner/repo:hex`, `Owner/repo` or `repo` to `repo`."""
+    text = str(text).removeprefix("cause:").split("#")[0].split(":")[0]
+    return text.rsplit("/", 1)[-1]
+
+
+def _members(value: object) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    return {
+        pr
+        for m in value
+        if isinstance(pr := m.get("pr") if isinstance(m, dict) else m, str)
+    }
+
+
+def _cause_records(value: object) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        return [
+            dict(rec, key=rec.get("key") or key)
+            for key, rec in value.items()
+            if isinstance(rec, dict)
+        ]
+    return (
+        [rec for rec in value if isinstance(rec, dict)]
+        if isinstance(value, list)
+        else []
+    )
+
+
+def _stamp_after(value: object, now: datetime) -> bool:
+    try:
+        return parse_stamp(str(value)) > now
+    except (ValueError, TypeError):
+        return False
+
+
+def read_covers(
+    state_json: JsonType | None, ticks: list[dict[str, Any]], now: datetime
+) -> list[Cover]:
+    """The causes covering PRs, from state.json and the newest receipt. Unreadable or pre-cause
+    files give no cover."""
+    covers: list[Cover] = []
+    has_cause_state = False
+    try:
+        state: Any = state_json
+        causes = _cause_records(state.get("causes"))
+        has_cause_state = isinstance(state.get("causes"), (dict, list))
+        by_key = {str(rec.get("key")): rec for rec in causes}
+        leases = state.get("leases")
+        for lease in leases.values() if isinstance(leases, dict) else leases or []:
+            if not isinstance(lease, dict):
+                continue
+            key = str(lease.get("cause") or lease.get("pr") or "")
+            if not key.startswith("cause:"):
+                continue
+            if lease.get("revoked") is True or lease.get("result_recorded_at"):
+                continue
+            rec = by_key.get(key, {})
+            covers.append(
+                Cover(
+                    key,
+                    _bare_repo(rec.get("repo") or key),
+                    _members(lease.get("members") or rec.get("members")),
+                    lease_id=str(lease.get("lease_id", "?")),
+                )
+            )
+        for rec in causes:
+            if rec.get("key") and _stamp_after(rec.get("parked_until"), now):
+                key = str(rec["key"])
+                covers.append(
+                    Cover(
+                        key,
+                        _bare_repo(rec.get("repo") or key),
+                        _members(rec.get("members")),
+                        parked_until=str(rec["parked_until"]),
+                    )
+                )
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    # State owns current coverage, including an empty cause list after a release. Receipts
+    # retain history for the two-tick escalation check, but cannot resurrect old coverage.
+    for tick in ticks[:1] if not has_cause_state else []:
+        causes_field = tick.get("causes")
+        records = (
+            causes_field.get("records")
+            if isinstance(causes_field, dict)
+            else causes_field
+        )
+        for rec in _cause_records(records):
+            if not rec.get("key"):
+                continue
+            parked = rec.get("parked_until")
+            if rec.get("lease_id") or (parked and _stamp_after(parked, now)):
+                covers.append(
+                    Cover(
+                        str(rec["key"]),
+                        _bare_repo(rec.get("repo") or rec["key"]),
+                        _members(rec.get("members")),
+                        lease_id=str(rec["lease_id"]) if rec.get("lease_id") else None,
+                        parked_until=str(parked) if parked else None,
+                    )
+                )
+    return covers
+
+
+def fixer_cells(tick: dict[str, Any]) -> str:
+    summary = tick.get("causes")
+    fields = {
+        "causes": "count",
+        "cause_leases": "leases",
+        "cause_members": "members",
+        "cause_exhausted": "exhausted",
+    }
+    out = []
+    for name in CELLS:
+        value = (
+            summary.get(fields[name], "unread")
+            if isinstance(summary, dict) and name in fields
+            else tick.get(name, "unread")
+        )
+        if name == "fixer_hold" and isinstance(value, list):
+            value = ",".join(str(scope) for scope in value) or "none"
+        out.append(
+            f"{name}={len(value) if name == 'causes' and isinstance(value, list) else value}"
+        )
+    return " ".join(out)
+
+
+def _degraded_subjects(tick: dict[str, Any]) -> set[str]:
+    return {
+        str(i.get("subject")) for i in tick.get("degraded") or [] if isinstance(i, dict)
+    }
+
+
+def report_escalated(
+    rep: Report,
+    escalated: list[tuple[str, str]],
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+) -> None:
+    for reason, subject in escalated:
+        cover = next(
+            (c for c in covers if subject == c.key or subject in c.members), None
+        )
+        newest = ticks[0] if ticks else {}
+        if cover is not None:
+            rep.note(f"escalated:{subject} | {cover.note()}")
+        elif len(ticks) > 1 and subject in _degraded_subjects(ticks[1]):
+            rep.miss(
+                f"escalated:{subject}",
+                f"the controller escalated it ({reason}) at ticks {ticks[1].get('tick', '?')} and "
+                f"{newest.get('tick', '?')} and no cause lease or park covers it; {fixer_cells(newest)}",
+                CONTROLLER_FIX,
+            )
+        else:
+            rep.note(
+                f"escalated:{subject} | escalated at tick {newest.get('tick', '?')} ({reason}) and no cause "
+                "covers it yet: the controller has one more tick to cover it"
+            )
+
+
+def _long_park(
+    cover: Cover, stats: tuple[int, int] | None, now: datetime, max_hours: float
+) -> float | None:
+    """Hours left on a park that holds a repository with PRs waiting and zero merges in the window,
+    when they exceed `max_hours`; else None (a lease, a short park or a landing repository)."""
+    if cover.lease_id or not cover.parked_until or stats is None:
+        return None
+    recent, waiting = stats
+    try:
+        left = (parse_stamp(cover.parked_until) - now).total_seconds() / 3600
+    except (ValueError, TypeError):
+        return None
+    return left if recent == 0 and waiting > 0 and left > max_hours else None
+
+
+def report_floors(
+    rep: Report,
+    floor_rep: Report,
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+    now: datetime | None = None,
+    park_max_hours: float = 2.0,
+) -> None:
+    """Merge the floor findings into the tick, replacing their fix-lane advice. A cause lease covers a
+    floor; a park covers it only while it ends within `park_max_hours`, or while the repository still
+    lands (OMN-20840)."""
+    rep.checked.extend(floor_rep.checked)
+    rep.unknown.extend(floor_rep.unknown)
+    cells = fixer_cells(ticks[0] if ticks else {})
+    for line in floor_rep.lines:
+        head, _, rest = line.partition(" | ")
+        if not head.startswith("MISSING floor:"):
+            rep.lines.append(line)
+            continue
+        loop = head.removeprefix("MISSING ")
+        repo = loop.removeprefix("floor:")
+        cover = next((c for c in covers if c.repo == repo), None)
+        left = (
+            _long_park(cover, floor_rep.floor_stats.get(loop), now, park_max_hours)
+            if cover is not None and now is not None
+            else None
+        )
+        if cover is not None and left is not None:
+            rep.miss(
+                loop,
+                f"{rest.rpartition(' | FIX: ')[0]}; {cover.note()}, {left:.1f}h from now "
+                f"(> {park_max_hours:g}h)",
+                PARK_FIX.format(repo=repo, until=cover.parked_until, key=cover.key),
+            )
+        elif cover is not None:
+            rep.note(f"{loop} | {rest.rpartition(' | FIX: ')[0]} | {cover.note()}")
+        else:
+            rep.miss(loop, f"{rest.rpartition(' | FIX: ')[0]}; {cells}", CONTROLLER_FIX)
+
+
+READING_REFUSALS = ("UNREADABLE(", "ADMISSION-REFUSED(", "LANE-REFUSED(")
+READING_WINDOW = timedelta(minutes=15)
+READING_FIELD_RE = re.compile(r"(?:[:,])([a-z_]+)=([^,]+)")
+
+
+def _mark_until(mark: ModelLabMark) -> datetime | None:
+    """The mark's `until` stamp; None for an absent mark; ValueError/TypeError when unreadable."""
+    if mark.state == "absent":
+        return None
+    if mark.state == "unreadable" or mark.until is None:
+        raise ValueError("unreadable mark")
+    return parse_stamp(mark.until)
+
+
+def _receipt_summary(
+    facts: ModelLabHeadroomFacts,
+) -> tuple[dict[str, int], dict[str, tuple[datetime, str]]]:
+    running: dict[str, int] = {}
+    latest: dict[str, tuple[datetime, str]] = {}
+    for receipt in facts.receipts:
+        try:
+            at = parse_stamp(receipt.started_at)
+        except (ValueError, TypeError):
+            continue  # An interrupted receipt is not evidence of free capacity.
+        host = receipt.host
+        if host and not receipt.final and receipt.status in ("preparing", "running"):
+            if not receipt.pid_valid:
+                continue
+            if receipt.pid_alive is None or receipt.pid_alive:
+                running[host] = running.get(host, 0) + 1
+        for reading in receipt.readings:
+            name, _, _ = reading.partition(":")
+            if name not in latest or at > latest[name][0]:
+                latest[name] = (at, reading)
+    return running, latest
+
+
+PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
+HOLD_SOURCE_FIX = (
+    "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
+    "are unread"
+)
+
+
+def check_lab_headroom(
+    rep: Report,
+    facts: ModelLabHeadroomFacts,
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None = None,
+) -> ModelLabFillPrLandPlan | None:
+    """Free lane slots in the runner's recent placement receipts; never probes or places. With PR-land
+    facts, the free slots' FIX names the pr-land fallback's lanes (OMN-20864)."""
+    rep.checked.append("lab-headroom")
+    if facts.module_unavailable:
+        rep.note("lab-headroom: placement module unavailable")
+        return None
+    for name in facts.unavailable_hosts:
+        rep.note(f"lab-headroom:{name} | unavailable in host table; no dispatch")
+    if facts.placement_error is not None:
+        rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
+        return None
+    free_lines: list[
+        tuple[int, int]
+    ] = []  # (index in rep.lines, free slots), host order
+    running, latest = _receipt_summary(facts)
+    placed: dict[str, int] = {}
+    for name in facts.live_marker_hosts:
+        placed[name] = placed.get(name, 0) + 1
+    for host in facts.hosts:
+        if host.local:
+            continue
+        label = f"lab-headroom:{host.name}"
+        try:
+            until = _mark_until(host.limited_mark)
+        except (ValueError, TypeError):
+            rep.note(f"{label} | limited mark unreadable; no dispatch")
+            continue
+        if until is not None and until > now:
+            rep.note(
+                f"{label} | limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}; no dispatch"
+            )
+            continue
+        try:
+            auth_until = _mark_until(host.auth_mark)
+            if host.auth_mark.state == "present" and host.auth_mark.at is None:
+                raise ValueError("auth mark lacks `at`")
+        except (ValueError, TypeError):
+            rep.note(f"{label} | auth-expired mark unreadable; no dispatch")
+            continue
+        if auth_until is not None and auth_until > now:
+            rep.note(
+                f"{label} | claude auth expired since {host.auth_mark.at}; log in again; no dispatch"
+            )
+            continue
+        cached = latest.get(host.name)
+        if cached is None or not timedelta(0) <= now - cached[0] <= READING_WINDOW:
+            # An unread host is neither free nor full (OMN-20840: h101 and h201 read as quiet notes
+            # while one lab lane ran).
+            newest = cached[0].strftime("%Y-%m-%dT%H:%M:%SZ") if cached else "none"
+            rep.unk(
+                label,
+                f"no placement reading in the last {READING_WINDOW.total_seconds() / 60:.0f} min "
+                f"(newest {newest}): its capacity is unread",
+                UNREAD_HOST_FIX.format(host=host.name),
+            )
+            continue
+        reading = cached[1]
+        if any(reason in reading for reason in READING_REFUSALS):
+            rep.note(f"{label} | unhealthy: {reading}; no dispatch")
+            continue
+        parse = host.parses.get(reading)
+        if parse is None or not parse.parsed:
+            rep.note(f"{label} | unreadable placement reading; no dispatch")
+            continue
+        fields = dict(READING_FIELD_RE.findall(reading))
+        try:
+            cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
+            # The snapshot precedes placement. Markers and live receipts include that new lane;
+            # max avoids charging it twice and also counts landing workers in the same pool.
+            count = max(placed.get(host.name, 0), running.get(host.name, 0))
+        except (KeyError, ValueError):
+            rep.note(f"{label} | incomplete placement reading; no dispatch")
+            continue
+        if parse.admission_refusal is not None:
+            rep.note(
+                f"{label} | admission refused: {parse.admission_refusal}; "
+                f"running lanes {count} of cap {cap}, free slots 0"
+            )
+            continue
+        try:
+            observed = int(fields["placed"])
+            free = max(0, min(cap - count, int(fields["slots"]) + observed - count))
+        except (KeyError, ValueError):
+            rep.note(f"{label} | incomplete placement reading; no dispatch")
+            continue
+        if free:
+            free_lines.append((len(rep.lines), free))
+            rep.miss(
+                label,
+                f"running lanes {count} of cap {cap}, free slots {free}",
+                f"dispatch up to {free} lanes of the session's pillar work to {host.name} "
+                "through the remote-lane runner; never pin to a host without headroom",
+            )
+        else:
+            rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    if pr_land is None:
+        return None
+    plan = plan_pr_land_fallback(
+        pr_land, sum(free for _, free in free_lines), now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    if plan.failure is not None:
+        rep.unk("lab-headroom:pr-land", plan.reason, HOLD_SOURCE_FIX)
+        return plan
+    lanes = [f"{d.pr} ({d.pr_class})" for d in plan.dispatch]
+    for index, free in free_lines:
+        mine, lanes = lanes[:free], lanes[free:]
+        if mine:
+            rep.lines[index] += PR_LAND_FIX.format(prs=", ".join(mine))
+    if free_lines and not plan.dispatch:
+        rep.note(f"lab-headroom:pr-land | {plan.reason}")
+    return plan
+
+
+def _receipt_reason(receipt: ModelLabReceipt) -> str:
+    text = receipt.reason or (
+        "readings: " + " ".join(receipt.readings)
+        if receipt.readings
+        else "no reason recorded"
+    )
+    text = " ".join(text.split())
+    return text if len(text) <= 200 else text[:197] + "..."
+
+
+def check_dispatches(
+    rep: Report, facts: ModelLabHeadroomFacts, now: datetime, window_hours: float
+) -> None:
+    """A dispatched lane whose receipt ended without running, until its brief runs (OMN-20840: six lanes
+    ended no-host within a minute and were reported as running for hours)."""
+    rep.checked.append("dispatches")
+    if facts.module_unavailable or facts.placement_error is not None:
+        why = facts.placement_error or "placement module unavailable"
+        rep.unk(
+            "dispatches",
+            f"the runner's receipts are unread ({why})",
+            "read ~/.local/state/omni/remote-lanes/<lane>/rlane-*.json by hand for status no-host or failed",
+        )
+        return
+    window = timedelta(hours=window_hours)
+    dated: list[tuple[datetime, ModelLabReceipt]] = []
+    for receipt in facts.receipts:
+        try:
+            dated.append((parse_stamp(receipt.started_at), receipt))
+        except (ValueError, TypeError):
+            continue
+    newest: dict[str, tuple[datetime, ModelLabReceipt]] = {}
+    for at, receipt in dated:
+        if receipt.status not in NEVER_RAN or not timedelta(0) <= now - at <= window:
+            continue
+        lane = receipt.lane or receipt.run_id or receipt.path or "?"
+        if lane not in newest or at > newest[lane][0]:
+            newest[lane] = (at, receipt)
+    for lane, (at, receipt) in sorted(newest.items(), key=lambda item: item[1][0]):
+        superseded = any(
+            later > at
+            and other.status in RAN
+            and (
+                (receipt.brief and other.brief == receipt.brief)
+                or (receipt.lane and other.lane == receipt.lane)
+            )
+            for later, other in dated
+        )
+        if superseded:
+            continue
+        rep.miss(
+            f"dispatch:{lane}",
+            f"dispatched {receipt.started_at}, ended {receipt.status} ({_receipt_reason(receipt)}); "
+            f"receipt {receipt.path or receipt.run_id or '?'}; no later receipt of its brief is running or done",
+            DISPATCH_FIX.format(
+                status=receipt.status, brief=receipt.brief or "unrecorded"
+            ),
+        )
+
+
+def check_open_trend(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime, opened: int | None
+) -> None:
+    """The open count across the last three tick runs: up by more than `open_rise_pct` is MISSING."""
+    rep.checked.append("open-trend")
+    if opened is None:
+        return  # the merges finding already names an unread or stale watcher
+    max_age = timedelta(hours=request.open_history_max_age_hours)
+    points: list[tuple[str, int]] = []
+    for point in request.open_history or []:
+        try:
+            if timedelta(0) <= now - parse_stamp(point.at) <= max_age:
+                points.append((point.at, point.open))
+        except (ValueError, TypeError):
+            continue
+    series = [*points[-2:], (request.now, opened)]
+    counts = " -> ".join(str(n) for _, n in series)
+    if len(series) < 3:
+        rep.note(
+            f"open-trend | open {counts}; {len(series)} of 3 tick runs recorded in the last "
+            f"{request.open_history_max_age_hours:g}h"
+        )
+        return
+    first = series[0][1]
+    rise = (opened - first) / first * 100 if first else (100.0 if opened else 0.0)
+    if rise > request.open_rise_pct:
+        rep.miss(
+            "open-trend",
+            f"open count {counts} across the last three tick runs (since {series[0][0]}, "
+            f"+{rise:.1f}%, > {request.open_rise_pct:g}%)",
+            OPEN_TREND_FIX,
+        )
+    else:
+        rep.note(
+            f"open-trend | open {counts} across the last three tick runs ({rise:+.1f}%)"
+        )
+
+
+class HandlerThroughputTickDecision:
+    """Stateless compute: the tick's findings from the facts the caller read."""
+
+    def handle(self, request: ModelThroughputTickRequest) -> ModelThroughputTickResult:
+        now = parse_stamp(request.now)
+        ticks: list[dict[str, Any]] = [dict(t) for t in request.ticks]
+        rep = Report()
+        if request.heartbeat_write_error is not None:
+            rep.unk(
+                "tick-heartbeat",
+                f"cannot write {request.heartbeat_write_error}",
+                "make the state directory writable (OMNI_SESSION_START_STATE_DIR names another)",
+            )
+        escalated: list[tuple[str, str]] = []
+        check_controller(rep, request, now, escalated)
+        opened = check_merges(rep, request, now)
+        covers = read_covers(request.state_json, ticks, now)
+        floor_rep = Report()
+        check_floors(floor_rep, request, now)
+        report_floors(rep, floor_rep, covers, ticks, now, request.park_max_hours)
+        report_escalated(rep, escalated, covers, ticks)
+        if request.open_history is not None:
+            check_open_trend(rep, request, now, opened)
+        pr_land = None
+        if request.lab_headroom is not None:
+            pr_land = check_lab_headroom(
+                rep, request.lab_headroom, now, request.pr_land
+            )
+            if request.dispatch_window_hours is not None:
+                check_dispatches(
+                    rep, request.lab_headroom, now, request.dispatch_window_hours
+                )
+        return ModelThroughputTickResult(
+            lines=rep.lines,
+            status_line=rep.status("THROUGHPUT", "STALL"),
+            missing=rep.missing,
+            unknown=rep.unknown,
+            checked=rep.checked,
+            exit_code=0 if not rep.missing and not rep.unknown else 1,
+            open_count=opened,
+            pr_land=pr_land,
+        )

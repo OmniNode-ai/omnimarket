@@ -264,7 +264,15 @@ def main() -> int:
         run_dir.mkdir()  # Refuse reused run artifacts.
         passed(
             run_command(
-                ["onex", "delegate", "--task-type", "research", PROMPT],
+                [
+                    "onex",
+                    "delegate",
+                    "--task-type",
+                    "research",
+                    "--state-root",
+                    str(run_dir / ".onex_state"),
+                    PROMPT,
+                ],
                 env,
                 run_dir,
                 300,

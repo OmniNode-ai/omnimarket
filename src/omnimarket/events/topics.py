@@ -46,6 +46,7 @@ OMNICLAUDE_EVT_TOPIC_PREFIX = "onex.evt.omniclaude."  # onex-topic-allow: canoni
 DELEGATION_COMPLETED_TOPIC_V1 = "onex.evt.omnibase-infra.delegation-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_orchestrator contract.yaml publish_topics (OMN-13629)
 DELEGATION_FAILED_TOPIC_V1 = "onex.evt.omnibase-infra.delegation-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_orchestrator contract.yaml publish_topics (OMN-13629)
 DELEGATION_DISPOSITION_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.delegation-disposition-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_delegation_disposition contract.yaml subscribe_topics (OMN-20242)
+DELEGATION_ACCEPTANCE_JUDGED_TOPIC_V1 = "onex.evt.omnimarket.delegation-acceptance-judged.v1"  # onex-topic-allow: canonical topic registry; offline calibrated verdicts, producer and consumer contracts follow in J.2/J.5
 DELEGATE_SKILL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
 DELEGATE_SKILL_FAILED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
 DELEGATION_CALL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegation-call-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_llm_delegation_projection contract.yaml subscribe_topics
@@ -174,3 +175,22 @@ LAB_JOB_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.lab-job-transitioned.v1"  #
 PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
 PR_LANDING_GITHUB_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
 PR_LANDING_GITHUB_FAILED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
+# OMN-20636: the PR handoff workflow. A lane publishes the request command;
+# node_pr_handoff_orchestrator decides on the PR watcher's observations, has
+# node_pr_handoff_ledger_effect append the handoff rows, and ends each request
+# in one handed-off or failed terminal.
+PR_HANDOFF_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-handoff-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_orchestrator contract.yaml subscribe_topics (OMN-20636)
+PR_HANDOFF_ACCEPTED_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-accepted.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_orchestrator contract.yaml publish_topics (OMN-20636)
+PR_HANDOFF_HANDED_OFF_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-handed-off.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_orchestrator contract.yaml publish_topics (OMN-20636)
+PR_HANDOFF_FAILED_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_orchestrator contract.yaml publish_topics (OMN-20636)
+PR_HANDOFF_LEDGER_APPEND_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-handoff-ledger-append-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_ledger_effect contract.yaml subscribe_topics (OMN-20636)
+PR_HANDOFF_LEDGER_APPENDED_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-ledger-appended.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_ledger_effect contract.yaml publish_topics (OMN-20636)
+PR_STATE_OBSERVED_TOPIC_V1 = "onex.evt.omnimarket.pr-state-observed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_state_emit_effect, consumed by node_projection_pr_state and node_pr_handoff_orchestrator (OMN-19999, OMN-20636)
+CI_RUN_FAILED_TOPIC_V1 = "onex.evt.omnimarket.ci-run-failed.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle triage and orchestrator contracts
+GITHUB_CHECK_RUN_TOPIC_V1 = "onex.evt.github.check-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect detect_ci_red_check_run
+GITHUB_WORKFLOW_RUN_TOPIC_V1 = "onex.evt.github.workflow-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect record_workflow_run
+CI_RED_TRIAGE_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.ci-red-triage-decided.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator and reducer contracts
+PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator contract
+
+PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-routing-feedback-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml terminal_event
+PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics

@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
+
 from omnimarket.cost.cost_pricing import (
     calculate_inference_cost,
     load_cost_pricing,
@@ -104,11 +106,16 @@ def test_cloud_run_cost_is_contract_priced_not_hardcoded() -> None:
     )
     assert cost == expected
     assert cost > 0.0
-    # Cross-check the exact arithmetic against the contract per-token rates so a
-    # silent rate drift is caught: 0.00000010*12000 + 0.00000040*3000.
+    # Cross-check the exact arithmetic against the omnibase_infra pricing
+    # manifest's per-1K rates (OMN-20833) so a silent rate drift is caught.
+    manifest_entry = ModelPricingTable.from_yaml().get_entry("gemini-2.5-flash")
+    assert manifest_entry is not None
     manual = float(
-        Decimal("0.00000010") * Decimal(input_tokens)
-        + Decimal("0.00000040") * Decimal(output_tokens)
+        (
+            Decimal(str(manifest_entry.input_cost_per_1k)) * Decimal(input_tokens)
+            + Decimal(str(manifest_entry.output_cost_per_1k)) * Decimal(output_tokens)
+        )
+        / Decimal(1000)
     )
     assert cost == manual
 

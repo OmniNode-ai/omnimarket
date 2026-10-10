@@ -1,0 +1,733 @@
+{
+  "idempotency-precheck": {
+    "type": "object",
+    "required": [
+      "date",
+      "clock_utc",
+      "phases",
+      "residuals"
+    ],
+    "properties": {
+      "date": {
+        "type": "string"
+      },
+      "clock_utc": {
+        "type": "string"
+      },
+      "phases": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "phase",
+            "artifact",
+            "verdict",
+            "evidence",
+            "reason"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "enum": [
+                "GroundState",
+                "Triage",
+                "Reconcile",
+                "Integrate",
+                "DroppedWork",
+                "Goal"
+              ]
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "already-delivered",
+                "peer-owned",
+                "run"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "integer"
+            },
+            "checks_failed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "decisions-register": {
+    "type": "object",
+    "required": [
+      "status",
+      "total",
+      "counts",
+      "stale",
+      "asked",
+      "oldest_asked",
+      "oldest_pending",
+      "commit_sha",
+      "notes"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "clean",
+          "alarm",
+          "blocked"
+        ]
+      },
+      "total": {
+        "type": "integer"
+      },
+      "counts": {
+        "type": "string"
+      },
+      "stale": {
+        "type": "integer"
+      },
+      "asked": {
+        "type": "integer"
+      },
+      "oldest_asked": {
+        "type": "string"
+      },
+      "oldest_pending": {
+        "type": "string"
+      },
+      "commit_sha": {
+        "type": "string"
+      },
+      "notes": {
+        "type": "string"
+      }
+    }
+  },
+  "ground-state": {
+    "type": "object",
+    "required": [
+      "state",
+      "detail",
+      "prs",
+      "residuals",
+      "delegation"
+    ],
+    "properties": {
+      "state": {
+        "type": "string"
+      },
+      "detail": {
+        "type": "string"
+      },
+      "prs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "morning-triage": {
+    "type": "object",
+    "required": [
+      "state",
+      "detail",
+      "prs",
+      "residuals",
+      "delegation"
+    ],
+    "properties": {
+      "state": {
+        "type": "string"
+      },
+      "detail": {
+        "type": "string"
+      },
+      "prs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "plan-reconcile": {
+    "type": "object",
+    "required": [
+      "report_path",
+      "sources_read",
+      "rows",
+      "counts",
+      "top_three",
+      "linear_mismatches",
+      "residuals",
+      "delegation"
+    ],
+    "properties": {
+      "report_path": {
+        "type": "string"
+      },
+      "sources_read": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "rows": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "title",
+            "verdict",
+            "evidence",
+            "probe",
+            "beta_path"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "LANDED",
+                "DEPLOYED",
+                "PROBED",
+                "UNKNOWN"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            },
+            "probe": {
+              "type": "string"
+            },
+            "beta_path": {
+              "type": "boolean"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "counts": {
+        "type": "object",
+        "required": [
+          "total",
+          "open",
+          "landed",
+          "deployed",
+          "probed",
+          "unknown"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "open": {
+            "type": "integer"
+          },
+          "landed": {
+            "type": "integer"
+          },
+          "deployed": {
+            "type": "integer"
+          },
+          "probed": {
+            "type": "integer"
+          },
+          "unknown": {
+            "type": "integer"
+          }
+        }
+      },
+      "top_three": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "linear_mismatches": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "integration-plan": {
+    "type": "object",
+    "required": [
+      "report_path",
+      "window",
+      "repos_scanned",
+      "rows",
+      "counts",
+      "holds",
+      "tickets_created",
+      "residuals",
+      "delegation"
+    ],
+    "properties": {
+      "report_path": {
+        "type": "string"
+      },
+      "window": {
+        "type": "string"
+      },
+      "repos_scanned": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "repo",
+            "merged_in_window",
+            "row_ids",
+            "note"
+          ],
+          "properties": {
+            "repo": {
+              "type": "string"
+            },
+            "merged_in_window": {
+              "type": "integer"
+            },
+            "row_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "rows": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "what",
+            "source",
+            "kind",
+            "destination",
+            "next_action",
+            "probe",
+            "hold",
+            "ticket",
+            "unblocks"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "what": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "repin",
+                "wire",
+                "release",
+                "dogfood"
+              ]
+            },
+            "destination": {
+              "type": "string"
+            },
+            "next_action": {
+              "type": "string"
+            },
+            "probe": {
+              "type": "string"
+            },
+            "hold": {
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            },
+            "ticket_created": {
+              "type": "boolean"
+            },
+            "unblocks": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "counts": {
+        "type": "object",
+        "required": [
+          "total",
+          "from_landed",
+          "from_window_merges",
+          "held",
+          "actionable"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "from_landed": {
+            "type": "integer"
+          },
+          "from_window_merges": {
+            "type": "integer"
+          },
+          "held": {
+            "type": "integer"
+          },
+          "actionable": {
+            "type": "integer"
+          }
+        }
+      },
+      "holds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "tickets_created": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "dropped-work": {
+    "type": "object",
+    "required": [
+      "report_path",
+      "sections",
+      "headline",
+      "residuals",
+      "delegation"
+    ],
+    "properties": {
+      "report_path": {
+        "type": "string"
+      },
+      "sections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "section",
+            "count",
+            "probe",
+            "positive_control",
+            "rows"
+          ],
+          "properties": {
+            "section": {
+              "type": "string",
+              "enum": [
+                "RED ON DEV HEAD",
+                "STALE PLANS",
+                "UNSTARTED WORK BY AGE",
+                "UNREAD LANE REPORTS",
+                "PROPOSED DISPATCH LIST"
+              ]
+            },
+            "count": {
+              "type": "integer"
+            },
+            "probe": {
+              "type": "string"
+            },
+            "positive_control": {
+              "type": "string"
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unknown": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "headline": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "session-goal": {
+    "type": "object",
+    "required": [
+      "goal_path",
+      "goal_rows",
+      "integration_subrows",
+      "publish_state",
+      "kb_pr",
+      "linear_corrected",
+      "linear_flagged",
+      "residuals",
+      "delegation"
+    ],
+    "properties": {
+      "goal_path": {
+        "type": "string"
+      },
+      "goal_rows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "integration_subrows": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "publish_state": {
+        "type": "string",
+        "enum": [
+          "PUBLISHED",
+          "SKIPPED",
+          "BLOCKED"
+        ]
+      },
+      "kb_pr": {
+        "type": "string"
+      },
+      "linear_corrected": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "linear_flagged": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "residuals": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "delegation": {
+        "type": "object",
+        "required": [
+          "delegated",
+          "runs",
+          "reason"
+        ],
+        "properties": {
+          "delegated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

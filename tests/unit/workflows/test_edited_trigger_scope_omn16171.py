@@ -70,7 +70,6 @@ MUST_NOT_LIST_EDITED: tuple[str, ...] = (
     "occ-emitter-golden-gate.yml",
     "projection-exposure-drift-gate.yml",
     "reject-leaked-literals.yml",
-    "call-occ-attestation-observe.yml",
 )
 
 # Gates whose verdict depends on the PR body, title, or base branch, or which
@@ -78,11 +77,9 @@ MUST_NOT_LIST_EDITED: tuple[str, ...] = (
 # `edited` here is the dangerous direction -- it is silent.
 MUST_LIST_EDITED: tuple[str, ...] = (
     "pr-title-check.yml",
-    "call-receipt-gate.yml",
     "call-reject-skip.yml",
     "main-target-guard.yml",
     "non-dev-base-guard.yml",
-    "call-occ-preflight.yml",
 )
 
 

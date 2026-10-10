@@ -345,7 +345,6 @@ profiles:
       - "code_review"
       - "planning"
       - "escalation"
-      - "reasoning"
       - "complex_reasoning"
     directive:
       placement: user_prefix
@@ -353,5 +352,109 @@ profiles:
       separator: "\n"
       apply_once: true
     request_options:
+      chat_template_kwargs:
+        enable_thinking: false
+
+  # OMN-20469: task type `reasoning` (only) runs on Qwen3.8-27B with thinking ON.
+  #
+  # The OMN-19267 blanking above was measured on 2026-09-23 with six prompts per
+  # class and a server that returned the trace inline. The pre-registered replay
+  # of 2026-10-09 ran 60 stored reasoning prompts under both arms at temperature
+  # 0.3 and the delegate's own max_tokens, judged blind by a Codex judge and an
+  # Opus judge: thinking on was accepted 48 of 60 (both judges); thinking off, as
+  # the profile above sent it, 28 of 60 (Codex) and 35 of 60 (Opus). Gains of 33.3
+  # and 21.7 points, exact paired p 0.00001 and 0.00098, clear the bar of 15
+  # points and p below 0.05 on each judge. In the thinking-on arm 0 of 60
+  # responses were refused by the extractor and the servers returned the trace in
+  # `reasoning_content`, never in `content`. That separation is the servers'
+  # reasoning-parser setting, so a deployment has to keep it.
+  #
+  # Cost, from the replay: median latency 3.1 s to 40.5 s, mean completion
+  # tokens 387 to 3,818, slowest call 239.9 s against the backend's 300 s timeout.
+  #
+  # No directive: the measured arm sent no `/no_think` prefix and no other prompt
+  # text. No `default_temperature` and no `max_tokens`: both stay what they were.
+  # Scoped to the model that was measured. Qwen3.6-35B-A3B on the Studio planner
+  # rung is not matched by this pattern and keeps its own thinking-off profile.
+  # `complex_reasoning` was not part of the replay and stays on the profile above.
+  #
+  # OMN-19267: thinking stays on, bounded so one call fits the effect's 120 s
+  # per-call ceiling (node_llm_delegation_call_effect contract.yaml
+  # `timeout_seconds`). The replay above was measured against the backend's
+  # 300 s timeout; under the 120 s ceiling an unbounded trace timed out on the
+  # vLLM rung and ran out of max_tokens on the llama.cpp GPU rung (run
+  # 26dc1045, 2026-10-10).
+  #
+  # Measured 2026-10-10 with in-process `onex delegate --task-type reasoning`
+  # pinned to one rung, three stored reasoning prompts x 5 runs, rung latency:
+  #   no budget    vLLM rung        6 of 15 within 120 s, max 195.9 s,
+  #                                 up to 16901 tokens
+  #   no budget    llama.cpp GPU   10 of 15 within 120 s, max 205.8 s,
+  #                                 one timeout
+  #   budget 4096  vLLM rung       14 of 15 within 120 s, max 123.1 s
+  #   budget 2048  vLLM rung       15 of 15 within 120 s, max 60.9 s
+  #   budget 2048  llama.cpp GPU   15 of 15 within 120 s, max 42.8 s
+  #   budget 1024  vLLM rung       14 of 15 answered, one cancelled at 150 s
+  # Every 2048 answer was accepted by the class gate and non-empty. vLLM
+  # overran its cap on 3 of its 45 capped runs; the worst at 2048 was 4651
+  # tokens in 60.9 s.
+  #
+  # Two spellings, because the servers differ and each ignores the other's
+  # field (live probes 2026-10-10): vLLM reads `thinking_token_budget`,
+  # llama.cpp reads `thinking_budget_tokens`. The chat template's own
+  # `reasoning_effort` switch (default xhigh) did not bound the trace: `low`
+  # still thought for 6605 tokens on one prompt.
+  #
+  # Not fitted: the Mac Studio planner rung serves this model at 11 to 17
+  # tokens/s, so at 2048 it answered in 123 to 196 s (3 of 3 over 120 s). Its
+  # place on the reasoning ladder is a routing question, not this profile's.
+  - profile_id: local-qwen38-reasoning-thinking-on
+    enabled: true
+    model_name_patterns:
+      - "*qwen3.8-27b*"
+    task_types:
+      - "reasoning"
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: true
+      thinking_token_budget: 2048
+      thinking_budget_tokens: 2048
+
+  # OMN-17427: the .200 Mac Studio planner rung (backend local-studio-planner,
+  # llama.cpp on :8130) serves Qwen3.6-35B-A3B under the alias
+  # `qwen3.6-35b-a3b` since 2026-10-08, replacing gpt-oss-120b (operator RULING
+  # 2026-10-08T17:38:56Z). The `*qwen*` profiles above already turn thinking
+  # off for every class this rung serves; this profile adds the vendor's
+  # sampling for that mode, from the model card (huggingface.co/Qwen/
+  # Qwen3.6-35B-A3B, "Best Practices", read 2026-10-08): Instruct (or
+  # non-thinking) mode `temperature=0.7, top_p=0.80, top_k=20, min_p=0.0,
+  # presence_penalty=1.5, repetition_penalty=1.0`. The card also says Qwen3.6
+  # does not officially support the `/no_think` soft switch; the switch that
+  # holds is `chat_template_kwargs.enable_thinking: false`, set here as well so
+  # this model's sampling and its mode cannot drift apart for a class the
+  # `*qwen*` lists do not name.
+  #
+  # Matched by the exact served alias, so the Qwen3.8-27B rungs on .201 and .202
+  # keep the requests they were measured with. Profiles merge in file order, so
+  # this one is last and its keys win.
+  - profile_id: local-qwen3-6-35b-a3b-vendor-sampling
+    enabled: true
+    model_name_patterns:
+      - "qwen3.6-35b-a3b"
+      - "*/qwen3.6-35b-a3b"
+    # The schema requires a directive. This one is the `*qwen*` profiles' own
+    # `/no_think` prefix with apply_once, so wherever those profiles already
+    # applied it the prompt is unchanged; the load-bearing keys are below.
+    directive:
+      placement: user_prefix
+      text: "/no_think"
+      separator: "\n"
+      apply_once: true
+    default_temperature: 0.7
+    request_options:
+      top_p: 0.8
+      top_k: 20
+      min_p: 0.0
+      presence_penalty: 1.5
       chat_template_kwargs:
         enable_thinking: false

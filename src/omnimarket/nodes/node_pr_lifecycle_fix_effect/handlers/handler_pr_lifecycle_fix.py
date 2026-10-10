@@ -26,6 +26,7 @@ from uuid import UUID
 
 from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.events.pr_landing_companion import (
+    EnumPrLandingCompanionDeclineCode,
     EnumPrLandingCompanionOp,
     ModelPrLandingCompanionOutcome,
 )
@@ -44,6 +45,11 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome
     EnumAutobindOutcome,
     report_autobind_outcome,
     resolve_product_head_sha,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome_reader import (
+    authored_companion,
+    classify_companion_decline,
+    primary_reason,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     classify_trivial_infra_fastpath,
@@ -426,24 +432,27 @@ class HandlerPrLifecycleFix:
 
     @staticmethod
     def _classify_autobind_outcome(
-        *, errored: bool, companion_verified: bool
+        *, errored: bool, companion_verified: bool, fix_action: str = ""
     ) -> EnumAutobindOutcome:
-        """Map a completed autobind arm onto its terminal disposition.
+        """Report what the emitter did, independently of stamp verification.
 
-        Three states, deliberately distinct on the check surface:
-
-        * an exception -> ``ERROR``: an infrastructure/credential/transport
-          fault. The companion will not appear without intervention.
-        * no exception, companion verified -> ``MINTED``.
-        * no exception, companion NOT verified -> ``DECLINED``: every no-mint
-          exit from :class:`OccCompanionEmitter` is a deliberate policy return
-          (lease held, mergeability suppression, already bound, dry run,
-          deferred hand-authoring, no derivable red check). Legible, never
-          merge-blocking.
+        OMN-18939: a mint is MINTED even when its stamp needs verification;
+        an existing binding or repaired stamp is NOOP. Policy returns remain
+        DECLINED even if a verifier finds an existing companion. An exception
+        always wins. The no-action form retains the legacy classifier API.
         """
         if errored:
             return EnumAutobindOutcome.ERROR
-        if companion_verified:
+        primary = primary_reason(fix_action)
+        if authored_companion(primary) is not None:
+            return EnumAutobindOutcome.MINTED
+        code, _, _ = classify_companion_decline(primary)
+        if code in {
+            EnumPrLandingCompanionDeclineCode.ALREADY_BOUND,
+            EnumPrLandingCompanionDeclineCode.STAMP_REBOUND,
+        }:
+            return EnumAutobindOutcome.NOOP
+        if not fix_action and companion_verified:
             return EnumAutobindOutcome.MINTED
         return EnumAutobindOutcome.DECLINED
 
@@ -500,7 +509,10 @@ class HandlerPrLifecycleFix:
         describe the action that would be taken.
         """
         run = await self._run(command)
-        if command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
+        if (
+            command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+            and not command.dry_run
+        ):
             # OMN-18069: the command was consumed, so it gets an answer on the
             # product PR whatever happened -- including (especially) when the
             # handler caught an exception and would otherwise have logged one
@@ -511,6 +523,7 @@ class HandlerPrLifecycleFix:
                 outcome=self._classify_autobind_outcome(
                     errored=run.error is not None,
                     companion_verified=run.occ_companion_verified,
+                    fix_action=run.fix_action,
                 ),
                 reason=run.fix_action,
             )
@@ -554,15 +567,17 @@ class HandlerPrLifecycleFix:
                 command.pr_number,
                 exc,
             )
-        await self._report_autobind_outcome(
-            command=command,
-            outcome=self._classify_autobind_outcome(
-                errored=run.error is not None,
-                companion_verified=run.occ_companion_verified,
-            ),
-            reason=run.fix_action,
-            resolved=(token, head_sha),
-        )
+        if not command.dry_run:
+            await self._report_autobind_outcome(
+                command=command,
+                outcome=self._classify_autobind_outcome(
+                    errored=run.error is not None,
+                    companion_verified=run.occ_companion_verified,
+                    fix_action=run.fix_action,
+                ),
+                reason=run.fix_action,
+                resolved=(token, head_sha),
+            )
         if head_sha is None:
             logger.error(
                 "PR lifecycle fix: no head sha for %s#%s, so no typed companion "
@@ -602,7 +617,13 @@ class HandlerPrLifecycleFix:
         occ_companion_verified = False
         delegation_info = _NOT_DELEGATED
         try:
-            fix_action, delegation_info = await self._route(command)
+            # A dry_run command (the landing orchestrator's shadow mode) is
+            # routed through the no-op adapters: it describes the action and
+            # sends nothing, whatever adapters this handler was built with.
+            router = HandlerPrLifecycleFix() if command.dry_run else self
+            fix_action, delegation_info = await HandlerPrLifecycleFix._route(
+                router, command
+            )
             fix_applied = True
             # OMN-14173 fail-closed accounting: the autobind arm's success is
             # measured by the EFFECT (a pushed OCC companion + Evidence-Source
@@ -614,7 +635,12 @@ class HandlerPrLifecycleFix:
                 command.block_reason
                 == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
             ):
-                verification = await self._occ_verifier.verify_companion(
+                verifier = (
+                    _UnverifiedOccCompanionVerifier()
+                    if command.dry_run
+                    else self._occ_verifier
+                )
+                verification = await verifier.verify_companion(
                     command.repo, command.pr_number, command.ticket_id
                 )
                 occ_companion_verified = verification.verified

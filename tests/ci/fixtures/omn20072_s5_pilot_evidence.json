@@ -1,0 +1,993 @@
+{
+  "bar": {
+    "source": "takeover plan S5 proof, RULING 2026-10-02T15:53:06Z: 30 eligible PRs, no seven-day minimum"
+  },
+  "pilot_prs": {
+    "source": "S5 pilot record section 9.1, rows 1 to 103 in the order printed; each check run is the newest repo-evidence / dod-verify run on the PR's merged head (the first six were read back 2026-10-07 as conclusion success, app 15368, head_sha equal to the merged head)",
+    "rows": [
+      {
+        "pr": 3377,
+        "merged_at": "2026-10-04T19:03:47Z",
+        "merged_head": "9c822cdff257",
+        "check_run": 111505792922,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3386,
+        "merged_at": "2026-10-04T21:25:03Z",
+        "merged_head": "ed0b92dda356",
+        "check_run": 111528511960,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3382,
+        "merged_at": "2026-10-04T21:43:36Z",
+        "merged_head": "1c9efd28a211",
+        "check_run": 111536205742,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3390,
+        "merged_at": "2026-10-04T23:19:32Z",
+        "merged_head": "7c1224bcf95a",
+        "check_run": 111553205393,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3369,
+        "merged_at": "2026-10-04T23:20:11Z",
+        "merged_head": "aa6df56ac534",
+        "check_run": 111535911873,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3364,
+        "merged_at": "2026-10-04T23:33:10Z",
+        "merged_head": "35a207547b35",
+        "check_run": 111556570598,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3391,
+        "merged_at": "2026-10-05T00:45:59Z",
+        "merged_head": "920d1a252ff9",
+        "check_run": 111569657487,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3399,
+        "merged_at": "2026-10-05T01:00:39Z",
+        "merged_head": "bd67610815e8",
+        "check_run": 111572228108,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3400,
+        "merged_at": "2026-10-05T01:34:25Z",
+        "merged_head": "929ffde00d84",
+        "check_run": 111576624699,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3404,
+        "merged_at": "2026-10-05T03:06:13Z",
+        "merged_head": "c3b791a5e9d1",
+        "check_run": 111594168840,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3405,
+        "merged_at": "2026-10-05T03:25:36Z",
+        "merged_head": "cf3a43178a0f",
+        "check_run": 111595239352,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3401,
+        "merged_at": "2026-10-05T04:09:50Z",
+        "merged_head": "5194a54e7fd0",
+        "check_run": 111604717600,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3408,
+        "merged_at": "2026-10-05T06:39:23Z",
+        "merged_head": "fb751e3d38c4",
+        "check_run": 111639756111,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3410,
+        "merged_at": "2026-10-05T08:16:47Z",
+        "merged_head": "c4e384a9778e",
+        "check_run": 111670035155,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3411,
+        "merged_at": "2026-10-05T10:33:47Z",
+        "merged_head": "5ee1c89b960e",
+        "check_run": 111709706590,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3412,
+        "merged_at": "2026-10-05T11:06:58Z",
+        "merged_head": "a286f27cd972",
+        "check_run": 111719905252,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3418,
+        "merged_at": "2026-10-05T12:01:14Z",
+        "merged_head": "b92a81eacdb4",
+        "check_run": 111747708078,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3413,
+        "merged_at": "2026-10-05T12:09:18Z",
+        "merged_head": "c27173fd5c87",
+        "check_run": 111753928342,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3415,
+        "merged_at": "2026-10-05T12:42:25Z",
+        "merged_head": "814b61d6d9b6",
+        "check_run": 111762244820,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3419,
+        "merged_at": "2026-10-05T12:50:21Z",
+        "merged_head": "30e4c86fb691",
+        "check_run": 111765944433,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3414,
+        "merged_at": "2026-10-05T14:18:16Z",
+        "merged_head": "5b392e68e3e4",
+        "check_run": 111807526965,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3421,
+        "merged_at": "2026-10-05T14:21:32Z",
+        "merged_head": "adb6791ec2c6",
+        "check_run": 111780389148,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3423,
+        "merged_at": "2026-10-05T16:17:44Z",
+        "merged_head": "5483cc00e321",
+        "check_run": 111835066391,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3424,
+        "merged_at": "2026-10-05T16:31:25Z",
+        "merged_head": "609e9489c10b",
+        "check_run": 111824876290,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3428,
+        "merged_at": "2026-10-05T16:32:23Z",
+        "merged_head": "62b2daf191e6",
+        "check_run": 111864127718,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3422,
+        "merged_at": "2026-10-05T16:33:43Z",
+        "merged_head": "24b33994d16f",
+        "check_run": 111867118470,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3371,
+        "merged_at": "2026-10-05T16:59:03Z",
+        "merged_head": "650ce529563c",
+        "check_run": 111678756162,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3426,
+        "merged_at": "2026-10-05T17:09:27Z",
+        "merged_head": "a3fdad5875d2",
+        "check_run": 111880479682,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3432,
+        "merged_at": "2026-10-05T17:46:32Z",
+        "merged_head": "8648198bbb5d",
+        "check_run": 111896005685,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3425,
+        "merged_at": "2026-10-05T18:01:39Z",
+        "merged_head": "d385206f47ce",
+        "check_run": 111904043560,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3430,
+        "merged_at": "2026-10-05T18:04:07Z",
+        "merged_head": "fd0f7175d1bb",
+        "check_run": 111903896876,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3370,
+        "merged_at": "2026-10-05T18:10:24Z",
+        "merged_head": "0f9c68617e17",
+        "check_run": 111893304987,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3417,
+        "merged_at": "2026-10-05T18:17:23Z",
+        "merged_head": "5c6627da0f11",
+        "check_run": 111909304926,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3373,
+        "merged_at": "2026-10-05T19:33:20Z",
+        "merged_head": "17a6f93ad959",
+        "check_run": 111676263844,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3368,
+        "merged_at": "2026-10-05T20:54:42Z",
+        "merged_head": "d7153cf4b337",
+        "check_run": 111898695838,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3427,
+        "merged_at": "2026-10-05T22:24:35Z",
+        "merged_head": "2f0f05aba608",
+        "check_run": 111939523280,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3437,
+        "merged_at": "2026-10-05T22:34:51Z",
+        "merged_head": "ae4d0b3ccf7f",
+        "check_run": 112005589305,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3446,
+        "merged_at": "2026-10-05T22:58:01Z",
+        "merged_head": "531f4da93e3e",
+        "check_run": 112014325685,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3455,
+        "merged_at": "2026-10-05T22:59:21Z",
+        "merged_head": "0f70d2bca906",
+        "check_run": 112014847974,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3454,
+        "merged_at": "2026-10-05T23:10:17Z",
+        "merged_head": "85e152a28f39",
+        "check_run": 112018672394,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3431,
+        "merged_at": "2026-10-05T23:27:46Z",
+        "merged_head": "bdd66b9596f7",
+        "check_run": 112023626778,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3452,
+        "merged_at": "2026-10-05T23:36:19Z",
+        "merged_head": "2e326528da9a",
+        "check_run": 112026802679,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3440,
+        "merged_at": "2026-10-06T00:00:58Z",
+        "merged_head": "df8d54eae5d3",
+        "check_run": 112031317117,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3457,
+        "merged_at": "2026-10-06T00:18:37Z",
+        "merged_head": "dbc5db2db513",
+        "check_run": 112039402121,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3447,
+        "merged_at": "2026-10-06T01:04:14Z",
+        "merged_head": "5b9eb7cdf443",
+        "check_run": 112052551494,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3442,
+        "merged_at": "2026-10-06T01:13:33Z",
+        "merged_head": "54b45f01a2e4",
+        "check_run": 112055129064,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3458,
+        "merged_at": "2026-10-06T02:21:46Z",
+        "merged_head": "a3040903272a",
+        "check_run": 112067897104,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3445,
+        "merged_at": "2026-10-06T02:45:33Z",
+        "merged_head": "620cf9a20aee",
+        "check_run": 112066545092,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3461,
+        "merged_at": "2026-10-06T02:46:10Z",
+        "merged_head": "e537d8286864",
+        "check_run": 112074477643,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3444,
+        "merged_at": "2026-10-06T03:05:21Z",
+        "merged_head": "b6e5eac8e95a",
+        "check_run": 112084465772,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3460,
+        "merged_at": "2026-10-06T03:12:31Z",
+        "merged_head": "cea30c1729d4",
+        "check_run": 112086156356,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3468,
+        "merged_at": "2026-10-06T03:12:53Z",
+        "merged_head": "a9b514a7ed9f",
+        "check_run": 112086804245,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3467,
+        "merged_at": "2026-10-06T03:41:12Z",
+        "merged_head": "85daf9c46cd1",
+        "check_run": 112093371434,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3439,
+        "merged_at": "2026-10-06T03:41:37Z",
+        "merged_head": "f7d9c315f9a6",
+        "check_run": 112093601507,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3463,
+        "merged_at": "2026-10-06T03:50:08Z",
+        "merged_head": "e1ece0043a9f",
+        "check_run": 112095730798,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3473,
+        "merged_at": "2026-10-06T03:50:19Z",
+        "merged_head": "f79208bd4c6e",
+        "check_run": 112095859616,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3470,
+        "merged_at": "2026-10-06T04:20:27Z",
+        "merged_head": "66da1a4937e6",
+        "check_run": 112102477649,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3420,
+        "merged_at": "2026-10-06T04:32:14Z",
+        "merged_head": "e739760fdde1",
+        "check_run": 112105791505,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3466,
+        "merged_at": "2026-10-06T04:38:14Z",
+        "merged_head": "2e2a253a6b7b",
+        "check_run": 112107388242,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3407,
+        "merged_at": "2026-10-06T05:07:04Z",
+        "merged_head": "44d85b0ede26",
+        "check_run": 112111538782,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3471,
+        "merged_at": "2026-10-06T05:43:29Z",
+        "merged_head": "a53070385a57",
+        "check_run": 112123327077,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3441,
+        "merged_at": "2026-10-06T07:01:44Z",
+        "merged_head": "85ad86033e49",
+        "check_run": 112145212738,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3462,
+        "merged_at": "2026-10-06T07:15:01Z",
+        "merged_head": "edeed0c27c88",
+        "check_run": 112077668765,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3453,
+        "merged_at": "2026-10-06T07:26:42Z",
+        "merged_head": "e7e5ed91d672",
+        "check_run": 112153247745,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3451,
+        "merged_at": "2026-10-06T07:27:12Z",
+        "merged_head": "eb704baae6c3",
+        "check_run": 112152852102,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3450,
+        "merged_at": "2026-10-06T07:32:03Z",
+        "merged_head": "51cf41ec1908",
+        "check_run": 112146549750,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3481,
+        "merged_at": "2026-10-06T10:54:08Z",
+        "merged_head": "5b0903a4907c",
+        "check_run": 112215005363,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3482,
+        "merged_at": "2026-10-06T14:49:52Z",
+        "merged_head": "4579a6d74e4b",
+        "check_run": 112326865798,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3484,
+        "merged_at": "2026-10-06T15:07:03Z",
+        "merged_head": "c71544954448",
+        "check_run": 112335020746,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3483,
+        "merged_at": "2026-10-06T15:42:34Z",
+        "merged_head": "7a60eaf09dea",
+        "check_run": 112358141461,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3480,
+        "merged_at": "2026-10-06T15:47:04Z",
+        "merged_head": "032ca80197a0",
+        "check_run": 112353749273,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3448,
+        "merged_at": "2026-10-06T17:24:39Z",
+        "merged_head": "8e9838d96a45",
+        "check_run": 112392614048,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3486,
+        "merged_at": "2026-10-06T17:48:29Z",
+        "merged_head": "aa6053d27ef4",
+        "check_run": 112401699272,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3485,
+        "merged_at": "2026-10-06T18:28:31Z",
+        "merged_head": "6e351f78e6b1",
+        "check_run": 112425363139,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3449,
+        "merged_at": "2026-10-06T19:30:03Z",
+        "merged_head": "ffc31bd19376",
+        "check_run": 112454894953,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3487,
+        "merged_at": "2026-10-06T19:51:18Z",
+        "merged_head": "664fe1913191",
+        "check_run": 112463395342,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3490,
+        "merged_at": "2026-10-06T20:12:53Z",
+        "merged_head": "303cc2b0d988",
+        "check_run": 112473874784,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3488,
+        "merged_at": "2026-10-06T20:31:49Z",
+        "merged_head": "eb7c8549abd4",
+        "check_run": 112480884119,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3416,
+        "merged_at": "2026-10-06T20:38:25Z",
+        "merged_head": "4508a14e2080",
+        "check_run": 112484393445,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3438,
+        "merged_at": "2026-10-06T20:54:33Z",
+        "merged_head": "a5c250c52067",
+        "check_run": 112483980929,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3494,
+        "merged_at": "2026-10-06T21:31:18Z",
+        "merged_head": "82cdc90721ba",
+        "check_run": 112505974557,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3476,
+        "merged_at": "2026-10-06T21:33:14Z",
+        "merged_head": "8f64815a878f",
+        "check_run": 112505704571,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3474,
+        "merged_at": "2026-10-06T21:56:21Z",
+        "merged_head": "21c860784a93",
+        "check_run": 112516332975,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3492,
+        "merged_at": "2026-10-06T22:26:23Z",
+        "merged_head": "2ab59c3faa9d",
+        "check_run": 112526501307,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3478,
+        "merged_at": "2026-10-06T23:00:25Z",
+        "merged_head": "0cf0a1db2e4d",
+        "check_run": 112532749325,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3496,
+        "merged_at": "2026-10-06T23:13:46Z",
+        "merged_head": "939996a3c80b",
+        "check_run": 112542253520,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3502,
+        "merged_at": "2026-10-07T00:27:12Z",
+        "merged_head": "6c295ac7d8a0",
+        "check_run": 112565823692,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3443,
+        "merged_at": "2026-10-07T00:43:46Z",
+        "merged_head": "9c482c7c900e",
+        "check_run": 112548793900,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3498,
+        "merged_at": "2026-10-07T00:49:37Z",
+        "merged_head": "17533d1243bb",
+        "check_run": 112571061983,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3499,
+        "merged_at": "2026-10-07T01:15:39Z",
+        "merged_head": "095798db3814",
+        "check_run": 112579093985,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3495,
+        "merged_at": "2026-10-07T01:55:55Z",
+        "merged_head": "a686b2b01000",
+        "check_run": 112590093431,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3500,
+        "merged_at": "2026-10-07T02:12:01Z",
+        "merged_head": "da0c4bc6e1ec",
+        "check_run": 112593304609,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3504,
+        "merged_at": "2026-10-07T02:13:37Z",
+        "merged_head": "5955324bc3f6",
+        "check_run": 112594485583,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3501,
+        "merged_at": "2026-10-07T03:06:40Z",
+        "merged_head": "e92e825ffdcc",
+        "check_run": 112607354570,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3503,
+        "merged_at": "2026-10-07T03:17:53Z",
+        "merged_head": "b6b0d150ebc4",
+        "check_run": 112610386169,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3436,
+        "merged_at": "2026-10-07T04:55:38Z",
+        "merged_head": "99f82f32084f",
+        "check_run": 112634238574,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3505,
+        "merged_at": "2026-10-07T05:45:21Z",
+        "merged_head": "0e6cbf95e4c9",
+        "check_run": 112648503887,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3506,
+        "merged_at": "2026-10-07T06:05:23Z",
+        "merged_head": "c1efae598ee0",
+        "check_run": 112652582026,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3507,
+        "merged_at": "2026-10-07T06:21:44Z",
+        "merged_head": "95c7e27a5a52",
+        "check_run": 112648510012,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3378,
+        "merged_at": "2026-10-07T08:29:41Z",
+        "merged_head": "4f0412d2db3a",
+        "check_run": 112683658137,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3361,
+        "merged_at": "2026-10-07T08:41:35Z",
+        "merged_head": "470e0d59afaf",
+        "check_run": 112641454825,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3469,
+        "merged_at": "2026-10-07T09:33:13Z",
+        "merged_head": "74090c96e0a1",
+        "check_run": 112721575093,
+        "outcome": "agree",
+        "reason_code": null
+      },
+      {
+        "pr": 3406,
+        "merged_at": "2026-10-07T09:47:10Z",
+        "merged_head": "aed3debf7118",
+        "check_run": 112722816927,
+        "outcome": "agree",
+        "reason_code": null
+      }
+    ]
+  },
+  "window": {
+    "source": "rolling ledger STATUS 2026-10-07T10:04:55Z, lane occ-canary-0950; the merge count re-read locally with git log --first-parent c67377bf8..dd276da73 (114 commits)",
+    "after_merge": "c67377bf8",
+    "through_merge": "dd276da73",
+    "first_parent_merges": 114,
+    "bot_version_bumps_excluded": 8,
+    "not_counted": [
+      {
+        "pr": 3183,
+        "check_run": 111355445955
+      },
+      {
+        "pr": 3319,
+        "check_run": 111422270254
+      },
+      {
+        "pr": 3363,
+        "check_run": 111404446969
+      }
+    ],
+    "not_counted_reason": "newest repo-evidence / dod-verify run predates omnimarket#3380, compare-with-occ false, no difference outcome",
+    "counted": 103,
+    "bar_violations": {
+      "new_path_admit_over_behavioural_occ_refusal": 0,
+      "counted_comparison_without_reason_code": 0,
+      "accepted_negative_control": 0
+    }
+  },
+  "cases": {
+    "source": "S5 pilot record sections 4, 7 and 8 for the check runs; rolling ledger STATUS 2026-10-07T10:04:55Z for C13, C14 and C16",
+    "rows": [
+      {
+        "case": "C1",
+        "check_runs": [
+          111536205742
+        ]
+      },
+      {
+        "case": "C2",
+        "check_runs": [
+          111525693345,
+          111536205742
+        ]
+      },
+      {
+        "case": "C4",
+        "check_runs": [
+          111558217999,
+          111558233762
+        ]
+      },
+      {
+        "case": "C5",
+        "check_runs": [
+          111558243937
+        ]
+      },
+      {
+        "case": "C8",
+        "check_runs": [
+          111558256531
+        ]
+      },
+      {
+        "case": "C10",
+        "check_runs": [
+          111495889698
+        ]
+      },
+      {
+        "case": "C12",
+        "check_runs": [
+          111528205374,
+          111528511960
+        ]
+      },
+      {
+        "case": "C13",
+        "check_runs": [],
+        "ledger_status": "2026-10-07T10:04:55Z",
+        "note": "live on omnimarket#3462, merged head one run after 16 sibling merges, verdict unchanged"
+      },
+      {
+        "case": "C14",
+        "check_runs": [],
+        "ledger_status": "2026-10-07T10:04:55Z",
+        "note": "live in substance: OCC red for companion latency, new path admitted, the OCC context held the merge; never observed with occ_not_on_main"
+      },
+      {
+        "case": "C15",
+        "check_runs": [
+          111558265465,
+          111563677255
+        ]
+      },
+      {
+        "case": "C16",
+        "check_runs": [],
+        "ledger_status": "2026-10-07T10:04:55Z",
+        "note": "isolated: user-token status on an unreferenced commit, ref update refused HTTP 422, rule suite 4404187383, ruleset 24462257 names the expected GitHub app"
+      },
+      {
+        "case": "C17",
+        "check_runs": [
+          111558279570
+        ]
+      },
+      {
+        "case": "C18",
+        "check_runs": [
+          111536237889
+        ]
+      }
+    ]
+  },
+  "drill": {
+    "source": "S5 pilot record section 3, drill readback taken 17:53:04 on 2026-10-04, before the first counted PR merged",
+    "ruleset": 24462257,
+    "pre_pilot_contexts": [
+      "Architectural Compliance Lint",
+      "CI Naming Convention",
+      "CI Summary",
+      "Canonical Inference Gate",
+      "Customer Path Boundary (OMN-18012)",
+      "Dep Provenance Gate",
+      "Ecosystem Integration Validation",
+      "Enforce validator-requirements.yaml (OMN-13291)",
+      "Hostile Review Gate",
+      "Hostile Reviewer (adversarial gate)",
+      "JS Toolchain Hermetic (OMN-18012)",
+      "Leaked Literals Gate",
+      "Legacy Compatibility Check",
+      "No Faked Boundary Gate",
+      "OCC Emitter Golden Gate",
+      "ONEX Change Control Schema Compatibility",
+      "Omni Standards Gate",
+      "PR Arch Review Gate",
+      "Precommit Fail-Loud Gate",
+      "Projection Exposure Drift Gate",
+      "Repository Structure Validation",
+      "Resolve Bot Token",
+      "Stale TODO Gate",
+      "URL Authority Gate",
+      "Wire Compatibility Gate",
+      "call / validate-docs",
+      "call-reject-skip-token / occ-preflight / eligibility",
+      "dispatcher-route-coverage",
+      "imperative-contract-guard / Imperative Contract Guard",
+      "main-target-guard",
+      "non-dev-base-guard",
+      "occ-preflight / eligibility",
+      "pr-title / check-title",
+      "required-check-skip-guard / check-skip-vectors",
+      "state-coverage-gate"
+    ],
+    "readback_added": [],
+    "readback_removed": [],
+    "performed_at": "2026-10-04T17:53:04Z"
+  }
+}

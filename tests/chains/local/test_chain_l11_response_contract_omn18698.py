@@ -18,8 +18,9 @@ The pair
     A request declares a contract. The assertion is about the WIRE: the
     outbound system prompt the provider received carries the rendered
     instruction and names every required key. The model answers conformingly
-    behind a reasoning preamble, the chain completes, and the caller is handed
-    the OBJECT rather than the prose around it.
+    behind a line of prose, the chain completes, and the caller is handed the
+    OBJECT rather than the prose around it. (A leading reasoning trace is a
+    separate floor, OMN-18278, and fails however good the answer behind it.)
 
 ``test_error_chain_...``
     The same contract, and a model that answers with plausible, well-formed
@@ -62,6 +63,7 @@ from tests.chains.local.harness import (
     local_byok_catalogue,
     no_ambient_provider_credentials,
     run_local_delegation,
+    shipped_byok_model_name,
     use_local_store,
 )
 
@@ -81,13 +83,11 @@ RESPONSE_CONTRACT: dict[str, object] = {
     "additionalProperties": False,
 }
 
-#: A conforming answer, behind the untagged reasoning preamble the served model
-#: actually emits. The preamble is part of the fixture, not noise: a gate that
-#: parsed from character zero is what made a correct answer look wrong.
-_CONFORMING_ANSWER = (
-    "Let me think about this. The change looks correct to me.\n\n"
-    '{"verdict": "pass", "confidence": 0.91}\n'
-)
+#: A conforming answer behind a line of non-reasoning prose. The prose is part
+#: of the fixture, not noise: a gate that parsed from character zero is what
+#: made a correct answer look wrong. It is not a reasoning lead-in, because a
+#: leading trace fails the OMN-18278 floor whatever follows it.
+_CONFORMING_ANSWER = 'Review result:\n\n{"verdict": "pass", "confidence": 0.91}\n'
 
 #: The live failure: well-formed JSON under key names the contract does not
 #: contain. A model that was never shown the schema produces exactly this.
@@ -108,7 +108,11 @@ async def test_golden_chain_the_contract_reaches_the_model_and_the_caller_gets_t
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
         house_openrouter_rung(monkeypatch)
         register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(
@@ -135,10 +139,10 @@ async def test_golden_chain_the_contract_reaches_the_model_and_the_caller_gets_t
     returned = json.loads(response.response)
     assert returned == {"verdict": "pass", "confidence": 0.91}
     assert schema_violation_reasons(returned, RESPONSE_CONTRACT) == []
-    assert "Let me think about this" not in response.response, (
+    assert "Review result" not in response.response, (
         "the value graded and the value returned must be the same value; "
-        "handing back the reasoning preamble leaves the caller unable to parse "
-        "a response the gate just scored"
+        "handing back the prose around the object leaves the caller unable to "
+        "parse a response the gate just scored"
     )
 
 
@@ -154,7 +158,11 @@ async def test_error_chain_guessed_key_names_fail_rather_than_pass(
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
         house_openrouter_rung(monkeypatch)
         register_local_byok_credential(
-            PROVIDER_SLUG, _CUSTOMER_KEY_VALUE, db_path=db_path
+            PROVIDER_SLUG,
+            _CUSTOMER_KEY_VALUE,
+            # OMN-20844: the customer chose the model their key runs.
+            model=shipped_byok_model_name(),
+            db_path=db_path,
         )
 
         response = await run_local_delegation(

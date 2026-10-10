@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""CLI entry point for node_create_ticket: create, read or comment on a ticket.
+"""CLI entry point for node_create_ticket: create, read, comment or transition a ticket.
 
 A create runs the installed ticket-creation guard on the exact payload filed
 (Backlog, no project, the description unchanged) and creates nothing when the
@@ -12,6 +12,7 @@ stub. Any refusal or failure prints ``status="error"`` with the reason in
 Usage:
     python -m omnimarket.nodes.node_create_ticket --operation read --ticket-id OMN-1800
     python -m omnimarket.nodes.node_create_ticket --operation comment --ticket-id OMN-1800 --body "text"
+    python -m omnimarket.nodes.node_create_ticket --operation transition --ticket-id OMN-1800 --state Canceled
     python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --parent OMN-1800 --description-file body.md
     python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --parent OMN-1800 --description-file body.md --dry-run
 
@@ -45,7 +46,7 @@ def main() -> None:
         "--operation",
         default=EnumTicketOperation.CREATE.value,
         choices=[op.value for op in EnumTicketOperation],
-        help="create (default), read or comment.",
+        help="create (default), read, comment or transition.",
     )
     parser.add_argument("--title", default="", help="Ticket title (create).")
     parser.add_argument(
@@ -62,6 +63,9 @@ def main() -> None:
     parser.add_argument("--body", default="", help="Comment body (comment).")
     parser.add_argument(
         "--body-file", default="", help="Read the comment body from this file."
+    )
+    parser.add_argument(
+        "--state", default="", help="Target workflow state, e.g. Canceled (transition)."
     )
     parser.add_argument(
         "--repo",
@@ -122,6 +126,7 @@ def main() -> None:
             description=description,
             ticket_id=args.ticket_id or None,
             body=body,
+            state=args.state,
             repo=args.repo or None,
             parent=args.parent or None,
             blocked_by=blocked_by,

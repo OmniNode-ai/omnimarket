@@ -7,9 +7,9 @@
         --report-dir DIR [--retention-days N] [--as-of ISO8601] [--max-days N] \\
         [--aws-profile P]
 
-The database is the one the contract's dsn_env names (OMNIBASE_INFRA_DB_URL);
-the process fails fast when it is unset. Nothing is ever passed on the command
-line that is a credential.
+The database binding comes from the node contract or the runtime overlay,
+resolved by node_prune_binding_effect at the effect boundary. Missing configuration returns a typed refusal.
+No credential is passed on the command line.
 
 Sink: a local owner-only directory, or S3 with a per-object KMS data key
 (envelope encryption, wrapped key in the object header) and SSE-KMS on the
@@ -25,16 +25,11 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import sys
 from pathlib import Path
 
 from omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune import (
     HandlerDeadLetterPrune,
-    contract_config,
-)
-from omnimarket.nodes.node_dead_letter_prune_effect.handlers.postgres_dead_letter_store import (
-    PostgresDeadLetterStore,
 )
 from omnimarket.nodes.node_dead_letter_prune_effect.models import (
     EnumDeadLetterPruneVerdict,
@@ -82,11 +77,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.s3_uri and not args.kms_key:
         p.error("--s3-uri needs --kms-key")
 
-    cfg = contract_config()
-    store = PostgresDeadLetterStore(os.environ[cfg.dsn_env])
     sink, cipher = _sink_and_cipher(args)
+    handler = HandlerDeadLetterPrune(sink=sink, cipher=cipher)
     try:
-        result = HandlerDeadLetterPrune(store=store, sink=sink, cipher=cipher).handle(
+        result = handler.handle(
             ModelDeadLetterPruneRequest(
                 retention_days=args.retention_days,
                 as_of=dt.datetime.fromisoformat(args.as_of) if args.as_of else None,
@@ -95,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     finally:
-        store.close()
+        handler.close()
 
     runs = Path(args.report_dir)
     runs.mkdir(parents=True, exist_ok=True, mode=0o700)

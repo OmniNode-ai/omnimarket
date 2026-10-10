@@ -153,7 +153,7 @@ async def test_full_success_over_bus(integration_event_bus: Any) -> None:
         runner = _MockRunner(commit_sha="abc123", index_stdout="Total entries: 17\n")
         result = await _drive(
             bus,
-            ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base"),
+            ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base"),
             runner,
         )
         assert result.success is True
@@ -179,7 +179,7 @@ async def test_clone_failure_over_bus(integration_event_bus: Any) -> None:
     try:
         runner = _MockRunner(fail_on="clone")
         result = await _drive(
-            bus, ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base"), runner
+            bus, ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base"), runner
         )
         assert result.success is False
         assert result.error is not None
@@ -204,7 +204,7 @@ async def test_index_failure_over_bus(integration_event_bus: Any) -> None:
     try:
         runner = _MockRunner(commit_sha="sha999", fail_on="index")
         result = await _drive(
-            bus, ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base"), runner
+            bus, ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base"), runner
         )
         assert result.success is False
         assert result.error is not None
@@ -229,7 +229,7 @@ async def test_commit_sha_none_when_rev_parse_fails_over_bus(
     try:
         runner = _MockRunner(fail_on="rev-parse", index_stdout="Indexed 3 documents\n")
         result = await _drive(
-            bus, ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base"), runner
+            bus, ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base"), runner
         )
         assert result.success is True
         assert result.commit_sha is None  # _get_commit_sha swallowed the error
@@ -249,7 +249,7 @@ async def test_deterministic_identical_input_over_bus(
     integration_event_bus: Any,
 ) -> None:
     bus_factory = type(integration_event_bus)
-    command = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge-base")
+    command = ModelKBRepoIndexRequest(kb_repo="OmniNode-ai/knowledge_base")
     payloads: list[str] = []
     for _ in range(2):
         bus = bus_factory(

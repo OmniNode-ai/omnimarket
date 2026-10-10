@@ -442,6 +442,8 @@ bus_seam:
     - onex.evt.omnimarket.pr-landing-companion-outcome.v1
     - onex.evt.omnimarket.pr-landing-github-completed.v1
     - onex.evt.omnimarket.pr-landing-github-failed.v1
+    # OMN-20866: the PR watcher's observations prompt the canary repositories.
+    - onex.evt.omnimarket.pr-state-observed.v1
   publish:
     - onex.cmd.omnimarket.occ-autobind.v1
     - onex.cmd.omnimarket.pr-landing-github-requested.v1

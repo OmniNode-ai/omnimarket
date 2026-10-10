@@ -57,9 +57,18 @@ from omnimarket.projection.protocol_database import (
     InmemoryDatabaseAdapter,
     ProtocolProjectionDatabaseSync,
 )
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+)
 
 _FIXTURES_PATH = Path(__file__).parent / "census_fixtures.yaml"
 _CENSUS_SOURCE = "omnimarket-inmemory-projection-drive"
+
+# OMN-20651: the delegation terminal refuses a write with no declared, registry
+# resolved tenant. Fixtures that name this tenant are resolved against a mirror
+# row seeded into the in-memory DB, so the census drives the real projection.
+_CENSUS_TENANT_UUID = "00000000-0000-4000-8000-000000000651"
+_CENSUS_TENANT_SLUG = "census-fixture-tenant"
 
 
 class CensusCollectionError(RuntimeError):
@@ -176,6 +185,16 @@ def collect_census(
 
         event = event_model(**payload)
         db: ProtocolProjectionDatabaseSync = InmemoryDatabaseAdapter()
+        db.upsert(
+            TENANT_REGISTRY_MIRROR_TABLE,
+            "tenant_slug",
+            {
+                "tenant_slug": _CENSUS_TENANT_SLUG,
+                "tenant_uuid": _CENSUS_TENANT_UUID,
+                "status": "active",
+                "source_event_id": "c0000000-0000-0000-0000-0000000006f1",
+            },
+        )
         handler.project(event, db)  # type: ignore[attr-defined]
         scanned += 1  # a tail surface was actually queried
 

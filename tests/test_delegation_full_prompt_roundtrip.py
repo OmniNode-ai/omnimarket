@@ -19,6 +19,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import (
+    PROJECTION_TENANT_SLUG,
+    seed_tenant_registry,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -34,7 +38,9 @@ def _sha(text: str) -> str:
 def test_delegate_skill_terminal_row_keeps_a_12000_char_prompt_and_response() -> None:
     assert len(_PROMPT) == len(_RESPONSE) == 12000
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     payload: dict[str, object] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "_db": db,
         "_event_type": "delegate-skill-completed",
         "status": "completed",
@@ -64,7 +70,9 @@ def test_delegate_skill_terminal_row_keeps_a_12000_char_prompt_and_response() ->
 
 def test_canonical_terminal_row_keeps_a_12000_char_prompt_and_response() -> None:
     db = InmemoryDatabaseAdapter()
+    seed_tenant_registry(db)
     payload: dict[str, object] = {
+        "tenant_id": PROJECTION_TENANT_SLUG,
         "_db": db,
         "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
         "correlation_id": "6f1c1f0e-8f7a-4f0b-9d55-3a1f6a6f2c02",
