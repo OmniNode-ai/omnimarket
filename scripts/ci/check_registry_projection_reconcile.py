@@ -154,7 +154,7 @@ def _compaction_class_marker() -> str:
     try:
         from omnibase_core.constants.constants_topic_taxonomy import (
             CLEANUP_POLICY_SNAPSHOTS,
-            TOPIC_TYPE_SNAPSHOTS,
+            TAXONOMY_TYPE_SNAPSHOTS,
         )
     except ImportError as exc:  # pragma: no cover - dependency is declared
         raise GateInputError(
@@ -165,10 +165,10 @@ def _compaction_class_marker() -> str:
     if "compact" not in CLEANUP_POLICY_SNAPSHOTS:
         raise GateInputError(
             "the topic taxonomy no longer assigns a compaction policy to "
-            f"{TOPIC_TYPE_SNAPSHOTS!r} ({CLEANUP_POLICY_SNAPSHOTS!r}); this "
+            f"{TAXONOMY_TYPE_SNAPSHOTS!r} ({CLEANUP_POLICY_SNAPSHOTS!r}); this "
             "gate's compaction rule must be re-derived before it can pass."
         )
-    return str(TOPIC_TYPE_SNAPSHOTS)
+    return str(TAXONOMY_TYPE_SNAPSHOTS)
 
 
 def _is_compaction_class(topic: str, marker: str) -> bool:

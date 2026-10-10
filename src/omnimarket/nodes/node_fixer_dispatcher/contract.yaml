@@ -7,9 +7,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Routes PR stall events to the correct fixer node. Pure compute —
-  all routing is table-driven with zero network calls. Dispatches to
-  ci_fix_effect (RED), conflict_hunk_effect (CONFLICTED), rebase_effect
-  (BEHIND), or emits deploy-gate advisory. Unknown categories escalate.
+  all routing is table-driven with zero network calls. RED, CONFLICTED and
+  BEHIND all route to pr_lifecycle_fix_effect (its delegated fix and its
+  update-branch path), keyed by block_reason in the payload hint. Emits a
+  deploy-gate advisory for DEPLOY_GATE. Unknown categories escalate.
 
 handler:
   module: omnimarket.nodes.node_fixer_dispatcher.handlers.handler_fixer_dispatcher
@@ -90,9 +91,9 @@ terminal_event: onex.evt.omnimarket.fixer-dispatch-completed.v1
 
 routing:
   command_topics:
-    red: "onex.cmd.omnimarket.ci-fix-start.v1"
-    conflicted: "onex.cmd.omnimarket.conflict-hunk-start.v1"
-    behind: "onex.cmd.omnimarket.rebase-start.v1"
+    red: "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"
+    conflicted: "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"
+    behind: "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"
 
 event_bus:
   subscribe_topics:

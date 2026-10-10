@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20867"
+title: "Lab-fill headroom plan and lab-fill, hourly and throughput decision nodes running from the runtime tick"
+summary: "A host probe with idle slots but no fresh headroom reading gives a typed HEADROOM_UNKNOWN failure for that host; a fresh reading with free slots gives a placement plan; a fan-out claim is derived only from dispatch records read back in the same tick. Lab-fill, hourly and throughput decision nodes run from the runtime tick."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "public_api"
+requirements:
+  - id: "req-headroom-unknown-failure"
+    statement: |-
+      The lab-fill plan fails loudly for an idle host it cannot read headroom for.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1 (AC-M2): plan_lab_fill_headroom gives HEADROOM_UNKNOWN (terminal_failure_cause, routed to the declared failure terminal topic) for a host with idle slots and a missing, stale or future headroom reading, and a placement plan for a host with a fresh reading; verify_lab_fill_fanout counts only dispatch records of the request's tick and gives FANOUT_UNPROVEN for a claimed lane with no matching record.
+  - id: "req-runtime-tick-schedule"
+    statement: "Lab-fill hourly and throughput decision nodes running from the runtime tick"
+    acceptance:
+      - id: "AC2"
+        statement: 'AC2: contracts route platform.runtime-tick with interval/offset lab-fill 1200/600 seconds, hourly 3600/900, throughput 600/0 -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
+      - id: "AC3"
+        statement: 'AC3: one scheduled fire per interval and none on ticks inside interval -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
+      - id: "AC4"
+        statement: 'AC4: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish scheduled fires on terminal topics, no host env or process in routes -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
+evidence_requirements:
+  - kind: "tests"
+    description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_headroom_plan.py tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py tests/gates/test_contract_publish_parity.py -q"
+  - kind: "tests"
+    description: "Runtime tick contract routing, interval decisions and terminal-topic readback tests."
+    command: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20867-headroom-unknown"
+    description: "The headroom plan and fan-out readback tests and the publish parity gate tests pass at the PR head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_headroom_plan.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "failure_terminal"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "repaired_nodes"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/gates/test_contract_publish_parity.py -q -p no:randomly -k "not failure_terminal and not repaired_nodes"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-headroom-unknown-cause"
+    description: "The headroom plan handler emits the HEADROOM_UNKNOWN failure cause."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'HEADROOM_UNKNOWN' src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_headroom_plan.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-runtime-tick-schedule"
+    description: "Runtime tick schedule tests pass at the PR head, including real contract wiring and terminal-topic readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3", "AC4"]
