@@ -13,10 +13,14 @@ from omnimarket.models.ci_red_triage import (
     ModelCiRunFailedEvent,
     ci_run_failed_event_id,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims import (
+    ProjectionCiRedClaims,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_triage import (
     EventCiRedFactsReader,
     HandlerCiRedTriage,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 pytestmark = pytest.mark.unit
 
@@ -68,7 +72,9 @@ class UnreadableGitHub:
 async def decide(event: ModelCiRunFailedEvent) -> tuple[ModelCiRedTriageDecided, int]:
     github = UnreadableGitHub()
     handler = HandlerCiRedTriage(
-        facts_reader=EventCiRedFactsReader(fallback=github), act=False
+        facts_reader=EventCiRedFactsReader(fallback=github),
+        act=False,
+        claims=ProjectionCiRedClaims(InmemoryDatabaseAdapter()),
     )
     output = await handler.handle(event)
     [decision] = [e for e in output.events if isinstance(e, ModelCiRedTriageDecided)]
@@ -80,7 +86,9 @@ async def test_runner_class_is_decided_from_the_event_conclusions() -> None:
     decision, reads = await decide(red(("unit", "timed_out")))
     assert decision.red_class == EnumCiRedClass.RUNNER
     assert decision.action == EnumCiRedAction.RERUN_FAILED
-    assert "unread=none" in decision.evidence
+    # The event states head conclusions and base reds; it carries no failure
+    # annotations, so annotations are the only unread fact (check-level clustering).
+    assert "unread=annotations start=" in decision.evidence
     assert reads == 0
 
 
