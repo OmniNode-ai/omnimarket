@@ -102,11 +102,13 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
+    model_not_chosen_message,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
     byok_declared_price_per_1m,
+    catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -571,6 +573,18 @@ class HandlerLlmDelegationCall:
         byok = self._customer_byok_row(request, endpoint_url)
         if byok is None:
             return self._execute_call_once(request, endpoint_url, event_publisher)
+        if byok.customer_chooses_model:
+            # OMN-20844: the customer chooses this provider's model. A credential
+            # with none is refused rather than given a catalogue pick, and a
+            # model the customer named is called once and never swapped.
+            if request.model_id == BYOK_MODEL_UNRESOLVED:
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            if not catalogue_prefers_model(byok, request.model_id):
+                return self._execute_call_once(request, endpoint_url, event_publisher)
         configured = request.model_id
         if request.model_id == BYOK_MODEL_UNRESOLVED:
             resolved = self._resolve_byok_model(request, byok, exclude=())

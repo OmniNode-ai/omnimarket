@@ -24,6 +24,8 @@ from omnimarket.inference.local_byok_credential_adapter import (
 pytestmark = pytest.mark.unit
 
 _REF = "llm.openrouter.api_key"
+# OMN-20844: the customer chooses the OpenRouter model their key runs.
+_CHOSEN = ("--model", "openai/gpt-5-nano")
 _GOOD = "sk-or-v1-abcdef0123456789"
 
 
@@ -64,7 +66,7 @@ def test_prompt_names_the_reference_and_stores_a_confirmed_value(
 ) -> None:
     tty = _Tty(monkeypatch, [_GOOD, _GOOD])
 
-    result = _run(["set", _REF])
+    result = _run(["set", _REF, *_CHOSEN])
 
     assert result.exit_code == 0, result.output
     assert _stored() == _GOOD
@@ -78,7 +80,7 @@ def test_a_mismatched_confirmation_stores_nothing(
 ) -> None:
     _Tty(monkeypatch, [_GOOD, _GOOD + "x"])
 
-    result = _run(["set", _REF])
+    result = _run(["set", _REF, *_CHOSEN])
 
     assert result.exit_code != 0
     assert "did not match" in result.output
@@ -88,7 +90,7 @@ def test_a_mismatched_confirmation_stores_nothing(
 def test_an_empty_entry_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     _Tty(monkeypatch, ["   "])
 
-    result = _run(["set", _REF])
+    result = _run(["set", _REF, *_CHOSEN])
 
     assert result.exit_code != 0
     assert _stored() is None
@@ -100,7 +102,7 @@ def test_a_wrong_prefix_is_refused_naming_the_expected_shape(
     bad = "sk-not-an-openrouter-key"
     _Tty(monkeypatch, [bad, bad])
 
-    result = _run(["set", _REF])
+    result = _run(["set", _REF, *_CHOSEN])
 
     assert result.exit_code != 0
     assert "sk-or-v1-" in result.output
@@ -127,7 +129,9 @@ def test_the_value_never_reaches_output_or_logs(
     _Tty(monkeypatch, [secret, secret])
 
     with caplog.at_level(logging.DEBUG):
-        result = CliRunner().invoke(secret_group, ["set", _REF], catch_exceptions=False)
+        result = CliRunner().invoke(
+            secret_group, ["set", _REF, *_CHOSEN], catch_exceptions=False
+        )
 
     assert result.exit_code == 0, result.output
     assert secret not in result.output
@@ -141,7 +145,7 @@ def test_a_wrong_prefix_on_the_prompt_never_echoes_the_value(
     _Tty(monkeypatch, [bad, bad])
 
     with caplog.at_level(logging.DEBUG):
-        result = _run(["set", _REF])
+        result = _run(["set", _REF, *_CHOSEN])
 
     assert bad not in result.output
     assert bad not in caplog.text
@@ -149,7 +153,10 @@ def test_a_wrong_prefix_on_the_prompt_never_echoes_the_value(
 
 def test_the_piped_form_is_unchanged_and_skips_the_prefix_check() -> None:
     result = CliRunner().invoke(
-        secret_group, ["set", _REF], input="sk-customer-key\n", catch_exceptions=False
+        secret_group,
+        ["set", _REF, *_CHOSEN],
+        input="sk-customer-key\n",
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, result.output

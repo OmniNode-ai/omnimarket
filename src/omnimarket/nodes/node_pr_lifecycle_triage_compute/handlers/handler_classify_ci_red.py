@@ -8,7 +8,6 @@ Shared facts and results live in omnimarket.models so readers never import priva
 """
 
 import hashlib
-import re
 
 from omnimarket.models.ci_red_triage import (
     EnumCiRedClass,
@@ -16,11 +15,15 @@ from omnimarket.models.ci_red_triage import (
     ModelCiRedFacts,
     ci_red_repo_slug,
 )
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
+    REVIEWER_POOL_RE,
+    SUMMARY_CHECK_RE,
+)
 
-# Controller classify_red: the aggregate is evidence only when a concrete red exists.
-CI_SUMMARY_RE = re.compile(r"^ci summary$", re.IGNORECASE)
-# Controller reviewer_pool: hostile review alone means reviewer/runner capacity.
-HOSTILE_REVIEW_RE = re.compile(r"hostile review", re.IGNORECASE)
+# The aggregate is evidence only when a concrete red exists, and hostile review alone means reviewer/runner
+# capacity: the same two patterns the landing red rules use (handler_classify_cascade_checks), one copy.
+CI_SUMMARY_RE = SUMMARY_CHECK_RE
+HOSTILE_REVIEW_RE = REVIEWER_POOL_RE
 # Controller cause clustering: aggregates and reviewer gates never form causes.
 NEVER_CLUSTER = frozenset(
     {"CI Summary", "Hostile Reviewer (adversarial gate)", "Hostile Review Gate"}
