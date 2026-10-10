@@ -27,6 +27,7 @@ from omnimarket.nodes.node_event_emit_effect.errors import (
 from omnimarket.nodes.node_event_emit_effect.redaction import (
     default_contract_path,
     load_contract,
+    plan_content_chunks,
     redact_capture,
     scrub_text,
 )
@@ -173,3 +174,26 @@ def test_secret_reference_block_is_fail_closed(
 ) -> None:
     with pytest.raises(MalformedRedactionContractError):
         load_contract(_write_variant(tmp_path, **overrides))
+
+
+@pytest.mark.unit
+def test_chunking_never_cuts_a_reference(tmp_path: Path) -> None:
+    raw = yaml.safe_load(default_contract_path().read_text(encoding="utf-8"))
+    policy = raw["topics"][CONTENT_TOPIC]["content_policy"]
+    policy["chunk_chars"] = 100
+    policy["max_content_chars"] = 250
+    path = tmp_path / "capture_redaction.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    ref = _ref()
+    # The first reference straddles the 100-character chunk boundary and the
+    # second straddles the 250-character cap.
+    text = "a" * 60 + " " + ref + " " + "b" * 70 + " " + ref + " " + "c" * 50
+    plan = plan_content_chunks(text, CONTENT_TOPIC, contract_path=path)
+    assert all(len(chunk) <= 100 for chunk in plan.chunks)
+    joined = "".join(plan.chunks)
+    assert joined == text[: len(joined)]
+    assert plan.truncated is True
+    assert joined.count(ref) == 1, "the cap kept part of the second reference"
+    assert joined.count("secret:") == 1
+    assert sum(chunk.count(ref) for chunk in plan.chunks) == 1
