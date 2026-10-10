@@ -11,6 +11,9 @@ interfaces_touched: []
 requirements:
   - id: "req-ac-m9-dirty-armed-conflict-request"
     statement: "A green head GitHub reports armed (auto-merge or merge queue) and DIRTY against its base gets exactly one conflict request from node_pr_landing_orchestrator per (PR, head, base head), no arm or enqueue, none while held or for a red head, and a new one after the head or base moves once the head is green. The green verdict must be the orchestrator's own."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2 (AC-M9): a green head GitHub reports armed (auto-merge or merge queue) and DIRTY gets exactly one conflict-resolution request from node_pr_landing_orchestrator per (PR, head, base head) and no arm or enqueue; a second record with the same three values emits nothing more; after the base or head moves a new request is allowed -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_dirty_armed_conflict_request_omn_20750.py -q fails when the orchestrator emits nothing for the recorded omnimarket#3722 DIRTY read, emits an arm or enqueue, or emits twice for the same triple"
 evidence_requirements:
   - kind: "tests"
     description: "The omnimarket#3722 replay: a green head GitHub reports armed and DIRTY after dev moved, or first read already DIRTY then confirmed green by the orchestrator; one dry_run conflict request, none repeated for the same (PR, head, base head), one more after the base or head moves once the head is green, none for a held PR or a red head, and no arm or enqueue while DIRTY."
@@ -26,4 +29,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_dirty_armed_conflict_request_omn_20750.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20750-deploy-probe"
+    description: "Deploy probe. The landing orchestrator's core module at the checked-out commit carries the conflict_request step this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it is a PrLandingConflictCommand on onex.cmd.omnimarket.pr-lifecycle-fix-start.v1 with dry_run true for a green, armed PR GitHub reports dirty."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_orchestrator/orchestration/core.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'def conflict_request('"
         cwd: "${OMNI_HOME}/omnimarket"
