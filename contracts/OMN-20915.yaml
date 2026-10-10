@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20915"
-title: "GitHub source-control nodes live in omnimarket only: the PR triage reads fold into the one omnimarket GitHub transport"
-summary: "The three PR triage reads the PR poller needs (open PR list, combined commit status, latest review states) were served by omnibase_infra's own GitHub client. They now live on omnimarket's GitHubHttpTransport, so the poller that moves to omnimarket needs no second GitHub client and the infra adapter can be deleted."
+title: "GitHub source-control nodes live in omnimarket only: the poller and webhook ingress move out of omnibase_infra, and the duplicate pr_state pair, dead merge-sweep workflow and model-only stubs are deleted"
+summary: "omnimarket's GitHubHttpTransport gains the three PR triage reads (open PRs for triage, combined status, review state) that omnibase_infra's GitHub adapter served, with the adapter's error posture: a failed PR list raises, a failed per-PR read degrades to its neutral value. This is the omnimarket half of the adapter fold; the node move and the omnibase_infra deletions are bound by their own pull requests."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,15 +11,10 @@ requirements:
     statement: "omnimarket's GitHubHttpTransport serves the PR triage reads, with the poller's error posture: a failed PR list raises, a failed per-PR read degrades to its neutral value."
     acceptance:
       - id: "AC3"
-        statement: "AC3 (omnimarket half): the open-PR-for-triage, combined-status and review-state reads exist on omnimarket.github_api.GitHubHttpTransport -- falsifier: uv run pytest tests/test_github_api_triage.py -q fails at the merge base"
-# The criterion text above is the lane brief's wording of the omnibase_infra adapter
-# fold; the ticket itself was not readable from this lane (the tracker connector
-# needs an interactive authorization), so the line is not a copy of the ticket's.
-# AC1 (the node move) and AC2 (the infra deletions) are bound by the pull requests
-# that carry them.
+        statement: "AC3: omnibase_infra adapters/github folds into the omnimarket GitHub transport so one GitHub I/O path remains (OMN-14306) -- falsifier: a grep for api.github.com and subprocess gh across omnibase_infra src finds no source-control caller"
 evidence_requirements:
   - kind: "tests"
-    description: "AC3: the triage reads on the omnimarket transport return the augmented PR payloads, page, and degrade as the poller expects."
+    description: "AC3 (omnimarket half): the triage reads on the omnimarket transport return the augmented PR payloads, page, and degrade as the poller expects."
     command: "uv run pytest tests/test_github_api_triage.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
@@ -27,7 +22,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20915-ac3-triage-reads-on-one-transport"
-    description: "AC3: the PR triage reads are served by omnimarket's GitHubHttpTransport."
+    description: "AC3 (omnimarket half): the PR triage reads are served by omnimarket's GitHubHttpTransport."
     source: "manual"
     checks:
       - check_type: "test_passes"
