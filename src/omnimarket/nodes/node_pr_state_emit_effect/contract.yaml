@@ -93,9 +93,9 @@ externally_consumed_topics:
 - onex.evt.omnimarket.pr-state-emit-failed.v1
 externally_produced_topics:
 - topic: onex.evt.github.check-run.v1
-  producer: omnibase_infra node_github_webhook_ingress_effect, which folds check_run deliveries
+  producer: node_github_webhook_ingress_effect, which folds check_run deliveries
 - topic: onex.evt.github.workflow-run.v1
-  producer: omnibase_infra node_github_webhook_ingress_effect, which folds workflow_run deliveries
+  producer: node_github_webhook_ingress_effect, which folds workflow_run deliveries
 metadata:
   transport_type: kafka
 event_type: pr.state.observed

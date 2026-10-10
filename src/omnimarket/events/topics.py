@@ -184,8 +184,10 @@ PR_HANDOFF_LEDGER_APPEND_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-handoff-le
 PR_HANDOFF_LEDGER_APPENDED_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-ledger-appended.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_ledger_effect contract.yaml publish_topics (OMN-20636)
 PR_STATE_OBSERVED_TOPIC_V1 = "onex.evt.omnimarket.pr-state-observed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_state_emit_effect, consumed by node_projection_pr_state and node_pr_handoff_orchestrator (OMN-19999, OMN-20636)
 CI_RUN_FAILED_TOPIC_V1 = "onex.evt.omnimarket.ci-run-failed.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle triage and orchestrator contracts
-GITHUB_CHECK_RUN_TOPIC_V1 = "onex.evt.github.check-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect detect_ci_red_check_run
-GITHUB_WORKFLOW_RUN_TOPIC_V1 = "onex.evt.github.workflow-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect record_workflow_run
+GITHUB_CHECK_RUN_TOPIC_V1 = "onex.evt.github.check-run.v1"  # onex-topic-allow: canonical topic registry; published by node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect detect_ci_red_check_run
+GITHUB_WORKFLOW_RUN_TOPIC_V1 = "onex.evt.github.workflow-run.v1"  # onex-topic-allow: canonical topic registry; published by node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect record_workflow_run
+GITHUB_PR_STATUS_TOPIC_V1 = "onex.evt.github.pr-status.v1"  # onex-topic-allow: canonical topic registry; declared in node_github_pr_poller_effect and node_github_webhook_ingress_effect contract.yaml publish_topics
+GITHUB_BRANCH_HEAD_TOPIC_V1 = "onex.evt.github.branch-head.v1"  # onex-topic-allow: canonical topic registry; declared in node_github_webhook_ingress_effect contract.yaml publish_topics
 CI_RED_TRIAGE_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.ci-red-triage-decided.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator and reducer contracts
 PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator contract
 

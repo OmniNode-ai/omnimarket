@@ -11,9 +11,6 @@ from pathlib import Path
 from typing import overload
 from uuid import NAMESPACE_URL, uuid5
 
-from omnibase_infra.nodes.node_github_webhook_ingress_effect.models.model_github_pr_state_observation import (
-    ModelGitHubPrStateObservation,
-)
 from pydantic import BaseModel
 
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
@@ -51,6 +48,9 @@ from omnimarket.nodes.node_branch_claim_check_effect.models import (
     ModelBranchClaimCheckResult,
     ModelBranchClaimPolicy,
     load_branch_claim_policy,
+)
+from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_pr_state_observation import (
+    ModelGitHubPrStateObservation,
 )
 
 logger = logging.getLogger(__name__)
