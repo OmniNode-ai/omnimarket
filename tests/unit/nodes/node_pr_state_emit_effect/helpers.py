@@ -5,6 +5,7 @@
 from omnimarket.events.pr_state import (
     EnumPrState,
     ModelPrStateObservedEvent,
+    ModelPrStateObservedEventV2,
 )
 
 
@@ -33,3 +34,34 @@ def event(**changes: object) -> ModelPrStateObservedEvent:
     }
     fields.update(changes)
     return ModelPrStateObservedEvent.model_validate(fields)
+
+
+def check_fact(check: str, **changes: object) -> dict[str, object]:
+    fact: dict[str, object] = {
+        "check": check,
+        "conclusion": "failure",
+        "run_id": 17000000001,
+        "workflow": "CI",
+        "completed_at": "2026-10-08T09:58:00Z",
+    }
+    fact.update(changes)
+    return fact
+
+
+def event_v2(**changes: object) -> ModelPrStateObservedEventV2:
+    """A version 2 observation: a red head with per-check facts for every red context."""
+    fields: dict[str, object] = {
+        "ci_verdict": "RED",
+        "red_contexts": ("CI Summary", "unit"),
+        "schema_version": 2,
+        "checks": (
+            check_fact("CI Summary", run_id=17000000002),
+            check_fact("unit", conclusion="timed_out"),
+        ),
+        "base_red_checks": (),
+        "base_read": True,
+    }
+    fields.update(changes)
+    return ModelPrStateObservedEventV2.model_validate(
+        {**event().model_dump(exclude={"digest"}), **fields}
+    )

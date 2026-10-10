@@ -3,6 +3,7 @@
 import hashlib
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -34,10 +35,18 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     ModelPrLifecycleStartCommand,
 )
 from omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_ci_red import (
+    PROCESS_INDEX,
     HandlerDetectCiRed,
 )
 
 CHECK = "branch-claim-check / branch-claim-check"
+
+
+@pytest.fixture(autouse=True)
+def empty_process_index() -> Iterator[None]:
+    PROCESS_INDEX.clear()
+    yield
+    PROCESS_INDEX.clear()
 
 
 def event(
