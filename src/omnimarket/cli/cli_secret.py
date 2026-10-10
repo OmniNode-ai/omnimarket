@@ -43,11 +43,23 @@ from pathlib import Path
 from typing import Any, cast
 
 import click
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
+    CapturedSecretReaderNotConfiguredError,
+    HandlerCapturedSecretResolve,
+    reader_for_this_machine,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request import (
+    ModelCapturedSecretResolveRequest,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
+    EnumCapturedSecretResolveOutcome,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -785,6 +797,40 @@ def delete_secret_value(secret_ref: str) -> None:
     if result.route_withdrawn:
         click.echo(f"Withdrew your {result.provider} route key with it.")
     _fold_credential_events(result, store.db_path)
+
+
+@secret_group.command("check-captured")
+@click.argument("reference")
+@click.option(
+    "--accessor",
+    default="onex-secret-check-captured",
+    show_default=True,
+    help="Who is asking, for the access log. Not an authorization claim.",
+)
+def check_captured(reference: str, accessor: str) -> None:
+    """Check that a captured secret REFERENCE resolves through the store.
+
+    OMN-20926. Resolves as the reader identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``), logged by
+    the store and by the resolver. Prints the outcome and the store key, NEVER
+    the value; exits non-zero unless the reference resolved.
+    """
+    try:
+        request = ModelCapturedSecretResolveRequest(
+            reference=reference, accessor=accessor
+        )
+        reader = reader_for_this_machine(Path.home() / ".onex")
+    except (CapturedSecretReaderNotConfiguredError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from None
+    except ModelOnexError as exc:  # a credentials.json refusal: names keys only
+        raise click.ClickException(exc.message) from None
+    result = HandlerCapturedSecretResolve(store=reader).handle(request)
+    click.echo(
+        f"{result.outcome.value}: {result.store_key or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.outcome is not EnumCapturedSecretResolveOutcome.RESOLVED:
+        raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------
