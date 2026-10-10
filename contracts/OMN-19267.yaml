@@ -13,12 +13,14 @@ requirements:
       - id: "AC4"
         statement: "When a contract declares an item whose id equals a derived falsifier id and a later item supersedes it, the derived falsifier still executes under an id no declared item carries; its pass verifies the criterion, its failure fails the verdict, and a verified declared item of that id cannot stand in for it."
   - id: "req-local-reasoning-delegations-return-accepted-deliverable"
-    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC3 is not bound here: its probe reads the omninode_infra fixture, which this repository's hosted check cannot check out."
+    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC3's probe reads the omninode_infra fixture, which this repository's hosted check cannot check out, so its binding runs at the local done gate only."
     acceptance:
       - id: "AC1"
         statement: "AC1: a reasoning-class delegation on the local tier returns a non-empty deliverable for a reasoning prompt, with no ambiguous_unmarked_deliverable refusal on the accepted attempt -- falsifier: onex delegate --task-type reasoning with a reasoning prompt against the lab endpoint, reading receipt.json output_refusal and result.txt"
       - id: "AC2"
         statement: "AC2: the per-class profile test maps reasoning and complex_reasoning to a thinking-suppressing profile, and fails red on dev before the change -- falsifier: uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q"
+      - id: "AC3"
+        statement: "AC3: the omninode_infra OMN-15651 fixture pins equal the new whole-file sha256 of inference_protocols.v1.yaml once the omnimarket change is on dev -- falsifier: uv run pytest tests/architecture/test_omn_15651_task_class_authority.py -q in omninode_infra against omnimarket dev"
   - id: "req-one-supersession-per-declared-check"
     statement: "The product-repo OCC receipt runner files one supersession record per declared check per cohort, so two contract items that declare the same check never mint a byte-identical replacement pair, which OCC receipt hardening rule S1 rejects and no append-only record can repair. This defect poisoned the OMN-19267 batch windows onex_change_control#12821 and #12855 and held the Done gate of this ticket."
     acceptance:
@@ -74,3 +76,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn19267-ac3-fixture-pins-equal-protocols-sha"
+    description: "AC3 point-in-time readback, local done gate only. At omnimarket 8d9256977cec8029fe7feceb5e8c4e5a145356f0 the whole-file sha256 of inference_protocols.v1.yaml is cfe73e932cdfcfc81d978adf13b9b3ea80e4b3f110af5bb7d655dd44c064361f, and every manifest entry that names that file in the omninode_infra OMN-15651 fixture at omninode_infra 3d0fdd1896a1e73957b5290f4d9fcc8f2d38a5db carries that sha256 as its source_sha256 (8 of 8). Both sides are read at fixed commits, so the item states what held at those commits and not what holds at dev now. It does not run the criterion's named falsifier, which is red at omninode_infra dev on an unrelated skill_mapping.yaml pin until omninode_infra#1849 merges. omnimarket dev has since changed inference_protocols.v1.yaml (omnimarket#3573, whole-file sha256 f8aa1f1a035b9ae4a99fc8d7a50895b354714572451e887a695d81f59481ffd4). Run on 2026-10-08 with the head of omninode_infra#1849 (6592851aa4fa24f6367cc9eec183b0197fd2dd99) against omnimarket dev 9aa677bb78eaf853759aacb89b7a55f0deee83f3 and omnibase_infra dev cb9547e751a1af529e32bf7623ea0785f4e7a045, the named falsifier gave 2 failed and 43 passed, and the drift assertion it printed names this file's pin (observed f8aa1f1a, pinned cfe73e93). So the omninode_infra pins need a further re-pin before the named falsifier can pass against current dev. The read needs the omninode_infra repository, which a hosted runner cannot read."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sha="$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/inference_protocols.v1.yaml?ref=8d9256977cec8029fe7feceb5e8c4e5a145356f0' | sha256sum | cut -d' ' -f1)" && test "$sha" = "cfe73e932cdfcfc81d978adf13b9b3ea80e4b3f110af5bb7d655dd44c064361f" && manifest="$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omninode_infra/contents/tests/fixtures/omn_15651/task_class_authority_manifest.yaml?ref=3d0fdd1896a1e73957b5290f4d9fcc8f2d38a5db')" && paths="$(printf '%s\n' "$manifest" | grep -c 'path: omnimarket/src/omnimarket/configs/inference_protocols.v1.yaml$')" && pins="$(printf '%s\n' "$manifest" | grep -A4 'path: omnimarket/src/omnimarket/configs/inference_protocols.v1.yaml$' | grep -c "source_sha256: $sha")" && test "$paths" -gt 0 && test "$paths" = "$pins" && printf 'inference_protocols.v1.yaml sha256 %s pinned by %s of %s manifest entries\n' "$sha" "$pins" "$paths"
+    binds_ac: ["AC3"]
