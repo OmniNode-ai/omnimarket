@@ -16,6 +16,7 @@ capabilities:
   side_effect_class: pure
 dependencies:
   - pydantic>=2.11.0
+  - omnibase_infra
 authors: [OmniNode Team]
 license: MIT
 tags: [compute, hourly, tick, checkpoint]
