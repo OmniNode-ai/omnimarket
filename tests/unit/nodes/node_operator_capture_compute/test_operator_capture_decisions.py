@@ -391,3 +391,19 @@ def test_drift_ignores_a_ruling_recorded_after_the_message_was_said() -> None:
         )
     )
     assert late.matches == ()
+
+
+def test_drift_needs_the_operators_own_words_to_match() -> None:
+    abstract = _item(K.DECISION, "of course I do", "fixing things confirmation")
+    prior = prior_rulings_from_rows(
+        [
+            "2026-09-30T16:45:51Z | RULING | lane=x | ticket=OMN-4 | question=Keep fixing things? "
+            '| kind=decision | "Do not stop fixing things; confirmation is not needed."'
+        ]
+    )
+    assert (
+        HandlerRulingDrift()
+        .handle(ModelRulingDriftRequest(item=abstract, prior=prior))
+        .matches
+        == ()
+    )

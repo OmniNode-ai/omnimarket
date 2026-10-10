@@ -102,6 +102,7 @@ class HandlerRulingDrift:
         ]
         if not vocabularies:
             return ModelRulingDrift()
+        quote_terms = set(subject_terms(item.quote, 8))
         negated = bool(_NEGATION.search(item.quote))
         cutoff = (
             request.said_at.astimezone(UTC).strftime(_STAMP_FORMAT)
@@ -124,7 +125,9 @@ class HandlerRulingDrift:
                     and len(overlap) > len(shared)
                 ):
                     shared = overlap
-            if not shared:
+            # Grounding: the operator's own words must share the terms too, so an abstract model
+            # subject ("fixing things confirmation") cannot match on its own vocabulary alone.
+            if not shared or len(quote_terms & prior_terms) < MIN_SHARED_TERMS:
                 continue
             relation = (
                 EnumDriftRelation.CONTRADICTS
