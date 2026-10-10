@@ -1704,12 +1704,12 @@ def land_coverage_gaps(
     )
 
 
-def _tick_coverage_gaps(t: _Tick) -> tuple[str, ...]:
+def _tick_coverage_gaps(
+    t: _Tick, merged: set[tuple[str, str | None]]
+) -> tuple[str, ...]:
     """``land_coverage_gaps`` read off the tick, before any decision is built."""
     return _uncovered(
-        t.prs.values(),
-        _merged_heads((*t.actions, *t.observed)),
-        {(pr, t.prs[pr].head_sha) for pr in t.skips},
+        t.prs.values(), merged, {(pr, t.prs[pr].head_sha) for pr in t.skips}
     )
 
 
@@ -1801,15 +1801,18 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         _product_pr(t, p)
     # The tick is local to this call: a raise here leaves no decision, no
     # action and no state behind, so the caller has nothing to act on.
-    gaps = _tick_coverage_gaps(t)
+    merged = _merged_heads((*t.actions, *t.observed))
+    gaps = _tick_coverage_gaps(t, merged)
     if gaps:
         raise LandingCoverageError(
             f"green, CLEAN PRs with no merge and no named reason: {', '.join(gaps)}"
         )
-    return _decision(t)
+    return _decision(t, _land_skips(t, merged))
 
 
-def _decision(t: _Tick) -> ModelLandingDecision:
+def _decision(
+    t: _Tick, land_skips: tuple[ModelLandingLandSkip, ...]
+) -> ModelLandingDecision:
     open_subjects = {
         s
         for s, subj in ((s, t.subject(s)) for s in t.records)
@@ -1861,13 +1864,16 @@ def _decision(t: _Tick) -> ModelLandingDecision:
             if p.state is EnumLandingPrState.OPEN
             and EnumLandingSuspension.GATE in p.suspensions
         ),
-        land_skips=_land_skips(t),
+        land_skips=land_skips,
         next_state=next_state,
     )
 
 
-def _land_skips(t: _Tick) -> tuple[ModelLandingLandSkip, ...]:
-    merged = _merged_heads((*t.actions, *t.observed))
+def _land_skips(
+    t: _Tick, merged: set[tuple[str, str | None]]
+) -> tuple[ModelLandingLandSkip, ...]:
+    """The named skips of the open, green, CLEAN PRs with no merge on their head;
+    a PR that is not green and CLEAN is not a landing candidate and gets no row."""
     rows: list[ModelLandingLandSkip] = []
     for pr in sorted(t.skips):
         p = t.prs[pr]

@@ -292,6 +292,55 @@ def test_omnibase_infra_4798_lab_gate_is_named_and_a_free_head_is_merged() -> No
     assert free.land_skips == ()
 
 
+# ------------------------------------------------ a released gate stays covered
+OBSERVED_4798 = "2026-10-10T08:12:53Z"
+
+
+def _released_4798(**fields: Any) -> dict[str, Any]:
+    """omnibase_infra#4798 under a red-premised gate dated an hour before the tick."""
+    return _pr_4798(
+        suspensions=["gate"],
+        gate_reasons=["worker_gate"],
+        gate_since="2026-10-10T07:11:37Z",
+        **fields,
+    )
+
+
+def _released_tick(
+    prs: list[dict[str, Any]], **extra: Any
+) -> tuple[list[tuple[str, str | None]], dict[str, EnumLandingLandSkipReason]]:
+    facts = _facts(prs, observed_at=OBSERVED_4798, **extra)
+    decision = decide_landing(facts)
+    gate = next(g for g in decision.gates if g.pr == INFRA_4798)
+    assert gate.released is True
+    assert land_coverage_gaps(facts, decision) == ()
+    return _merges(decision), _skips(decision)
+
+
+@pytest.mark.unit
+def test_released_gate_takes_the_ordinary_path_and_is_never_a_gap() -> None:
+    """Releasing a gate drops only the gate suspension: the head then gets a merge
+    or the ordinary path's own named skip (lease, open parent, token), never neither."""
+    assert _released_tick([_released_4798()]) == ([(INFRA_4798, HEAD_4798)], {})
+    leased = _released_tick(
+        [_released_4798()],
+        state={"next_lease_id": 8, "leases": [_lease_4798()]},
+        probes=[{"lease_id": 7, "group_alive": True, "tagged_alive": True}],
+    )
+    assert leased == ([], {INFRA_4798: EnumLandingLandSkipReason.LEASED})
+    parent = "OmniNode-ai/omnibase_infra#4790"
+    stacked = _released_tick([_released_4798(parents=[parent], open_parents=[parent])])
+    assert stacked == ([], {INFRA_4798: EnumLandingLandSkipReason.OPEN_PARENTS})
+    holder = _green(99, repo="OmniNode-ai/omnibase_infra", runtime=True)
+    queued = _released_tick(
+        [_released_4798(), holder], state={"token_holder": holder["pr"]}
+    )
+    assert queued == (
+        [(holder["pr"], holder["head_sha"])],
+        {INFRA_4798: EnumLandingLandSkipReason.TOKEN_HELD},
+    )
+
+
 # -------------------------------------------------------------- AC-M5 fleet
 def _green(n: int, repo: str = "acme/app", **fields: Any) -> dict[str, Any]:
     return {
@@ -370,7 +419,7 @@ def test_fleet_a_gap_fails_the_tick_with_no_decision(
         product_pr(t, p)
         t.skips.pop(p.pr, None)
 
-    def _no_decision(_t: Any) -> None:
+    def _no_decision(*_args: Any) -> None:
         raise AssertionError("a decision was built for a tick with a coverage gap")
 
     monkeypatch.setattr(handler_pr_landing_decision, "_product_pr", _names_nothing)

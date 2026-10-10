@@ -361,7 +361,9 @@ class ModelLandingDecision(BaseModel):
         default=(),
         description=(
             "Every open, green, CLEAN PR with no merge on its head this tick, "
-            "with the one reason why; such a PR has a merge or a row, never neither."
+            "with the one reason why; such a PR has a merge or a row, never neither. "
+            "A PR that is not open, green and CLEAN is not a landing candidate this "
+            "tick and gets no row (its CI or merge state is what holds it)."
         ),
     )
     next_state: ModelLandingControllerState
