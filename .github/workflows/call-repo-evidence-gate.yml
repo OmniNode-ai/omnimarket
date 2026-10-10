@@ -35,6 +35,10 @@
 # verifier-version 0.4.305 is the release omnibase_infra and omnibase_core run.
 # It ships the refusal of a contract that leaves a criterion unbound
 # (omnimarket#3511, first released in 0.4.303; OMN-20070), which 0.4.294 predates.
+# The pinned reusable refuses a verifier-version below 0.4.303 before installing it
+# (VERIFIER_FLOOR, omnibase_core#1932; OMN-20032), so a later re-pin of this input
+# to an older verifier fails the install step instead of admitting a partly bound
+# contract.
 
 name: Repo Evidence Gate
 
@@ -53,7 +57,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@fb0c6c2117d5868a398b0920cd0048d0824415b1 # OMN-20074: immutable full-SHA pin, the squash commit of omnibase_core#1914 on that repo's dev branch, the pin omnibase_core's own caller and omnibase_infra's caller use; it descends from #1912 (and #1884, #1886, #1911) and adds the writer app's release-cut exemption derived at the head.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa # OMN-20032: immutable full-SHA pin, the squash commit of omnibase_core#1932 on that repo's dev branch; it descends from #1914 (and #1912, #1884, #1886, #1911), adds the VERIFIER_FLOOR 0.4.303 refusal to the verifier install step, and carries the writer app's workflow-pin (#1927) and plugin version bump (#1931) classification (the plugin one needs a verifier release newer than 0.4.309).
     with:
       evidence-source: caller
       verifier-version: 0.4.305
