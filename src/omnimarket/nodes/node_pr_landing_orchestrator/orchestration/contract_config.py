@@ -21,7 +21,6 @@ error, never a silent fallback to the shadow defaults.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import timedelta
@@ -37,6 +36,8 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import
     EnumPrLandingGithubOperation,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
+    GATE_ENV_RE,
+    GATE_RELATION_RE,
     PrLandingGateFactsConfig,
     PrLandingOrchestratorConfig,
 )
@@ -76,8 +77,6 @@ _SOURCE_KEYS = frozenset(
         "lab_proof_receipts_relation",
     }
 )
-_RELATION_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
-_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 class PrLandingContractConfigError(ValueError):
@@ -181,12 +180,12 @@ def gate_facts_from_block(block: object) -> PrLandingGateFactsConfig:
     if not isinstance(source, Mapping) or set(source) != _SOURCE_KEYS:
         msg = f"{where}.source must name exactly {sorted(_SOURCE_KEYS)}"
         raise PrLandingContractConfigError(msg)
-    if not _ENV_RE.match(str(source["dsn_env"])):
+    if not GATE_ENV_RE.match(str(source["dsn_env"])):
         msg = f"{where}.source.dsn_env must be an environment variable name"
         raise PrLandingContractConfigError(msg)
     relations = {k: str(v) for k, v in source.items() if k != "dsn_env"}
     for key, relation in relations.items():
-        if not _RELATION_RE.match(relation):
+        if not GATE_RELATION_RE.match(relation):
             msg = f"{where}.source.{key} must be a schema.table relation"
             raise PrLandingContractConfigError(msg)
     return PrLandingGateFactsConfig(

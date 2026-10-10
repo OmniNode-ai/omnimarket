@@ -36,6 +36,7 @@ in the ``state_io`` compare-and-set with retry.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -181,6 +182,8 @@ _RECONCILED = frozenset(
 )
 # OBSERVED evaluates at once; a well-formed reducer leaves OBSERVED in one step.
 _MAX_EVALUATIONS = 4
+GATE_RELATION_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
+GATE_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 _OPERATION_BY_KIND: Mapping[EnumPrLandingIntentKind, EnumPrLandingGithubOperation] = {
     EnumPrLandingIntentKind.GITHUB_ARM: EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
@@ -225,6 +228,19 @@ class PrLandingGateFactsConfig:
     hold_state_relation: str
     ledger_rows_relation: str
     lab_proof_receipts_relation: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "hold_state_relation",
+            "ledger_rows_relation",
+            "lab_proof_receipts_relation",
+        ):
+            if not GATE_RELATION_RE.fullmatch(getattr(self, name)):
+                msg = f"{name} must be a lowercase schema.table identifier"
+                raise ValueError(msg)
+        if not GATE_ENV_RE.fullmatch(self.dsn_env):
+            msg = "dsn_env must be an environment variable name"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -334,12 +350,15 @@ class _Leg:
         self.config = config
         self.ports = ports
         self.emitted: list[BaseModel] = []
-        # The gate facts' reason, carried by the next transition published.
-        self.withheld_reason: str | None = None
 
     # ------------------------------------------------------------------ reduce
 
-    async def apply(self, observation: ModelPrLandingObservation) -> bool:
+    async def apply(
+        self,
+        observation: ModelPrLandingObservation,
+        *,
+        withheld_reason: str | None = None,
+    ) -> bool:
         """Reduce one observation; returns True when a transition was taken.
 
         The reducer owns the row it returns: ``seq``, the state-entry
@@ -369,16 +388,20 @@ class _Leg:
                 trigger=output.trigger,
                 intents=output.intents,
                 transitioned_at=observation.observed_at,
-                withheld_reason=self.withheld_reason,
+                withheld_reason=withheld_reason,
             )
         )
-        self.withheld_reason = None
         self._terminal(before, after, observation.observed_at)
         self._drain_local(before, observation.observed_at)
         return True
 
-    async def apply_and_evaluate(self, observation: ModelPrLandingObservation) -> None:
-        moved = await self.apply(observation)
+    async def apply_and_evaluate(
+        self,
+        observation: ModelPrLandingObservation,
+        *,
+        withheld_reason: str | None = None,
+    ) -> None:
+        moved = await self.apply(observation, withheld_reason=withheld_reason)
         evaluations = 0
         while (
             moved
@@ -1174,6 +1197,7 @@ async def _apply_head_checks(
         # mergeability yet, or still reports it blocked (a required context not
         # posted yet): the head is still pending, read again after the interval.
         verdict = verdict.model_copy(update={"verdict": EnumHeadCheckVerdict.PENDING})
+    withheld_reason: str | None = None
     if verdict.verdict is EnumHeadCheckVerdict.GREEN:
         gate = await leg.gate_decision(message.head_sha)
         if gate.withheld is not None:
@@ -1184,7 +1208,7 @@ async def _apply_head_checks(
             verdict = verdict.model_copy(
                 update={"verdict": EnumHeadCheckVerdict.PENDING}
             )
-            leg.withheld_reason = gate.reason_text
+            withheld_reason = gate.reason_text
             leg.row = leg.row.model_copy(update={"head_checks_etag": None})
     arm_method = await leg.arm_method_for(verdict.verdict)
     await leg.apply_and_evaluate(
@@ -1204,7 +1228,8 @@ async def _apply_head_checks(
                 for a in verdict.check_attempts
             ),
             arm_method=arm_method,
-        )
+        ),
+        withheld_reason=withheld_reason,
     )
 
 
@@ -1234,6 +1259,8 @@ async def _on_github_failed(
 
 __all__: list[str] = [
     "DEFAULT_STATE_BOUNDS",
+    "GATE_ENV_RE",
+    "GATE_RELATION_RE",
     "PrLandingGateFactsConfig",
     "PrLandingOrchestratorConfig",
     "PrLandingOrchestratorPorts",
