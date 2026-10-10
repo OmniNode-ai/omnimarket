@@ -138,6 +138,8 @@ def _foreign_stamp_fakes() -> tuple[object, object]:
             return _product_pr(_bump_body(_FOREIGN_OCC))
         if method == "GET" and path.endswith(f"/pulls/{_FOREIGN_OCC}"):
             return {"head": {"ref": _FOREIGN_OCC_BRANCH}}
+        if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+            return {}  # the base still carries its caller (OMN-20074)
         raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
     def fake_rest_array(
@@ -291,6 +293,8 @@ class TestDuplicateStampRebind:
                 return _product_pr(_core_body(), head=_CORE_HEAD) | {
                     "title": "fix(OMN-19512): receipt gates re-run on ready_for_review"
                 }
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
         def pin(_self: object, *, occ_pr_number: int, **_k: object) -> tuple[str, str]:
@@ -459,6 +463,8 @@ class TestMintPathWriterScopesTheMergedGuard:
             if method == "POST" and path.endswith("/comments"):
                 notes.append(str(body))
                 return {}
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
         def fake_rest_array(
@@ -584,6 +590,8 @@ class TestStaleOwnCompanionRebind:
                         "ref": "auto/omninode-ai-omnibase_core-pr-1768-occ-autobind"
                     },
                 }
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
         def fake_rest_array(
