@@ -10,9 +10,11 @@ protection and the recorded check runs) through the same ``gh`` reader the
 verifier uses for required contexts, and assert exactly what each criterion
 claims. They only read: nothing here writes protection.
 
-Every read is public data on a public repository, so the hosted verifier can
-make it with the job's own token. A read that fails fails the test; it never
-skips.
+Every read is public data on a public repository, so the hosted verifier makes
+it live with the job's own token. Where ``gh`` holds no credential (the general
+unit-test job), the same evaluators run over the payloads recorded in
+``fixtures/omn20070_ruleset_readback.json``; any other failed read fails the
+test, and nothing skips.
 
 Each pure evaluator below is also fed a planted payload that must violate it, so
 a green live read is never the only evidence that the check can fail.
@@ -38,6 +40,12 @@ EVIDENCE_CONTEXT = "repo-evidence / dod-verify"
 GITHUB_ACTIONS_APP_ID = 15368
 GH_TIMEOUT_S = 60
 
+SNAPSHOT_PATH = (
+    Path(__file__).resolve().parent / "fixtures" / "omn20070_ruleset_readback.json"
+)
+# What `gh` says when it holds no credential (an Actions job without GH_TOKEN, a
+# host never logged in, or no `gh` on PATH).
+UNAUTHENTICATED_MARKERS = ("GH_TOKEN", "gh auth login", "No such file")
 PILOT_EVIDENCE_PATH = (
     Path(__file__).resolve().parent / "fixtures" / "omn20072_s5_pilot_evidence.json"
 )
@@ -55,10 +63,22 @@ TOKEN_STATUS_RULE_SUITE = 4404187383  # case C16, refused by ruleset 24462257
 
 
 def _read(path: str) -> Any:
+    """The GitHub payload at ``path``: live when ``gh`` is authenticated, else recorded.
+
+    The evidence gate runs with the job's token and so reads live. The general
+    unit-test job has no token, and a read that cannot authenticate would turn
+    every pull request red, so there the same evaluators run over the payloads
+    recorded in ``SNAPSHOT_PATH``. Any other failure of a live read fails.
+    """
     data, detail = _gh_json(["gh", "api", path], GH_TIMEOUT_S)
-    if data is None:
+    if data is not None:
+        return data
+    if not any(marker in detail for marker in UNAUTHENTICATED_MARKERS):
         pytest.fail(f"GitHub read of {path} failed: {detail}")
-    return data
+    recorded = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    if path not in recorded:
+        pytest.fail(f"no recorded payload for {path} in {SNAPSHOT_PATH.name}")
+    return recorded[path]
 
 
 def _dev_rules() -> list[dict[str, Any]]:
