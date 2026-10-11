@@ -43,11 +43,28 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_golden_ch
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
 )
+from tests.node_overlay_support import (
+    INTEGRATION_SWEEP_OVERLAY,
+    install_node_overlay,
+)
 
 _PROBES_SUBPROCESS = (
     "omnimarket.nodes.node_integration_sweep_orchestrator."
     "handlers.surface_probes.subprocess.run"
 )
+
+
+@pytest.fixture(autouse=True)
+def _deployment_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """The sweep's hosts and endpoints are deployment facts the suite supplies (OMN-20935)."""
+    install_node_overlay(
+        monkeypatch,
+        tmp_path_factory.mktemp("overlay_root"),
+        "node_integration_sweep_orchestrator",
+        INTEGRATION_SWEEP_OVERLAY,
+    )
 
 
 def _dead_infra_run(argv: list[str], **_kwargs: object) -> MagicMock:

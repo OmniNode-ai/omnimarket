@@ -28,6 +28,7 @@ These tests verify:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -62,6 +63,16 @@ def _local_target() -> ModelLaneTarget:
     return resolve_lane_target("local")
 
 
+RUNTIME_HOST = "runtime.example.test"
+
+
+@pytest.fixture(autouse=True)
+def _runtime_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The lane runtime host is a deployment fact the suite supplies (OMN-20935)."""
+    monkeypatch.setenv("ONEX_DATA_FLOW_RUNTIME_HOST", RUNTIME_HOST)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Lane resolution (OMN-13552)
 # ---------------------------------------------------------------------------
@@ -70,17 +81,10 @@ def _local_target() -> ModelLaneTarget:
 @pytest.mark.unit
 class TestLaneResolution:
     def test_dev_lane_resolves_to_remote_host(self) -> None:
-        """dev resolves to the .201 runtime host + unprefixed container names.
-
-        OMN-14531: the default host is the Tailscale MagicDNS name, not the raw
-        private LAN IP — a raw ``192.168.86.201`` default is unroutable
-        off-network (feedback_use_tailscale_magicdns_hostnames), and was a Rule
-        #6 hardcoded-LAN-IP violation. Mirrors the node_database_sweep OMN-14526
-        fix.
-        """
+        """dev resolves to the configured runtime host + unprefixed container names."""
         target = resolve_lane_target("dev")
         assert target.is_remote is True
-        assert target.runtime_host == "omninode-pc.tail75df5e.ts.net"
+        assert target.runtime_host == RUNTIME_HOST
         assert target.redpanda_container == "omnibase-infra-redpanda"
         assert target.postgres_container == "omnibase-infra-postgres"
 
@@ -99,6 +103,35 @@ class TestLaneResolution:
         )
         target = resolve_lane_target("dev")
         assert target.runtime_host == "custom-lane-host.example.com"
+
+    def test_runtime_host_comes_from_the_node_overlay(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """OMN-20935: with no variable set, the node overlay supplies the host."""
+        overlay = tmp_path / "node_data_flow_sweep" / "overlay.yaml"
+        overlay.parent.mkdir()
+        overlay.write_text("runtime_host: overlay.example.test\n", encoding="utf-8")
+        monkeypatch.delenv("ONEX_DATA_FLOW_RUNTIME_HOST")
+        monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+        assert resolve_lane_target("dev").runtime_host == "overlay.example.test"
+
+    def test_variable_wins_over_the_node_overlay(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        overlay = tmp_path / "node_data_flow_sweep" / "overlay.yaml"
+        overlay.parent.mkdir()
+        overlay.write_text("runtime_host: overlay.example.test\n", encoding="utf-8")
+        monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+        assert resolve_lane_target("dev").runtime_host == RUNTIME_HOST
+
+    def test_unconfigured_runtime_host_fails_loud_naming_the_overlay(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-20935: no variable and no overlay is a refusal, never a lab default."""
+        monkeypatch.delenv("ONEX_DATA_FLOW_RUNTIME_HOST")
+        with pytest.raises(LaneResolutionError, match="ONEX_SKILL_OVERLAY_ROOTS"):
+            resolve_lane_target("dev")
+        assert resolve_lane_target("local").runtime_host == ""
 
     def test_prefixed_lanes_resolve_to_prefixed_containers(self) -> None:
         for lane, prefix in (
@@ -160,7 +193,7 @@ class TestRemoteTransport:
         assert captured, "no command was run"
         argv = captured[0]
         assert argv[0] == "ssh", f"remote lane must use ssh, got {argv!r}"
-        assert argv[1] == "jonah@omninode-pc.tail75df5e.ts.net"
+        assert argv[1] == f"jonah@{RUNTIME_HOST}"
         assert "docker exec omnibase-infra-redpanda" in argv[2]
 
     def test_local_lane_probe_uses_bare_docker(self) -> None:

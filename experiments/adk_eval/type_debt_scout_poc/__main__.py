@@ -31,7 +31,6 @@ from experiments.adk_eval.tools.mypy_parser import (
 from experiments.adk_eval.type_debt_scout_poc.handler_type_debt_scout import (
     ModelTrackBConfig,
     _build_router,
-    resolve_base_url_from_env,
     run_type_debt_scout,
 )
 
@@ -158,7 +157,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--metrics", type=Path, required=True)
     parser.add_argument("--runs", type=_positive_int, default=5)
     parser.add_argument("--repo-name", default="omnibase_core")
-    parser.add_argument("--base-url", default=None)
+    parser.add_argument(
+        "--base-url",
+        required=True,
+        help="OpenAI-compatible endpoint base URL (a deployment fact; no default).",
+    )
     parser.add_argument(
         "--model-id",
         default="cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",  # onex-allow-model-id OMN-10580 reason="experiment CLI dev default; override via --model-id"
@@ -184,7 +187,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         print("No findings loaded from input; aborting.", file=sys.stderr)  # noqa: T201
         return 2
 
-    base_url = args.base_url or resolve_base_url_from_env()
+    base_url = args.base_url
     config = ModelTrackBConfig(
         repo_name=args.repo_name,
         base_url=base_url,

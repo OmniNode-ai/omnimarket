@@ -59,7 +59,7 @@ VALID_REPORTING_SOURCES = frozenset(
     {"build-loop", "claude-session", "codex", "unknown"}
 )
 
-DEFAULT_BOOTSTRAP_SERVERS = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-10580 reason="lab Kafka bootstrap default; override via KAFKA_BOOTSTRAP_SERVERS env var"
+BOOTSTRAP_SERVERS_ENV = "KAFKA_BOOTSTRAP_SERVERS"
 DEFAULT_POLL_INTERVAL_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
@@ -151,7 +151,7 @@ class CostEventPublisher:
     def __init__(
         self,
         spool_dir: Path,
-        bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS,
+        bootstrap_servers: str,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
     ) -> None:
@@ -287,6 +287,21 @@ class CostEventPublisher:
             await asyncio.sleep(poll_interval)
 
 
+def bootstrap_servers_from_env() -> str:
+    """The Kafka bootstrap servers the daemon publishes to, from the environment.
+
+    The broker is a deployment fact supplied by whoever runs the daemon (OMN-20935);
+    the script carries no address of its own. An unset or empty variable refuses.
+    """
+    value = os.environ.get(BOOTSTRAP_SERVERS_ENV, "").strip()
+    if not value:
+        raise SystemExit(
+            f"{BOOTSTRAP_SERVERS_ENV} is not configured: set it to the Kafka "
+            "bootstrap servers the cost events are published to"
+        )
+    return value
+
+
 def _spool_dir_from_env() -> Path:
     omni_home = Path(os.environ["OMNI_HOME"])
     return omni_home / ".onex_state" / "llm-cost-events"
@@ -299,12 +314,9 @@ def main() -> None:
         stream=sys.stderr,
     )
 
+    bootstrap_servers = bootstrap_servers_from_env()
     spool_dir = _spool_dir_from_env()
     spool_dir.mkdir(parents=True, exist_ok=True)
-
-    bootstrap_servers = os.environ.get(
-        "KAFKA_BOOTSTRAP_SERVERS", DEFAULT_BOOTSTRAP_SERVERS
-    )
     poll_interval = float(
         os.environ.get(
             "COST_PUBLISHER_POLL_INTERVAL", str(DEFAULT_POLL_INTERVAL_SECONDS)
