@@ -1,0 +1,30 @@
+[
+ {
+  "path": "/repos/example-owner/example-repo/actions/workflows?per_page=100&page=1",
+  "status": 403,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "0",
+   "x-ratelimit-used": "5000",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "message": "API rate limit exceeded for user ID 1."
+  }
+ },
+ {
+  "path": "/repos/example-owner/example-repo/actions/runs?event=schedule&created=%3E%3D2026-10-09T04:00:00Z&per_page=100&page=1",
+  "status": 403,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "0",
+   "x-ratelimit-used": "5000",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "message": "API rate limit exceeded for user ID 1."
+  }
+ }
+]

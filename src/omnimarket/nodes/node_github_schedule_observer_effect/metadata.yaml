@@ -1,0 +1,23 @@
+name: node_github_schedule_observer_effect
+version: "1.0.0"
+description: "GitHub schedule observer: reports every scheduled workflow's runs, disabled schedules, lost merge triggers and unreadable sources as automation-liveness events (OMN-20803)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_github_schedule_observer_effect: "omnimarket.nodes.node_github_schedule_observer_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["liveness", "github", "effect", "schedule", "OMN-20803"]
+pack: "liveness"
+display_name: "GitHub Schedule Observer"
+node_role: "effect"
