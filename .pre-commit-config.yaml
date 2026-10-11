@@ -305,9 +305,11 @@ repos:
   # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
   # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 6e47aa311ac5d177d116d9597b07966a233d2463
+    rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae
     hooks:
       - id: public-repo-hygiene
+        require_serial: true
+      - id: deployment-config
         require_serial: true
 
   # Essential file formatting

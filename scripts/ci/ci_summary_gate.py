@@ -602,6 +602,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # Summary umbrella IS the enforcement surface, so a context missing from
     # this tuple is silently unenforced.
     "public-repo-hygiene / public-repo-hygiene",
+    # OMN-20940 (public-repo-hygiene.yml): the deployment-config job of the same
+    # reusable. No deployment or lab configuration lives in a shipped repository;
+    # the job reads no vocabulary and no secret, so it runs on a fork, and it is a
+    # required context on dev. Same single-job-over-reusable naming as above.
+    "public-repo-hygiene / deployment-config",
     "receipt-honesty",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
     # model for two message categories. Same workflow file and same L4 reasoning as
@@ -1758,7 +1763,10 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             "public-repo-hygiene.yml",
             ("pull_request",),
             (),
-            ("public-repo-hygiene / public-repo-hygiene",),
+            (
+                "public-repo-hygiene / public-repo-hygiene",
+                "public-repo-hygiene / deployment-config",
+            ),
         ),
         (
             "receipt-honesty.yml",
