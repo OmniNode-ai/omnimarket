@@ -364,6 +364,9 @@ class TestRegisterTenantKey:
                 provider = "openrouter"
                 plan = None
                 model = request.model
+                # OMN-20991: the response also carries the expiry and its warning.
+                expires_at = None
+                expiry_warning = None
 
             return _Response()
 
