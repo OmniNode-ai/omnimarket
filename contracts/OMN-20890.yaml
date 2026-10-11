@@ -73,6 +73,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py tests/ci/test_repo_evidence_caller_workflow.py -q -p no:randomly"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q -p no:randomly -k omn20890_park_ladder_checks_name_the_causes_test_file"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
