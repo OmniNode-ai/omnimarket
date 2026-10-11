@@ -72,3 +72,12 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC4
+- id: dod-omn20886-deploy-probe-durable-gate-verdict
+  description: Deploy probe. The dod_verify handler at the checked-out commit turns the DurableEvidenceGate's three pre-Done checks into verdict checks through durable_gate_check_results; the probe reads the handler from GitHub at that commit and exits nonzero on a tree that does not define it, so it fails at the merge base.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_verify.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'def durable_gate_check_results('
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
