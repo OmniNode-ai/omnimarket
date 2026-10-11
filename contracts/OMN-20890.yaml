@@ -30,7 +30,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC4: the park-ladder tests of the landing decision node."
-    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -k 'park_default or park_retry or park_operator'"
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k 'park_default or park_retry or park_operator'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,7 +41,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -k park_default_third_attempt"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_default_third_attempt"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20890-ac2-files-ticket"
@@ -49,7 +49,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -k park_default_files_ticket"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_default_files_ticket"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20890-ac3-retry-on-base-head"
@@ -57,7 +57,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -k park_retry_on_base_head"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_retry_on_base_head"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20890-ac4-operator-only-needs"
@@ -65,6 +65,14 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -k park_operator_only_needs"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_operator_only_needs"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20890-ac1-selectors-name-a-file"
+    description: "AC1: every pytest check this contract binds names an existing repo test file, so the repo evidence gate and the selector test accept the contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q -p no:randomly -k omn20890_park_ladder_checks_name_the_causes_test_file"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
