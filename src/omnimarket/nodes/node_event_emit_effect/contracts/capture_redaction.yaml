@@ -242,7 +242,7 @@ scrub_marker: "[REDACTED:{name}]"
 # private overlay, so equal values deduplicate to one stored secret and the bus
 # never carries an unsalted hash of a low-entropy value. When the store cannot
 # take the value (no identity, unreachable, a refused write) the producer falls
-# back to `scrub_marker` and says so on the record (`secret_store` below).
+# back to `scrub_marker` and says so on the record (`stored_refs` below).
 #
 # Every scrub, producer and fan-out alike, leaves a reference standing: a
 # match that lies inside a reference span, or whose value group IS a reference
@@ -700,8 +700,8 @@ topics:
       # OMN-20926: {stored, fallback, reason} from the producer's store-then-
       # reference pass. Counts and one reason code, never a value or a path.
       # fallback > 0 means those spans crossed as scrub_marker because the
-      # secret store did not take them; the reason names why.
-      secret_store: capture_verbatim
+      # store did not take them; the reason names why.
+      stored_refs: capture_verbatim
       lane: capture_verbatim
       lane_source: capture_verbatim
       lane_ticket: capture_verbatim

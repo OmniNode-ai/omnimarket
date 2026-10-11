@@ -102,6 +102,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # consumer's own identity; it returns the value as a SecretStr, publishes
     # nothing and subscribes to no topic, so it has no onex.nodes entry point.
     "node_captured_secret_resolve_effect",
+    # OMN-20926: the captured secret store effect is called in-process by the
+    # content-capture producer for each secret its scrub detects; it returns a
+    # reference, publishes nothing and subscribes to no topic.
+    "node_captured_secret_store_effect",
     # OMN-20817: the model setup effect runs from `onex models`; it returns its
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.

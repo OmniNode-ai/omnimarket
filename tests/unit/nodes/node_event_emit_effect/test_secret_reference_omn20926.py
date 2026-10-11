@@ -121,12 +121,12 @@ def test_secret_reference_and_store_outcome_cross_the_content_topic() -> None:
         "session_id": "s-1",
         "content_kind": "tool_response",
         "content": "token=" + _ref() + " then " + _GH,
-        "secret_store": {"stored": 1, "fallback": 1, "reason": "write_refused"},
+        "stored_refs": {"stored": 1, "fallback": 1, "reason": "write_refused"},
     }
     out = redact_capture(record, CONTENT_TOPIC)
     assert _ref() in out["content"]
     assert _GH not in out["content"]
-    assert out["secret_store"] == record["secret_store"]
+    assert out["stored_refs"] == record["stored_refs"]
 
 
 @pytest.mark.unit

@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Captured Secret Store Effect (OMN-20926)
+#
+# In-process effect, like node_captured_secret_resolve_effect: no subscription,
+# no publish and no onex.nodes entry point. The content-capture producer (the
+# omniclaude hook) calls it with each secret its scrub detects and puts the
+# returned reference in the captured record in place of the value.
+name: captured_secret_store_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Captured secret store EFFECT (operator ruling 2026-10-10, RULING row
+  2026-10-10T22:38:48Z lane=secret-refs-9f8a). One detected secret in, one
+  reference out. The reference digest is HMAC-SHA256 of the value under a
+  per-deployment reference key, so equal values land on one store key
+  (deduplicated) and the bus never carries an unsalted hash. The write is
+  create-only as the WRITER identity the machine's private overlay names; an
+  existing key is the dedupe case and is neither read nor updated. The
+  secret's comment carries the capturing session and time, never surrounding
+  text. Any failure returns a typed outcome with no reference, and the
+  producer falls back to the scrub marker; the value never leaves the process
+  except in the one request to the store.
+
+input_model: omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request.ModelCapturedSecretStoreRequest
+output_model: omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_result.ModelCapturedSecretStoreResult
+
+handler:
+  module: omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store
+  class: HandlerCapturedSecretStore
+  input_model: omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request.ModelCapturedSecretStoreRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store:HandlerCapturedSecretStore
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles:
+    - effects
+
+# Publishes nothing: the value is written to the store and never becomes an
+# event, which is the ruling's "ciphertext never on the bus".
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: kafka

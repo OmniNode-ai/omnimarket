@@ -30,17 +30,17 @@ from typing import Protocol
 
 from pydantic import SecretStr
 
+from omnimarket.models.captured_secret.model_captured_secret_store_overlay import (
+    CAPTURED_SECRET_STORE_BLOCK,
+    ModelCapturedSecretStoreOverlay,
+    load_captured_secret_store_overlay,
+)
 from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request import (
     ModelCapturedSecretResolveRequest,
 )
 from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
     EnumCapturedSecretResolveOutcome,
     ModelCapturedSecretResolveResult,
-)
-from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_store_overlay import (
-    CAPTURED_SECRET_STORE_BLOCK,
-    ModelCapturedSecretStoreOverlay,
-    load_captured_secret_store_overlay,
 )
 from omnimarket.nodes.node_event_emit_effect.redaction import (
     SecretReference,

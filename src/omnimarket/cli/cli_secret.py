@@ -38,6 +38,7 @@ import sqlite3
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 from typing import Any, cast
@@ -60,6 +61,12 @@ from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_
 )
 from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
     EnumCapturedSecretResolveOutcome,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
+    HandlerCapturedSecretStore,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
+    ModelCapturedSecretStoreRequest,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -797,6 +804,38 @@ def delete_secret_value(secret_ref: str) -> None:
     if result.route_withdrawn:
         click.echo(f"Withdrew your {result.provider} route key with it.")
     _fold_credential_events(result, store.db_path)
+
+
+@secret_group.command("store-captured")
+@click.option(
+    "--session",
+    default="onex-secret-store-captured",
+    show_default=True,
+    help="Recorded as the stored secret's capturing session.",
+)
+def store_captured(session: str) -> None:
+    """Store one value in the captured-secret namespace and print its reference.
+
+    OMN-20926. The same write the content-capture producer makes for a secret
+    its scrub detects, as the writer identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``). The value
+    is read from stdin, or a hidden prompt on a terminal, never from argv.
+    Prints the outcome and the reference, never the value.
+    """
+    value = _read_value("the value to store")
+    if not value:
+        raise click.ClickException("no value was given; nothing was stored.")
+    result = HandlerCapturedSecretStore(onex_home=Path.home() / ".onex").handle(
+        ModelCapturedSecretStoreRequest(
+            value=SecretStr(value), session_id=session, captured_at=datetime.now(UTC)
+        )
+    )
+    click.echo(
+        f"{result.outcome.value}: {result.reference or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.reference is None:
+        raise SystemExit(1)
 
 
 @secret_group.command("check-captured")
