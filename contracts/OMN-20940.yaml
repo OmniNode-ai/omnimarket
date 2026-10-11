@@ -26,6 +26,9 @@ dod_evidence:
     description: ".github/workflows/public-repo-hygiene.yml calls the reusable hygiene workflow at the omniclaude commit that carries the deployment-config job."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -k test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "test \"$(grep -c 'public-repo-hygiene-reusable.yml@0c9f9146d8dd0446fc5c10952aa57247b3a880ae' .github/workflows/public-repo-hygiene.yml)\" = 1"
         cwd: "${OMNI_HOME}/omnimarket"
@@ -34,6 +37,9 @@ dod_evidence:
     description: "The pre-commit configuration runs the deployment-config hook at the caller's commit."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py -k test_precommit_runs_the_deployment_config_hook_at_the_workflow_pin"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "test \"$(grep -c 'id: deployment-config' .pre-commit-config.yaml)\" = 1 && test \"$(grep -c 'rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae' .pre-commit-config.yaml)\" -ge 1"
         cwd: "${OMNI_HOME}/omnimarket"
