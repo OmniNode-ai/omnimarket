@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 import pytest
@@ -27,6 +27,11 @@ import yaml
 from pydantic import BaseModel, SecretStr, ValidationError
 
 from omnimarket.github_api import GitHubApiError
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubBytesResponse,
+    ModelGithubHttpRequest,
+    ModelGithubHttpResponse,
+)
 from omnimarket.nodes.node_github_repo_gateway_effect import (
     token_resolver,
 )
@@ -60,6 +65,9 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     RealGitHubReadTransport,
 )
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
+from tests.nodes.node_github_repo_gateway_effect.test_github_repo_gateway_scm_reads import (
+    SCM_READ_RESULT_MODELS,
+)
 
 _REPO = "OmniNode-ai/omnimarket"
 _PR = 1683
@@ -157,6 +165,19 @@ class _StubTransport:
     def fetch_pr_detail(self, repo: str, pr_number: int) -> dict[str, Any]:
         return self._pr_detail
 
+    # The OMN-20912 reads replay on RecordedGatewayTransport, never here.
+    def send_sync(self, request: ModelGithubHttpRequest) -> ModelGithubHttpResponse:
+        raise AssertionError(f"_StubTransport does not send {request.path}")
+
+    def send_bytes_sync(
+        self,
+        request: ModelGithubHttpRequest,
+        *,
+        limit: int,
+        keep: Literal["head", "tail"],
+    ) -> ModelGithubBytesResponse:
+        raise AssertionError(f"_StubTransport does not send {request.path}")
+
 
 def _request(op: EnumGithubGatewayOperation) -> ModelGithubGatewayRequest:
     pr_scoped = op not in (
@@ -197,7 +218,7 @@ def test_contract_declares_runtime_topics() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("op", list(EnumGithubGatewayOperation))
+@pytest.mark.parametrize("op", list(_EXPECTED_MODEL))
 def test_protocol_a_operation_returns_its_own_typed_shape(
     op: EnumGithubGatewayOperation,
 ) -> None:
@@ -213,8 +234,14 @@ def test_protocol_a_operation_returns_its_own_typed_shape(
 
 @pytest.mark.unit
 def test_protocol_a_covers_every_operation() -> None:
-    """Every declared operation has an expected typed result (no gaps)."""
-    assert set(_EXPECTED_MODEL) == set(EnumGithubGatewayOperation)
+    """Every declared operation has an expected typed result (no gaps).
+
+    The OMN-20912 reads are proven on the recorded fake in
+    test_github_repo_gateway_scm_reads.py; their map joins this one here.
+    """
+    covered = set(_EXPECTED_MODEL) | set(SCM_READ_RESULT_MODELS)
+    assert covered == set(EnumGithubGatewayOperation)
+    assert not set(_EXPECTED_MODEL) & set(SCM_READ_RESULT_MODELS)
 
 
 # --- Protocol B: dispatch == direct read; no read calls another -------------
@@ -271,7 +298,7 @@ def test_protocol_b_no_read_function_calls_another() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name.startswith("read_")
     }
-    assert len(read_fns) == 7, f"expected 7 read functions, found {sorted(read_fns)}"
+    assert len(read_fns) == 13, f"expected 13 read functions, found {sorted(read_fns)}"
 
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name.startswith("read_"):
