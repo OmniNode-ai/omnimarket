@@ -446,6 +446,8 @@ bus_seam:
     - onex.evt.omnimarket.pr-state-observed.v1
   publish:
     - onex.cmd.omnimarket.occ-autobind.v1
+    # OMN-20750: conflict requests to node_pr_lifecycle_fix_effect.
+    - onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
     - onex.cmd.omnimarket.pr-landing-github-requested.v1
     - onex.evt.omnimarket.pr-landing-transitioned.v1
     - onex.evt.omnimarket.pr-landing-agent-needed.v1

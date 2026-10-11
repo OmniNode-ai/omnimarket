@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.310"
+version = "0.4.311"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -133,7 +133,12 @@ dependencies = [
     # OMN-20287: floor raised 0.47.34 -> 0.47.36, the first release whose routing-
     # authority shape audit admits a declared harness backend with no endpoint
     # (core#1917); bifrost_delegation.yaml declares six. Raised in BOTH places.
-    "omnibase-core>=0.47.36,<0.48.0",
+    # OMN-20885: floor raised 0.47.36 -> 0.47.39, the first release whose
+    # ModelTicketContract refuses a binds_ac entry that is not a criterion label
+    # and a binds_ac item with check_type command_exit_0 (core#1935); Contract
+    # Compliance Check and contract-validation validate contracts/ with it.
+    # Raised in BOTH places.
+    "omnibase-core>=0.47.39,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -273,6 +278,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 [project.entry-points."onex.nodes"]
 node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
+node_secret_store_effect = "omnimarket.nodes.node_secret_store_effect"
 node_lab_fill_plan_compute = "omnimarket.nodes.node_lab_fill_plan_compute"
 node_lab_fill_effect = "omnimarket.nodes.node_lab_fill_effect"
 node_lab_fill_orchestrator = "omnimarket.nodes.node_lab_fill_orchestrator"
@@ -302,10 +308,12 @@ node_product_floor_verdict_compute = "omnimarket.nodes.node_product_floor_verdic
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
+node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"
 node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
+node_pr_title_check_compute = "omnimarket.nodes.node_pr_title_check_compute"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
@@ -358,6 +366,7 @@ node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_acceptance_judge_compute = "omnimarket.nodes.node_delegation_acceptance_judge_compute"
 node_delegation_acceptance_judge_request_compute = "omnimarket.nodes.node_delegation_acceptance_judge_request_compute"
+node_delegation_dod_verify_request_compute = "omnimarket.nodes.node_delegation_dod_verify_request_compute"
 node_delegation_acceptance_judged_publish_effect = "omnimarket.nodes.node_delegation_acceptance_judged_publish_effect"
 node_delegation_acceptance_judged_replay_compute = "omnimarket.nodes.node_delegation_acceptance_judged_replay_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
@@ -415,6 +424,8 @@ node_ledger_append_effect = "omnimarket.nodes.node_ledger_append_effect"
 node_ledger_hash_compute = "omnimarket.nodes.node_ledger_hash_compute"
 node_ledger_state_reducer = "omnimarket.nodes.node_ledger_state_reducer"
 node_lane_liveness_compute = "omnimarket.nodes.node_lane_liveness_compute"
+node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
+node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
 node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
 node_platform_readiness = "omnimarket.nodes.node_platform_readiness"
@@ -430,6 +441,7 @@ node_review_response_parser_compute = "omnimarket.nodes.node_review_response_par
 node_review_convergence_compute = "omnimarket.nodes.node_review_convergence_compute"
 node_github_diff_effect = "omnimarket.nodes.node_github_diff_effect"
 node_github_repo_gateway_effect = "omnimarket.nodes.node_github_repo_gateway_effect"
+node_github_repo_write_effect = "omnimarket.nodes.node_github_repo_write_effect"
 node_git_query_mirror_effect = "omnimarket.nodes.node_git_query_mirror_effect"
 node_local_review = "omnimarket.nodes.node_local_review"
 node_pr_polish = "omnimarket.nodes.node_pr_polish"
@@ -589,6 +601,11 @@ node_projection_pr_landing = "omnimarket.nodes.node_projection_pr_landing"
 node_pr_handoff_orchestrator = "omnimarket.nodes.node_pr_handoff_orchestrator"
 node_pr_handoff_decision_compute = "omnimarket.nodes.node_pr_handoff_decision_compute"
 node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
+# Operator capture (OMN-20905): the compute is called in process by the effect, which is hosted
+# by the work-ledger serve process on the ledger host (--operator-capture); neither declares
+# event_bus.
+node_operator_capture_compute = "omnimarket.nodes.node_operator_capture_compute"
+node_operator_capture_effect = "omnimarket.nodes.node_operator_capture_effect"
 # Lab job supervisor (OMN-20604): the reducer is called in process by the job orchestrator
 # and declares no handler_routing.
 node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
@@ -782,6 +799,7 @@ node_demo_cost_compute = "omnimarket.nodes.node_demo_cost_compute"
 node_demo_renderer_effect = "omnimarket.nodes.node_demo_renderer_effect"
 node_morning_handoff_generator = "omnimarket.nodes.node_morning_handoff_generator"
 node_morning_ground_state_orchestrator = "omnimarket.nodes.node_morning_ground_state_orchestrator"
+node_morning_friction_sweep_orchestrator = "omnimarket.nodes.node_morning_friction_sweep_orchestrator"
 node_session_phase_dispatcher = "omnimarket.nodes.node_session_phase_dispatcher"
 node_chain_diff = "omnimarket.nodes.node_chain_diff"
 node_kb_adr_publisher = "omnimarket.nodes.node_kb_adr_publisher"
@@ -889,6 +907,11 @@ models = "omnimarket.cli.cli_secret:models_group"
 # same reason as the others: the CLI discovers this group over installed
 # distributions.
 seed = "omnimarket.cli.cli_seed:seed_command"
+# OMN-20913: `onex scm <verb>` -- one lane entry point over the source-control
+# nodes. Reads answer from the PR watcher state and the canonical clones before
+# the bus; the rest publish the node's typed command and wait for its terminal
+# event. Discovered over installed distributions like the groups above.
+scm = "omnimarket.handlers.scm.scm_cli:scm_group"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
@@ -1044,7 +1067,9 @@ override-dependencies = [
     # Done-write receipt gate (core#1852): handler_done_write_receipt_gate and
     # models.ticket.model_done_write_decision. node_linear_triage imports both
     # unconditionally, so an older core fails at import. Raised in BOTH places.
-    "omnibase-core>=0.47.36,<0.48.0",
+    # OMN-20885: floor raised 0.47.36 -> 0.47.39 (core#1935), the ticket-contract
+    # refusals Contract Compliance Check relies on. Raised in BOTH places.
+    "omnibase-core>=0.47.39,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

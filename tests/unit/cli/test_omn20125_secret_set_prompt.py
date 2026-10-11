@@ -116,10 +116,10 @@ def test_an_unknown_provider_has_no_prefix_check(
 ) -> None:
     _Tty(monkeypatch, ["whatever-shape", "whatever-shape"])
 
-    result = _run(["set", "llm.glm.api_key"])
+    result = _run(["set", "llm.custom.api_key"])
 
     assert result.exit_code == 0, result.output
-    assert _stored("llm.glm.api_key") == "whatever-shape"
+    assert _stored("llm.custom.api_key") == "whatever-shape"
 
 
 def test_the_value_never_reaches_output_or_logs(
