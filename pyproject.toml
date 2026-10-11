@@ -892,6 +892,11 @@ models = "omnimarket.cli.cli_secret:models_group"
 # same reason as the others: the CLI discovers this group over installed
 # distributions.
 seed = "omnimarket.cli.cli_seed:seed_command"
+# OMN-20913: `onex scm <verb>` -- one lane entry point over the source-control
+# nodes. Reads answer from the PR watcher state and the canonical clones before
+# the bus; the rest publish the node's typed command and wait for its terminal
+# event. Discovered over installed distributions like the groups above.
+scm = "omnimarket.handlers.scm.scm_cli:scm_group"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
