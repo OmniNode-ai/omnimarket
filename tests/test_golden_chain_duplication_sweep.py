@@ -9,9 +9,12 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_duplication_sweep.handlers import handler_duplication_sweep
 from omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep import (
+    _KAFKA_BOUNDARIES_YAML,
     DuplicationSweepRequest,
     NodeDuplicationSweep,
     _check_d1_drizzle_tables,
@@ -70,7 +73,10 @@ class TestDuplicationSweepGoldenChain:
         assert result.status == "WARN"
 
     async def test_d2_no_conflicts(
-        self, event_bus: EventBusInmemory, tmp_path: Path
+        self,
+        event_bus: EventBusInmemory,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """D2 should PASS when no topic is claimed by a conflicting producer."""
         topics_py = (
@@ -80,22 +86,27 @@ class TestDuplicationSweepGoldenChain:
         topics_py.write_text(
             'class TopicBase:\n    FOO = "onex.evt.omniclaude.foo.v1"\n'
         )
-
-        boundaries_dir = tmp_path / "onex_change_control" / "boundaries"
-        boundaries_dir.mkdir(parents=True)
-        (boundaries_dir / "kafka_boundaries.yaml").write_text(
+        manifest = tmp_path / "planted" / "kafka_boundaries.yaml"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(
             "topics:\n"
             "  - topic_name: 'onex.evt.omniclaude.foo.v1'\n"
             "    producer_repo: 'omniclaude'\n"
         )
 
+        monkeypatch.setattr(
+            handler_duplication_sweep, "_KAFKA_BOUNDARIES_YAML", manifest
+        )
         result = _check_d2_kafka_topics(str(tmp_path))
         assert result.status == "PASS"
 
     async def test_d2_conflict_detected(
-        self, event_bus: EventBusInmemory, tmp_path: Path
+        self,
+        event_bus: EventBusInmemory,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """D2 should FAIL when omniclaude claims a topic but boundaries.yaml names another producer."""
+        """D2 should FAIL when omniclaude claims a topic but the manifest names another producer."""
         topics_py = (
             tmp_path / "omniclaude" / "src" / "omniclaude" / "hooks" / "topics.py"
         )
@@ -103,22 +114,40 @@ class TestDuplicationSweepGoldenChain:
         topics_py.write_text(
             'class TopicBase:\n    CONFLICT = "onex.evt.omniclaude.conflict.v1"\n'
         )
-
-        boundaries_dir = tmp_path / "onex_change_control" / "boundaries"
-        boundaries_dir.mkdir(parents=True)
-        (boundaries_dir / "kafka_boundaries.yaml").write_text(
+        manifest = tmp_path / "planted" / "kafka_boundaries.yaml"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(
             "topics:\n"
             "  - topic_name: 'onex.evt.omniclaude.conflict.v1'\n    producer_repo: 'omniintelligence'\n"
         )
 
+        monkeypatch.setattr(
+            handler_duplication_sweep, "_KAFKA_BOUNDARIES_YAML", manifest
+        )
         result = _check_d2_kafka_topics(str(tmp_path))
         assert result.status == "FAIL"
         assert result.finding_count >= 1
 
-    async def test_d2_reads_current_occ_boundaries_layout(
+    async def test_d2_bundled_manifest_lives_beside_the_node(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-20949 AC1: the manifest ships beside node_duplication_sweep and parses."""
+        assert _KAFKA_BOUNDARIES_YAML.name == "kafka_boundaries.yaml"
+        assert _KAFKA_BOUNDARIES_YAML.parent.parent.name == "node_duplication_sweep"
+        assert _KAFKA_BOUNDARIES_YAML.is_file()
+        data = yaml.safe_load(_KAFKA_BOUNDARIES_YAML.read_text(encoding="utf-8"))
+        entries = data["boundaries"]
+        assert entries
+        for entry in entries:
+            assert entry["topic_name"].startswith("onex.")
+            assert entry["producer_repo"]
+            assert entry["consumer_repo"]
+
+    async def test_d2_reads_bundled_manifest_without_occ_checkout(
         self, event_bus: EventBusInmemory, tmp_path: Path
     ) -> None:
-        """D2 should find kafka_boundaries.yaml in the current OCC src layout."""
+        """OMN-20949 AC2: D2 reads the manifest beside the node, with no
+        change-control checkout in the workspace."""
         topics_py = (
             tmp_path / "omniclaude" / "src" / "omniclaude" / "hooks" / "topics.py"
         )
@@ -126,23 +155,42 @@ class TestDuplicationSweepGoldenChain:
         topics_py.write_text(
             'class TopicBase:\n    FOO = "onex.evt.omniclaude.foo.v1"\n'
         )
+        assert not (tmp_path / "onex_change_control").exists()
 
-        boundaries_dir = (
-            tmp_path
-            / "onex_change_control"
-            / "src"
-            / "onex_change_control"
-            / "boundaries"
+        result = _check_d2_kafka_topics(str(tmp_path))
+
+        assert result.status == "PASS", result.detail
+
+    async def test_d2_default_manifest_is_the_node_constant(
+        self,
+        event_bus: EventBusInmemory,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OMN-20949 AC2: the default read path is the node's manifest constant,
+        resolved at call time; a conflicting producer planted there FAILs."""
+        topics_py = (
+            tmp_path / "omniclaude" / "src" / "omniclaude" / "hooks" / "topics.py"
         )
-        boundaries_dir.mkdir(parents=True)
-        (boundaries_dir / "kafka_boundaries.yaml").write_text(
+        topics_py.parent.mkdir(parents=True)
+        topics_py.write_text(
+            'class TopicBase:\n    CONFLICT = "onex.evt.omniclaude.conflict.v1"\n'
+        )
+        manifest = tmp_path / "planted" / "kafka_boundaries.yaml"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(
             "topics:\n"
-            "  - topic_name: 'onex.evt.omniclaude.foo.v1'\n"
-            "    producer_repo: 'omniclaude'\n"
+            "  - topic_name: 'onex.evt.omniclaude.conflict.v1'\n"
+            "    producer_repo: 'omniintelligence'\n"
+        )
+        monkeypatch.setattr(
+            handler_duplication_sweep, "_KAFKA_BOUNDARIES_YAML", manifest
         )
 
         result = _check_d2_kafka_topics(str(tmp_path))
-        assert result.status == "PASS"
+
+        assert result.status == "FAIL"
+        assert [f.name for f in result.findings] == ["onex.evt.omniclaude.conflict.v1"]
 
     async def test_d3_uses_occ_venv_command(
         self, event_bus: EventBusInmemory, tmp_path: Path
