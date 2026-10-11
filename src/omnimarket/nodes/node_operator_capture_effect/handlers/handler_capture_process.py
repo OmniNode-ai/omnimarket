@@ -129,6 +129,12 @@ class HandlerCaptureProcess:
                 classification, rows = self._classify(request, utterance, prior_cache)
             remaining = list(rows)
             failed = False
+            if not isinstance(planned, list):
+                # Plan before the first append, so a crash after it resumes from the plan and
+                # never reclassifies a prompt that already has rows in the ledger.
+                record["rows_planned"] = remaining[:]
+                record.setdefault("classification", _summary(classification))
+                capture_store.rewrite_pending(path, record)
             while remaining:
                 ok, detail = self._append(remaining[0])
                 if not ok:
@@ -137,6 +143,8 @@ class HandlerCaptureProcess:
                     break
                 remaining.pop(0)
                 rows_appended += 1
+                record["rows_planned"] = remaining[:]
+                capture_store.rewrite_pending(path, record)
             if failed:
                 record["rows_planned"] = remaining
                 record.setdefault("classification", _summary(classification))

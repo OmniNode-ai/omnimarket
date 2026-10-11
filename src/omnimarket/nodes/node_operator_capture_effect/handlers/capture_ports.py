@@ -34,6 +34,9 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 ONEX_BIN_ENV = "ONEX_OPERATOR_CAPTURE_ONEX_BIN"
 LEDGER_BIN_ENV = "ONEX_OPERATOR_CAPTURE_LEDGER_BIN"
 LEDGER_PATH_ENV = "ONEX_LEDGER_PATH"
+# 0 appended the row; 78 appended it too and says the ledger clone is stranded (OMN-18433: "the
+# row landed"), so a retry would write it a second time.
+LEDGER_ROW_LANDED_EXITS = frozenset({0, 78})
 DELEGATE_TIMEOUT_S = 330
 DELEGATE_TASK_CLASS = "summarization"
 
@@ -167,7 +170,7 @@ def onex_ledger_appender(env: Mapping[str, str] | None = None) -> LedgerAppender
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             return False, f"ledger append did not run: {exc}"
-        if done.returncode != 0:
+        if done.returncode not in LEDGER_ROW_LANDED_EXITS:
             return (
                 False,
                 f"ledger append exit {done.returncode}: {_one_line(done.stderr + done.stdout)}",
@@ -182,7 +185,7 @@ def runner_ledger_appender(runner: ProtocolLedgerAppendRunner) -> LedgerAppender
 
     def append(row: str) -> tuple[bool, str]:
         result = runner.append(row)
-        if result.exit_code != 0:
+        if result.exit_code not in LEDGER_ROW_LANDED_EXITS:
             return (
                 False,
                 f"ledger append exit {result.exit_code}: "
@@ -197,6 +200,7 @@ __all__ = [
     "DELEGATE_TASK_CLASS",
     "LEDGER_BIN_ENV",
     "LEDGER_PATH_ENV",
+    "LEDGER_ROW_LANDED_EXITS",
     "ONEX_BIN_ENV",
     "DelegateAnswer",
     "DelegateRunner",

@@ -45,10 +45,19 @@ def store_dir(env: Mapping[str, str] | None = None) -> Path:
     return Path.home() / ".local" / "state" / "omni" / "operator-capture"
 
 
-def text_digest(session_id: str, text: str) -> str:
-    """Whitespace-insensitive digest of one message within one session."""
+def text_digest(session_id: str, text: str, prompt_id: str | None = None) -> str:
+    """Whitespace-insensitive digest of one message within one session.
+
+    A prompt id names one typed prompt, so two prompts with the same words (the operator says
+    "Yes, to your recommendations" twice) digest apart, while a redelivery of one prompt does not.
+    """
     normalized = " ".join(text.split())
-    return hashlib.sha256(f"{session_id}\0{normalized}".encode()).hexdigest()[:24]
+    keyed = (
+        f"{session_id}\0{prompt_id}\0{normalized}"
+        if prompt_id
+        else f"{session_id}\0{normalized}"
+    )
+    return hashlib.sha256(keyed.encode()).hexdigest()[:24]
 
 
 def _ensure(path: Path) -> Path:
@@ -97,9 +106,10 @@ def ingest(
     received_at: datetime,
     origin_event: str,
     transcript_path: str | None = None,
+    prompt_id: str | None = None,
 ) -> Path | None:
     """Write one prompt to the inbox and record its digest; None when already taken in."""
-    digest = text_digest(session_id, text)
+    digest = text_digest(session_id, text, prompt_id)
     if digest in session_digests(root, session_id):
         return None
     stamp = received_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")

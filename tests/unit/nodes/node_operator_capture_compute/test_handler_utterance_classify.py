@@ -161,6 +161,13 @@ def test_a_quote_that_is_not_in_the_message_discards_the_whole_answer() -> None:
             }
         ),
         json.dumps({"items": [{"kind": "ask", "quote": "Fix it now", "subject": "s"}]}),
+        json.dumps(
+            {
+                "items": [
+                    {"kind": [], "quote": "Fix it now", "subject": "s", "confidence": 1}
+                ]
+            }
+        ),
     ],
 )
 def test_malformed_answers_fall_back(answer: str) -> None:
@@ -208,6 +215,24 @@ def test_machine_injections_yield_nothing(text: str) -> None:
 def test_drop_command_is_returned() -> None:
     result = _classify("drop ask-0123456789 and done ASK-abcdefabcd", None)
     assert result.drops == ("ask-0123456789", "ask-abcdefabcd")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Do not drop ask-0123456789; keep working on it.",
+        "never close ask-0123456789",
+        "please don't drop ask-0123456789",
+    ],
+)
+def test_a_negated_drop_instruction_closes_nothing(text: str) -> None:
+    assert _classify(text, None).drops == ()
+
+
+def test_a_one_word_approval_is_kept_by_the_fallback() -> None:
+    result = _classify("Approved.", None)
+    assert [i.kind for i in result.items] == [K.DECISION]
+    assert _classify("Thanks", None).items == ()
 
 
 @pytest.mark.parametrize(

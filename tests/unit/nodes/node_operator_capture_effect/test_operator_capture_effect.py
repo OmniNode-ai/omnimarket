@@ -22,12 +22,16 @@ from omnimarket.models.operator_capture import (
 from omnimarket.nodes.node_operator_capture_effect.handlers import capture_store
 from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import (
     DelegateAnswer,
+    runner_ledger_appender,
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_digest import (
     HandlerCaptureDigest,
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_process import (
     HandlerCaptureProcess,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
+    ModelAppendCommandResult,
 )
 
 pytestmark = pytest.mark.unit
@@ -237,3 +241,65 @@ def test_digest_reports_captures_that_have_not_reached_the_ledger(
     )
     assert result.pending_captures == 1
     assert "have not reached the ledger yet" in result.digest
+
+
+def test_two_prompts_with_the_same_words_and_distinct_prompt_ids_are_both_taken_in(
+    tmp_path: Path,
+) -> None:
+    """The operator says the same words twice in one session; a redelivery of one stays one."""
+    root = tmp_path / "store"
+
+    def take(prompt_id: str | None) -> Path | None:
+        return capture_store.ingest(
+            root,
+            session_id="sess-1",
+            text="Yes, to your recommendations",
+            source="bus:claude",
+            received_at=NOW,
+            origin_event="content-captured",
+            prompt_id=prompt_id,
+        )
+
+    assert take("prompt-a") is not None
+    assert take("prompt-a") is None
+    assert take("prompt-b") is not None
+
+
+def test_a_crash_after_the_first_append_resumes_from_the_plan_and_writes_no_row_twice(
+    tmp_path: Path, ledger: Path
+) -> None:
+    root = tmp_path / "store"
+    assert _ingest(root) is not None
+
+    class Crash(BaseException):
+        pass
+
+    class CrashingLedger(FakeLedger):
+        def __call__(self, row: str) -> tuple[bool, str]:
+            if self.rows:
+                raise Crash
+            return super().__call__(row)
+
+    first = CrashingLedger()
+    with pytest.raises(Crash):
+        _process(root, ledger, _delegate(), first)
+    assert len(first.rows) == 1
+    resumed = FakeLedger()
+    delegate = _delegate()
+    result = _process(root, ledger, delegate, resumed)
+    assert (result.processed, result.rows_appended, result.pending) == (1, 1, 0)
+    assert delegate.calls == []
+    assert "kind=ask" in resumed.rows[0]
+    assert "kind=decision" in first.rows[0]
+
+
+@pytest.mark.parametrize(("exit_code", "landed"), [(0, True), (78, True), (65, False)])
+def test_the_runner_appender_counts_a_stranded_clone_exit_as_a_landed_row(
+    exit_code: int, landed: bool
+) -> None:
+    class Runner:
+        def append(self, rows: str) -> ModelAppendCommandResult:
+            return ModelAppendCommandResult(exit_code=exit_code, stdout="line 7")
+
+    ok, _ = runner_ledger_appender(Runner())("row")
+    assert ok is landed

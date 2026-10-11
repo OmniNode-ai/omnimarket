@@ -97,6 +97,21 @@ _INSTRUCTION = (
 )
 
 _DROP = re.compile(r"\b(?:drop|done|close)\s+(ask-[0-9a-f]{10})\b", re.IGNORECASE)
+_NEGATION_BEFORE = re.compile(
+    r"(?:\b(?:not|never|no)|n't)\s+(?:(?:to|please|just)\s+)*$", re.IGNORECASE
+)
+
+
+def _drops_of(text: str) -> tuple[str, ...]:
+    """Ask ids the operator closes; a negated instruction ("do not drop ask-...") closes nothing."""
+    found: list[str] = []
+    for match in _DROP.finditer(text):
+        if _NEGATION_BEFORE.search(text[max(0, match.start() - 24) : match.start()]):
+            continue
+        found.append(match.group(1).lower())
+    return tuple(dict.fromkeys(found))
+
+
 _SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)")
 _WORD = re.compile(r"[a-z0-9]+(?:\.[0-9]+)?")
 _STOP = frozenset(
@@ -277,10 +292,13 @@ def _heuristic_items(utterance: ModelUtterance) -> tuple[ModelUtteranceItem, ...
     items: list[ModelUtteranceItem] = []
     for match in _SENTENCE.finditer(utterance.text):
         quote = match.group(0).strip()
-        if len(_WORD.findall(quote.lower())) < 2:
+        words = len(_WORD.findall(quote.lower()))
+        if words < 1:
             continue
         kind = heuristic_kind(quote)
         if kind is EnumUtteranceKind.CHAT:
+            continue
+        if words < 2 and kind is not EnumUtteranceKind.DECISION:
             continue
         items.append(
             ModelUtteranceItem(
@@ -330,7 +348,7 @@ def _delegated_items(
             raw["subject"],
             raw["confidence"],
         )
-        if kind not in kinds:
+        if not isinstance(kind, str) or kind not in kinds:
             return (), f"a delegated item has unknown kind {kind!r}"
         if (
             not isinstance(quote, str)
@@ -374,7 +392,7 @@ class HandlerUtteranceClassify:
                 classifier=EnumClassifierSource.HEURISTIC,
                 reason="machine injection: not the operator's words",
             )
-        drops = tuple(dict.fromkeys(m.lower() for m in _DROP.findall(utterance.text)))
+        drops = _drops_of(utterance.text)
         if request.delegated_response is not None:
             items, problem = _delegated_items(utterance, request.delegated_response)
             if problem is None:
