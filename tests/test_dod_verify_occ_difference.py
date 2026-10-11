@@ -1323,6 +1323,59 @@ def _handle_one_pr(
 
 
 @pytest.mark.parametrize(
+    ("max_examined", "stop_reason"),
+    [(1, "max_examined reached"), (200, "merged list exhausted")],
+)
+def test_replay_job_log_emits_not_compared_row_and_stop_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    max_examined: int,
+    stop_reason: str,
+) -> None:
+    from omnimarket.nodes.node_dod_verify.handlers import handler_occ_replay
+
+    registry = tmp_path / "registry"
+    _, head = _canonical_clone_with_pr(registry, git_author_name="Some Human")
+    monkeypatch.setenv("OMNI_HOME", str(registry))
+    handler = handler_occ_replay.HandlerOccReplay(
+        github=_FakeGithub(head=head, login="some-human", occ=None)
+    )
+    monkeypatch.setattr(handler_occ_replay, "HandlerOccReplay", lambda: handler)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "node_dod_verify",
+            "occ-difference",
+            "replay",
+            "--repository",
+            "OmniNode-ai/omnimarket",
+            "--count",
+            "1",
+            "--max-examined",
+            str(max_examined),
+            "--work-dir",
+            str(tmp_path / "work"),
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert exc.value.code == 2
+    assert report["summary"]["examined"] == 1
+    assert report["summary"]["compared"] == 0
+    assert report["rows"][0]["outcome"] == "not_compared"
+    assert f"replay OmniNode-ai/omnimarket#7 head={head}" in captured.err
+    assert "occ=None new=None outcome=not_compared" in captured.err
+    assert "note=no OCC run on the head (fake)" in captured.err
+    assert "examined=1 compared=0/1" in captured.err
+    assert f"stop={stop_reason}" in captured.err
+    assert f"max_examined={max_examined}" in captured.err
+
+
+@pytest.mark.parametrize(
     "spoofed_name",
     ["dependabot[bot]", "renovate", "onexbot-occ-writer[bot]"],
 )

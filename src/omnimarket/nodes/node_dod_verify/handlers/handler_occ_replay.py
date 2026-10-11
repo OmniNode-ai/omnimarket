@@ -37,6 +37,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -185,6 +186,17 @@ class HandlerOccReplay:
                 compared,
                 request.count,
                 record.note,
+            )
+        if compared < request.count:
+            stop_reason = (
+                "max_examined reached"
+                if len(merged) >= request.max_examined
+                else "merged list exhausted"
+            )
+            sys.stderr.write(
+                f"replay {request.repository}: examined={len(records)} "
+                f"compared={compared}/{request.count} stop={stop_reason} "
+                f"max_examined={request.max_examined}\n"
             )
         return records
 
