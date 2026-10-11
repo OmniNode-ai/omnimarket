@@ -86,12 +86,17 @@ inputs:
   open_history: {type: list, required: false, description: "Open counts earlier tick runs recorded, oldest first; omitted skips the open-trend finding."}
   open_rise_pct: {type: float, required: false}
   open_history_max_age_hours: {type: float, required: false}
+  dispatched_lanes: {type: list, required: false, description: "Lanes the ledger records as dispatched with their CLAIM host and run id and whether the runner wrote a placement receipt; omitted skips the unplaced-lane finding."}
+  unplaced_lane_alarm_minutes: {type: int, required: false, description: "A dispatched lane with no placement receipt for longer than this is an ALARM (default 10)."}
+  venv_divergences: {type: list, required: false, description: "Cross-host dispatch-venv divergences with the stamp each was first read; omitted skips the venv-divergence finding."}
+  venv_divergence_alarm_minutes: {type: int, required: false, description: "A divergence older than this is an ALARM, a younger one a NOTE (default 30)."}
 outputs:
   lines: {type: list}
   status_line: {type: str}
   missing: {type: list}
   unknown: {type: list}
   checked: {type: list}
+  alarms: {type: list, description: "Typed ALARM verdict records (unplaced lanes, lasting venv divergence) for the caller to print, write to its evidence file and exit non-zero on."}
   exit_code: {type: int}
   open_count: {type: int, description: The open PR count of a fresh watcher state, for the caller to record.}
 config:
@@ -121,4 +126,4 @@ metadata:
   description: Merge-throughput tick decisions
   author: OmniNode Team
   created: "2026-10-09"
-  related_tickets: [OMN-20686, OMN-20840]
+  related_tickets: [OMN-20686, OMN-20840, OMN-20851]
