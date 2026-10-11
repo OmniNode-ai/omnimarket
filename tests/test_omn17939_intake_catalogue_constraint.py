@@ -114,14 +114,16 @@ def test_an_off_catalogue_provider_is_refused(provider: str) -> None:
     assert "provider" in str(excinfo.value)
 
 
-@pytest.mark.parametrize("provider", ["claude", "anthropic", "claude-3-opus"])
-def test_claude_is_refused_at_intake(provider: str) -> None:
-    """Axiom 2: Claude is never a delegation target.
+def test_anthropic_is_accepted_at_intake() -> None:
+    """OMN-20990: operator ruling 2026-10-11T15:05:50Z lifted the rule that the
+    provider list refuses Anthropic keys, so the intake edge accepts the id the
+    catalogue offers."""
+    assert _request("anthropic").provider == "anthropic"
 
-    The catalogue loader already refuses a Claude id in either list, so this
-    cannot be reached through the catalogue. Asserted here anyway because it is
-    a governing axiom and this is the customer-facing edge that enforces it.
-    """
+
+@pytest.mark.parametrize("provider", ["claude", "claude-3-opus"])
+def test_a_claude_id_the_catalogue_does_not_offer_is_refused(provider: str) -> None:
+    """Only the catalogue's own id is accepted: ``claude`` names no row."""
     with pytest.raises(ValidationError):
         _request(provider)
 
