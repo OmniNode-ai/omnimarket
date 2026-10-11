@@ -5,8 +5,10 @@
 A lane does GitHub work through this command and no ``gh`` verb:
 
 - **PR and CI state reads** (pr-view, pr-status, pr-checks, pr-list,
-  pr-merge-commit) are answered from the PR watcher's state file and the
-  canonical clones first, with zero GitHub requests. When neither can answer
+  pr-merge-commit, pr-heads) are answered from the PR watcher's state file and the
+  canonical clones first, with zero GitHub API requests (pr-heads makes one
+  ``git ls-remote`` over the git transport, as the canonical-clone refresh
+  does). When neither can answer
   (no record, or a non-terminal record older than eight minutes) the read goes
   to node_github_repo_gateway_effect over the bus. ``--source local`` never
   asks the bus; ``--source bus`` never reads locally.
@@ -265,8 +267,12 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option("--run-id", type=int, default=None, help="run-view, run-download.")
     @click.option("--job-id", type=int, default=None, help="job-log.")
     @click.option("--artifact-id", type=int, default=None, help="run-download.")
-    @click.option("--branch", default=None)
-    @click.option("--head-sha", default=None, help="run-list: runs of this head.")
+    @click.option(
+        "--branch", default=None, help="run-list, branch-protection, pr-heads."
+    )
+    @click.option(
+        "--head-sha", default=None, help="run-list: runs of this head; pr-heads."
+    )
     @click.option("--workflow", default=None, help="run-list: a workflow file or id.")
     @click.option("--event", default=None, help="run-list: the triggering event.")
     @click.option("--status", default=None, help="run-list: the run status.")
@@ -316,6 +322,8 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
                     pr_number=number,
                     watcher_state_path=str(watcher) if watcher else None,
                     clone_path=str(clone_path) if clone_path else None,
+                    branch=_optional_str(fields.get("branch")),
+                    head_sha=_optional_str(fields.get("head_sha")),
                 )
             )
             if local.answered and local.source is not None:

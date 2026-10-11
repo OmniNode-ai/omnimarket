@@ -8,8 +8,8 @@
 #
 #   handle(ModelSkipTokenScanRequest) -> ModelSkipTokenScanResult
 #
-# A text carrying a [skip-<letter> bypass token is refused unless it also carries
-# "# skip-token-allowed: <receipt-id>". Staged files are in scope by type (prose files and
+# A text carrying a [skip-<letter> bypass token is always refused: there is no escape hatch
+# (OMN-20074). Staged files are in scope by type (prose files and
 # committed session evidence); a commit message and a PR body always are. No clock, no I/O,
 # no model: the caller reads the text. The pre-commit export (.pre-commit-hooks.yaml) runs the
 # vendored shell script as its transport and tests hold it to this node's verdicts.
@@ -28,8 +28,7 @@ node_version:
   patch: 0
 description: >
   Pure scan of staged files, a commit message and a PR body for [skip-*] bypass
-  tokens. Blocks any text with a token that does not also carry a
-  skip-token-allowed approval receipt line. Deterministic.
+  tokens. Blocks any text with a token; there is no escape hatch. Deterministic.
 input_model:
   name: "ModelSkipTokenScanRequest"
   module: "omnimarket.nodes.node_reject_skip_token_compute.models.model_skip_token_scan"
