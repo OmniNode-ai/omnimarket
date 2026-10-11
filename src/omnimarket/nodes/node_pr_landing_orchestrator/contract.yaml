@@ -665,6 +665,27 @@ state_machine:
 #     resolution and no review, so an unresolved thread cannot block the merge.
 #   * observed prompts: omnimarket publishes no autobind prompt since its
 #     cut-over, so the PR watcher's observations prompt its reads instead.
+# The other M4 repositories, each from its own facts (dev branch classic
+# protection and rules, and its workflows, read 2026-10-10 about 15:45Z):
+#   * omnibase_infra: its change-control callers are removed (no autobind
+#     caller; CI Summary is the one required context), so it is
+#     companion-exempt; its dev rules carry a merge queue, so it is a queue
+#     repository and its arm is an enqueue; its dev branch requires no
+#     conversation resolution; the watcher prompts it. It stays dry_run: the
+#     landing controller lands a runtime-affecting omnibase_infra PR only with
+#     a PASS lab-pool readback for its head (rule 24), no required context
+#     carries that proof (lab-proof-receipt is informational), and this
+#     workflow does not read it, so an enforce enqueue would queue an
+#     unproven runtime PR.
+#   * omnibase_core, omniclaude, omnidash: their change-control cut-over has
+#     not landed (call-occ-autobind.yml is on dev and occ-preflight /
+#     eligibility is a required context), so each needs a companion. Each stays
+#     dry_run: the repository's own autobind caller already sends every push's
+#     companion command to the same producer, so an enforce command from here
+#     would be a second live sender of that class (one owner per class), and a
+#     dry_run one is declined, so no PR of theirs reaches the arm from here. No
+#     dev branch of theirs requires conversation resolution. Their push prompts
+#     still start rows, so the watcher does not prompt them.
 landing_config:
   github_mode: dry_run
   github_mode_by_repository:
@@ -675,11 +696,18 @@ landing_config:
     - disarm
   companion_exempt_repositories:
     - OmniNode-ai/omnimarket
-  queue_repositories: []
+    - OmniNode-ai/omnibase_infra
+  queue_repositories:
+    - OmniNode-ai/omnibase_infra
   review_threads_not_required_repositories:
     - OmniNode-ai/omnimarket
+    - OmniNode-ai/omnibase_infra
+    - OmniNode-ai/omnibase_core
+    - OmniNode-ai/omniclaude
+    - OmniNode-ai/omnidash
   observed_prompt_repositories:
     - OmniNode-ai/omnimarket
+    - OmniNode-ai/omnibase_infra
   arm_policy:
     action_mode: enforce
     kill_switch: false
@@ -704,6 +732,8 @@ event_bus:
   publish_topics:
     # Companion commands (op derive, regenerate, verify) to the producer.
     - onex.cmd.omnimarket.occ-autobind.v1
+    # OMN-20750: conflict requests (block_reason conflict) to the fix effect.
+    - onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
     - onex.cmd.omnimarket.pr-landing-github-requested.v1
     - onex.evt.omnimarket.pr-landing-transitioned.v1
     - onex.evt.omnimarket.pr-landing-agent-needed.v1
@@ -728,6 +758,9 @@ published_events:
   - event_type: "PrLifecycleFixCommand"
     topic: onex.cmd.omnimarket.occ-autobind.v1
     description: "A companion command (op derive, regenerate or verify) to the change-control producer."
+  - event_type: "PrLandingConflictCommand"
+    topic: onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
+    description: "One conflict request per (PR, head, base head) for a PR GitHub reports armed and dirty; dry_run with update_branch (OMN-20750)."
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
@@ -806,3 +839,4 @@ metadata:
     - "OMN-19822"
     - "OMN-19824"
     - "OMN-20866"
+    - "OMN-20750"

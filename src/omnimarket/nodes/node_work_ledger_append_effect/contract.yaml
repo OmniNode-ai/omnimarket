@@ -27,8 +27,8 @@ name: "node_work_ledger_append_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
-contract_version: {major: 0, minor: 2, patch: 0}
-node_version: "0.2.0"
+contract_version: {major: 0, minor: 3, patch: 0}
+node_version: "0.3.0"
 description: >
   Verifies signed lab-host rows, stamps their authenticated principal and appends
   them on the ledger host, deduplicating by request id and returning line numbers.
@@ -69,6 +69,18 @@ published_events:
   - event_type: ModelWorkLedgerAppendCommandFailure
     topic: onex.evt.omnimarket.work-ledger-append-failed.v1
     description: "An unreadable command or handler crash."
+  # A refused TERMINAL leaves the CLAIM it would close open on the ledger. The
+  # host publishes this beside the refused receipt so the refusal is loud; the
+  # owner claim's lease (node_pr_lifecycle_state_reducer owner_claim_lease) ends
+  # the claim's hold on its PRs at the TTL.
+  - event_type: ModelWorkLedgerTerminalRefused
+    topic: onex.evt.omnimarket.work-ledger-terminal-refused.v1
+    description: "TERMINAL_REFUSED: a refused request carried TERMINAL rows; names their lanes, tickets and PRs."
+# TERMINAL_REFUSED is read off the bus by the orchestrator's lab readback and the
+# operator (rpk on the dev lane broker); no node acts on it, because the claim's
+# lease, not this event, ends the claim's hold on its PRs.
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-terminal-refused.v1
 metadata:
   transport_type: kafka
   description: "Hosted by the ledger-host serve process, never a shared runtime"

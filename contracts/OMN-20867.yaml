@@ -27,6 +27,18 @@ requirements:
         statement: 'AC3: one scheduled fire per interval and none on ticks inside interval -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
       - id: "AC4"
         statement: 'AC4: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish scheduled fires on terminal topics, no host env or process in routes -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly'
+  - id: "req-merge-sweep-runtime-tick"
+    statement: "The merge-sweep plan compute running from the runtime tick"
+    acceptance:
+      - id: "AC5"
+        statement: 'AC5: node_merge_sweep_plan_compute routes platform.runtime-tick with interval/offset merge-sweep 300/0 seconds, one scheduled fire per interval and none on ticks inside it -- falsifier: uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly'
+      - id: "AC6"
+        statement: 'AC6: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish the merge-sweep scheduled fire on the terminal topic, no host env or process in the route -- falsifier: uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly'
+  - id: "req-tick-window-exactly-once"
+    statement: "No tick-schedule window is lost to tick jitter, and a runtime tick dead-letters nothing"
+    acceptance:
+      - id: "AC7"
+        statement: 'AC7: under jittered tick periods each lab-fill, hourly, throughput and audit-trail daily window fires on exactly one tick, and one runtime tick writes no dead letter and one record per prune completed topic -- falsifier: uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k "jittered or one_tick_is_one_record"'
 evidence_requirements:
   - kind: "tests"
     description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
@@ -34,6 +46,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Runtime tick contract routing, interval decisions and terminal-topic readback tests."
     command: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Merge-sweep plan runtime tick routing, interval decisions and terminal-topic readback tests."
+    command: "uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -66,6 +81,45 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q 'HEADROOM_UNKNOWN' src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_headroom_plan.py"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-fire-fresh-readings-one-plan"
+    description: "A lab-fill fire with fresh readings publishes one headroom plan naming the idle hosts. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_fire_with_fresh_readings_publishes_one_plan_naming_the_idle_hosts"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-fire-stale-reading-headroom-unknown"
+    description: "A lab-fill fire with a stale reading for a host with an idle slot fails HEADROOM_UNKNOWN on the failure topic. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_fire_with_a_stale_reading_fails_headroom_unknown_on_the_failure_topic"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-fire-no-reading-headroom-unknown"
+    description: "A lab-fill fire with no reading at all fails HEADROOM_UNKNOWN. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_fire_with_no_reading_at_all_fails_headroom_unknown"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20867-fire-replay-publishes-nothing-new"
+    description: "A replayed fire with the same fire_id publishes nothing new, so a fire has one plan request. The test file is added by this pull request; it fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_orchestrator/test_golden_chain_lab_fill_orchestrator.py -q -p no:randomly -k test_replayed_fire_with_the_same_fire_id_publishes_nothing_new"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-deploy-one-fire-plan-per-fire-id"
+    description: "Deploy probe on the lab dev lane once the deploy agent rolls this change: the dev lane runtime has published at least one onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1 and no fire_id appears on it twice. Run with KAFKA_BOOTSTRAP_SERVERS set to the dev lane broker (bus-local); it exits nonzero on a runtime that predates this change, which publishes none to that topic. Hosted CI has no dev broker, so only the local Done gate runs it."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "kcat -C -b \"${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}\" -t onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1 -o -200 -e -q | grep -Eo '\"fire_id\": ?\"[^\"]+\"' | sort | uniq -c | awk '$1 > 1 {dup = 1} END {exit !(NR > 0 && !dup)}'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20867-runtime-tick-schedule"
     description: "Runtime tick schedule tests pass at the PR head, including real contract wiring and terminal-topic readback."
     source: "manual"
@@ -74,3 +128,88 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2", "AC3", "AC4"]
+  - id: "dod-omn20867-tick-window-exactly-once"
+    description: "Jittered ticks fire every window exactly once, one tick dead-letters nothing, and the prune scheduled run has a declared destination, at the PR head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k "jittered or one_tick_is_one_record"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k "declared_destination"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20867-tick-window-fires-once"
+    description: "Jittered runtime ticks (the dev lane's 1.12 s base period with 1.559 s and 3.3 s slow ticks) open every lab-fill, hourly and throughput window on exactly one tick, and the audit trail daily slot on exactly one tick. These tests are new in this pull request and fail against the merge base's source."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k test_jittered_ticks_fire_every_window_exactly_once"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k test_jittered_ticks_open_the_audit_trail_daily_slot_exactly_once"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20867-tick-window-prune-in-interval"
+    description: "The dead-letter prune and consumer-flow prune tick routes return no output for a tick inside their interval and skip sink resolution, so a tick inside the interval produces no result to dead-letter. These tests change in this pull request and fail against the merge base's source."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -p no:randomly -k test_the_first_tick_runs_and_an_immediate_second_tick_is_skipped"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -p no:randomly -k test_skipped_tick_never_resolves_sink"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k test_a_scheduled_tick_runs_once_per_interval_and_skips_in_between"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k test_skipped_tick_never_resolves_sink"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20867-tick-window-boot-one-record"
+    description: "With the three tick-fire contracts and both prune contracts wired by wire_from_manifest on the in-memory bus, one tick is one tick record plus its one throughput fire and one record per prune completed topic with nothing dead-lettered, and a second tick inside every interval publishes only the tick. The test is new in this pull request and fails against the merge base's source."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly -k test_runtime_tick_boot_one_tick_is_one_record_and_dead_letters_nothing"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20867-tick-window-prune-destination"
+    description: "Each prune effect contract declares its completed topic as terminal_event, publish topic and published_events entry, so the scheduled run's result has a destination. These tests are new in this pull request and fail against the merge base's source."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -p no:randomly -k test_the_scheduled_run_result_has_a_declared_destination"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q -p no:randomly -k test_the_scheduled_run_result_has_a_declared_destination"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20867-tick-window-dev-lane-per-fire"
+    description: "On the dev lane, once the deploy agent rolls this change, onex.evt.omnimarket.throughput-tick-decision-completed.v1 and onex.evt.omnimarket.lab-fill-plan-decided.v1 each carry exactly one record per fire_id for every scheduler window since TICK_WINDOW_SINCE (default: the last three hours), and at least one fire. Before the roll the 18:30Z fire is on the lane two and three times and the 18:40Z fire is missing, so the check is red; it reads the dev lane broker named by KAFKA_BOOTSTRAP_SERVERS (bus-local), which hosted CI does not have, so only the local Done gate runs it."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          S="${TICK_WINDOW_SINCE:-$(jq -n 'now-10800|todate')}"
+          for T in onex.evt.omnimarket.throughput-tick-decision-completed.v1 onex.evt.omnimarket.lab-fill-plan-decided.v1; do
+            R="$(kcat -C -b "${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}" -t "$T" -o beginning -e -q)" && printf '%s\n' "$R" | jq -rs --arg s "$S" --arg t "$T" '[.[] | first(.. | objects | select(.fire_id != null)) | select(.window_start >= $s)] | group_by(.fire_id) | map({fire_id: .[0].fire_id, records: length}) | (map(select(.records != 1))) as $bad | if length == 0 then "\($t): no fire since \($s)" | halt_error(1) elif ($bad | length) > 0 then "\($t): more than one record per fire_id: \($bad | tostring)" | halt_error(1) else "\($t): \(length) fires, one record each" end' || exit 1
+          done
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-merge-sweep-runtime-tick"
+    description: "Merge-sweep plan runtime tick tests pass at the PR head, including real contract wiring and terminal-topic readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5", "AC6"]
+  - id: "dod-omn20867-merge-sweep-deploy-probe"
+    description: "Deploy probe. The merge-sweep plan compute at the checked-out commit carries HandlerMergeSweepScheduledFire, the runtime-tick handler this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it is a record with a fire_id beginning merge-sweep- on onex.evt.omnimarket.merge-sweep-planned.v1 within one 300 s interval of the runtime tick."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_plan_compute/handlers/handler_merge_sweep_scheduled_fire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerMergeSweepScheduledFire'"
+        cwd: "${OMNI_HOME}/omnimarket"
