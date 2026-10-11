@@ -384,9 +384,17 @@ def test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler(
     assert isinstance(jobs, dict)
     assert jobs["imperative-contract-guard"]["with"]["allowlist-path"] == ALLOWLIST.name
     root = tmp_path / "omnimarket"
-    shutil.copytree(
-        ROOT / "src", root / "src", ignore=shutil.ignore_patterns("__pycache__")
-    )
+    # Preserve real contracts, handlers and module paths in a bounded slice of
+    # omnimarket's tree. The inference node exercises the caller's historical
+    # allowlist; report validation is live and unallowlisted. Scanning every
+    # unrelated node made this evidence exceed the verifier's command budget.
+    for node in ("node_ab_inference_effect", "node_report_validation_compute"):
+        relative = Path("src/omnimarket/nodes") / node
+        shutil.copytree(
+            ROOT / relative,
+            root / relative,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
     shutil.copyfile(ROOT / "pyproject.toml", root / "pyproject.toml")
     shutil.copyfile(ALLOWLIST, root / ALLOWLIST.name)
     args = (
@@ -398,11 +406,14 @@ def test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler(
         "--scan-freestanding",
         "--json",
     )
-    # Each input is a separate bound check so neither scanner run shares the
-    # released verifier's 30-second command budget with the other input.
+    # Both inputs fit in one bound command with this two-node fixture.
     if not plant_http:
         clean = _core(*args)
         assert clean.returncode == 0, clean.stdout + clean.stderr
+        report = json.loads(clean.stdout)[0]
+        assert report["new_violation_count"] == 0
+        assert report["node_count"] == 2
+        assert report["allowlisted_count"] == 1
         return
     handler = root / LIVE_HANDLER
     original = handler.read_text(encoding="utf-8")

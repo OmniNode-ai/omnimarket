@@ -54,13 +54,11 @@ dod_evidence:
   binds_ac:
   - AC2
 - id: dod-omn21002-ac3-live-guard-refusal
-  description: The core guard accepts the clean tree and refuses raw HTTP in the live report-validation
-    handler; pinned core/OCC parity is recorded on the Lab line.
+  description: The core guard accepts a bounded omnimarket fixture with an allowlisted inference handler
+    and refuses raw HTTP in the live report-validation handler; pinned core/OCC parity is recorded on the Lab line.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest 'tests/ci/test_imperative_contract_guard_caller_omn21002.py::test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler[clean]' -q -n 0
-  - check_type: test_passes
-    check_value: uv run pytest 'tests/ci/test_imperative_contract_guard_caller_omn21002.py::test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler[planted]' -q -n 0
+    check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 -k 'core_guard'
   binds_ac:
   - AC3
