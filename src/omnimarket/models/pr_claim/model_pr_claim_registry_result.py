@@ -4,7 +4,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_pr_claim_registry_effect.models.model_pr_claim import (
+from omnimarket.models.pr_claim.model_pr_claim import (
     ModelPrClaim,
 )
 
