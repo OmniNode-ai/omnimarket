@@ -65,6 +65,7 @@ from tests.unit.nodes.node_pr_landing_orchestrator._builders import (
     FixedClassifier,
     answer,
     only_request,
+    passing_gate_facts,
 )
 
 pytestmark = pytest.mark.unit
@@ -109,6 +110,8 @@ def _handler(verdict: EnumHeadCheckVerdict) -> HandlerPrLandingOrchestrator:
         arm_gate=HandlerPrArmGate(),
         classifier=FixedClassifier(verdict),
         store=InMemoryPrLandingRowStore(),
+        # No hold in force and a PASS lab proof for every head (OMN-20866).
+        gate_facts=passing_gate_facts(),
     )
 
 

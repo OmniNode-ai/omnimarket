@@ -8,40 +8,16 @@ effect, deriving the landing controller's ledger facts from the rows is this nod
 
 from __future__ import annotations
 
-from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
 )
-from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
-
-
-class ModelLandingLedgerRows(BaseModel):
-    """The ledger rows of one tick: the coordination window, and older PASS readbacks."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    now: datetime = Field(description="The tick's clock, timezone-aware.")
-    window_days: float = Field(
-        default=7.0, gt=0, description="A CLAIM older than this owns nothing."
-    )
-    rows: tuple[ModelLandingLedgerRow, ...] = Field(
-        description="The window's rows in ledger order, none newer than now."
-    )
-    history_rows: tuple[ModelLandingLedgerRow, ...] = Field(
-        default=(),
-        description="Rows of older ledger rolls; only their lab PASS readbacks are read.",
-    )
-
-    @field_validator("now")
-    @classmethod
-    def _aware(cls, value: datetime) -> datetime:
-        if value.tzinfo is None:
-            raise ValueError("now must be timezone-aware")
-        return value
+from omnimarket.models.landing_ledger_row import (
+    ModelLandingLedgerRow,
+    ModelLandingLedgerRows,
+)
 
 
 class ModelLandingCauseFix(BaseModel):
