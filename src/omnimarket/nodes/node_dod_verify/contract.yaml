@@ -158,7 +158,28 @@ outputs:
     description: >-
       Why the run reached no verdict, from EnumDodVerifyUnresolvedCause
       (run_error_or_timeout | pr_lookup_failed | pr_lookup_ambiguous |
-      repo_lookup_failed | unknown). Set exactly when status is `unresolved`.
+      repo_lookup_failed | ticket_unavailable | unknown). Set exactly when
+      status is `unresolved`.
+  # OMN-20858: the contract's pinned criteria against the live ticket's.
+  criteria_revision:
+    type: str
+    description: >-
+      Revision (sha256 over every labelled criterion and its change-control
+      hash) of the live ticket's criteria this verdict was computed against.
+      The Done transition re-checks it. Absent when the contract records no
+      criteria or no ticket was read.
+  criteria_drift:
+    type: list
+    description: >-
+      Criteria on which the live ticket and the contract disagree (edited,
+      deleted, added, duplicate_label), each naming the criterion. Non-empty
+      means CRITERIA_DRIFT: the binding is unproven and its earlier PASS
+      evidence does not count.
+  criteria_amendment:
+    type: object
+    description: >-
+      The one amendment record the contract needs to follow the live ticket:
+      bindings to rebind, retire and add, and labels to make unique.
   goal_id:
     type: uuid
     description: "Goal identity attached to this verification attempt."

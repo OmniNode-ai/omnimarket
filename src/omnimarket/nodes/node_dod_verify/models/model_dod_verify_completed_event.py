@@ -13,6 +13,10 @@ from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaAmendment,
+    ModelCriterionDrift,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelEvidenceCheckResult,
@@ -85,6 +89,16 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
     acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
     acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
+    # OMN-20858: see the state.
+    criteria_revision: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    criteria_drift: tuple[ModelCriterionDrift, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     error_message: str | None = Field(default=None)
     # OMN-17022: carried on the terminal event so a bus consumer branches on
     # the typed cause instead of re-parsing ``error_message``. Set exactly

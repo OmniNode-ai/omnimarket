@@ -17,6 +17,10 @@ from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaAmendment,
+    ModelCriterionDrift,
+)
 
 
 class EnumEvidenceCheckStatus(StrEnum):
@@ -687,6 +691,21 @@ class ModelDodVerifyState(BaseModel):
     acceptance_refused_retirements: tuple[str, ...] = Field(default=())
     # OMN-20070: declared criteria no evidence item binds through binds_ac.
     acceptance_unbound_criteria: tuple[str, ...] = Field(default=())
+    # OMN-20858: the revision of the live ticket's criteria this verdict was
+    # computed against, so the Done transition can re-check it and a reader can
+    # tell which text a verdict judged. None when no ticket was read (a contract
+    # recording no criteria, a goal-scoped run, caller-supplied results).
+    criteria_revision: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-20858: the criteria on which the live ticket and the contract disagree,
+    # and the one amendment that would bring the contract back in line.
+    criteria_drift: tuple[ModelCriterionDrift, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was
