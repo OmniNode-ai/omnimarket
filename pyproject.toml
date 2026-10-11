@@ -288,6 +288,7 @@ node_remote_lane_close_compute = "omnimarket.nodes.node_remote_lane_close_comput
 node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
 node_remote_lane_effect = "omnimarket.nodes.node_remote_lane_effect"
 node_merge_sweep_plan_compute = "omnimarket.nodes.node_merge_sweep_plan_compute"
+node_merge_sweep_request_compute = "omnimarket.nodes.node_merge_sweep_request_compute"
 node_merge_sweep_reading_compute = "omnimarket.nodes.node_merge_sweep_reading_compute"
 node_merge_sweep_effect = "omnimarket.nodes.node_merge_sweep_effect"
 node_merge_sweep_orchestrator = "omnimarket.nodes.node_merge_sweep_orchestrator"

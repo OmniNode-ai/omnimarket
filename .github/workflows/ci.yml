@@ -540,6 +540,9 @@ jobs:
       # 'node-auto-wiring-in-process' and the release workflows.
       - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
         run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
+
+      - name: Scheduled merge sweep bus cycle (OMN-20676)
+        run: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,

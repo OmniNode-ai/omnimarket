@@ -1543,6 +1543,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20676: keep the scheduled-fire -> request -> completion bus cycle under both gates.
+      - id: merge-sweep-scheduled-bus-cycle
+        name: Scheduled merge sweep bus cycle (OMN-20676)
+        language: system
+        entry: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q
+        files: ^(src/omnimarket/nodes/node_merge_sweep_(orchestrator|plan_compute|request_compute)/.*|src/omnimarket/models/merge_sweep/model_merge_sweep_(run|schedule_config)\.py|tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
       # pyproject.toml entry point for the three deregistered legacy arm
       # surfaces, drops a legacy handler's fail-closed env-flag hard-gate, or
