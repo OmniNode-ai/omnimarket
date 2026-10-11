@@ -17,6 +17,9 @@ assigns to the orchestrator:
   with every arm or enqueue carrying its expected head (the intent's head) and
   passed through node_pr_arm_gate_compute before it is queued. A withheld arm is
   never queued, so the row's ``armed`` flag is cleared with it;
+* a green head GitHub reports armed (auto-merge or merge queue) and dirty gets one
+  conflict request per (head, base head) (OMN-20750, AC-M9), never an arm or
+  enqueue (the arm gate already withholds on DIRTY);
 * the completion bound per state entry (R2a, R2b): applied on the tick, tagged
   (episode, state_entry_generation), never in PARKED, once per entry;
 * the events: one transitioned per transition with the orchestrator-owned
@@ -97,6 +100,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_agent
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_closed import (
     ModelPrLandingClosed,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_conflict_command import (
+    ModelPrLandingConflictCommand,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress import (
     ModelPrLandingAutobindPrompt,
     ModelPrLandingCompanionOutcomeIngress,
@@ -126,6 +132,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_trans
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workflow_row import (
     ModelPrLandingAgentNeededKey,
     ModelPrLandingCheckRunRef,
+    ModelPrLandingConflictKey,
     ModelPrLandingInFlight,
     ModelPrLandingWorkflowRow,
 )
@@ -185,6 +192,8 @@ _READ_OPERATIONS = frozenset(
 )
 # GitHub mergeable_state values under which a green head is not yet ready.
 _MERGE_STATES_NOT_SETTLED = frozenset({"unknown", "blocked"})
+# GitHub's mergeable_state for a PR that conflicts with its base (OMN-20750).
+_MERGE_STATE_CONFLICTED = "dirty"
 _OP_BY_COMPANION_KIND: Mapping[EnumPrLandingIntentKind, EnumPrLandingCompanionOp] = {
     EnumPrLandingIntentKind.COMPANION_DERIVE: EnumPrLandingCompanionOp.DERIVE,
     EnumPrLandingIntentKind.COMPANION_REGENERATE: EnumPrLandingCompanionOp.REGENERATE,
@@ -543,6 +552,54 @@ class _Leg:
                 op=op,
                 dry_run=self.config.companion_dry_run(intent.repository),
                 requested_at=at,
+            )
+        )
+
+    def conflict_request(self, *, green: bool) -> None:
+        """Request conflict work for a green head GitHub reports armed and dirty.
+
+        One request per (head, base head), taking update_branch's mode: dry_run in
+        every repository while the landing controller owns conflict work
+        (plan slice S8).
+        """
+        landing = self.row.landing
+        if landing is None:
+            return
+        if not green:
+            return
+        if landing.state in _TERMINAL or landing.state is EnumPrLandingState.PARKED:
+            return
+        if (self.row.merge_state_status or "").lower() != _MERGE_STATE_CONFLICTED:
+            return
+        if not (self.row.github_armed or landing.armed is not None):
+            return
+        if landing.draft or landing.held:
+            return
+        if landing.head_sha is None:
+            return
+        key = ModelPrLandingConflictKey(
+            head_sha=landing.head_sha, base_sha=self.row.base_sha
+        )
+        if key in self.row.conflict_requested:
+            return
+        self.row = self.row.model_copy(
+            update={"conflict_requested": (*self.row.conflict_requested, key)}
+        )
+        self.emitted.append(
+            ModelPrLandingConflictCommand(
+                correlation_id=uuid5(
+                    PR_LANDING_NAMESPACE,
+                    f"{self.row.landing_key}|conflict|{landing.head_sha}|{self.row.base_sha or '-'}",
+                ),
+                pr_number=self.row.pr_number,
+                repo=self.row.repository,
+                block_reason=EnumPrBlockReason.CONFLICT,
+                ticket_id=landing.ticket_ids[0] if landing.ticket_ids else None,
+                dry_run=self.config.mutation_mode(
+                    self.row.repository, EnumPrLandingGithubOperation.UPDATE_BRANCH
+                )
+                is EnumPrLandingGithubMode.DRY_RUN,
+                requested_at=self.now,
             )
         )
 
@@ -1064,6 +1121,8 @@ async def _apply_snapshot(
             "pr_node_id": fact.pr_node_id,
             "base_ref": fact.base_ref,
             "merge_state_status": fact.mergeable_state,
+            "base_sha": fact.base_sha,
+            "github_armed": fact.auto_merge_armed or bool(fact.in_merge_queue),
         }
     )
     observations = snapshot_observations(
@@ -1076,6 +1135,12 @@ async def _apply_snapshot(
     )
     for observation in observations:
         await leg.apply_and_evaluate(observation)
+    # READY and ARMED are entered only on a green head, and a push leaves both.
+    landing = leg.row.landing
+    leg.conflict_request(
+        green=landing is not None
+        and landing.state in (EnumPrLandingState.READY, EnumPrLandingState.ARMED)
+    )
 
 
 async def _apply_head_checks(
@@ -1116,6 +1181,8 @@ async def _apply_head_checks(
             arm_method=arm_method,
         )
     )
+    # A head first read green while the newest PR read was dirty (the arm gate withholds the arm).
+    leg.conflict_request(green=verdict.verdict is EnumHeadCheckVerdict.GREEN)
 
 
 async def _on_github_failed(

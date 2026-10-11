@@ -1,0 +1,23 @@
+name: node_github_repo_write_effect
+version: "1.0.0"
+description: "Typed GitHub PR authoring writes — pr_create, pr_edit, pr_ready, pr_close, pr_comment, workflow_dispatch — with quota-floor, expected-head, idempotency and claim guards (EFFECT)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_github_repo_write_effect: "omnimarket.nodes.node_github_repo_write_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "github", "write"]
+pack: "pr-lifecycle"
+display_name: "GitHub Repo Write"
+node_role: "effect"
