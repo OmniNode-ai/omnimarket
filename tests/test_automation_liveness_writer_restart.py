@@ -20,6 +20,7 @@ Each test names the failure it exists to catch:
 from __future__ import annotations
 
 import sqlite3
+from inspect import signature
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +33,16 @@ from omnimarket.models.liveness.model_automation_liveness import (
 from omnimarket.nodes.node_projection_automation_liveness.handlers.handler_automation_liveness_writer import (
     AutomationLivenessProjectionWriter,
 )
+from omnimarket.nodes.node_projection_automation_liveness.handlers.handler_projection_automation_liveness import (
+    HandlerProjectionAutomationLiveness,
+)
+from omnimarket.nodes.node_projection_automation_liveness.models import (
+    ModelAutomationLivenessFoldRequest,
+)
 from omnimarket.nodes.node_projection_automation_liveness.ports.liveness_store import (
     SqliteLivenessStore,
 )
+from omnimarket.projection.runner import BaseProjectionRunner
 from tests.helpers.automation_liveness_stream import (
     ACTIVE_HOST,
     ACTIVE_PROCESS,
@@ -46,6 +54,27 @@ from tests.helpers.automation_liveness_stream import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_automation_liveness_writer_and_fold_have_separate_dispatch_roles() -> None:
+    assert issubclass(AutomationLivenessProjectionWriter, BaseProjectionRunner)
+    assert AutomationLivenessProjectionWriter.onex_runtime_inprocess_dispatch is True
+    assert not issubclass(HandlerProjectionAutomationLiveness, BaseProjectionRunner)
+    assert not getattr(
+        HandlerProjectionAutomationLiveness, "onex_runtime_inprocess_dispatch", False
+    )
+    assert tuple(signature(HandlerProjectionAutomationLiveness.handle).parameters) == (
+        "self",
+        "request",
+    )
+    fold = HandlerProjectionAutomationLiveness()
+    request = ModelAutomationLivenessFoldRequest(
+        event=fixture_payload(Kind.LIVENESS_DECLARED)
+    )
+    first = fold.handle(request)
+    assert len(first.changes.states) == 2
+    assert fold.handle(request) == first
+    assert request.prior.states == ()
 
 
 def _writer(db_path: Path) -> AutomationLivenessProjectionWriter:

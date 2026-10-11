@@ -61,3 +61,18 @@ dod_evidence:
         check_value: "uv run pytest tests/test_automation_liveness_exposure_read.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20802-deploy-import"
+    description: "The runtime image loads the automation-liveness fold and dispatch writer with its three snapshot exposures. Live execution remains pending until the projection is provisioned."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c
+          'from omnimarket.nodes.node_projection_automation_liveness.handlers.handler_projection_automation_liveness import HandlerProjectionAutomationLiveness;
+          from omnimarket.nodes.node_projection_automation_liveness.handlers.handler_automation_liveness_writer import AutomationLivenessProjectionWriter;
+          from omnimarket.projection.runner import BaseProjectionRunner;
+          assert issubclass(AutomationLivenessProjectionWriter, BaseProjectionRunner);
+          assert AutomationLivenessProjectionWriter.onex_runtime_inprocess_dispatch is True;
+          assert not getattr(HandlerProjectionAutomationLiveness, "onex_runtime_inprocess_dispatch", False);
+          assert set(AutomationLivenessProjectionWriter()._snapshot_exposures) == {"automation_liveness_state", "automation_run_history", "automation_alarm_episodes"}'
+        cwd: "${OMNI_HOME}/omnimarket"

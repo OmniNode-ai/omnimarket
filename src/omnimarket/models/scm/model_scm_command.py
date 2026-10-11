@@ -37,6 +37,9 @@ class EnumScmLocalRead(StrEnum):
     PR_CHECKS = "pr_checks"
     PR_LIST = "pr_list"
     PR_MERGE_COMMIT = "pr_merge_commit"
+    # OMN-20977: every PR's head commit and merge outcome, from the clone's
+    # remote refs and base-branch history, overlaid with the watcher state.
+    PR_HEADS = "pr_heads"
 
 
 class ModelScmVerb(BaseModel):
@@ -76,6 +79,14 @@ class ModelScmLocalReadRequest(BaseModel):
     )
     clone_path: str | None = Field(
         default=None, description="The repository's canonical clone, when present."
+    )
+    branch: str | None = Field(
+        default=None, min_length=1, description="pr_heads: PRs from this head branch."
+    )
+    head_sha: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40}$",
+        description="pr_heads: PRs whose head is this commit.",
     )
 
 

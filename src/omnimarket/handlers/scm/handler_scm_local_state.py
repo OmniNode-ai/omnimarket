@@ -12,6 +12,14 @@ Freshness is the rule ``pr_state_local.py`` and node_dod_verify's local source
 use: a MERGED or CLOSED record is terminal and is served at any watcher age;
 anything else is served only while the watcher's ``last_tick`` is at most
 eight minutes old. An unanswered read says why, and the caller asks the bus.
+
+``pr_heads`` (OMN-20977) answers every PR's head commit and merge outcome for
+the worktree prune tools. The canonical clone supplies it over git alone, never
+the GitHub API: ``git ls-remote origin refs/pull/*/head refs/heads/*`` names
+each PR's head commit and each live branch's tip, and the first-parent history
+of the base branches names the merged PRs (a squash subject ending ``(#N)``, or
+``Merge pull request #N``). The watcher state overlays head branches, merge
+times and open state where it holds them.
 """
 
 from __future__ import annotations
@@ -19,10 +27,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import JsonValue
 
@@ -31,6 +40,10 @@ from omnimarket.models.scm import (
     ModelScmLocalReadRequest,
     ModelScmLocalReadResult,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+    ModelPrHead,
+    ModelPrHeadsResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +51,15 @@ WATCHER_STATE_ENV: Final[str] = "ONEX_PR_WATCHER_STATE"
 WATCHER_SCHEMA: Final[int] = 1
 WATCHER_MAX_AGE: Final[timedelta] = timedelta(minutes=8)
 _TERMINAL_STATES: Final[frozenset[str]] = frozenset({"MERGED", "CLOSED"})
+# The remote refs pr_heads reads: every PR's head and every live branch.
+_PULL_HEAD = re.compile(r"^refs/pull/([1-9][0-9]*)/head$")
+_SQUASH_SUBJECT = re.compile(r"\(#([1-9][0-9]*)\)\s*$")
+_MERGE_SUBJECT = re.compile(r"^Merge pull request #([1-9][0-9]*) ")
+_OID = re.compile(r"^[0-9a-f]{40}$")
+# Base branches whose first-parent history names merged PRs, beside the
+# clone's default branch.
+_PR_BASES: Final[tuple[str, ...]] = ("dev", "main")
+LS_REMOTE_TIMEOUT_S: Final[int] = 120
 # The facts a pr-view answer carries; the watcher's PR body is left out (it can
 # be 64 KiB and `onex scm pr-view --source bus` returns it through pr_text).
 _VIEW_FACTS: Final[tuple[str, ...]] = (
@@ -87,13 +109,13 @@ def _parse_stamp(text: JsonValue) -> datetime | None:
     return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
 
-def _git(clone: Path, *args: str) -> str | None:
+def _git(clone: Path, *args: str, timeout: int = 30) -> str | None:
     try:
         done = subprocess.run(
             ["git", "-C", str(clone), *args],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -125,6 +147,8 @@ class HandlerScmLocalState:
             if why is not None:
                 return self._unanswered(request, why)
             return self._list(request, state_dict, tick_text)
+        if request.read is EnumScmLocalRead.PR_HEADS:
+            return self._pr_heads(request, state_dict, tick_text, fresh=fresh)
 
         short = request.repo.split("/", 1)[1]
         key = f"{short}#{request.pr_number}"
@@ -305,7 +329,158 @@ class HandlerScmLocalState:
         ]
         return shas[0] if len(shas) == 1 else None
 
+    def _pr_heads(
+        self,
+        request: ModelScmLocalReadRequest,
+        state: dict[str, JsonValue],
+        tick: str | None,
+        *,
+        fresh: bool,
+    ) -> ModelScmLocalReadResult:
+        """Every PR's head commit and merge outcome, from the clone over git."""
+        if request.clone_path is None:
+            return self._unanswered(
+                request, f"no canonical clone of {request.repo} on this host"
+            )
+        clone = Path(request.clone_path)
+        remote = _git(
+            clone,
+            "ls-remote",
+            "origin",
+            "refs/pull/*/head",
+            "refs/heads/*",
+            timeout=LS_REMOTE_TIMEOUT_S,
+        )
+        if remote is None:
+            return self._unanswered(
+                request, f"git ls-remote origin failed in the clone {clone}"
+            )
+        pull_heads: dict[int, str] = {}
+        branches_at: dict[str, list[str]] = {}
+        for line in remote.splitlines():
+            oid, _, ref = line.partition("\t")
+            if not _OID.match(oid):
+                continue
+            pull = _PULL_HEAD.match(ref)
+            if pull is not None:
+                pull_heads[int(pull.group(1))] = oid
+            elif ref.startswith("refs/heads/"):
+                branches_at.setdefault(oid, []).append(ref[len("refs/heads/") :])
+        merged = self._merged_in_history(clone)
+
+        short = request.repo.split("/", 1)[1]
+        prefix = f"{short}#"
+        watched: dict[int, dict[str, JsonValue]] = {}
+        for key, value in self._dict(state.get("prs")).items():
+            if key.startswith(prefix) and key[len(prefix) :].isdigit():
+                watched[int(key[len(prefix) :])] = self._dict(
+                    self._dict(value).get("facts")
+                )
+        watched_merges: dict[int, dict[str, JsonValue]] = {
+            int(key[len(prefix) :]): self._dict(value)
+            for key, value in self._dict(state.get("merges")).items()
+            if key.startswith(prefix) and key[len(prefix) :].isdigit()
+        }
+
+        prs: list[ModelPrHead] = []
+        for number in sorted(
+            set(pull_heads) | set(watched) | set(watched_merges), reverse=True
+        ):
+            pr = self._pr_head(
+                number,
+                pull_heads.get(number),
+                merged.get(number),
+                watched.get(number, {}),
+                watched_merges.get(number, {}),
+                branches_at,
+                fresh=fresh,
+            )
+            if pr is None:
+                continue
+            if request.branch is not None and pr.head_ref != request.branch:
+                continue
+            if request.head_sha is not None and pr.head_oid != request.head_sha:
+                continue
+            prs.append(pr)
+        answer = ModelPrHeadsResult(repo=request.repo, prs=prs, truncated=False)
+        return ModelScmLocalReadResult(
+            read=request.read,
+            repo=request.repo,
+            answered=True,
+            source="clone",
+            watcher_tick=tick,
+            result=answer.model_dump(mode="json"),
+        )
+
+    def _pr_head(
+        self,
+        number: int,
+        pull_head: str | None,
+        merge_sha: str | None,
+        facts: dict[str, JsonValue],
+        merge: dict[str, JsonValue],
+        branches_at: dict[str, list[str]],
+        *,
+        fresh: bool,
+    ) -> ModelPrHead | None:
+        head = self._str(merge.get("head_sha")) or self._str(facts.get("head_sha"))
+        head = head if head is not None and _OID.match(head) else pull_head
+        if head is None:
+            return None
+        watched_state = self._str(facts.get("state"))
+        state: Literal["MERGED", "OPEN", "CLOSED", "UNMERGED"]
+        if merge or merge_sha is not None or watched_state == "MERGED":
+            state = "MERGED"
+        elif watched_state == "CLOSED":
+            state = "CLOSED"
+        elif watched_state == "OPEN" and fresh:
+            state = "OPEN"
+        else:
+            state = "UNMERGED"
+        head_ref = self._str(merge.get("head_ref")) or self._str(facts.get("head_ref"))
+        if head_ref is None:
+            named = branches_at.get(head, [])
+            head_ref = named[0] if len(named) == 1 else None
+        sha = self._str(merge.get("merge_sha")) or merge_sha
+        return ModelPrHead(
+            number=number,
+            state=state,
+            head_oid=head,
+            head_ref=head_ref,
+            base_ref=self._str(merge.get("base")) or self._str(facts.get("base")),
+            merge_commit_sha=sha if sha is not None and _OID.match(sha) else None,
+            merged_at=self._str(merge.get("merged_at"))
+            or self._str(facts.get("merged_at")),
+        )
+
+    def _merged_in_history(self, clone: Path) -> dict[int, str]:
+        """PR number to merge commit, from the base branches' first-parent history."""
+        bases = list(_PR_BASES)
+        default = _git(clone, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+        if default is not None and default.strip().startswith("origin/"):
+            bases.insert(0, default.strip()[len("origin/") :])
+        merged: dict[int, str] = {}
+        for base in dict.fromkeys(bases):
+            out = _git(
+                clone,
+                "log",
+                "--first-parent",
+                "--format=%H%x09%s",
+                f"refs/remotes/origin/{base}",
+                timeout=LS_REMOTE_TIMEOUT_S,
+            )
+            for line in (out or "").splitlines():
+                sha, _, subject = line.partition("\t")
+                found = _SQUASH_SUBJECT.search(subject) or _MERGE_SUBJECT.match(subject)
+                if found is not None:
+                    merged.setdefault(int(found.group(1)), sha)
+        return merged
+
     # ---------------------------------------------------------------- helpers
+
+    @staticmethod
+    def _str(value: JsonValue | None) -> str | None:
+        return value if isinstance(value, str) and value else None
 
     def _load(self, path_text: str | None) -> dict[str, JsonValue] | str:
         if path_text is None:
