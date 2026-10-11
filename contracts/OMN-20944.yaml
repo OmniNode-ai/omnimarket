@@ -27,7 +27,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The node's unit suite: a fake ProtocolSecretStore for the handler and a local HTTP fake of the store API for the adapter, both asserting a planted value never appears in a serialized result or a log record."
-    command: "uv run pytest tests/unit/nodes/node_secret_store_effect -q"
+    command: "uv run pytest tests/unit/nodes/node_secret_store_effect/test_handler_secret_store.py tests/unit/nodes/node_secret_store_effect/test_http_fake_store.py tests/unit/nodes/test_golden_chain_secret_store_effect.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -38,7 +38,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect -q"
+        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect/test_handler_secret_store.py tests/unit/nodes/test_golden_chain_secret_store_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20944-create-only"
@@ -46,7 +46,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect -q -k create"
+        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect/test_handler_secret_store.py tests/unit/nodes/node_secret_store_effect/test_http_fake_store.py -q -k create"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20944-http-fake"
@@ -54,7 +54,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect -q -k http_fake"
+        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect/test_http_fake_store.py -q -k http_fake"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20944-deploy-probe"

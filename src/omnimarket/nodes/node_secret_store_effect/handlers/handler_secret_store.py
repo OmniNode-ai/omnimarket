@@ -35,10 +35,12 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import httpx
 import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
@@ -122,6 +124,39 @@ def _join(root: str, folder: str) -> str:
     if folder == "/":
         return root
     return folder if root == "/" else f"{root}{folder}"
+
+
+async def http_exchange(
+    method: str,
+    url: str,
+    *,
+    params: Mapping[str, str] | None,
+    payload: Mapping[str, object] | None,
+    headers: Mapping[str, str],
+    timeout: float,
+) -> tuple[int, dict[str, Any]]:
+    """The node's contract-declared HTTP transport: one request, (status, JSON object).
+
+    The store adapters are handed this and open no connection themselves. A
+    transport failure raises ``ConnectionError`` naming only the exception
+    type; the body is parsed for a JSON object and never surfaced otherwise.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as http:
+            response = await http.request(
+                method,
+                url,
+                params=dict(params) if params is not None else None,
+                json=dict(payload) if payload is not None else None,
+                headers=dict(headers),
+            )
+    except httpx.HTTPError as exc:
+        raise ConnectionError(type(exc).__name__) from None
+    try:
+        body = response.json() if response.content.strip() else {}
+    except ValueError:
+        body = {}
+    return response.status_code, body if isinstance(body, dict) else {}
 
 
 def _safe_detail(exc: BaseException) -> str:
@@ -254,7 +289,10 @@ class HandlerSecretStore:
                 detail=f"the bootstrap store has no entry for '{missing}'",
             )
         store = secret_store_for(
-            overlay, client_id=client_id, client_secret=client_secret
+            overlay,
+            client_id=client_id,
+            client_secret=client_secret,
+            exchange=http_exchange,
         )
         if store is None:
             return _Resolved(
@@ -372,4 +410,4 @@ def _detail_of(exc: BaseException) -> str:
     return str(message) if isinstance(message, str) else str(exc)
 
 
-__all__ = ["HandlerSecretStore"]
+__all__ = ["HandlerSecretStore", "http_exchange"]

@@ -6,7 +6,8 @@ The vendor-facing half of node_secret_store_effect, and the only file in the
 node that knows the Infisical wire format (the vendor boundary doctrine,
 docs/architecture/ONEX_CANONICAL_ARCHITECTURE.md "Vendor boundary"). It is
 invoked only by the node's own handler, through the omnibase_spi
-``ProtocolSecretStore`` seam.
+``ProtocolSecretStore`` seam. It opens no connection itself: the node's routed
+handler owns the contract-declared HTTP transport and hands it an exchange.
 
 Keys are absolute paths, ``<folder>/<name>``: ``/captured/CAPTURED_ab12`` is
 the secret ``CAPTURED_ab12`` in folder ``/captured``. ``list_keys(prefix)``
@@ -31,8 +32,11 @@ import time
 import urllib.parse
 from typing import Any, NoReturn
 
-import httpx
 from pydantic import SecretStr
+
+from omnimarket.nodes.node_secret_store_effect.adapters.http_exchange import (
+    HttpExchange,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +81,8 @@ class HandlerInfisicalHttp:
         environment: str,
         client_id: SecretStr,
         client_secret: SecretStr,
+        exchange: HttpExchange,
         timeout_seconds: float = 5.0,
-        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._address = address.rstrip("/")
         self._project_id = project_id
@@ -86,7 +90,7 @@ class HandlerInfisicalHttp:
         self._client_id = client_id
         self._client_secret = client_secret
         self._timeout = timeout_seconds
-        self._transport = transport
+        self._exchange = exchange
         self._token: SecretStr | None = None
         self._token_expires_at = 0.0
 
@@ -104,23 +108,16 @@ class HandlerInfisicalHttp:
         if token is not None:
             headers["Authorization"] = f"Bearer {token.get_secret_value()}"
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=self._transport
-            ) as http:
-                response = await http.request(
-                    method,
-                    f"{self._address}{path}",
-                    params=params,
-                    json=payload,
-                    headers=headers,
-                )
-        except httpx.HTTPError as exc:
-            raise ConnectionError(f"{operation} failed: {type(exc).__name__}") from None
-        try:
-            body = response.json() if response.content.strip() else {}
-        except ValueError:
-            body = {}
-        return response.status_code, body if isinstance(body, dict) else {}
+            return await self._exchange(
+                method,
+                f"{self._address}{path}",
+                params=params,
+                payload=payload,
+                headers=headers,
+                timeout=self._timeout,
+            )
+        except ConnectionError as exc:
+            raise ConnectionError(f"{operation} failed: {exc}") from None
 
     async def _login(self) -> SecretStr:
         if self._token is not None and time.monotonic() < self._token_expires_at:

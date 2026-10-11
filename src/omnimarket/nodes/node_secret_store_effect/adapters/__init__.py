@@ -14,6 +14,9 @@ from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_secret_store_effect.adapters import handler_infisical_http
+from omnimarket.nodes.node_secret_store_effect.adapters.http_exchange import (
+    HttpExchange,
+)
 from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
 )
@@ -24,8 +27,12 @@ def secret_store_for(
     *,
     client_id: SecretStr,
     client_secret: SecretStr,
+    exchange: HttpExchange,
 ) -> ProtocolSecretStore | None:
-    """The store the overlay names, as its identity; ``None`` for an unknown provider."""
+    """The store the overlay names, as its identity, over the handler's HTTP exchange.
+
+    ``None`` for an unknown provider.
+    """
     if overlay.provider == handler_infisical_http.PROVIDER:
         return handler_infisical_http.HandlerInfisicalHttp(
             address=overlay.address,
@@ -33,9 +40,10 @@ def secret_store_for(
             environment=overlay.environment,
             client_id=client_id,
             client_secret=client_secret,
+            exchange=exchange,
             timeout_seconds=overlay.timeout_seconds,
         )
     return None
 
 
-__all__ = ["secret_store_for"]
+__all__ = ["HttpExchange", "secret_store_for"]
