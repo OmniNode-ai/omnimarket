@@ -16,6 +16,7 @@ from omnimarket.cli import cli_secret
 from omnimarket.events.topics import CREDENTIAL_REGISTERED_TOPIC_V1
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     register_inference_credential,
@@ -299,6 +300,33 @@ def test_register_tenant_key_expires_refuses_a_bad_or_past_date_and_stores_nothi
     result = _register_with_expiry(bad)
     assert result.exit_code != 0
     assert "nothing was stored" in result.output
+    assert _VALUE not in result.output
+    assert bus.events == []
+    assert asyncio.run(store.list_keys()) == []
+
+
+def test_register_tenant_key_expires_with_a_refused_key_ends_cleanly_and_stores_nothing(
+    intake: tuple[LocalByokCredentialStore, FakeBus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A key the provider refuses is a typed refusal, not a traceback.
+
+    Seen on the lab for OMN-20991: register-tenant-key with an invalid Anthropic
+    key raised CredentialKeyRefusedError out of the command as a traceback.
+    """
+    store, bus = intake
+
+    async def refuse(request: Any, **_kwargs: Any) -> Any:
+        raise CredentialKeyRefusedError(
+            request.provider,
+            "auth_failed",
+            "PROVIDER_AUTH_FAILED (HTTP 401): glm refused that key.",
+        )
+
+    monkeypatch.setattr(cli_secret, "register_inference_credential", refuse)
+    result = _register_with_expiry("2099-01-01")
+    assert result.exit_code == 1
+    assert "PROVIDER_AUTH_FAILED" in result.output
+    assert "Traceback" not in result.output
     assert _VALUE not in result.output
     assert bus.events == []
     assert asyncio.run(store.list_keys()) == []

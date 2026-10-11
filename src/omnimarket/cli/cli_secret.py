@@ -96,6 +96,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_revoked,
 )
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
@@ -458,6 +459,9 @@ def register_tenant_key(
     except (
         CredentialStoreError,
         CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
