@@ -54,5 +54,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/work_ledger_seq_gap.py?ref=f9a47cc562574a40f74c054b636aef3951b7d649
-          --jq .content | base64 -d | grep -q 'class PostgresWorkLedgerSeqReader'"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/work_ledger_seq_gap.py?ref=$(git rev-parse HEAD)"
+          --jq '.content | @base64d | contains("class PostgresWorkLedgerSeqReader")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
