@@ -313,15 +313,11 @@ jobs:
         run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
       - name: TODO format check
         run: |
-          pip install onex-change-control 2>/dev/null || pip install ../onex_change_control 2>/dev/null || true
-          # Inline check: all TODO/FIXME/HACK must have (OMN-XXXX) ticket reference
-          find src/ -name '*.py' -not -path '*/tests/*' | while read -r f; do
-            grep -nE '#.*\b(TODO|FIXME|HACK)\b' "$f" 2>/dev/null | grep -vE '\b(TODO|FIXME|HACK)\(OMN-[0-9]+\)' | while read -r line; do
-              echo "::error file=${f}::${line} -- bare TODO/FIXME/HACK without ticket reference (use: # TODO(OMN-XXXX): description)"
-              echo "FAIL" > /tmp/todo_check_failed
-            done
-          done
-          if [ -f /tmp/todo_check_failed ]; then exit 1; fi
+          # Every TODO/FIXME/HACK comment in src/ must carry a ticket reference.
+          # omnibase_core owns the rule: this is the handler the no-untracked-todos
+          # pre-commit hook runs. It prints file:line for each violation and exits 1.
+          find src/ -name '*.py' -not -path '*/tests/*' -print0 \
+            | xargs -0 uv run python -m omnibase_core.handlers.handler_todo_format
       # NOTE: This step requires PR #75 (OMN-7922, fix legacy contracts) to be merged
       # before it is active in CI. The build_loop_orchestrator handler still contains
       # hardcoded onex.evt.* constants until OMN-7922 migrates them to contract-declared
@@ -969,29 +965,6 @@ jobs:
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
-      # OMN-15390 (residual R3): the ONLY cross-repo differential in this repo
-      # — node_dod_verify's supersession parity against onex_change_control's
-      # REAL `contract_compliance_check._superseded_dod_ids` — used to SKIP on
-      # every hosted run because no OCC checkout existed here, so the parity
-      # claim was proven locally and asserted, never executed, on a PR. OCC is
-      # PUBLIC, so the default `github.token` reads it: no new secret, no new
-      # permission, and the same `actions/checkout` pattern the
-      # `contract-compliance` and `onex-schema-compat` jobs already use.
-      # `sparse-checkout: src` skips the contracts/ + drift/ bulk (~25 MB) and
-      # takes only the package the differential imports. Kept OFF
-      # ONEX_CC_REPO_PATH deliberately: exporting that would re-point
-      # EvidenceCollector's contract resolution for every other test in the
-      # job. The test finds this path relative to the repo root, and
-      # `test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite` fails
-      # if this step is removed or its path changed.
-      - name: Checkout onex_change_control (OCC parity differential)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-        with:
-          repository: OmniNode-ai/onex_change_control
-          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
-          path: onex_change_control
-          sparse-checkout: src
-          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:

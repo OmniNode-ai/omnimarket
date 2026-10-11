@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
@@ -61,6 +62,7 @@ from omnimarket.projection.pr_ledger_projection import (
     EnumPrLedgerFinalState,
     ModelPrLedgerProjectionRow,
     build_ledger_rows,
+    load_owner_claim_lease_ttl,
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 
@@ -342,7 +344,7 @@ def build_bus_ledger_row(
 
 
 def build_ci_red_claim_rows(
-    decided: ModelCiRedTriageDecided,
+    decided: ModelCiRedTriageDecided, lease_ttl: timedelta
 ) -> tuple[ModelPrLedgerProjectionRow, ...]:
     """The durable owner claim a red-CI decision makes, one row per member PR.
 
@@ -351,13 +353,17 @@ def build_ci_red_claim_rows(
     one PR. ``sweep_id`` is the owner's correlation id, so the triage handler
     reads the claim by owner key, and by owner key and PR for absorption, after
     a restart. A redelivery UPSERTs onto the same rows.
+
+    The claim is a lease: ``next_check_at`` is ``found_at + lease_ttl`` (the
+    contract's ``owner_claim_lease``), the expiry every owner read honours.
     """
     run_id = ci_red_owner_run_id(decided.owner_key)
+    found_at = datetime.fromisoformat(decided.observed_at)
     return tuple(
         ModelPrLedgerProjectionRow(
             sweep_id=str(ci_red_owner_correlation_id(decided.owner_key)),
             iteration=0,
-            found_at=datetime.fromisoformat(decided.observed_at),
+            found_at=found_at,
             repo=decided.repo,
             pr_number=member,
             initial_state=decided.initial_state,
@@ -367,8 +373,7 @@ def build_ci_red_claim_rows(
                 f"decision_key={decided.decision_key}"
             ),
             final_state=EnumPrLedgerFinalState.FIX_DISPATCHED,
-            next_check_at=datetime.fromisoformat(decided.observed_at)
-            + timedelta(seconds=PR_LEDGER_PROJECTION_FRESHNESS_SLA_SECONDS),
+            next_check_at=found_at + lease_ttl,
         )
         for member in decided.claimed_members()
     )
@@ -460,6 +465,12 @@ class HandlerPrLifecycleStateReducer:
     are enabled. No side effects are produced — only state and intent computation.
     """
 
+    def __init__(self, *, contract_path: Path | None = None) -> None:
+        # The owner claim lease TTL is read once, at load: a contract without a
+        # valid owner_claim_lease refuses the handler rather than let it write a
+        # claim that never expires.
+        self._owner_claim_ttl = load_owner_claim_lease_ttl(contract_path)
+
     @property
     def handler_type(self) -> HandlerType:
         return "NODE_HANDLER"
@@ -512,7 +523,7 @@ class HandlerPrLifecycleStateReducer:
         rows: tuple[ModelPrLedgerProjectionRow, ...] = (row,)
         if topic == CI_RED_TRIAGE_DECIDED_TOPIC_V1:
             rows += build_ci_red_claim_rows(
-                ModelCiRedTriageDecided.model_validate(payload)
+                ModelCiRedTriageDecided.model_validate(payload), self._owner_claim_ttl
             )
         database: ProtocolProjectionDatabaseSync = input_data[_RUNTIME_DB_KEY]
         for written in rows:
