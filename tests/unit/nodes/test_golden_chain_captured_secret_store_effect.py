@@ -3,9 +3,10 @@
 
 """Golden chain: a captured secret is stored and a reference comes back (OMN-20926).
 
-A fake store proves store-then-reference, dedupe and every refusal; a local
-HTTP server proves the real Infisical transport's status handling; the writer
-and the resolver meet on the same store key. Planted values carry ``FAKE``.
+A fake ProtocolSecretStore proves store-then-reference, dedupe and every
+refusal; a local HTTP server proves the writer end to end through
+node_secret_store_effect and its store adapter (OMN-20948); the writer and the
+resolver meet on the same store key. Planted values carry ``FAKE``.
 """
 
 from __future__ import annotations
@@ -35,11 +36,8 @@ from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_
     EnumCapturedSecretResolveOutcome,
 )
 from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
-    CapturedSecretWriterConfig,
     CapturedSecretWriterConfigError,
     HandlerCapturedSecretStore,
-    InfisicalCreateOnlySecretStore,
-    StoreUnreachableError,
     load_writer_config,
 )
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
@@ -81,44 +79,52 @@ def _store_key(value: str = VALUE) -> str:
 
 
 class FakeStore:
-    """Create-only: a dict, with switchable failures."""
+    """A create-only ProtocolSecretStore: a dict, with switchable failures.
+
+    Failures are raised the way the node's store adapter raises them.
+    """
 
     def __init__(self) -> None:
-        self.secrets: dict[str, tuple[str, str]] = {}
-        self.logins = 0
+        self.secrets: dict[str, str] = {}
+        self.folders: set[str] = set()
         self.creates = 0
         self.login_ok = True
         self.write = "ok"  # ok | refused | unreachable | failed
 
-    def login(self, config: CapturedSecretWriterConfig) -> str | None:
-        self.logins += 1
-        assert config.client_secret.get_secret_value() == WRITER
-        return "tok" if self.login_ok else None
-
-    def create(
-        self,
-        config: CapturedSecretWriterConfig,
-        token: str,
-        *,
-        key: str,
-        value: SecretStr,
-        comment: str,
-    ) -> str:
+    async def set_secret(self, key: str, value: str) -> bool:
         self.creates += 1
+        if not self.login_ok:
+            raise PermissionError("login refused with HTTP 401")
         if self.write == "unreachable":
-            raise StoreUnreachableError("ConnectionRefusedError")
+            raise ConnectionError("create failed: ConnectError")
         if self.write == "refused":
-            return "refused"
+            raise PermissionError("create refused with HTTP 403")
         if self.write == "failed":
-            return "failed_500"
-        if key in self.secrets:
-            return "exists"
-        self.secrets[key] = (value.get_secret_value(), comment)
-        return "created"
+            raise ValueError("create rejected with HTTP 422")
+        folder, _, name = key.rpartition("/")
+        self.folders.add(folder)
+        if name in self.secrets:
+            return False
+        self.secrets[name] = value
+        return True
+
+    async def get_secret(self, key: str) -> str | None:
+        return self.secrets.get(key.rpartition("/")[2])
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("create only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        return sorted(self.secrets)
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        return None
 
     def get_secret_sync(self, key: str) -> str | None:
-        held = self.secrets.get(key)
-        return None if held is None else held[0]
+        return self.secrets.get(key)
 
 
 class _ReaderOverFake:
@@ -145,6 +151,7 @@ def _onex_home(
     if block:
         lines += [
             "captured_secret_store:",
+            "  provider: infisical",
             f"  infisical_addr: {addr}",
             "  project_id: 00000000-0000-4000-8000-000000000000",
             "  environment_slug: dev",
@@ -189,9 +196,8 @@ def test_store_then_reference_then_resolve(
 
     assert result.outcome is EnumCapturedSecretStoreOutcome.STORED
     assert result.reference == _reference()
-    value, comment = store.secrets[_store_key()]
-    assert value == VALUE
-    assert comment == f"captured session={SESSION} at=2026-10-10T23:00:00+00:00"
+    assert store.secrets[_store_key()] == VALUE
+    assert store.folders == {"/captured"}
     assert store_key_for_reference(result.reference) == _store_key()
 
     resolved = HandlerCapturedSecretResolve(store=_ReaderOverFake(store)).handle(
@@ -227,7 +233,7 @@ def test_the_same_value_is_written_once_per_handler(tmp_path: Path) -> None:
     second = handler.handle(_request())
     assert first.reference == second.reference
     assert second.outcome is EnumCapturedSecretStoreOutcome.EXISTS
-    assert (store.logins, store.creates) == (1, 1)
+    assert store.creates == 1
 
 
 def test_a_value_already_in_the_store_is_the_dedupe_case(tmp_path: Path) -> None:
@@ -276,8 +282,7 @@ def test_a_store_failure_returns_no_reference_and_sticks(
     assert first.reference is None
     second = handler.handle(_request("FAKE-" + "second" * 4))
     assert second == first
-    assert store.logins == 1
-    assert store.creates <= 1
+    assert store.creates == 1
 
 
 @pytest.mark.parametrize(
@@ -298,7 +303,7 @@ def test_configuration_refusals_touch_no_store(
     result = handler.handle(_request())
     assert result.outcome.value == outcome
     assert result.reference is None
-    assert store.logins == 0
+    assert store.creates == 0
     assert WRITER not in (result.detail or "")
 
 
@@ -307,6 +312,20 @@ def test_an_absent_onex_home_is_not_configured(tmp_path: Path) -> None:
         onex_home=tmp_path / "absent", store=FakeStore()
     ).handle(_request())
     assert result.outcome is EnumCapturedSecretStoreOutcome.NOT_CONFIGURED
+
+
+def test_a_writer_block_without_a_provider_is_misconfigured(tmp_path: Path) -> None:
+    home = _onex_home(tmp_path)
+    config = home / "config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("  provider: infisical\n", ""),
+        encoding="utf-8",
+    )
+    store = FakeStore()
+    result = HandlerCapturedSecretStore(onex_home=home, store=store).handle(_request())
+    assert result.outcome is EnumCapturedSecretStoreOutcome.MISCONFIGURED
+    assert "provider" in (result.detail or "")
+    assert store.creates == 0
 
 
 def test_config_refuses_a_non_http_address(tmp_path: Path) -> None:
@@ -399,29 +418,37 @@ def test_the_writer_end_to_end_over_http(infisical_like: str, tmp_path: Path) ->
     assert create[1]["secretPath"] == "/captured"
     assert create[1]["environment"] == "dev"
     assert create[1]["type"] == "shared"
-    assert create[1]["secretComment"].startswith(f"captured session={SESSION}")
+    assert VALUE not in first.model_dump_json()
 
 
-def test_the_transport_reads_refusals_and_an_unreachable_store(
+def test_the_writer_reads_refusals_and_an_unreachable_store_over_http(
     infisical_like: str, tmp_path: Path
 ) -> None:
-    config = load_writer_config(_onex_home(tmp_path, addr=infisical_like))
-    assert config is not None
-    transport = InfisicalCreateOnlySecretStore(timeout=2.0)
-    wrong = CapturedSecretWriterConfig(
-        **{**config.__dict__, "client_secret": SecretStr("FAKE-wrong")}
+    home = _onex_home(tmp_path / "wrong", addr=infisical_like)
+    values = home / "credentials.json"
+    values.write_text(
+        json.dumps(
+            {"captured-writer": "FAKE-wrong", "captured-reference-key": REFERENCE_KEY}
+        ),
+        encoding="utf-8",
     )
-    assert transport.login(wrong) is None
+    values.chmod(0o600)
+    wrong = HandlerCapturedSecretStore(onex_home=home).handle(_request())
+    assert wrong.outcome is EnumCapturedSecretStoreOutcome.LOGIN_REFUSED
+
     _InfisicalLike.refuse_writes = True
-    outcome = transport.create(
-        config, "tok", key="CAPTURED_x", value=SecretStr("v"), comment="c"
-    )
-    assert outcome == "refused"
-    dead = CapturedSecretWriterConfig(
-        **{**config.__dict__, "infisical_addr": "http://127.0.0.1:9"}
-    )
-    with pytest.raises(StoreUnreachableError):
-        transport.login(dead)
+    refused = HandlerCapturedSecretStore(
+        onex_home=_onex_home(tmp_path / "refused", addr=infisical_like)
+    ).handle(_request())
+    assert refused.outcome is EnumCapturedSecretStoreOutcome.WRITE_REFUSED
+
+    dead = HandlerCapturedSecretStore(
+        onex_home=_onex_home(tmp_path / "dead", addr="http://127.0.0.1:9")
+    ).handle(_request())
+    assert dead.outcome is EnumCapturedSecretStoreOutcome.STORE_UNREACHABLE
+    for result in (wrong, refused, dead):
+        assert result.reference is None
+        assert VALUE not in result.model_dump_json()
 
 
 # ---------------------------------------------------------------------------

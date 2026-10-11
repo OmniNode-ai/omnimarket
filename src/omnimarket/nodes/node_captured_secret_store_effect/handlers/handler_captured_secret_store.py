@@ -18,15 +18,21 @@ per-deployment reference key, so the same value always lands on the same key
 (deduplicated) and the bus never carries an unsalted hash of a low-entropy
 secret. The secret's comment carries the capturing session and the time.
 
-The write is CREATE ONLY. An existing key is the dedupe case and is accepted
-without reading or updating it, so the writer identity needs neither a read nor
-an edit right on the namespace: a compromised writer cannot read back what it
-stored.
+The write is CREATE ONLY and goes through the platform's one secret store
+adapter, node_secret_store_effect (OMN-20948): this handler builds that node's
+request and reads its typed outcome, and owns no store client of its own. An
+existing key is the dedupe case and is accepted without reading or updating
+it, so the writer identity needs neither a read nor an edit right on the
+namespace: a compromised writer cannot read back what it stored. The capturing
+session is not written beside the secret: the captured record on the bus
+carries the session and the reference together, and the store's own audit log
+records the writing identity and the time.
 
 Configuration
 -------------
-``<onex_home>/config.yaml`` block ``captured_secret_store`` (addresses, the
-writer's client id and two references) with the values in
+``<onex_home>/config.yaml`` block ``captured_secret_store`` (the store
+provider and addresses, the writer's client id and two references) with the
+values in
 ``<onex_home>/credentials.json``, refused unless mode 0600: the split
 ``onex auth login`` already uses. Nothing deployment specific is committed.
 
@@ -40,16 +46,17 @@ a credential.
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import hashlib
 import hmac
-import http.client
-import json
 import logging
-import urllib.parse
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
+from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
 from omnimarket.models.captured_secret.model_captured_secret_store_overlay import (
@@ -67,18 +74,19 @@ from omnimarket.nodes.node_event_emit_effect.redaction import (
     SecretReference,
     load_contract,
 )
+from omnimarket.nodes.node_secret_store_effect import HandlerSecretStore
+from omnimarket.nodes.node_secret_store_effect.models import (
+    EnumSecretStoreOperation,
+    EnumSecretStoreOutcome,
+    ModelSecretStoreOverlay,
+    ModelSecretStoreRequest,
+)
 
 logger = logging.getLogger(__name__)
 
 #: One API call may take this long. A store that does not answer must not hold
 #: a backgrounded capture process open.
 TIMEOUT_SECONDS = 5.0
-
-#: The two schemes a store address may use; anything else is refused unopened.
-_CONNECTIONS: dict[str, type[http.client.HTTPConnection]] = {
-    "https": http.client.HTTPSConnection,
-    "http": http.client.HTTPConnection,
-}
 
 
 class CapturedSecretWriterConfigError(ValueError):
@@ -89,6 +97,7 @@ class CapturedSecretWriterConfigError(ValueError):
 class CapturedSecretWriterConfig:
     """The writer's resolved configuration. Secrets are excluded from repr."""
 
+    provider: str
     infisical_addr: str
     project_id: str
     environment_slug: str
@@ -125,6 +134,11 @@ def load_writer_config(onex_home: Path) -> CapturedSecretWriterConfig | None:
         raise CapturedSecretWriterConfigError(str(exc)) from None
     if overlay.writer_client_id is None:
         return None
+    if overlay.provider is None:
+        raise CapturedSecretWriterConfigError(
+            f"{files.config_path} block '{CAPTURED_SECRET_STORE_BLOCK}' names a "
+            "writer but no provider"
+        )
     named = {
         "writer_client_secret_ref": overlay.writer_client_secret_ref,
         "reference_key_ref": overlay.reference_key_ref,
@@ -144,6 +158,7 @@ def load_writer_config(onex_home: Path) -> CapturedSecretWriterConfig | None:
         except ModelOnexError as exc:
             raise CapturedSecretWriterConfigError(exc.message) from None
     return CapturedSecretWriterConfig(
+        provider=overlay.provider,
         infisical_addr=overlay.infisical_addr.rstrip("/"),
         project_id=str(overlay.project_id),
         environment_slug=overlay.environment_slug,
@@ -155,126 +170,81 @@ def load_writer_config(onex_home: Path) -> CapturedSecretWriterConfig | None:
 
 
 # ---------------------------------------------------------------------------
-# transport
+# the store, through node_secret_store_effect
 # ---------------------------------------------------------------------------
 
-
-class StoreUnreachableError(RuntimeError):
-    """The store did not answer. Carries no request content."""
-
-
-class ProtocolCreateOnlySecretStore(Protocol):
-    """The two calls the writer makes. A fake store implements this in tests."""
-
-    def login(self, config: CapturedSecretWriterConfig) -> str | None:
-        """An access token, or ``None`` when the store refused the identity.
-
-        Raises:
-            StoreUnreachableError: the store did not answer.
-        """
-        ...
-
-    def create(
-        self,
-        config: CapturedSecretWriterConfig,
-        token: str,
-        *,
-        key: str,
-        value: SecretStr,
-        comment: str,
-    ) -> str:
-        """``created``, ``exists``, ``refused`` or ``failed_<status>``.
-
-        Raises:
-            StoreUnreachableError: the store did not answer.
-        """
-        ...
+#: The names the writer's two loaded credentials go by in the node's overlay.
+_CLIENT_ID_REF = "captured-writer-client-id"
+_CLIENT_SECRET_REF = "captured-writer-client-secret"
 
 
-class InfisicalCreateOnlySecretStore:
-    """Infisical's REST API: universal-auth login and a raw secret create.
+class _HeldWriterCredentials:
+    """The writer identity, already loaded, as the node's bootstrap store.
 
-    The same two calls the lab store publisher makes, with the same posture: an
-    error body is parsed for its message only and never surfaced (a store
-    error can echo the request, and the request carries the value). Standard
-    library only, because the producer that calls it is a hook process.
+    Read only, and it answers only the two names the overlay gives the node.
     """
 
-    def __init__(self, *, timeout: float = TIMEOUT_SECONDS) -> None:
-        self._timeout = timeout
+    def __init__(self, config: CapturedSecretWriterConfig) -> None:
+        self._values = {
+            _CLIENT_ID_REF: SecretStr(config.client_id),
+            _CLIENT_SECRET_REF: config.client_secret,
+        }
 
-    def _post(
-        self, url: str, payload: dict[str, object], token: str | None = None
-    ) -> tuple[int, dict[str, Any]]:
-        parts = urllib.parse.urlsplit(url)
-        connection_class = _CONNECTIONS.get(parts.scheme)
-        if connection_class is None or not parts.hostname:
-            raise StoreUnreachableError("unsupported store address")
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        path = parts.path + (f"?{parts.query}" if parts.query else "")
-        connection = connection_class(parts.hostname, parts.port, timeout=self._timeout)
-        try:
-            connection.request(
-                "POST", path, body=json.dumps(payload).encode("utf-8"), headers=headers
-            )
-            response = connection.getresponse()
-            raw = response.read().decode("utf-8", errors="replace")
-            status = response.status
-        except (OSError, http.client.HTTPException) as error:
-            raise StoreUnreachableError(type(error).__name__) from None
-        finally:
-            connection.close()
-        try:
-            parsed = json.loads(raw) if raw.strip() else {}
-        except json.JSONDecodeError:
-            parsed = {}
-        return status, parsed if isinstance(parsed, dict) else {}
+    async def get_secret(self, key: str) -> str | None:
+        held = self._values.get(key)
+        return None if held is None else held.get_secret_value()
 
-    def login(self, config: CapturedSecretWriterConfig) -> str | None:
-        status, body = self._post(
-            f"{config.infisical_addr}/api/v1/auth/universal-auth/login",
-            {
-                "clientId": config.client_id,
-                "clientSecret": config.client_secret.get_secret_value(),
-            },
-        )
-        token = body.get("accessToken") if status == 200 else None
-        return token if isinstance(token, str) and token else None
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError("the writer's credential holder is read only")
 
-    def create(
-        self,
-        config: CapturedSecretWriterConfig,
-        token: str,
-        *,
-        key: str,
-        value: SecretStr,
-        comment: str,
-    ) -> str:
-        status, body = self._post(
-            f"{config.infisical_addr}/api/v3/secrets/raw/{urllib.parse.quote(key)}",
-            {
-                "workspaceId": config.project_id,
-                "environment": config.environment_slug,
-                "secretPath": config.secret_path,
-                "secretValue": value.get_secret_value(),
-                "secretComment": comment,
-                "type": "shared",
-            },
-            token=token,
-        )
-        if status in (200, 201):
-            return "created"
-        message = str(body.get("message", "")).lower()
-        # The dedupe case: 409 on current servers, 400 "already exist" on older
-        # ones. Any other 400 is a failure, not an existing secret: accepting it
-        # would mint a reference to nothing.
-        if status == 409 or (status == 400 and "already exist" in message):
-            return "exists"
-        if status in (401, 403):
-            return "refused"
-        return f"failed_{status}"
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("the writer's credential holder is read only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        return []
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        return None
+
+
+def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:
+    """Run the node's async handler from this sync one, inside a loop or not."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coroutine).result()
+
+
+def _secret_store_node(
+    config: CapturedSecretWriterConfig, store: ProtocolSecretStore | None
+) -> HandlerSecretStore:
+    overlay = ModelSecretStoreOverlay(
+        provider=config.provider,
+        address=config.infisical_addr,
+        project_id=config.project_id,
+        environment=config.environment_slug,
+        client_id_ref=_CLIENT_ID_REF,
+        client_secret_ref=_CLIENT_SECRET_REF,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    return HandlerSecretStore(
+        store=store,
+        overlay=overlay,
+        bootstrap_store=_HeldWriterCredentials(config),
+    )
+
+
+_NODE_REFUSALS: dict[EnumSecretStoreOutcome, EnumCapturedSecretStoreOutcome] = {
+    EnumSecretStoreOutcome.UNREACHABLE: EnumCapturedSecretStoreOutcome.STORE_UNREACHABLE,
+    EnumSecretStoreOutcome.NOT_CONFIGURED: EnumCapturedSecretStoreOutcome.MISCONFIGURED,
+    EnumSecretStoreOutcome.MISCONFIGURED: EnumCapturedSecretStoreOutcome.MISCONFIGURED,
+    EnumSecretStoreOutcome.INVALID_REQUEST: EnumCapturedSecretStoreOutcome.MISCONFIGURED,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -295,16 +265,16 @@ class HandlerCapturedSecretStore:
         self,
         *,
         onex_home: Path,
-        store: ProtocolCreateOnlySecretStore | None = None,
+        store: ProtocolSecretStore | None = None,
         contract_path: Path | None = None,
     ) -> None:
         self._onex_home = onex_home
-        self._store = store if store is not None else InfisicalCreateOnlySecretStore()
+        self._store = store
         self._contract_path = contract_path
         self._loaded = False
         self._config: CapturedSecretWriterConfig | None = None
         self._reference: SecretReference | None = None
-        self._token: str | None = None
+        self._node: HandlerSecretStore | None = None
         self._minted: dict[str, str] = {}
         self._refusal: ModelCapturedSecretStoreResult | None = None
 
@@ -333,6 +303,7 @@ class HandlerCapturedSecretStore:
             return self._refuse(EnumCapturedSecretStoreOutcome.MISCONFIGURED, str(exc))
         if self._config is None:
             return self._refuse(EnumCapturedSecretStoreOutcome.NOT_CONFIGURED)
+        self._node = _secret_store_node(self._config, self._store)
         return None
 
     def handle(
@@ -356,35 +327,42 @@ class HandlerCapturedSecretStore:
             return ModelCapturedSecretStoreResult(
                 outcome=EnumCapturedSecretStoreOutcome.EXISTS, reference=minted
             )
-        try:
-            if self._token is None:
-                self._token = self._store.login(config)
-                if self._token is None:
-                    return self._refuse(EnumCapturedSecretStoreOutcome.LOGIN_REFUSED)
-            created = self._store.create(
-                config,
-                self._token,
-                key=reference.store_key_for(digest),
-                value=request.value,
-                comment=(
-                    f"captured session={request.session_id} "
-                    f"at={request.captured_at.isoformat(timespec='seconds')}"
-                ),
+        node = self._node
+        if node is None:  # unreachable after _configure
+            return self._refuse(EnumCapturedSecretStoreOutcome.MISCONFIGURED)
+        stored = _run(
+            node.handle(
+                ModelSecretStoreRequest(
+                    operation=EnumSecretStoreOperation.CREATE,
+                    folder=config.secret_path,
+                    key=reference.store_key_for(digest),
+                    value=request.value,
+                )
             )
-        except StoreUnreachableError as exc:
+        )
+        if stored.outcome is EnumSecretStoreOutcome.REFUSED:
+            login = "login" in (stored.detail or "")
             return self._refuse(
-                EnumCapturedSecretStoreOutcome.STORE_UNREACHABLE, str(exc)
+                EnumCapturedSecretStoreOutcome.LOGIN_REFUSED
+                if login
+                else EnumCapturedSecretStoreOutcome.WRITE_REFUSED
             )
-        if created == "refused":
-            return self._refuse(EnumCapturedSecretStoreOutcome.WRITE_REFUSED)
-        if created not in ("created", "exists"):
-            return self._refuse(EnumCapturedSecretStoreOutcome.WRITE_FAILED, created)
+        if stored.outcome not in (
+            EnumSecretStoreOutcome.CREATED,
+            EnumSecretStoreOutcome.EXISTS,
+        ):
+            return self._refuse(
+                _NODE_REFUSALS.get(
+                    stored.outcome, EnumCapturedSecretStoreOutcome.WRITE_FAILED
+                ),
+                stored.detail,
+            )
         minted = reference.reference_for(digest)
         self._minted[digest] = minted
         return ModelCapturedSecretStoreResult(
             outcome=(
                 EnumCapturedSecretStoreOutcome.STORED
-                if created == "created"
+                if stored.outcome is EnumSecretStoreOutcome.CREATED
                 else EnumCapturedSecretStoreOutcome.EXISTS
             ),
             reference=minted,
@@ -395,8 +373,5 @@ __all__ = [
     "CapturedSecretWriterConfig",
     "CapturedSecretWriterConfigError",
     "HandlerCapturedSecretStore",
-    "InfisicalCreateOnlySecretStore",
-    "ProtocolCreateOnlySecretStore",
-    "StoreUnreachableError",
     "load_writer_config",
 ]
