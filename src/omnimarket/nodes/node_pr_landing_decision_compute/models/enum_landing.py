@@ -184,10 +184,24 @@ class EnumLandingExternalBlockerKind(StrEnum):
     """The named external blockers a worker may return (R1)."""
 
     OPERATOR_DECISION = "operator_decision"
+    OPERATOR_APPROVAL = "operator_approval"
+    OPERATOR_CREDENTIAL = "operator_credential"
     PRODUCTION_GATE = "production_gate"
     HOLD_ROW = "hold_row"
     COLLABORATOR = "collaborator"
     UPSTREAM_OPEN = "upstream_open"
+
+
+# The blockers only the operator can clear: a decision, an approval or a
+# credential. A cause that returns one asks the operator once; every other
+# parked cause follows the default ladder and asks nobody.
+OPERATOR_NEED_BLOCKERS: frozenset[EnumLandingExternalBlockerKind] = frozenset(
+    {
+        EnumLandingExternalBlockerKind.OPERATOR_DECISION,
+        EnumLandingExternalBlockerKind.OPERATOR_APPROVAL,
+        EnumLandingExternalBlockerKind.OPERATOR_CREDENTIAL,
+    }
+)
 
 
 class EnumLandingEngine(StrEnum):
@@ -215,6 +229,7 @@ class EnumLandingBriefClass(StrEnum):
     COMPANION_ORPHAN = "companion_orphan"
     RUNTIME = "runtime"
     SHARED_CAUSE = "shared_cause"
+    CAUSE_DIAGNOSIS = "cause_diagnosis"
 
 
 class EnumLandingActionKind(StrEnum):
@@ -222,7 +237,9 @@ class EnumLandingActionKind(StrEnum):
 
     ``kill_worker`` and ``discard_result`` act on the controller's own
     workers; ``observe_only`` switches a drained repo to observe-only;
-    ``escalate_operator`` asks the operator once about a parked cause.
+    ``escalate_operator`` asks the operator once about a parked cause whose
+    blocker needs a decision, an approval or a credential; ``file_cause_ticket``
+    files the one ticket of a cause parked by the default ladder.
     """
 
     MERGE = "merge"
@@ -236,6 +253,7 @@ class EnumLandingActionKind(StrEnum):
     DISCARD_RESULT = "discard_result"
     OBSERVE_ONLY = "observe_only"
     ESCALATE_OPERATOR = "escalate_operator"
+    FILE_CAUSE_TICKET = "file_cause_ticket"
 
 
 class EnumLandingRebuildStatus(StrEnum):
@@ -297,6 +315,7 @@ __all__: list[str] = [
     "BLOCKED_OUTCOMES",
     "CAUSE_EXCLUDED_SUSPENSIONS",
     "CLAUDE_ENGINES",
+    "OPERATOR_NEED_BLOCKERS",
     "RERUNNABLE_RED_CLASSES",
     "EnumLandingActionKind",
     "EnumLandingBriefClass",
