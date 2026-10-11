@@ -686,10 +686,14 @@ state_machine:
 #     dry_run one is declined, so no PR of theirs reaches the arm from here. No
 #     dev branch of theirs requires conversation resolution. Their push prompts
 #     still start rows, so the watcher does not prompt them.
+# A lane's private overlay sets whether that lane acts (OMN-20867): the
+# enforce repositories' mode and the arm gate's action_mode are overlay
+# references whose inline default is the shipped value. A lane bound to
+# dry_run and report_only sends reads only, and arms nothing.
 landing_config:
   github_mode: dry_run
   github_mode_by_repository:
-    OmniNode-ai/omnimarket: enforce
+    OmniNode-ai/omnimarket: "${env.ONEX_PR_LANDING_GITHUB_MODE:enforce}"
   dry_run_operations:
     - rerun_runs
     - update_branch
@@ -709,7 +713,7 @@ landing_config:
     - OmniNode-ai/omnimarket
     - OmniNode-ai/omnibase_infra
   arm_policy:
-    action_mode: enforce
+    action_mode: "${env.ONEX_PR_LANDING_ARM_ACTION_MODE:enforce}"
     kill_switch: false
 event_bus:
   version:

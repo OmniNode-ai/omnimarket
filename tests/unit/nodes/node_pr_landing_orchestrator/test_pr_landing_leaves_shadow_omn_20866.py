@@ -495,3 +495,125 @@ def _row_for(pr: int) -> ModelPrLandingWorkflowRow:
         base_ref="dev",
         merge_state_status="clean",
     )
+
+
+# ------------------------------------------- per-lane act overlay (OMN-20867)
+
+MODE_ENV = "ONEX_PR_LANDING_GITHUB_MODE"
+ARM_ENV = "ONEX_PR_LANDING_ARM_ACTION_MODE"
+_READ_OPERATIONS = {
+    EnumPrLandingGithubOperation.READ_PR_STATE,
+    EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+}
+# The block as it was declared before the act values took a lane overlay.
+_SHIPPED_BLOCK: dict[str, object] = {
+    "github_mode": "dry_run",
+    "github_mode_by_repository": {CANARY: "enforce"},
+    "dry_run_operations": ["rerun_runs", "update_branch", "disarm"],
+    "companion_exempt_repositories": [CANARY, "OmniNode-ai/omnibase_infra"],
+    "queue_repositories": ["OmniNode-ai/omnibase_infra"],
+    "review_threads_not_required_repositories": [
+        CANARY,
+        "OmniNode-ai/omnibase_infra",
+        "OmniNode-ai/omnibase_core",
+        "OmniNode-ai/omniclaude",
+        "OmniNode-ai/omnidash",
+    ],
+    "observed_prompt_repositories": [CANARY, "OmniNode-ai/omnibase_infra"],
+    "arm_policy": {"action_mode": "enforce", "kill_switch": False},
+}
+
+
+async def _ready_canary_requests(
+    handler: HandlerPrLandingOrchestrator,
+) -> list[ModelPrLandingGithubRequest]:
+    """Every GitHub request one green canary PR draws, through READY."""
+    recorded = _recorded(3639)
+    pr, head = recorded["pr_number"], recorded["head_sha"]
+    sent: list[ModelPrLandingGithubRequest] = []
+    emitted = await handler.handle(_observed(CANARY, pr, head))
+    sent += [e for e in emitted if isinstance(e, ModelPrLandingGithubRequest)]
+    emitted = await handler.handle(answer(sent[-1], pr_state=_pr_state(pr, head)))
+    sent += [e for e in emitted if isinstance(e, ModelPrLandingGithubRequest)]
+    assert sent[-1].operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+    emitted = await handler.handle(_head_checks_answer(sent[-1], recorded))
+    assert _states(emitted) == [EnumPrLandingState.READY]
+    sent += [e for e in emitted if isinstance(e, ModelPrLandingGithubRequest)]
+    return sent
+
+
+def test_overlay_unset_the_contract_declares_todays_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(MODE_ENV, raising=False)
+    monkeypatch.delenv(ARM_ENV, raising=False)
+    assert load_contract_config() == config_from_block(_SHIPPED_BLOCK)
+
+
+async def test_overlay_non_acting_sends_only_reads_for_a_ready_pr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(MODE_ENV, "dry_run")
+    monkeypatch.setenv(ARM_ENV, "report_only")
+    config = load_contract_config()
+    assert config.github_mode_for(CANARY) is EnumPrLandingGithubMode.DRY_RUN
+    assert config.arm_policy.action_mode is EnumArmActionMode.REPORT_ONLY
+    sent = await _ready_canary_requests(_contract_handler())
+    assert [r.operation for r in sent] == [
+        EnumPrLandingGithubOperation.READ_PR_STATE,
+        EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+    ]
+    assert {r.operation for r in sent} <= _READ_OPERATIONS
+
+
+@pytest.mark.parametrize("bound", [False, True])
+async def test_overlay_acting_arms_a_ready_pr(
+    monkeypatch: pytest.MonkeyPatch, bound: bool
+) -> None:
+    """The positive control: unset, or bound to acting, the canary is armed."""
+    if bound:
+        monkeypatch.setenv(MODE_ENV, "enforce")
+        monkeypatch.setenv(ARM_ENV, "enforce")
+    else:
+        monkeypatch.delenv(MODE_ENV, raising=False)
+        monkeypatch.delenv(ARM_ENV, raising=False)
+    sent = await _ready_canary_requests(_contract_handler())
+    arm = sent[-1]
+    assert arm.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE
+    assert arm.mode is EnumPrLandingGithubMode.ENFORCE
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "fragment"),
+    [
+        (MODE_ENV, "loud", "not one of dry_run or enforce"),
+        (MODE_ENV, "", "not one of dry_run or enforce"),
+        (ARM_ENV, "maybe", "arm_policy"),
+        (ARM_ENV, "", "arm_policy"),
+    ],
+)
+def test_overlay_a_malformed_value_fails_at_contract_load(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str, fragment: str
+) -> None:
+    monkeypatch.setenv(name, value)
+    with pytest.raises(PrLandingContractConfigError, match=fragment):
+        load_contract_config()
+    with pytest.raises(PrLandingContractConfigError, match=fragment):
+        _contract_handler()
+
+
+def test_overlay_refs_expand_in_a_block_and_an_unbound_ref_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ONEX_TEST_UNBOUND_MODE", raising=False)
+    monkeypatch.setenv("ONEX_TEST_BOUND_MODE", "enforce")
+    config = config_from_block(
+        {
+            "github_mode": "${env.ONEX_TEST_UNBOUND_MODE:dry_run}",
+            "github_mode_by_repository": {OTHER: "${env.ONEX_TEST_BOUND_MODE}"},
+        }
+    )
+    assert config.github_mode is EnumPrLandingGithubMode.DRY_RUN
+    assert config.github_mode_for(OTHER) is EnumPrLandingGithubMode.ENFORCE
+    with pytest.raises(PrLandingContractConfigError, match="github_mode is ''"):
+        config_from_block({"github_mode": "${env.ONEX_TEST_UNBOUND_MODE}"})

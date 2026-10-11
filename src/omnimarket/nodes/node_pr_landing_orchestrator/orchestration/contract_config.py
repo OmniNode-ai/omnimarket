@@ -12,6 +12,12 @@ not a code default, decides whether a mutation is sent.
 
 A malformed block is refused at load: an unknown key, mode or operation is an
 error, never a silent fallback to the shadow defaults.
+
+A string value may be a ``${env.VAR}`` / ``${env.VAR:default}`` overlay
+reference (OMN-20867), expanded through the sanctioned overlay boundary before
+validation, so a lane's private overlay sets whether that lane acts while the
+shipped default stays in the contract. An expanded value is validated like a
+literal one: a malformed override is refused, not replaced by the default.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
+from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 
 from omnimarket.events.pr_arm_gate import ModelArmGatePolicy
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
@@ -59,6 +66,17 @@ class PrLandingContractConfigError(ValueError):
     """The contract's landing_config block is missing or malformed."""
 
 
+def _expanded(value: object) -> object:
+    """``value`` with every string in it overlay-expanded; mapping keys stay literal."""
+    if isinstance(value, str):
+        return expand_contract_env_refs(value)
+    if isinstance(value, Mapping):
+        return {key: _expanded(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_expanded(item) for item in value]
+    return value
+
+
 def _repositories(block: Mapping[str, object], key: str) -> frozenset[str]:
     value = block.get(key, [])
     if not isinstance(value, list) or not all(
@@ -82,6 +100,7 @@ def config_from_block(block: object) -> PrLandingOrchestratorConfig:
     if not isinstance(block, Mapping):
         msg = f"the contract declares no {CONFIG_KEY} mapping"
         raise PrLandingContractConfigError(msg)
+    block = {key: _expanded(value) for key, value in block.items()}
     unknown = set(block) - _KEYS
     if unknown:
         msg = f"{CONFIG_KEY} has unknown keys {sorted(unknown)}"

@@ -35,6 +35,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims impo
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_triage import (
     GhCiRedFactsReader,
     HandlerCiRedTriage,
+    ci_red_act_flags,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     ModelPrLifecycleStartCommand,
@@ -565,11 +566,12 @@ def test_contract_routes_dispatch_to_exact_topics(node: str) -> None:
         assert declared[model.__name__.removeprefix("Model")] == topic
         assert topic in raw["event_bus"]["publish_topics"]
     if node.endswith("orchestrator"):
-        assert raw["ci_red_triage"]["act"] == {
-            "runner": True,
-            "pr_own": False,
-            "shared_cause": False,
-            "dev_head": False,
+        # Overlay references (OMN-20867); unbound, they resolve to the runner only.
+        assert ci_red_act_flags(raw["ci_red_triage"]["act"]) == {
+            EnumCiRedClass.RUNNER: True,
+            EnumCiRedClass.PR_OWN: False,
+            EnumCiRedClass.SHARED_CAUSE: False,
+            EnumCiRedClass.DEV_HEAD: False,
         }
         assert raw["ci_red_triage"]["claims"] == {
             "table": PR_LEDGER_PROJECTION_TABLE,
