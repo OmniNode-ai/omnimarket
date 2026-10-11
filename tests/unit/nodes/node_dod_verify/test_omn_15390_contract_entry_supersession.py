@@ -183,6 +183,17 @@ suite, which is exactly the hermeticity trap three OMN-15382 tests already hit.
 
 _CI_WORKFLOW = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
+_RECORDED_VERDICTS_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "fixtures"
+    / "dod_supersession"
+    / "occ_recorded_verdicts.yaml"
+)
+"""What onex_change_control's ``_superseded_dod_ids`` returned for the corpus and the domain."""
+
+_OCC_SHA = "6adc28168d023d027bf9c1172f262ac03c9d9055"
+"""The onex_change_control commit the verdicts in the record were drawn from."""
+
 _MARKER_PREFIX = "supersedes_dod_evidence:"
 
 
@@ -1465,3 +1476,108 @@ def test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite() -> None:
         f"OCC checkout path is {path!r} but the parity test looks for "
         f"{_IN_WORKSPACE_OCC.name!r} at the workspace root"
     )
+
+
+def _occ_view(dod_evidence: list[Any]) -> list[dict[str, Any]]:
+    """The only two keys ``_superseded_dod_ids`` reads, as recorded in the fixture.
+
+    ``id`` and ``evidence_artifact`` are emitted only when the item carries the
+    key, so a missing ``id`` stays distinguishable from ``id: null``.
+    """
+    view: list[dict[str, Any]] = []
+    for item in dod_evidence:
+        assert isinstance(item, dict), item
+        view.append(
+            {key: item[key] for key in ("id", "evidence_artifact") if key in item}
+        )
+    return view
+
+
+def _recorded_occ_verdicts() -> dict[str, Any]:
+    raw = yaml.safe_load(_RECORDED_VERDICTS_PATH.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
+
+
+@pytest.mark.unit
+def test_the_recorded_occ_verdicts_carry_their_provenance() -> None:
+    """The recorded verdicts name the OCC sha and cover the whole differential.
+
+    Replaces the pin on a live ``onex_change_control`` checkout in ``ci.yml``:
+    what matters once OCC retires is the recorded truth of what OCC decided, so
+    this pins that the record says WHICH OCC decided it, how to regenerate it,
+    and that it spans every parity-corpus case and the full exhaustive domain.
+    """
+    text = _RECORDED_VERDICTS_PATH.read_text(encoding="utf-8")
+    header = "\n".join(line for line in text.splitlines() if line.startswith("#"))
+    assert _OCC_SHA in header
+    assert "PYTHONPATH=" in header
+    assert "_superseded_dod_ids" in header
+
+    recorded = _recorded_occ_verdicts()
+    assert recorded["occ_sha"] == _OCC_SHA
+
+    corpus = _corpus_cases()
+    domain = _parity_domain()
+    assert recorded["corpus_cases"] == len(corpus) == len(recorded["corpus"])
+    assert recorded["domain_contracts"] == len(domain) == len(recorded["domain"])
+    assert [c["name"] for c in recorded["corpus"]] == [c["name"] for c in corpus]
+    assert len(domain) == 5 + 25 + 125 + len(_NON_CANONICAL_IDS) * 5 * 2 + (
+        2 * 4**2 + 8 * 4**3
+    )
+
+
+@pytest.mark.unit
+def test_the_runner_agrees_with_the_recorded_occ_verdicts_on_the_shared_corpus() -> (
+    None
+):
+    """Differential against what OCC's ``_superseded_dod_ids`` RETURNED, per case.
+
+    The verdicts were recorded from the real function at :data:`_OCC_SHA`, so
+    this runs on every invocation with no checkout and no skip path. Each case
+    must (a) still be the input OCC was asked about, (b) have drawn the verdict
+    the shared corpus expects, and (c) resolve to the same set in the runner.
+    """
+    recorded = {case["name"]: case for case in _recorded_occ_verdicts()["corpus"]}
+    for case in _corpus_cases():
+        verdict = recorded[case["name"]]
+        assert verdict["items"] == _occ_view(case["dod_evidence"]), (
+            f"corpus case {case['name']!r} changed since OCC was asked about it"
+        )
+        expected = set(case["expected_superseded"])
+        assert set(verdict["superseded"]) == expected, (
+            f"recorded OCC verdict disagrees with the shared corpus on {case['name']!r}"
+        )
+        superseded, _ = _resolve(case["dod_evidence"])
+        assert superseded == expected
+
+
+@pytest.mark.unit
+def test_the_runner_agrees_with_the_recorded_occ_verdicts_over_the_whole_domain() -> (
+    None
+):
+    """Pin the transcribed oracle and the runner to OCC's recorded verdict, per contract.
+
+    Covers the whole exhaustive domain, including the non-canonical carrier-id
+    shapes and the duplicate-id shapes, the two axes on which the runner has
+    diverged from the REAL function while the transcribed oracle agreed with
+    both. Unconditional: a domain that grows or reorders without a regenerated
+    record fails here instead of being compared against the wrong verdict.
+    """
+    recorded = _recorded_occ_verdicts()["domain"]
+    domain = _parity_domain()
+    assert len(recorded) == len(domain)
+    for verdict, contract in zip(recorded, domain, strict=True):
+        label = (
+            f"{[i.get('id', '<no id>') for i in contract]} / "
+            f"{[i.get('evidence_artifact') for i in contract]}"
+        )
+        assert verdict["items"] == _occ_view(contract), (
+            f"domain changed since OCC was asked about it: {label}"
+        )
+        occ_superseded = set(verdict["superseded"])
+        assert occ_superseded == _gate_algorithm_superseded_ids(contract)
+        superseded, _ = _resolve(contract)
+        assert superseded == occ_superseded, (
+            f"runner diverges from the recorded OCC verdict on {label}"
+        )

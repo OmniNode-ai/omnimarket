@@ -155,11 +155,6 @@ class EnumDeadLetterPruneVerdict(StrEnum):
     FAILED = "failed"
     REFUSED = "refused"  # a precondition failed; nothing was read or written
     NOTHING_TO_PRUNE = "nothing_to_prune"
-    # OMN-19657: a scheduled (runtime-tick-driven) invocation arrived before
-    # config.dead_letter_prune.schedule.run_interval_seconds had elapsed since
-    # the last scheduled run. Nothing was read, written or deleted -- distinct
-    # from NOTHING_TO_PRUNE, where the store WAS queried and had no eligible day.
-    SKIPPED_INTERVAL_NOT_ELAPSED = "skipped_interval_not_elapsed"
 
 
 class ModelDeadLetterDayResult(BaseModel):
