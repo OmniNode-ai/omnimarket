@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20955"
+title: "OCC retirement: the branch-protection auditor ports out of change control into node_branch_protection_audit_effect, the audited fleet read from a deployment overlay"
+summary: "Adds node_branch_protection_audit_effect, the omnimarket home of change control's scripts/audit_branch_protection.sh. contract.yaml + node + handlers: HandlerBranchProtectionAudit is a definition-B handle(ModelBranchProtectionAuditRequest) -> ModelBranchProtectionAuditResult, pure over a snapshot of the fetched GitHub documents keyed by API path; HandlerBranchProtectionFetch is the only GitHub access (read-only REST and GraphQL through omnimarket.github_api, token from the contract-declared api_key_ref); HandlerBranchProtectionPolicyLoad reads the fleet and each repository's role from a branch_protection_audit_overlay.v1 overlay. The shipped default fleet is empty and names no repository; a required overlay that is absent, an invalid overlay or an empty fleet exits 2. Every check of the script is kept with its report text, JSONL records and exit status 0/1. Change control's copy is untouched; workflows still call it until they are repointed."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "public_api"
+requirements:
+  - id: "req-omn20955-node"
+    statement: "A canonical effect node in omnimarket carries the branch-protection audit, runnable from the command line over a live fleet or a saved snapshot."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: omnimarket carries node_branch_protection_audit_effect (contract.yaml + node + handlers, definition-B handle(request) -> result) whose contract route resolves to the audit handler and its request model -- falsifier: uv run pytest tests/nodes/node_branch_protection_audit_effect/test_registration.py -q fails at the merge base, where the node does not exist"
+  - id: "req-omn20955-parity"
+    statement: "Every check of the change-control script is kept: required contexts per branch role, App binding, Lane Identity Gate, merge-queue bypass, release-synced main ruleset shape, reviews, enforce_admins, delete_branch_on_merge and the Merge Queue ruleset, with the script's report lines, JSONL records and exit status."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the change-control tests for the script, ported, pass against the node, and a fixture missing a required context yields a FAIL finding and exit status 1 -- falsifier: uv run pytest tests/nodes/node_branch_protection_audit_effect -q -p no:randomly"
+  - id: "req-omn20955-overlay"
+    statement: "The audited fleet and every repository role come from a deployment overlay; the package names no deployment's repositories and refuses to audit an empty or unconfigured fleet."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the overlay replaces the empty default per key, and a required overlay that is absent, an invalid overlay or an empty fleet exits 2 rather than reading green -- falsifier: uv run pytest tests/nodes/node_branch_protection_audit_effect/test_branch_protection_policy_load.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_entrypoint.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the node's focused suite, the change-control tests ported plus the positive control, the overlay loader, the fetch boundary on a fake reader, the entry point and the route registration."
+    command: "uv run pytest tests/nodes/node_branch_protection_audit_effect -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20955-ac1-route"
+    description: "The contract route resolves to HandlerBranchProtectionAudit and ModelBranchProtectionAuditRequest. The test file is added by this pull request and fails on the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_branch_protection_audit_effect/test_registration.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20955-ac2-checks"
+    description: "The ported change-control tests (release-synced main, ordinary main, review-gated main, main-exempt repo, App binding, Lane Identity Gate, merge-queue bypass) and the remaining checks of the script, led by the positive control: a dev branch missing CI Summary is a FAIL finding and exit status 1."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_branch_protection_audit_effect -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20955-ac3-overlay"
+    description: "Overlay semantics and loud failure: per-key replacement of the empty default, refusal of an absent required overlay, an invalid overlay, overlapping release-synced and main-exempt sets, an unreadable snapshot and an empty fleet, each exit status 2 from the entry point."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_branch_protection_audit_effect/test_branch_protection_policy_load.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_entrypoint.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20955-deploy-registration"
+    description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers node_branch_protection_audit_effect under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_branch_protection_audit_effect = ' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"
