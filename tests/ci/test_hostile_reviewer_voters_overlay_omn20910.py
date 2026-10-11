@@ -83,6 +83,11 @@ def _step(prefix: str) -> dict[str, Any]:
 def test_the_ratchet_finds_every_known_bad_line() -> None:
     """Positive control: a zero below is only evidence if this finds five."""
     assert len(voter_endpoint_findings(_KNOWN_BAD)) == 5
+    # Each pattern needs its own control: a count alone survives a broken pattern
+    # whenever another pattern matches the same line.
+    lines = _KNOWN_BAD.splitlines()
+    for pattern in _VOTER_ENDPOINT_PATTERNS:
+        assert any(pattern.search(line) for line in lines), pattern.pattern
 
 
 def test_reviewer_workflows_exist() -> None:
