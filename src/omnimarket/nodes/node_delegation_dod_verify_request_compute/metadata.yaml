@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_dod_verify_request_compute
+version: "1.0.0"
+description: "Pure definition-B producer of the dod_verify start command: a completed, ticketed delegation in, a verification request naming the delegation run out"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_dod_verify_request_compute: "omnimarket.nodes.node_delegation_dod_verify_request_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "dod", "deterministic"]
+pack: "core"
+display_name: "Delegation DoD Verify Request"
+node_role: "compute"

@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20674"
 title: "Host the morning friction sweep orchestrator with a deployment overlay"
-summary: "Host the morning friction sweep as an unregistered omnimarket node: contract with declared bus topics, golden chain, error chain, decision parity against transcripts recorded from the original workflow, and a strict deployment overlay for every brief, path, lane and bound. The caller switch and the deletion of the original entry points are separate steps in the operator tooling repository."
+summary: "Host the morning friction sweep as an unregistered omnimarket node: contract with declared bus topics, golden chain, error chain, decision parity against transcripts recorded from the original workflow, and a strict deployment overlay for every brief, path, lane and bound. Registration in the onex.nodes entry points follows; the caller switch and the retirement of the operator tooling repository copy are separate steps in that repository."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,10 +14,18 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: the tool is a contract.yaml, a declarative node and a handler with the canonical definition-B signature, and its topics are declared in the contract"
+  - id: "req-registration"
+    statement: "Register the hosted orchestrator in the onex.nodes entry points so the runtime discovers it."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: pyproject.toml registers node_morning_friction_sweep_orchestrator in the onex.nodes entry points and the runtime dogfood inventory no longer lists it as missing"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: golden chain, decision parity against the recorded original transcripts, error chain, overlay and phase gateway pass."
     command: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_golden_chain_morning_friction_sweep_orchestrator.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: the entry point is registered in pyproject.toml."
+    command: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_entry_point.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +39,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_golden_chain_morning_friction_sweep_orchestrator.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20674-ac3-entry-point-registered"
+    description: "AC3: pyproject.toml registers node_morning_friction_sweep_orchestrator in the onex.nodes entry points."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_friction_sweep_orchestrator/test_entry_point.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

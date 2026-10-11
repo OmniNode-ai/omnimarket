@@ -184,6 +184,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T10:36:46Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T14:51:14Z",
     "head_sha": "0ad953a750020a549bfd791f8d1f45da5ae82cc1",
     "merge_state": "unknown",
@@ -237,6 +240,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T10:43:58Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T18:18:33Z",
     "head_sha": "928df65150a8ffe0e2b61c637f502b6532b6c897",
     "merge_state": "unknown",
@@ -283,6 +289,9 @@
     "ci": "green",
     "collaborator": true,
     "created_at": "2026-10-03T17:03:11Z",
+    "gate_reasons": [
+     "lab_unproven"
+    ],
     "head_sha": "67043097374f2c97f24c89c0d99021324157bfea",
     "merge_state": "clean",
     "open_parents": [],
@@ -317,6 +326,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T17:08:47Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T17:34:38Z",
     "head_sha": "1e178ee1290dd1043d39215cb0b9778a092b976b",
     "merge_state": "unknown",
@@ -419,6 +431,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T17:55:28Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T18:20:55Z",
     "head_sha": "3e6f0721e1ecf94f2704e5c0e80d77080dc86f19",
     "merge_state": "unknown",
@@ -469,6 +484,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T17:57:59Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T17:59:04Z",
     "head_sha": "969ce712802ed459170847351d8174890555ae78",
     "merge_state": "unknown",
@@ -521,6 +539,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T18:01:38Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T18:02:37Z",
     "head_sha": "15739a17a384af08087861824b9990514d64cd1e",
     "merge_state": "unknown",
@@ -573,6 +594,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T18:03:46Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T18:04:42Z",
     "head_sha": "844b306c8f193081e8370d58dab4aa178a705b18",
     "merge_state": "unknown",
@@ -627,6 +651,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T18:17:09Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T18:18:03Z",
     "head_sha": "916b9cde467ad58a478abe56ef6dd34024f8c78e",
     "merge_state": "unknown",
@@ -679,6 +706,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T18:19:52Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T18:45:17Z",
     "head_sha": "34b532229511a3d449dd3b705ae9f7711a781a4d",
     "merge_state": "unknown",
@@ -774,6 +804,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T18:59:50Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:01:18Z",
     "head_sha": "b9f9a38c5dda0540a59af458475f0258e3801d15",
     "merge_state": "unknown",
@@ -824,6 +857,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T19:14:34Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:16:11Z",
     "head_sha": "81eda89b1ec087fd9e0a53c53445f3056bcdcc9b",
     "merge_state": "unknown",
@@ -874,6 +910,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T19:22:20Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:24:22Z",
     "head_sha": "eab52e8bad39e88a03493ab175a7c07750e36a56",
     "merge_state": "unknown",
@@ -922,6 +961,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T19:26:30Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:28:07Z",
     "head_sha": "212c0ee2b16bcc404aa3176bb0c879931a494858",
     "merge_state": "unknown",
@@ -976,6 +1018,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T19:26:37Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:29:46Z",
     "head_sha": "987730ddb6961f2895a04e11c049ec2069658a5c",
     "merge_state": "unknown",
@@ -1026,6 +1071,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T19:32:49Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:34:55Z",
     "head_sha": "9d172cfdd651c26a3fca876f82897c2735cb59fe",
     "merge_state": "unknown",
@@ -1129,6 +1177,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T19:48:41Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T19:50:46Z",
     "head_sha": "1497a0498501b5edfcc7657a6716cc5501246c67",
     "merge_state": "unknown",
@@ -1179,6 +1230,9 @@
     "ci": "red",
     "collaborator": false,
     "created_at": "2026-10-03T20:09:46Z",
+    "gate_reasons": [
+     "companion_wait"
+    ],
     "gate_since": "2026-10-03T20:12:19Z",
     "head_sha": "15506bb9bf82f9986a870229f2d2ea8b1a04e648",
     "merge_state": "unknown",
@@ -1738,6 +1792,7 @@
  },
  "provenance": {
   "floor_breached_repos": "not in the snapshot: read as no breach",
+  "gate_reasons": "per gate-suspended PR, added when the node began refusing an unnamed gate (the snapshot predates gate_reasons): companion_wait for the 17 red ones, which the controller's tick tail shows in their companion wait from tick 721; lab_unproven for the green, CLEAN runtime-repo omnimarket#3319, the collector's gate for a runtime head with no lab readback, inferred from that rule and not read from the snapshot",
   "gate_since": "per gate-suspended PR: completed_at of the first-created (lowest id) failing check-run copy of its red checks on the snapshot head, read from the GitHub check-runs API by the ids the annotation read carries",
   "observed_at": "2026-10-03T21:00:21Z",
   "red_annotations": "per red check: the failure-level annotations (at most 3, in order, newline-joined) of the latest failing check-run copy on the snapshot head, read from the GitHub check rollup at about 21:05Z; a red check with no failing copy in that read is absent (unread)",

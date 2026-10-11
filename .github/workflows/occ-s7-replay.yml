@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# occ-s7-replay.yml
+#
+# OMN-20917 — OCC retirement S7: replay a repository's last 30 merged PRs
+# through both evidence paths (OCC's recorded verdict and the new path's) and
+# publish the classified table.
+#
+# A lab lane cannot reach N=30: the lane read guard refuses GitHub reads. This
+# job runs the replay where the reads are allowed, under the workflow's own
+# token, one repository per dispatch.
+#
+# Why a workflow of its own: the one other read-only, dispatch-only OCC report,
+# occ-n10-streak-report.yml, reads onex_change_control with OCC_AUTOAUTHOR_TOKEN
+# and its header marks that token and its (absent) schedule as deliberate
+# non-decisions not to be resolved by editing that file. Adding this job there
+# would run both jobs on every dispatch of either, or edit the streak job to
+# gate it. The other OCC workflows are cron, pull_request or write workflows.
+#
+# READ-ONLY. `permissions: contents: read`, the default GITHUB_TOKEN, no secret,
+# no cron, not a required check. It clones public repositories, reads their PRs
+# and check runs with that token, and writes only to the job summary and an
+# artifact.
+#
+# FAIL-CLOSED: no `continue-on-error`. A non-zero replay exit (1: an
+# unclassified, forbidden or unknown row; 2: fewer compared rows than 30) is a
+# red run. A repository or contract-home clone that cannot be read is a red run.
+
+name: OCC S7 Replay (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Repository whose last 30 merged PRs are replayed"
+        required: true
+        type: choice
+        options:
+          - omnibase_compat
+          - omnimemory
+          - omniintelligence
+          - omnibase_core
+          - omnibase_infra
+          - omniclaude
+          - omnibase_spi
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: Replay last 30 merged PRs (read-only, fail-closed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install omnimarket from the checkout
+        run: uv sync --locked
+
+      - name: Clone the replayed repository and the contract homes
+        # The replay reads clones under $OMNI_HOME and never fetches a PR head
+        # itself. A squash-merged PR's head is not on the default branch, so
+        # the heads of the newest merged PRs are fetched from refs/pull/N/head.
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          OMNI_HOME: ${{ runner.temp }}/registry
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p "$OMNI_HOME"
+          git clone --quiet --no-checkout \
+            "https://github.com/OmniNode-ai/${REPOSITORY}.git" "$OMNI_HOME/$REPOSITORY"
+          for home in omnibase_core omnibase_infra omniclaude omnimarket omnidash onex_change_control; do
+            if [ "$home" != "$REPOSITORY" ]; then
+              git clone --quiet --no-checkout --depth 1 \
+                "https://github.com/OmniNode-ai/${home}.git" "$OMNI_HOME/$home"
+            fi
+          done
+          cd "$OMNI_HOME/$REPOSITORY"
+          branch="$(git symbolic-ref --short refs/remotes/origin/HEAD)"
+          git log --first-parent --format=%s "refs/remotes/${branch}" \
+            | sed -n 's/.* (#\([0-9][0-9]*\))$/\1/p' | head -n 200 > "$RUNNER_TEMP/merged_prs.txt"
+          test -s "$RUNNER_TEMP/merged_prs.txt"
+          mapfile -t refspecs < <(sed 's#.*#+refs/pull/&/head:refs/remotes/origin/pr/&#' "$RUNNER_TEMP/merged_prs.txt")
+          if ! git fetch --quiet --no-tags origin "${refspecs[@]}"; then
+            echo "::warning::batch fetch of PR heads failed; fetching one by one"
+            for refspec in "${refspecs[@]}"; do
+              git fetch --quiet --no-tags origin "$refspec" || echo "::warning::no head for $refspec"
+            done
+          fi
+          echo "cloned $REPOSITORY at $branch; $(wc -l < "$RUNNER_TEMP/merged_prs.txt") merged PR numbers"
+
+      - name: Replay the last 30 merged PRs through both paths
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          OMNI_HOME: ${{ runner.temp }}/registry
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p replay-out "$RUNNER_TEMP/replay-work"
+          uv run python -m omnimarket.nodes.node_dod_verify occ-difference replay \
+            --repository "OmniNode-ai/${REPOSITORY}" --count 30 \
+            --work-dir "$RUNNER_TEMP/replay-work" \
+            --record-to replay-out/rows.json --table-to replay-out/table.md
+
+      - name: Publish the replay table to the job summary
+        if: always()
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+        run: |
+          {
+            echo "### OCC S7 replay: OmniNode-ai/${REPOSITORY} (read-only)"
+            echo
+            echo "Ticket: OMN-20917. The last 30 compared merged PRs, classified."
+            echo
+            if [ -s replay-out/table.md ]; then
+              cat replay-out/table.md
+            else
+              echo "(no table: the replay did not finish; see the step logs)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload rows.json and table.md
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: occ-s7-replay-${{ inputs.repository }}-${{ github.run_id }}
+          path: |
+            replay-out/rows.json
+            replay-out/table.md
+          if-no-files-found: error
+          retention-days: 30
