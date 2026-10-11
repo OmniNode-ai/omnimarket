@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Job Check Effect (OMN-20604, supervisor plan 4.4)
+#
+# Reads only, decides nothing. On lab-job-check-requested it visits every
+# non-terminal lab job and reports, per job, the deadlines that have elapsed, the
+# liveness evidence and verdict (running, dispatched, stalled), the done-rule
+# inputs (checking, retrying) and the CLAIM/TERMINAL rows of the claim identity.
+# Every database statement is a SELECT, issued in a read-only transaction.
+#   handle(ModelLabJobCheckRequested) -> ModelLabJobCheckSweep
+name: node_lab_job_check_effect
+contract_name: node_lab_job_check_effect
+node_name: node_lab_job_check_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Read-only check sweep of the lab job supervisor. For every non-terminal job it
+  reports elapsed deadlines, runs HandlerLaneLiveness on the lane's hook events
+  and ledger rows (attribution per lane since its CLAIM; a TERMINAL counts only
+  when newer than the CLAIM), reads the PR state for the done rule, and publishes
+  one lab-job-checked record per job carrying the verdict and every input.
+input_model:
+  name: ModelLabJobCheckRequested
+  module: omnimarket.models.lab_job.model_lab_job_check
+  description: One sweep request, from the schedule compute.
+output_model:
+  name: ModelLabJobCheckSweep
+  module: omnimarket.models.lab_job.model_lab_job_check
+  description: The per-job check records the sweep emitted.
+handler:
+  module: omnimarket.nodes.node_lab_job_check_effect.handlers.handler_lab_job_check_effect
+  class: HandlerLabJobCheckEffect
+  input_model: omnimarket.models.lab_job.model_lab_job_check.ModelLabJobCheckRequested
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_job_check
+      handler:
+        name: HandlerLabJobCheckEffect
+        module: omnimarket.nodes.node_lab_job_check_effect.handlers.handler_lab_job_check_effect
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.lab-job-check-requested.v1"
+    operation: "lab_job_check"
+side_effects:
+  reads:
+    - postgres
+  writes: []
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+config:
+  lab_job_check_effect:
+    # Deadlines of the state table, in seconds (plan 3.2).
+    dispatch_deadline_s: 1800
+    claim_deadline_s: 600
+    stop_deadline_s: 600
+    alert_deadline_s: 900
+    # The window over which the relay's own liveness is read, and the silence that
+    # makes it down. Shorter than any lane threshold so it trips first.
+    relay_window_s: 3600
+    relay_silence_threshold_s: 300
+    # stall_after_min of an adopted job, which carries no spec.
+    default_stall_after_min: 20
+# One lab-job-checked record per job is published on this topic.
+terminal_event: onex.evt.omnimarket.lab-job-checked.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-job-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-job-checked.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-job-check-requested.v1
+# The orchestrator (plan M3) subscribes to this; until it exists the topic leaves the graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-job-checked.v1
+metadata:
+  transport_type: database
+  description: "Read-only lab job check sweep"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-10-10"
+  tags: [effect, lab-job, liveness, read-only]
+  related_tickets: ["OMN-20604"]

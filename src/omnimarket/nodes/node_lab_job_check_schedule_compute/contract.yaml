@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Job Check Schedule Compute (OMN-20604, supervisor plan 4.4)
+#
+# Pure definition-B compute: handle(ModelRuntimeTick) -> ModelLabJobCheckRequested | None.
+# Subscribes to the platform runtime tick and, once per interval, returns
+# lab-job-check-requested{scope: nonterminal}, which the runtime publishes to the
+# check effect's command topic. Stateless: the window is derived from the tick's
+# own clock and interval.
+name: node_lab_job_check_schedule_compute
+contract_name: node_lab_job_check_schedule_compute
+node_name: node_lab_job_check_schedule_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Interval schedule for the lab job check sweep. Subscribes to the platform
+  runtime tick; the tick that opens a window of config.lab_job_check.schedule
+  returns the sweep request (scope nonterminal, check_id naming the window),
+  every other tick returns nothing. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - routing_key: platform.runtime-tick
+      handler_key: lab_job_check_schedule
+      handler:
+        name: HandlerLabJobCheckSchedule
+        module: omnimarket.nodes.node_lab_job_check_schedule_compute.handlers.handler_lab_job_check_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_lab_job_check_schedule_compute.handlers.handler_lab_job_check_schedule
+  class: HandlerLabJobCheckSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "lab_job_check_schedule"
+
+output_model:
+  name: ModelLabJobCheckRequested
+  module: omnimarket.models.lab_job.model_lab_job_check
+  description: The sweep request for the window this tick opens, or no output on any other tick.
+
+config:
+  lab_job_check:
+    schedule:
+      # The plan's check_interval_s (default 300).
+      workflow: lab-job-check
+      interval_seconds: 300
+      offset_seconds: 0
+
+# The command the runtime publishes on the handler's behalf when a window opens.
+terminal_event: onex.cmd.omnimarket.lab-job-check-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.lab-job-check-requested.v1
+
+metadata:
+  description: "Runtime-tick schedule of the lab job check sweep"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-10-10"
+  tags: [compute, lab-job, schedule, pure]
+  related_tickets: ["OMN-20604"]

@@ -20,6 +20,14 @@ requirements:
         statement: "AC4: the lane-liveness wire models are defined once in omnimarket.models.liveness and the compute node re-exports them, so one definition serves every importer -- falsifier: uv run pytest tests/unit/test_liveness_shared_models.py -q in omnimarket fails when a model is defined twice or is missing from the shared package"
       - id: "AC5"
         statement: "AC5: the lab job submit command catches a broker ACL refusal, prints the refusal to stderr, and exits 69 with no traceback and nothing published -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_submit_effect/test_lab_job_submit_cli.py -k bus_publish_refused_exits_69 -q in omnimarket fails at the merge base, where the test does not exist"
+      - id: "AC6"
+        statement: "AC6: node_lab_job_check_schedule_compute returns a nonterminal sweep request on the one runtime tick that opens each 300-second window and nothing on every other tick, holding no state -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_schedule.py tests/test_golden_chain_lab_job_check_schedule_compute.py -q in omnimarket fails at the merge base, where the node does not exist"
+      - id: "AC7"
+        statement: "AC7: on a recorded ledger window the check effect keys attribution on the lane since its own CLAIM, counts a TERMINAL only when it is newer than the CLAIM, and reports elapsed deadlines and the PR state read for the done rule -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_effect.py -k 'recorded_window or newer_than_the_claim or reused_lane or per_lane or deadlines or pr_never_observed' -q in omnimarket fails at the merge base, where the node does not exist"
+      - id: "AC8"
+        statement: "AC8: every statement the check effect issues through its store is a SELECT in a read-only transaction, and the guard refuses INSERT, UPDATE, DELETE, DDL and multi-statement text before the driver sees it -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_effect.py -k 'selects_only or select_only_guard or accepts_every_statement' -q in omnimarket fails at the merge base, where the node does not exist"
+      - id: "AC9"
+        statement: "AC9: on an in-memory bus a runtime tick ends as one lab-job-checked record per open job -- falsifier: uv run pytest tests/test_golden_chain_lab_job_check_effect.py -q in omnimarket fails at the merge base, where the node does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3 hosted probe. The reducer tests pass at the head and fail at the merge base, where the reducer does not exist."
@@ -69,3 +77,35 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_lab_job_submit_effect/test_lab_job_submit_cli.py -k bus_publish_refused_exits_69 -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20604-ac6-check-schedule"
+    description: "AC6 hosted probe. The tick that opens a window requests one sweep; no other tick does. The test files exist only at the head, so the check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_schedule.py tests/test_golden_chain_lab_job_check_schedule_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20604-ac7-check-evidence"
+    description: "AC7 hosted probe. Per-lane attribution, the TERMINAL-after-CLAIM filter, deadlines and PR-state reads over the recorded window."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_effect.py -k 'recorded_window or newer_than_the_claim or reused_lane or per_lane or deadlines or pr_never_observed' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20604-ac8-check-selects-only"
+    description: "AC8 hosted probe. The check effect issues SELECT statements only, and the guard refuses every write."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_effect.py -k 'selects_only or select_only_guard or accepts_every_statement' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20604-ac9-check-golden-chain"
+    description: "AC9 hosted probe. Golden chain on an in-memory bus: tick, request, one checked record per open job."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_lab_job_check_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
