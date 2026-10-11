@@ -2,17 +2,25 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20885"
 title: "OCC retirement: rehome omnimarket's change-control verification checks into the product repositories"
-summary: "omnimarket's ONEX Change Control Schema Compatibility job checked out onex_change_control as the schema authority, matched no file in this repository and compared that package's version with a hardcoded reader version. The ticket-contract schema omnimarket reads is omnibase_core's ModelTicketContract. The job now compares the schema_version of every contracts/OMN-*.yaml with the installed omnibase_core model through omnibase_spi's is_compatible, with no change-control checkout, under the same context name."
+summary: "omnimarket's ONEX Change Control Schema Compatibility job checked out onex_change_control as the schema authority, matched no file in this repository and compared that package's version with a hardcoded reader version. The ticket-contract schema omnimarket reads is omnibase_core's ModelTicketContract. The job now compares the schema_version of every contracts/OMN-*.yaml with the installed omnibase_core model through omnibase_spi's is_compatible, with no change-control checkout, under the same context name. The required pr-title / check-title context is produced by the bash step of onex_change_control's pr-title-check-reusable.yml. This contract also covers the omnimarket half of that rehome: node_pr_title_check_compute, a definition-B compute node that makes the same admit or refuse decision with the same output, with parity replayed from real recorded check-title job inputs. The omniclaude caller switch is a separate pull request after an omnimarket release carries the node."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-pr-title-check-node"
+    statement: "Host the pr-title / check-title decision as a canonical pure compute node in omnimarket with parity to the pinned change-control step."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_pr_title_check_compute in omnimarket returns the same admit or refuse decision and reason as the change-control bash step on every recorded check-title job input in its parity fixture (at least one admit, one refuse and one bot exemption, each from a real job log) -- falsifier: uv run pytest tests/nodes/node_pr_title_check_compute -q fails on any differing case"
   - id: "req-schema-compat-core-owner"
     statement: "The ONEX Change Control Schema Compatibility job reads the ticket-contract schema from its owner, omnibase_core, with no onex_change_control checkout, and fails on a major mismatch."
     acceptance:
       - id: "AC2"
         statement: "AC2: .github/workflows/onex-schema-compat.yml checks out no onex_change_control and its compatibility step passes on this repository's contracts, fails on a planted contract whose schema_version major differs from omnibase_core ModelTicketContract's, fails on an unparseable version and on a contracts directory with no OMN-*.yaml -- falsifier: uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q fails"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC1: captured parity with recorded check-title jobs, registered contract, CLI and in-memory golden/error chains pass."
+    command: "uv run pytest tests/nodes/node_pr_title_check_compute/test_golden_chain_pr_title_check_compute.py -q -p no:randomly"
   - kind: "tests"
     description: "AC2: the workflow's own compatibility step, run against the repo contracts and planted ones, admits the repo and refuses a major mismatch."
     command: "uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q -p no:randomly"
@@ -21,6 +29,14 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20885-ac1-pr-title-check-node"
+    description: "AC1: pr-title check parity, contract, CLI and golden/error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_title_check_compute/test_golden_chain_pr_title_check_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn20885-ac2-schema-compat-core-owner"
     description: "AC2: the schema-compatibility step reads omnibase_core and fails on a planted major mismatch."
     source: "manual"
@@ -29,3 +45,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_schema_compat_core_owner_omn20885.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20885-deploy-probe"
+    description: "Deploy probe. The handler at the checked-out commit defines HandlerPrTitleCheck, the pr-title decision this change hosts; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_title_check_compute/handlers/handler_pr_title_check.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerPrTitleCheck'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
