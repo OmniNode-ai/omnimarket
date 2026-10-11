@@ -97,11 +97,13 @@ suite's own shape was hiding the defect:
   runs, and every unrepresentable shape fails CLOSED with a receipt
   (:class:`TestAContractTheReceiptCannotRepresentFailsClosed`).
 * **R3 — the real-OCC differential skipped in hosted CI**, so the only
-  cross-repo parity proof in the repo never executed on a PR. ``ci.yml``'s
-  ``test`` job now checks OCC out (public repo, default token, existing
-  pattern), and
-  :func:`test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite`
-  keeps the step there.
+  cross-repo parity proof in the repo never executed on a PR. It first ran
+  against a live ``onex_change_control`` checkout in ``ci.yml``'s ``test`` job.
+  With OCC retiring, it now runs against the recorded verdicts of the real
+  function (``occ_recorded_verdicts.yaml``, drawn at one pinned OCC sha) on
+  every run, and
+  :func:`test_the_recorded_occ_verdicts_carry_their_provenance` pins that
+  record's provenance and coverage.
 
 Third adversarial-review round (2026-07-29, after omnimarket#1959 merged into
 ``dev`` at ``b0558db7``). One finding, and it is the same failure mode as R2 —
@@ -170,19 +172,6 @@ _CORPUS_PATH = (
     / "parity_corpus.yaml"
 )
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-
-_IN_WORKSPACE_OCC = _REPO_ROOT / "onex_change_control"
-"""Where ``ci.yml``'s ``test`` job checks onex_change_control out (OMN-15390 R3).
-
-A repo-root-relative path rather than an env var on purpose: exporting
-``ONEX_CC_REPO_PATH`` across the test job would re-point
-``EvidenceCollector._resolve_contract_repo_dir`` for every other test in the
-suite, which is exactly the hermeticity trap three OMN-15382 tests already hit.
-"""
-
-_CI_WORKFLOW = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
-
 _RECORDED_VERDICTS_PATH = (
     Path(__file__).resolve().parents[3]
     / "fixtures"
@@ -193,6 +182,8 @@ _RECORDED_VERDICTS_PATH = (
 
 _OCC_SHA = "6adc28168d023d027bf9c1172f262ac03c9d9055"
 """The onex_change_control commit the verdicts in the record were drawn from."""
+
+_WORKFLOWS_DIR = Path(__file__).resolve().parents[4] / ".github" / "workflows"
 
 _MARKER_PREFIX = "supersedes_dod_evidence:"
 
@@ -660,8 +651,9 @@ def _gate_algorithm_superseded_ids(dod_evidence: list[Any]) -> set[str]:
     the equivalence below can be checked exhaustively in hosted CI, which has
     no ``onex_change_control`` checkout (omnimarket does not depend on OCC and
     must not grow that dependency). The transcription itself is pinned to the
-    real function by ``test_occ_gate_agrees_with_the_runner_on_the_shared_corpus``
-    whenever a checkout IS present, so drift in either direction is caught.
+    real function's recorded verdicts by
+    ``test_the_runner_agrees_with_the_recorded_occ_verdicts_over_the_whole_domain``,
+    so drift in either direction is caught.
     """
     seen: set[str] = set()
     superseded: set[str] = set()
@@ -1312,172 +1304,6 @@ class TestAContractTheReceiptCannotRepresentFailsClosed:
         assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
 
 
-@pytest.mark.unit
-def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
-    """Live cross-repo differential against the OCC gate's REAL implementation.
-
-    Imports ``contract_compliance_check._superseded_dod_ids`` from an OCC
-    checkout and runs it over the same corpus.
-
-    OMN-15390 residual R3: hosted CI USED to have no OCC checkout, so this
-    skipped there and the only cross-repo differential in the repo never ran on
-    a PR. It now runs in CI too — ``ci.yml``'s ``test`` job checks
-    ``OmniNode-ai/onex_change_control`` (a PUBLIC repo, so the default
-    ``github.token`` suffices; no new secret or permission) out into
-    :data:`_IN_WORKSPACE_OCC`, exactly as the ``contract-compliance`` and
-    ``onex-schema-compat`` jobs already do. That wiring is itself pinned by
-    :func:`test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite`, so
-    deleting the step turns THIS file red rather than quietly restoring the
-    skip. The skip survives only for environments with no checkout at all
-    (e.g. the coverage-sweep job); a checkout that is present but unusable
-    FAILS rather than skipping.
-    """
-    import importlib
-    import os
-    import sys
-
-    roots = [
-        # In-workspace checkout — what ci.yml provides. First, and deliberately
-        # not an env var: exporting ONEX_CC_REPO_PATH for the whole test job
-        # would re-point `_resolve_contract_repo_dir` for every other test in
-        # the suite (the OMN-15382 hermeticity trap).
-        str(_IN_WORKSPACE_OCC),
-        os.environ.get("ONEX_CC_REPO_PATH", "").strip(),
-        str(Path(os.environ.get("OMNI_HOME", "")) / "onex_change_control"),
-    ]
-    src_root: Path | None = None
-    for root in roots:
-        if not root:
-            continue
-        candidate = Path(root) / "src"
-        if (
-            candidate
-            / "onex_change_control"
-            / "scripts"
-            / "contract_compliance_check.py"
-        ).is_file():
-            src_root = candidate
-            break
-    if src_root is None:
-        pytest.skip(
-            "OCC checkout not present (expected at "
-            f"{_IN_WORKSPACE_OCC}, or set ONEX_CC_REPO_PATH / OMNI_HOME) — "
-            "cross-repo parity differential not run; "
-            "test_runner_matches_the_gate_algorithm_over_every_small_contract "
-            "still holds the invariant here."
-        )
-
-    # Prepending ``src_root`` to ``sys.path`` is NOT sufficient on its own, and
-    # this is the trap that made the first CI run of this test red rather than
-    # green. omnimarket DEPENDS on onex-change-control (`pyproject.toml` pins it
-    # to a git rev), and that INSTALLED distribution ships
-    # `onex_change_control/scripts/` WITHOUT `contract_compliance_check.py` and
-    # has no `validation.evidence_admissibility` at all. Once any earlier test
-    # in the session has imported `onex_change_control`, the parent package is
-    # bound to site-packages and every submodule lookup follows ITS `__path__`,
-    # which `sys.path` order cannot override — so the differential either
-    # resolved the wrong tree or failed outright, depending on test ordering.
-    #
-    # Purge the cached OCC package tree, import the whole thing from the
-    # CHECKOUT, then restore site-packages' modules so nothing else in the
-    # session sees a swapped dependency.
-    occ_prefix = "onex_change_control"
-    saved_modules = {
-        name: mod
-        for name, mod in sys.modules.items()
-        if name == occ_prefix or name.startswith(f"{occ_prefix}.")
-    }
-    for name in saved_modules:
-        del sys.modules[name]
-    sys.path.insert(0, str(src_root))
-    try:
-        module = importlib.import_module(
-            "onex_change_control.scripts.contract_compliance_check"
-        )
-    except ImportError as exc:  # pragma: no cover - environment dependent
-        # NOT a skip. A checkout that exists but cannot be imported is a broken
-        # differential, and skipping on it is how a wired gate silently becomes
-        # advisory again.
-        pytest.fail(
-            f"OCC checkout at {src_root} is present but "
-            f"contract_compliance_check is not importable ({exc}). The "
-            "cross-repo parity differential cannot be silently skipped once a "
-            "checkout exists — fix the checkout or the dependency."
-        )
-    finally:
-        if str(src_root) in sys.path:
-            sys.path.remove(str(src_root))
-        for name in [
-            name
-            for name in sys.modules
-            if name == occ_prefix or name.startswith(f"{occ_prefix}.")
-        ]:
-            del sys.modules[name]
-        sys.modules.update(saved_modules)
-
-    assert Path(module.__file__ or "").is_relative_to(src_root), (
-        f"resolved {module.__file__!r}, which is not inside the checkout at "
-        f"{src_root} — the differential would be comparing against the "
-        "installed onex-change-control distribution, not the live gate"
-    )
-
-    occ_superseded_ids = module._superseded_dod_ids
-
-    for case in _corpus_cases():
-        expected = set(case["expected_superseded"])
-        assert occ_superseded_ids(case["dod_evidence"]) == expected, (
-            f"OCC gate disagrees with the shared corpus on {case['name']!r}"
-        )
-        superseded, _ = _resolve(case["dod_evidence"])
-        assert superseded == expected
-
-    # Pin the transcribed oracle to the real function over the whole
-    # exhaustive domain, not just the corpus — including the non-canonical
-    # carrier-id shapes and the duplicate-id shapes, the two axes on which the
-    # runner has diverged from the REAL function while the transcribed oracle
-    # agreed with both.
-    for contract in _parity_domain():
-        assert occ_superseded_ids(contract) == _gate_algorithm_superseded_ids(contract)
-        superseded, _ = _resolve(contract)
-        assert superseded == occ_superseded_ids(contract), (
-            "runner diverges from the REAL OCC gate on "
-            f"{[i.get('id', '<no id>') for i in contract]} / "
-            f"{[i.get('evidence_artifact') for i in contract]}"
-        )
-
-
-@pytest.mark.unit
-def test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite() -> None:
-    """Static wiring pin for R3 — the differential above must RUN in hosted CI.
-
-    A cross-repo differential that skips on every PR is documentation, not a
-    gate. The mechanism is a checkout step in ``ci.yml``'s ``test`` job; this
-    is the check that keeps it there. Static and offline: it reads the workflow
-    file, it does not call GitHub.
-    """
-    workflow = yaml.safe_load(_CI_WORKFLOW.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["test"]["steps"]
-
-    checkouts = [
-        step
-        for step in steps
-        if str(step.get("uses", "")).startswith("actions/checkout")
-        and (step.get("with") or {}).get("repository")
-        == "OmniNode-ai/onex_change_control"
-    ]
-    assert checkouts, (
-        "ci.yml's `test` job no longer checks out onex_change_control — "
-        "test_occ_gate_agrees_with_the_runner_on_the_shared_corpus would go "
-        "back to skipping on every PR, leaving the OCC parity claim unproven "
-        "in CI."
-    )
-    path = (checkouts[0].get("with") or {}).get("path")
-    assert path == _IN_WORKSPACE_OCC.name, (
-        f"OCC checkout path is {path!r} but the parity test looks for "
-        f"{_IN_WORKSPACE_OCC.name!r} at the workspace root"
-    )
-
-
 def _occ_view(dod_evidence: list[Any]) -> list[dict[str, Any]]:
     """The only two keys ``_superseded_dod_ids`` reads, as recorded in the fixture.
 
@@ -1580,4 +1406,31 @@ def test_the_runner_agrees_with_the_recorded_occ_verdicts_over_the_whole_domain(
         superseded, _ = _resolve(contract)
         assert superseded == occ_superseded, (
             f"runner diverges from the recorded OCC verdict on {label}"
+        )
+
+
+@pytest.mark.unit
+def test_no_workflow_checks_out_occ_for_the_parity_differential() -> None:
+    """The differential reads the record, so the jobs that run it need no OCC checkout.
+
+    Static and offline: reads the workflow files, never calls GitHub. Scoped to
+    the two places that existed only for this differential — ``ci.yml``'s
+    ``test`` job and the nightly full suite.
+    """
+    ci = yaml.safe_load((_WORKFLOWS_DIR / "ci.yml").read_text(encoding="utf-8"))
+    nightly = yaml.safe_load(
+        (_WORKFLOWS_DIR / "nightly-full-suite.yml").read_text(encoding="utf-8")
+    )
+    scopes = {"ci.yml test job": ci["jobs"]["test"]["steps"]}
+    for job_name, job in nightly["jobs"].items():
+        scopes[f"nightly-full-suite.yml {job_name}"] = job.get("steps") or []
+    for scope, steps in scopes.items():
+        offenders = [
+            step.get("name")
+            for step in steps
+            if (step.get("with") or {}).get("repository")
+            == "OmniNode-ai/onex_change_control"
+        ]
+        assert not offenders, (
+            f"{scope} still checks out onex_change_control: {offenders}"
         )
