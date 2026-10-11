@@ -76,3 +76,29 @@ def test_omn20429_ac4_names_the_existing_golden_chain_test_file() -> None:
     assert checks, "OMN-20429.yaml:dod-omn-20429-ac4: expected a pytest check"
     assert all(_pytest_selector(check["check_value"]) == expected for check in checks)
     assert (REPO_ROOT / expected).is_file()
+
+
+def test_omn20890_park_ladder_checks_name_the_causes_test_file() -> None:
+    path = REPO_ROOT / "contracts" / "OMN-20890.yaml"
+    contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    expected = (
+        "tests/unit/nodes/node_pr_landing_decision_compute/"
+        "test_landing_decision_causes.py"
+    )
+    selectors = [
+        _pytest_selector(check["check_value"])
+        for item in contract["dod_evidence"]
+        if item["id"].startswith(
+            (
+                "dod-omn20890-ac1-third",
+                "dod-omn20890-ac2",
+                "dod-omn20890-ac3",
+                "dod-omn20890-ac4",
+            )
+        )
+        for check in item.get("checks", [])
+        if check.get("check_value", "").startswith("uv run pytest ")
+    ]
+    assert len(selectors) == 4, selectors
+    assert set(selectors) == {expected}
+    assert (REPO_ROOT / expected).is_file()
