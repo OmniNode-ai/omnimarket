@@ -122,6 +122,16 @@ def test_preflight_resolves_targets_from_the_overlay() -> None:
     assert '"$REVIEW_VOTERS_OVERLAY"' in run
 
 
+def test_the_preflight_log_names_voters_by_id_only() -> None:
+    """The Actions log of a public repository is public: no host, port, URL or
+    model of a voter reaches it, or the PR comment built from ``error=``."""
+    run = str(_step("Preflight")["run"])
+    assert "describe()" not in run
+    assert "${HOST}:${PORT}" not in run
+    assert "${URL}" not in run
+    assert 'print(f"VOTER|{voter.voter_id}")' in run
+
+
 def test_retry_budget_reads_the_overlay() -> None:
     assert OVERLAY_ARG in str(_step("Validate retry-budget invariant")["run"])
 

@@ -341,7 +341,7 @@ jobs:
               print(f"REFUSED|{roster.error_message}")
           else:
               for voter in roster.voters:
-                  print(f"VOTER|{voter.describe()}")
+                  print(f"VOTER|{voter.voter_id}")
               print("\n".join(probe_target_lines(roster)))
           PYEOF
           )"
@@ -365,7 +365,9 @@ jobs:
           fi
 
           # OMN-20923: the transport's trust boundary is the resolved voters'
-          # hosts, one /32 each, so no network is written in this file.
+          # hosts, one /32 each, so no network is written in this file. This log
+          # is public: a voter is named by its id only, never by host, port,
+          # URL or model.
           ALLOWLIST=""
           while IFS='|' read -r _tag _voter HOST _port _url; do
             [ "$_tag" = "TARGET" ] || continue
@@ -387,11 +389,11 @@ jobs:
             voter_reachable="false"
             for attempt in 1 2 3; do
               if timeout 5 bash -c "exec 3<>/dev/tcp/${HOST}/${PORT}" 2>/dev/null; then
-                echo "TCP connect to voter ${VOTER} at ${HOST}:${PORT} (${URL}) succeeded (attempt ${attempt})."
+                echo "TCP connect to voter ${VOTER} succeeded (attempt ${attempt})."
                 voter_reachable="true"
                 break
               fi
-              echo "TCP connect to voter ${VOTER} at ${HOST}:${PORT} (${URL}) failed (attempt ${attempt}/3)."
+              echo "TCP connect to voter ${VOTER} failed (attempt ${attempt}/3)."
               [ "$attempt" -lt 3 ] && sleep 2
             done
             if [ "$voter_reachable" = "true" ]; then
@@ -399,7 +401,7 @@ jobs:
               echo "reachable=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            UNREACHABLE="${UNREACHABLE}${VOTER}@${HOST}:${PORT} "
+            UNREACHABLE="${UNREACHABLE}${VOTER} "
           done < <(printf '%s\n' "$TARGETS")
 
           # EVERY voter is unreachable; the overlay names no fallback, so the
