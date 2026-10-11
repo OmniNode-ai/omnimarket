@@ -26,6 +26,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingCi,
     EnumLandingEngine,
     EnumLandingExternalBlockerKind,
+    EnumLandingGateReason,
     EnumLandingMergeState,
     EnumLandingPrState,
     EnumLandingPushMode,
@@ -145,11 +146,23 @@ class ModelLandingPrFacts(BaseModel):
         default=None,
         description="When the current gate suspension began on this head.",
     )
+    gate_reasons: tuple[EnumLandingGateReason, ...] = Field(
+        default=(),
+        description=(
+            "Which gates the gate suspension stands for. A gate suspension with "
+            "none is refused, and so are reasons with no gate suspension."
+        ),
+    )
 
     @model_validator(mode="after")
     def _red_needs_class(self) -> ModelLandingPrFacts:
         if self.ci is EnumLandingCi.RED and self.red_class is None:
             raise ValueError("a red head needs its red_class")
+        gated = EnumLandingSuspension.GATE in self.suspensions
+        if gated and not self.gate_reasons:
+            raise ValueError("a gate suspension needs at least one named gate_reason")
+        if self.gate_reasons and not gated:
+            raise ValueError("gate_reasons without a gate suspension")
         if not set(self.open_parents) <= set(self.parents):
             raise ValueError("open_parents must be a subset of parents")
         return self
@@ -284,6 +297,15 @@ class ModelLandingRepoChecks(BaseModel):
     checks: tuple[str, ...] = ()
 
 
+class ModelLandingRepoHead(BaseModel):
+    """One repo's base branch head sha."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+
+
 class ModelLandingRebuildAck(BaseModel):
     """The producer accepted a delivery of key K (written after delivery)."""
 
@@ -319,6 +341,14 @@ class ModelLandingPolicy(BaseModel):
         default=2,
         ge=1,
         description="Update-branch refreshes per PR for stale cancelled copies.",
+    )
+    stale_gate_seconds: int = Field(
+        default=600,
+        ge=0,
+        description=(
+            "A gate whose premise is a red head, on a green, CLEAN head, holds "
+            "nothing once older than this (two 300 s controller ticks)."
+        ),
     )
     engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(
@@ -369,6 +399,13 @@ class ModelLandingPolicy(BaseModel):
     )
     cause_lease_seconds: int = Field(default=5400, ge=1)
     cause_park_hours: int = Field(default=12, ge=1)
+    cause_diagnosis_engine: EnumLandingEngine = Field(
+        default=EnumLandingEngine.CLAUDE_OPUS,
+        description=(
+            "The engine of the one attempt after the budget is spent, with a "
+            "diagnosis brief, before the cause parks."
+        ),
+    )
     cause_engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(EnumLandingEngine.CLAUDE_OPUS, EnumLandingEngine.CLAUDE_OPUS),
         min_length=1,
@@ -430,6 +467,14 @@ class ModelLandingFacts(BaseModel):
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
     )
+    base_heads: tuple[ModelLandingRepoHead, ...] = Field(
+        default=(),
+        description=(
+            "Each repo's base branch head sha, as read this tick. A parked cause "
+            "is retried when its repo's head differs from the one it parked on; "
+            "a repo missing here is unread, never moved."
+        ),
+    )
 
     @model_validator(mode="after")
     def _keys_unique(self) -> ModelLandingFacts:
@@ -472,6 +517,7 @@ __all__: list[str] = [
     "ModelLandingRebuildAck",
     "ModelLandingRefUpdate",
     "ModelLandingRepoChecks",
+    "ModelLandingRepoHead",
     "ModelLandingRerunRun",
     "ModelLandingWorkerProbe",
     "ModelLandingWorkerResult",
