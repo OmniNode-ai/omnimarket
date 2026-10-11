@@ -6,11 +6,8 @@ summary: "Contract first for the central company key pool (operator rulings 2026
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
-  - "omnimarket.projection.credential_publisher.ModelInferenceCredentialCreateRequest.expires_at"
-  - "omnimarket.projection.credential_publisher.ModelCredentialRegisteredEvent.expires_at"
-  - "omnimarket.projection.credential_publisher.ModelInferenceCredentialResponse.expires_at"
-  - "omnimarket.projection.credential_publisher.ModelInferenceCredentialResponse.expiry_warning"
-  - "tenant_inference_credentials.expires_at"
+  - "events"
+  - "public_api"
 requirements:
   - id: "req-omn20991-key-expiry-on-the-credential"
     statement: |-
@@ -58,14 +55,28 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/cli -k register_tenant_key_expires -q"
+        check_value: "uv run pytest tests/unit/cli/test_omn17099_register_tenant_key.py -k register_tenant_key_expires -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20991-deploy-probe-migration"
-    description: "Deploy probe. The projection migration 0006 exists at the checked-out commit; the probe reads it from GitHub at that commit and exits nonzero on a tree that lacks it, so it fails at the merge base."
+    description: "The projection test exercises the event write, SQLite re-delivery and snapshot exposure, and checks that migration 0006 adds exactly the nullable expiry column. The same test file fails against the merge-base projection implementation. Deploy probe: the migration file GitHub serves at the checked-out commit adds the expires_at column; the file does not exist at the merge base, so the content read fails there."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k expires_at -q"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/migrations/0006_tenant_credentials_expires_at.sql?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ'"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/migrations/0006_tenant_credentials_expires_at.sql?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ\")' | grep -qx true"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20991-deploy-probe-publisher"
+    description: "The publisher test covers the expiry validation and the response warning. Deploy probe: the credential publisher GitHub serves at the checked-out commit defines credential_expiry_warning, the function that returns EXPIRY_ABSENT or EXPIRY_NOT_JANUARY_1; the symbol is absent at the merge base, so the content read answers false there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_credential_publisher.py -k 'expires_at or expiry_warning' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/credential_publisher.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def credential_expiry_warning(\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
