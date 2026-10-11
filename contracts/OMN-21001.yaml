@@ -24,13 +24,13 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: 'AC1: omnimarket''s PR Title Check workflow produces `pr-title / check-title` by running node_pr_title_check_compute from a pinned published omnimarket release, and no workflow line in pr-title-check.yml references onex_change_control -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base workflow.'
-  command: uv run --no-sync pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'workflow or job'
+  command: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'workflow or job'
 - kind: tests
   description: 'AC2: the installed release node''s verdicts equal the old reusable''s bash verdicts on a table of titles and authors covering every exempt prefix, the bot rule, a passing OMN title and a failing bare title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails on any case run through the installed node.'
-  command: uv run --no-sync pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'installed_node'
+  command: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'installed_node'
 - kind: tests
   description: 'AC3: .github/required-checks.yaml names the `pr-title / check-title` row as a local producer for pr-title-check.yml job pr-title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base manifest row.'
-  command: uv run --no-sync pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'manifest'
+  command: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'manifest'
 emergency_bypass:
   enabled: false
   justification: ''
@@ -41,7 +41,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --no-sync pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'workflow or job'
+    check_value: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'workflow or job'
   binds_ac:
   - AC1
 - id: dod-pr-title-verdicts
@@ -49,7 +49,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --no-sync pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'installed_node'
+    check_value: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'installed_node'
   binds_ac:
   - AC2
 - id: dod-pr-title-manifest
@@ -57,6 +57,6 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --no-sync pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'manifest'
+    check_value: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'manifest'
   binds_ac:
   - AC3

@@ -52,6 +52,12 @@ def _job() -> dict[str, Any]:
     return job
 
 
+def _pinned_release() -> str:
+    """The release the workflow installs, read from its own step environment."""
+    release: str = _job()["steps"][1]["env"]["OMNIMARKET_VERSION"]
+    return release
+
+
 def test_workflow_no_longer_calls_change_control() -> None:
     assert "onex_change_control" not in WORKFLOW.read_text()
     assert "uses" not in _job()
@@ -110,7 +116,8 @@ def test_manifest_row_names_the_local_producer() -> None:
 
 @pytest.fixture(scope="module")
 def release_python(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Install the published wheel; isolated mode excludes this PR's source."""
+    """Install the workflow's pinned wheel; isolated mode excludes this PR's source."""
+    release = _pinned_release()
     venv = tmp_path_factory.mktemp("pr-title-release") / "venv"
     subprocess.run(
         ["uv", "venv", "--python", "3.12", str(venv)], check=True, timeout=30
@@ -126,7 +133,7 @@ def release_python(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "--no-deps",
             "--index-url",
             "https://pypi.org/simple",
-            f"omnimarket=={RELEASE}",
+            f"omnimarket=={release}",
         ],
         check=True,
         timeout=60,
@@ -148,7 +155,7 @@ def release_python(tmp_path_factory: pytest.TempPathFactory) -> Path:
         text=True,
         timeout=10,
     )
-    assert metadata.stdout.strip() == RELEASE
+    assert metadata.stdout.strip() == release
     return python
 
 
