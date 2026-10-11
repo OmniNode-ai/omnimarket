@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20938"
 title: "OCC retirement M: omnimarket's dod_verify supersession differential runs against recorded OCC verdicts instead of a live onex_change_control checkout"
-summary: "node_dod_verify's supersession differential compared its resolution with onex_change_control's _superseded_dod_ids only through a live checkout that ci.yml's test job and the nightly full suite carried. The verdicts OCC returned at 6adc28168d023d027bf9c1172f262ac03c9d9055 for every parity-corpus case and every contract of the exhaustive domain are now recorded in tests/fixtures/dod_supersession/occ_recorded_verdicts.yaml, and the differential compares against them on every run with no skip path. Removing the two OCC parity-differential checkout steps follows in a separate pull request under this ticket, which adds its own criterion."
+summary: "node_dod_verify's supersession differential compared its resolution with onex_change_control's _superseded_dod_ids through a live checkout that ci.yml's test job and the nightly full suite carried. The verdicts OCC returned at 6adc28168d023d027bf9c1172f262ac03c9d9055 for every parity-corpus case and every contract of the exhaustive domain are now recorded in tests/fixtures/dod_supersession/occ_recorded_verdicts.yaml, the differential compares against them on every run with no skip path, and both OCC parity-differential checkout steps are gone."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: The differential still discriminates -- falsifier: the test compares node_dod_verify's resolution against the recorded verdicts on every hosted run with no skip path, and a deliberately broken resolver (one mutation shown in the PR body, e.g. honouring a forward marker) fails it"
+  - id: "req-no-occ-checkout"
+    statement: "No workflow checks out onex_change_control for the parity differential."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: No OCC checkout remains for this purpose -- falsifier: `git grep -n onex_change_control .github/workflows/ci.yml .github/workflows/nightly-full-suite.yml` on the PR head shows no OCC parity-differential checkout step, the test that pinned the checkout is replaced by one asserting the recorded fixture's provenance, and CI Summary concludes success on the PR head"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the record names the OCC sha and its generating command and spans every corpus case and the full domain."
@@ -24,6 +29,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: the runner is compared with the recorded verdicts over the corpus and the whole domain, with no skip path."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k recorded_occ_verdicts"
+  - kind: "tests"
+    description: "AC3: the parity-differential checkout is gone from ci.yml's test job and from the nightly full suite, and the provenance test replaces the checkout pin."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k 'no_workflow_checks_out_occ or carry_their_provenance'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +53,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k recorded_occ_verdicts"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20938-ac3-no-occ-checkout"
+    description: "AC3: no OCC parity-differential checkout remains in ci.yml's test job or the nightly full suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k 'no_workflow_checks_out_occ or carry_their_provenance'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

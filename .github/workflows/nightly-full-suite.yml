@@ -107,16 +107,6 @@ jobs:
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
-      # Same OCC checkout as ci.yml's `test` job (OMN-15390): the node_dod_verify
-      # supersession parity differential reads it at this path.
-      - name: Checkout onex_change_control (OCC parity differential)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-        with:
-          repository: OmniNode-ai/onex_change_control
-          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
-          path: onex_change_control
-          sparse-checkout: src
-          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
         with:
