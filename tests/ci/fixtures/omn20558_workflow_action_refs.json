@@ -187,7 +187,7 @@
   ["hostile-reviewer.yml", 640, "actions/github-script", "60a0d83039c74a4aee543508d2ffcb1c3799cdea"],
   ["hostile-reviewer.yml", 139, "actions/create-github-app-token", "bcd2ba49218906704ab6c1aa796996da409d3eb1"],
   ["hostile-reviewer.yml", 150, "actions/checkout", "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"],
-  ["imperative-contract-guard.yml", 21, "OmniNode-ai/onex_change_control/.github/workflows/imperative-contract-guard.yml", "6adc28168d023d027bf9c1172f262ac03c9d9055"],
+  ["imperative-contract-guard.yml", 22, "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml", "031148215620031436cba30619bbae67c0bb38ad"],
   ["install-canary-nightly.yml", 37, "actions/checkout", "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"],
   ["install-canary-nightly.yml", 42, "actions/checkout", "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"],
   ["install-canary-nightly.yml", 49, "astral-sh/setup-uv", "94527f2e458b27549849d47d273a16bec83a01e9"],
