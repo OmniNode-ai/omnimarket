@@ -293,6 +293,86 @@ def tags_request(repository: str, *, per_page: int) -> ModelGithubHttpRequest:
     )
 
 
+# --- REST + GraphQL: PR authoring writes (OMN-20912) -------------------------
+
+MARK_READY_MUTATION = (
+    "mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id})"
+    " { pullRequest { number isDraft } } }"
+)
+CONVERT_TO_DRAFT_MUTATION = (
+    "mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id})"
+    " { pullRequest { number isDraft } } }"
+)
+
+
+def create_pull_request_request(
+    repository: str, *, title: str, head: str, base: str, body: str, draft: bool
+) -> ModelGithubHttpRequest:
+    """POST a new pull request."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=f"{_repo_path(repository)}/pulls",
+        body={"title": title, "head": head, "base": base, "body": body, "draft": draft},
+    )
+
+
+def open_pulls_for_head_request(repository: str, head: str) -> ModelGithubHttpRequest:
+    """GET the open pull requests whose head is ``owner:head`` (at most one exists)."""
+    owner, _ = split_repository(repository)
+    query = _query({"state": "open", "head": f"{owner}:{head}", "per_page": 5})
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/pulls?{query}"
+    )
+
+
+def edit_pull_request_request(
+    repository: str, pr_number: int, fields: dict[str, object]
+) -> ModelGithubHttpRequest:
+    """PATCH a pull request's title, body, base or state."""
+    if not fields:
+        raise GithubLandingRequestError("a pull request edit needs at least one field")
+    return ModelGithubHttpRequest(
+        method="PATCH",
+        path=f"{_repo_path(repository)}/pulls/{pr_number}",
+        body=dict(fields),
+    )
+
+
+def create_issue_comment_request(
+    repository: str, number: int, body: str
+) -> ModelGithubHttpRequest:
+    """POST a conversation comment on a pull request or issue."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=f"{_repo_path(repository)}/issues/{number}/comments",
+        body={"body": body},
+    )
+
+
+def workflow_dispatch_request(
+    repository: str, workflow: str, ref: str, inputs: dict[str, str]
+) -> ModelGithubHttpRequest:
+    """POST a workflow_dispatch event for one workflow at one ref (204 on success)."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=(
+            f"{_repo_path(repository)}/actions/workflows/"
+            f"{urllib.parse.quote(workflow, safe='')}/dispatches"
+        ),
+        body={"ref": ref, "inputs": dict(inputs)},
+    )
+
+
+def mark_ready_request(pr_node_id: str) -> ModelGithubHttpRequest:
+    """Flip a draft pull request to ready for review."""
+    return _graphql(MARK_READY_MUTATION, {"id": pr_node_id})
+
+
+def convert_to_draft_request(pr_node_id: str) -> ModelGithubHttpRequest:
+    """Turn a ready pull request back into a draft."""
+    return _graphql(CONVERT_TO_DRAFT_MUTATION, {"id": pr_node_id})
+
+
 # --- REST: paging ------------------------------------------------------------
 
 
@@ -403,6 +483,7 @@ def dequeue_request(pr_node_id: str) -> ModelGithubHttpRequest:
 
 
 __all__: list[str] = [
+    "CONVERT_TO_DRAFT_MUTATION",
     "DEQUEUE_MUTATION",
     "DISABLE_AUTO_MERGE_MUTATION",
     "ENABLE_AUTO_MERGE_AT_HEAD_MUTATION",
@@ -410,6 +491,7 @@ __all__: list[str] = [
     "ENQUEUE_AT_HEAD_MUTATION",
     "LANDING_POLICY_QUERY",
     "LIST_PAGE_SIZE",
+    "MARK_READY_MUTATION",
     "MERGE_AT_HEAD_MUTATION",
     "GithubLandingRequestError",
     "MergeMethod",
@@ -417,9 +499,13 @@ __all__: list[str] = [
     "artifact_request",
     "branch_request",
     "branch_rules_request",
+    "convert_to_draft_request",
     "create_commit_request",
+    "create_issue_comment_request",
+    "create_pull_request_request",
     "dequeue_request",
     "disable_auto_merge_request",
+    "edit_pull_request_request",
     "enable_auto_merge_request",
     "enqueue_request",
     "fast_forward_ref_request",
@@ -429,8 +515,10 @@ __all__: list[str] = [
     "issue_comments_request",
     "job_log_request",
     "landing_policy_request",
+    "mark_ready_request",
     "merge_at_head_request",
     "next_page_request",
+    "open_pulls_for_head_request",
     "pull_request_request",
     "releases_request",
     "rerun_failed_jobs_request",
@@ -439,6 +527,7 @@ __all__: list[str] = [
     "split_repository",
     "tags_request",
     "update_branch_request",
+    "workflow_dispatch_request",
     "workflow_run_request",
     "workflow_runs_request",
 ]
