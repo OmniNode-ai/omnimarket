@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Captured Secret Resolve Effect (OMN-20926)
+#
+# In-process effect, like node_local_secret_store_effect: no subscription, no
+# publish and no onex.nodes entry point. A consumer that holds a captured
+# record calls it with a reference and a store built from its OWN identity.
+# The result carries the value as a SecretStr, so it is never an event: a
+# serialized result prints the mask, and the node publishes nothing.
+name: captured_secret_resolve_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Captured secret resolve EFFECT (operator ruling 2026-10-10, RULING row
+  2026-10-10T22:38:48Z lane=secret-refs-9f8a). The content-capture producer
+  stores a detected secret in the secret store and puts a secret reference in
+  the captured record in its place. This node resolves one reference: it
+  parses it against the capture-redaction contract's secret_reference block,
+  reads the store key it names through a ProtocolSecretStore scoped to the
+  captured namespace and authenticated as the caller, and logs the reference,
+  the accessor and the outcome, never the value. Permission is the store's.
+
+input_model: omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request.ModelCapturedSecretResolveRequest
+output_model: omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result.ModelCapturedSecretResolveResult
+
+handler:
+  module: omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve
+  class: HandlerCapturedSecretResolve
+  input_model: omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request.ModelCapturedSecretResolveRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve:HandlerCapturedSecretResolve
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles:
+    - effects
+
+# Publishes nothing: the value is returned in-process and never becomes an
+# event, which is the ruling's "ciphertext never on the bus" applied to the
+# read side as well.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: kafka
