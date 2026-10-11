@@ -45,3 +45,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_duplication_sweep.py tests/integration/node_duplication_sweep/test_duplication_sweep_multiparam.py -q -p no:randomly -k d2"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20949-deploy-probe-d2-bundled-manifest"
+    description: "Deploy probe. The sweep handler at the checked-out commit resolves D2's manifest from the file shipped beside the node; the probe reads the handler from GitHub at that commit and exits nonzero on a tree whose handler still searches an onex_change_control checkout, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^_KAFKA_BOUNDARIES_YAML = ('"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
