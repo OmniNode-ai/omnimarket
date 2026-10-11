@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OR.1 difference reason codes for the OCC retirement pilot (OMN-20072)."""
+"""OR.1 difference reason codes for the OCC retirement pilot (OMN-20072).
+
+OMN-20917 adds dependency_repin (orchestrator 2026-10-10 applying the
+operator's rulings of the day: a re-pin PR in an S7 count is an expected
+difference, not an exclusion).
+"""
 
 from enum import StrEnum
 
@@ -17,6 +22,7 @@ class EnumOccVerdictDifferenceReason(StrEnum):
     FOREIGN_POLICY_OUTSIDE_DECLARED_MANIFEST = (
         "foreign_policy_outside_declared_manifest"
     )
+    DEPENDENCY_REPIN = "dependency_repin"
     OLD_BEHAVIORAL_REFUSAL = "old_behavioral_refusal"
     UNCLASSIFIED = "unclassified"
     ACCEPTED_NEGATIVE_CONTROL = "accepted_negative_control"

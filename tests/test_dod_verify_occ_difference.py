@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Same-head OCC retirement S5 difference check coverage (OMN-20072)."""
+"""Same-head OCC retirement S5 difference check coverage (OMN-20072), and the
+S7 replay with dependency re-pins as an expected difference (OMN-20917)."""
 
 from __future__ import annotations
 
@@ -14,13 +15,34 @@ from omnimarket.enums.enum_occ_verdict_difference_reason import (
     EnumOccVerdictDifferenceReason,
 )
 from omnimarket.nodes.node_dod_verify.__main__ import main
+from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
+    DodEvidenceLocalSource,
+)
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
+    HandlerDodEvidenceGithubEffect,
+)
+from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
+    EnumDodEvidenceGithubOperation,
+    ModelDodEvidenceGithubLookupCommand,
+    ModelDodEvidenceGithubLookupResultEvent,
+    ModelPrHeadFacts,
+)
+from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
+    ModelOccReplayRecord,
+)
 from omnimarket.nodes.node_dod_verify.models.model_occ_verdict_difference import (
     ModelNewPathVerdict,
     ModelOccVerdict,
 )
+from omnimarket.nodes.node_dod_verify.services.occ_replay import (
+    must_fail_control_line,
+    render_replay_table,
+    replay_records,
+)
 from omnimarket.nodes.node_dod_verify.services.occ_verdict_difference import (
     EXPECTED_DIFFERENCES,
     classify,
+    classify_dependency_repin,
     load_new_verdict,
     load_occ_verdict,
     parse_occ_verdict,
@@ -39,6 +61,7 @@ def test_inventory_exact() -> None:
         "PR_number_only_binding": ("admits_stale_or_foreign_commit", "refuse", True),
         "contract_in_another_repo": ("may_admit", "refuse", True),
         "foreign_policy_outside_declared_manifest": ("may_refuse", "admit", True),
+        "dependency_repin": ("may_admit", "refuse", True),
         "old_behavioral_refusal": ("refuse", "admit", False),
         "unclassified": ("any", "any", False),
         "accepted_negative_control": ("any", "admit", False),
@@ -663,3 +686,712 @@ def test_cli(
     assert result["new_reason"] == ("readback_only" if case == "expected" else None)
     assert "\n" not in result["message"]
     assert captured.err == (f"::error::{result['message']}\n" if expected_exit else "")
+
+
+# --------------------------------------------------------------------------
+# OMN-20917: S7 replay of a repository's last N merged PRs, and dependency
+# re-pins as an expected difference.
+# --------------------------------------------------------------------------
+
+_REPIN_BASE = '[project]\nname = "pkg"\nversion = "1.0.0"\ndependencies = ["omnibase-core==0.40.0"]\n'
+_REPIN_HEAD = '[project]\nname = "pkg"\nversion = "1.0.0"\ndependencies = ["omnibase-core==0.41.0"]\n'
+_BOUND_HEAD = {
+    "status": "verified",
+    "checks": [{"evidence_id": "dod-1", "binds_ac": ["AC1"], "status": "verified"}],
+}
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ["pyproject.toml", "uv.lock"],
+        ["uv.lock"],
+        ["package-lock.json"],
+        ["web/pnpm-lock.yaml", "yarn.lock", "pyproject.toml"],
+    ],
+)
+def test_dependency_repin_paths_only_pins_and_locks(paths: list[str]) -> None:
+    repin, why = classify_dependency_repin(
+        paths, pyproject_head=_REPIN_HEAD, pyproject_base=_REPIN_BASE
+    )
+    assert repin, why
+
+
+@pytest.mark.parametrize(
+    ("paths", "head"),
+    [
+        (["pyproject.toml", "uv.lock", "src/pkg/mod.py"], _REPIN_HEAD),
+        (["uv.lock", "src/pkg/mod.py", "tests/test_mod.py"], _REPIN_HEAD),
+        # Only the evidence side changed: nothing to re-pin.
+        (["tests/test_mod.py"], _REPIN_HEAD),
+        # A contract the title does not cite is not the evidence side.
+        (["uv.lock", "contracts/OMN-1.yaml"], _REPIN_HEAD),
+        (["package.json"], _REPIN_HEAD),
+        ([], _REPIN_HEAD),
+        (
+            ["pyproject.toml"],
+            _REPIN_HEAD + '\n[project.scripts]\nrun = "pkg.cli:main"\n',
+        ),
+        (["pyproject.toml"], None),
+    ],
+)
+def test_dependency_repin_refuses_source_or_non_pin_change(
+    paths: list[str], head: str | None
+) -> None:
+    repin, _why = classify_dependency_repin(
+        paths, pyproject_head=head, pyproject_base=_REPIN_BASE
+    )
+    assert not repin
+
+
+def test_dependency_repin_control_refusal_is_expected_difference(
+    tmp_path: Path,
+) -> None:
+    """A pin-only PR whose bound test also passes at the merge base."""
+    _write_ticket(tmp_path, _BOUND_HEAD, "refused\n", "OMN-20917")
+    repin, _ = classify_dependency_repin(
+        ["pyproject.toml", "uv.lock"],
+        pyproject_head=_REPIN_HEAD,
+        pyproject_base=_REPIN_BASE,
+    )
+    new = load_new_verdict(tmp_path, ["OMN-20917"], dependency_repin=repin)
+    assert new.admitted is False
+    assert new.reason == "dependency_repin"
+    result = classify(ModelOccVerdict(admitted=True, conclusion="success"), new, False)
+    assert result.passed is True
+    assert result.outcome == "expected_difference"
+    assert result.reason_code == "dependency_repin"
+
+
+def test_dependency_repin_same_refusal_with_source_is_unclassified(
+    tmp_path: Path,
+) -> None:
+    _write_ticket(tmp_path, _BOUND_HEAD, "refused\n", "OMN-20917")
+    repin, _ = classify_dependency_repin(
+        ["pyproject.toml", "uv.lock", "src/pkg/mod.py"],
+        pyproject_head=_REPIN_HEAD,
+        pyproject_base=_REPIN_BASE,
+    )
+    assert repin is False
+    new = load_new_verdict(tmp_path, ["OMN-20917"], dependency_repin=repin)
+    assert new.reason is None
+    result = classify(ModelOccVerdict(admitted=True, conclusion="success"), new, False)
+    assert result.passed is False
+    assert result.outcome == "unclassified_difference"
+    assert result.reason_code == "unclassified"
+
+
+@pytest.mark.parametrize(
+    ("head", "control", "reason"),
+    [
+        # A failed head is not a control refusal: the re-pin code never applies.
+        ({"status": "failed", "checks": []}, "passed", None),
+        # No bound check keeps the existing coverage reason.
+        (
+            {"status": "verified", "checks": []},
+            "refused",
+            "incomplete_criterion_coverage",
+        ),
+        # A passed control is admitted whatever the diff.
+        (_BOUND_HEAD, "passed: every bound check failed", None),
+    ],
+)
+def test_dependency_repin_only_names_a_bound_control_refusal(
+    tmp_path: Path, head: object, control: str, reason: str | None
+) -> None:
+    _write_ticket(tmp_path, head, control, "OMN-20917")
+    new = load_new_verdict(tmp_path, ["OMN-20917"], dependency_repin=True)
+    assert new.reason == reason
+
+
+def _replay_record(
+    pr: int,
+    occ: object,
+    admitted: bool,
+    reason: str | None = None,
+    negative_control: bool = False,
+) -> dict[str, object]:
+    return {
+        "pr": pr,
+        "head_sha": f"{pr:040x}",
+        "merged_at": f"2026-10-{pr % 28 + 1:02d}T00:00:00Z",
+        "tickets": [f"OMN-{pr}"],
+        "occ_check_run": occ,
+        "new_verdict": {"admitted": admitted, "reason": reason},
+        "negative_control": negative_control,
+    }
+
+
+_OCC_ADMIT = {"conclusion": "success"}
+
+
+def _run_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    records: list[dict[str, object]],
+    count: int,
+) -> tuple[int, dict[str, object]]:
+    rows_file = tmp_path / "rows.json"
+    rows_file.write_text(json.dumps(records), encoding="utf-8")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "node_dod_verify",
+            "occ-difference",
+            "replay",
+            "--repository",
+            "OmniNode-ai/omnibase_spi",
+            "--count",
+            str(count),
+            "--rows-file",
+            str(rows_file),
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        main()
+    printed = json.loads(capsys.readouterr().out)
+    assert isinstance(exc.value.code, int)
+    return exc.value.code, printed
+
+
+def _classified_records() -> list[dict[str, object]]:
+    return [
+        _replay_record(30, _OCC_ADMIT, True),
+        _replay_record(29, None, False),  # no OCC run: not_compared
+        _replay_record(28, _OCC_ADMIT, False, "contract_in_another_repo"),
+        _replay_record(27, _OCC_ADMIT, False, "dependency_repin"),
+        _replay_record(
+            26,
+            {
+                "conclusion": "failure",
+                "annotations": [
+                    {"message": "OCC PREFLIGHT FAILED: reason=occ_not_on_main"}
+                ],
+            },
+            True,
+        ),
+        _replay_record(25, None, True),  # no OCC run: not_compared
+    ]
+
+
+def test_replay_all_classified_rows_exit_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, report = _run_replay(
+        tmp_path, monkeypatch, capsys, _classified_records(), count=4
+    )
+    assert code == 0
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    assert summary["compared"] == 4
+    assert summary["not_compared"] == 1
+    assert summary["target_met"] is True
+    assert summary["passed"] is True
+    assert summary["window_newest_pr"] == 30
+    assert summary["window_oldest_pr"] == 26
+    assert summary["by_reason_code"] == {
+        "agree": 1,
+        "contract_in_another_repo": 1,
+        "dependency_repin": 1,
+        "foreign_policy_outside_declared_manifest": 1,
+    }
+    rows = report["rows"]
+    assert isinstance(rows, list)
+    # Rows past the window that reached N compared rows are not reported.
+    assert [row["pr"] for row in rows] == [30, 29, 28, 27, 26]
+    assert rows[1]["outcome"] == "not_compared"
+
+
+def test_replay_one_unclassified_row_exits_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    records = _classified_records()
+    records.insert(2, _replay_record(40, _OCC_ADMIT, False, None))
+    code, report = _run_replay(tmp_path, monkeypatch, capsys, records, count=4)
+    assert code == 1
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    assert summary["passed"] is False
+    assert summary["unclassified"] == 1
+    rows = report["rows"]
+    assert isinstance(rows, list)
+    flagged = [row for row in rows if row["outcome"] == "unclassified_difference"]
+    assert [row["pr"] for row in flagged] == [40]
+    assert flagged[0]["reason_code"] == "unclassified"
+
+
+@pytest.mark.parametrize(
+    ("record", "reason_code"),
+    [
+        (
+            _replay_record(
+                41,
+                {
+                    "conclusion": "failure",
+                    "annotations": [
+                        {"message": "OCC PREFLIGHT FAILED: reason=nonpass_receipt"}
+                    ],
+                },
+                True,
+            ),
+            "old_behavioral_refusal",
+        ),
+        (
+            _replay_record(42, _OCC_ADMIT, True, negative_control=True),
+            "accepted_negative_control",
+        ),
+    ],
+)
+def test_replay_forbidden_rows_exit_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record: dict[str, object],
+    reason_code: str,
+) -> None:
+    code, report = _run_replay(
+        tmp_path, monkeypatch, capsys, [record, *_classified_records()], count=4
+    )
+    assert code == 1
+    rows = report["rows"]
+    assert isinstance(rows, list)
+    assert rows[0]["outcome"] == "forbidden_difference"
+    assert rows[0]["reason_code"] == reason_code
+
+
+def test_replay_short_window_reports_how_far_back_and_exits_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, report = _run_replay(
+        tmp_path, monkeypatch, capsys, _classified_records(), count=30
+    )
+    assert code == 2
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    assert summary["compared"] == 4
+    assert summary["target"] == 30
+    assert summary["target_met"] is False
+    assert summary["examined"] == 6
+    assert summary["window_oldest_pr"] == 25
+
+
+def test_replay_markdown_table_names_every_column() -> None:
+    report = replay_records(
+        [ModelOccReplayRecord.model_validate(r) for r in _classified_records()],
+        repository="OmniNode-ai/omnibase_spi",
+        count=4,
+    )
+    table = render_replay_table(report)
+    header = table.splitlines()[0]
+    for column in (
+        "pr",
+        "head",
+        "ticket",
+        "OCC verdict",
+        "OCC reason",
+        "new-path verdict",
+        "new-path reason",
+        "outcome",
+        "reason code",
+    ):
+        assert column in header
+    assert "| 28 |" in table
+
+
+@pytest.mark.parametrize(
+    ("bound", "carried", "test_only", "head", "first"),
+    [
+        # Every own bound check fails at the merge base: the control passes.
+        ([("dod-1", "failed")], set(), False, None, "passed"),
+        # A bound check also passes at the merge base: always-pass.
+        ([("dod-1", "verified")], set(), False, None, "refused"),
+        # A bound check that did not run is not a pass.
+        ([("dod-1", "skipped")], set(), False, None, "refused"),
+        # Every bound check carried from the merge base's contract.
+        ([("dod-1", "failed")], {"dod-1"}, False, None, "refused"),
+        # A carried check is excluded; the own check failed.
+        (
+            [("dod-1", "verified"), ("dod-2", "failed")],
+            {"dod-1"},
+            False,
+            None,
+            "passed",
+        ),
+        # Test-only diff with verified head evidence for the own bound check.
+        ([("dod-1", "verified")], set(), True, _BOUND_HEAD, "passed"),
+        # Test-only diff without verified head evidence.
+        ([("dod-1", "verified")], set(), True, {"status": "failed"}, "refused"),
+    ],
+)
+def test_replay_must_fail_control_matches_receipt_gate(
+    bound: list[tuple[str, str]],
+    carried: set[str],
+    test_only: bool,
+    head: object,
+    first: str,
+) -> None:
+    base = {
+        "status": "failed",
+        "checks": [
+            {"evidence_id": eid, "binds_ac": ["AC1"], "status": status}
+            for eid, status in bound
+        ],
+    }
+    line = must_fail_control_line(
+        base, head, carried_ids=carried, test_only=test_only, at_merge_base=True
+    )
+    assert line.split(":", 1)[0].split()[0] == first
+
+
+def test_replay_must_fail_control_without_bound_checks_refuses() -> None:
+    line = must_fail_control_line(
+        {"status": "failed", "checks": [{"evidence_id": "x", "binds_ac": []}]},
+        None,
+        carried_ids=set(),
+        test_only=False,
+        at_merge_base=True,
+    )
+    assert line.startswith("refused")
+
+
+# --------------------------------------------------------------------------
+# OMN-20917 review fixes: the bot exemption reads the PR's GitHub login, an
+# unavailable OCC verdict is ``unknown`` and fails the replay, and a pure pin
+# bump PR (its own contract and tests beside the pins) is ``dependency_repin``.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ["pyproject.toml", "uv.lock", "contracts/OMN-20917.yaml"],
+        [
+            "pyproject.toml",
+            "uv.lock",
+            "contracts/OMN-20917.yaml",
+            "tests/test_pins.py",
+        ],
+    ],
+)
+def test_dependency_repin_ignores_the_prs_own_evidence_side(
+    paths: list[str],
+) -> None:
+    """The receipt gate needs the PR's contract (and its tests for the control)."""
+    repin, why = classify_dependency_repin(
+        paths,
+        tickets=("OMN-20917",),
+        pyproject_head=_REPIN_HEAD,
+        pyproject_base=_REPIN_BASE,
+    )
+    assert repin, why
+
+
+def test_dependency_repin_with_evidence_side_still_refuses_source() -> None:
+    repin, _why = classify_dependency_repin(
+        ["uv.lock", "src/pkg/mod.py", "contracts/OMN-20917.yaml", "tests/test_x.py"],
+        tickets=("OMN-20917",),
+        pyproject_head=_REPIN_HEAD,
+        pyproject_base=_REPIN_BASE,
+    )
+    assert repin is False
+
+
+def test_pure_pin_bump_pr_is_expected_difference(tmp_path: Path) -> None:
+    """Pins, lock, the PR's contract and its always-pass test: dependency_repin."""
+    _write_ticket(
+        tmp_path,
+        _BOUND_HEAD,
+        "refused: [dod-1] bound test also passes at the control\n",
+        "OMN-20917",
+    )
+    repin, why = classify_dependency_repin(
+        ["pyproject.toml", "uv.lock", "contracts/OMN-20917.yaml", "tests/test_pins.py"],
+        tickets=("OMN-20917",),
+        pyproject_head=_REPIN_HEAD,
+        pyproject_base=_REPIN_BASE,
+    )
+    assert repin, why
+    new = load_new_verdict(tmp_path, ["OMN-20917"], dependency_repin=repin)
+    result = classify(ModelOccVerdict(admitted=True, conclusion="success"), new, False)
+    assert result.outcome == "expected_difference"
+    assert result.reason_code == "dependency_repin"
+    assert result.passed is True
+
+
+@pytest.mark.parametrize(
+    ("occ", "unreadable"),
+    [
+        ({"conclusion": "cancelled"}, False),
+        ({"conclusion": "skipped"}, False),
+        ({"conclusion": None}, False),
+        (None, True),
+    ],
+)
+def test_replay_unavailable_occ_verdict_is_unknown_and_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    occ: object,
+    unreadable: bool,
+) -> None:
+    record = _replay_record(43, occ, True)
+    if unreadable:
+        record["occ_unreadable"] = True
+    code, report = _run_replay(
+        tmp_path, monkeypatch, capsys, [record, *_classified_records()], count=4
+    )
+    assert code == 1
+    rows = report["rows"]
+    assert isinstance(rows, list)
+    assert rows[0]["outcome"] == "unknown"
+    assert rows[0]["passed"] is False
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    assert summary["unknown"] == 1
+    assert summary["passed"] is False
+    # Never counted as a compared (let alone agreeing) row.
+    assert summary["compared"] == 4
+    assert summary["by_reason_code"].get("agree") == 1
+
+
+@pytest.mark.parametrize(
+    ("occ", "unreadable"),
+    [({"conclusion": "cancelled"}, False), (None, True), (None, False)],
+)
+def test_replay_accepted_negative_control_without_occ_verdict_is_forbidden(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    occ: object,
+    unreadable: bool,
+) -> None:
+    record = _replay_record(44, occ, True, negative_control=True)
+    if unreadable:
+        record["occ_unreadable"] = True
+    code, report = _run_replay(
+        tmp_path, monkeypatch, capsys, [record, *_classified_records()], count=4
+    )
+    assert code == 1
+    rows = report["rows"]
+    assert isinstance(rows, list)
+    assert rows[0]["outcome"] == "forbidden_difference"
+    assert rows[0]["reason_code"] == "accepted_negative_control"
+
+
+# ---- HandlerOccReplay.handle over a real canonical clone and a fake effect.
+
+
+def _git_run(repo: Path, *args: str, name: str = "Dev Person") -> str:
+    import os
+    import subprocess
+
+    from omnibase_core.validators.no_unguarded_git_subprocess import (
+        scrub_git_location_env,
+    )
+
+    identity = {
+        "GIT_AUTHOR_NAME": name,
+        "GIT_AUTHOR_EMAIL": "dev@example.invalid",
+        "GIT_COMMITTER_NAME": "GitHub",
+        "GIT_COMMITTER_EMAIL": "noreply@example.invalid",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+    }
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**scrub_git_location_env(os.environ), **identity},
+    ).stdout.strip()
+
+
+def _canonical_clone_with_pr(
+    registry_root: Path, *, git_author_name: str
+) -> tuple[str, str]:
+    """omnimarket clone: base commit, a PR head bumping uv.lock, the squash."""
+    repo = registry_root / "omnimarket"
+    repo.mkdir(parents=True)
+    _git_run(repo, "init", "--quiet", "-b", "main")
+    (repo / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    _git_run(repo, "add", "uv.lock")
+    _git_run(repo, "commit", "--quiet", "-m", "init")
+    base = _git_run(repo, "rev-parse", "HEAD")
+    _git_run(repo, "checkout", "--quiet", "-b", "pr-7")
+    (repo / "uv.lock").write_text("version = 2\n", encoding="utf-8")
+    _git_run(repo, "commit", "--quiet", "-am", "bump")
+    head = _git_run(repo, "rev-parse", "HEAD")
+    _git_run(repo, "checkout", "--quiet", "main")
+    _git_run(repo, "merge", "--quiet", "--squash", "pr-7")
+    _git_run(
+        repo, "commit", "--quiet", "-m", "chore: bump pins (#7)", name=git_author_name
+    )
+    _git_run(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git_run(
+        repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"
+    )
+    return base, head
+
+
+_OCC_ADMIT_RUN: dict[str, object] = {"conclusion": "success"}
+
+
+class _FakeGithub(HandlerDodEvidenceGithubEffect):
+    """The real effect handler with its lookups answered from fixed facts."""
+
+    def __init__(
+        self,
+        *,
+        head: str,
+        login: str,
+        labels: tuple[str, ...] = (),
+        occ: dict[str, object] | None,
+        occ_resolved: bool = True,
+    ) -> None:
+        super().__init__(local_source=DodEvidenceLocalSource())
+        self._head, self._login, self._labels = head, login, labels
+        self._occ, self._occ_resolved = occ, occ_resolved
+
+    def _dispatch(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        if command.operation is EnumDodEvidenceGithubOperation.FETCH_PR_HEAD_FACTS:
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                pr_head_facts=ModelPrHeadFacts(
+                    head_sha=self._head,
+                    author=self._login,
+                    labels=self._labels,
+                    title="chore: bump pins",
+                ),
+                detail="fake",
+            )
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            resolved=self._occ_resolved,
+            check_run=self._occ,
+            detail="fake",
+        )
+
+
+def _handle_one_pr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    git_author_name: str,
+    login: str,
+    labels: tuple[str, ...] = (),
+    occ: dict[str, object] | None = _OCC_ADMIT_RUN,
+    occ_resolved: bool = True,
+) -> dict[str, object]:
+    from omnimarket.nodes.node_dod_verify.handlers.handler_occ_replay import (
+        HandlerOccReplay,
+    )
+    from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
+        ModelOccReplayRequest,
+    )
+
+    registry_root = tmp_path / "registry"
+    _base, head = _canonical_clone_with_pr(
+        registry_root, git_author_name=git_author_name
+    )
+    monkeypatch.setenv("OMNI_HOME", str(registry_root))
+    fake = _FakeGithub(
+        head=head, login=login, labels=labels, occ=occ, occ_resolved=occ_resolved
+    )
+    report = HandlerOccReplay(github=fake).handle(
+        ModelOccReplayRequest(
+            repository="OmniNode-ai/omnimarket",
+            count=1,
+            max_examined=1,
+            work_dir=tmp_path / "work",
+            verifier_python=Path(sys.executable),
+        )
+    )
+    assert len(report.rows) == 1
+    return report.rows[0].model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    "spoofed_name",
+    ["dependabot[bot]", "renovate", "onexbot-occ-writer[bot]"],
+)
+def test_handler_git_author_name_grants_no_bot_exemption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spoofed_name: str
+) -> None:
+    """A human PR whose squash commit carries a bot's author name is not exempt."""
+    row = _handle_one_pr(
+        tmp_path, monkeypatch, git_author_name=spoofed_name, login="some-human"
+    )
+    assert row["new_admitted"] is False
+    assert not str(row["note"]).startswith("exempt")
+    assert row["outcome"] == "unclassified_difference"
+
+
+@pytest.mark.parametrize(
+    "login", ["dependabot[bot]", "app/renovate", "onexbot-occ-writer[bot]"]
+)
+def test_handler_github_login_grants_the_bot_exemption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, login: str
+) -> None:
+    row = _handle_one_pr(
+        tmp_path, monkeypatch, git_author_name="Some Human", login=login
+    )
+    assert row["new_admitted"] is True
+    assert str(row["note"]).startswith("exempt")
+    assert row["outcome"] == "agree"
+
+
+@pytest.mark.parametrize(
+    ("occ", "occ_resolved"),
+    [({"conclusion": "cancelled"}, True), (None, False), (None, True)],
+)
+def test_handler_accepted_negative_control_is_forbidden_without_occ_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    occ: dict[str, object] | None,
+    occ_resolved: bool,
+) -> None:
+    """A negative control the new path admits fails whatever OCC's side reads."""
+    row = _handle_one_pr(
+        tmp_path,
+        monkeypatch,
+        git_author_name="Some Human",
+        login="dependabot[bot]",
+        labels=("dod-negative-control",),
+        occ=occ,
+        occ_resolved=occ_resolved,
+    )
+    assert row["outcome"] == "forbidden_difference"
+    assert row["reason_code"] == "accepted_negative_control"
+
+
+@pytest.mark.parametrize(
+    ("occ", "occ_resolved"), [({"conclusion": "cancelled"}, True), (None, False)]
+)
+def test_handler_unavailable_occ_verdict_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    occ: dict[str, object] | None,
+    occ_resolved: bool,
+) -> None:
+    row = _handle_one_pr(
+        tmp_path,
+        monkeypatch,
+        git_author_name="Some Human",
+        login="dependabot[bot]",
+        occ=occ,
+        occ_resolved=occ_resolved,
+    )
+    assert row["outcome"] == "unknown"
+    assert row["passed"] is False
