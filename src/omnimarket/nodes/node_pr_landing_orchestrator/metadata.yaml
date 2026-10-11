@@ -9,6 +9,8 @@ capabilities:
   standalone: false
   # The contract declares its routes (wave-3 compose, OMN-19829); the
   # runtime's state_io seam holds its row in pr_landing_workflow_state.
+  # OMN-20866: before an arm it reads the ledger's HOLD rows and the head's
+  # lab proof from the omninode_internal projections (read-only).
   full_runtime: true
   requires_network: false
   requires_repo: false
@@ -18,6 +20,8 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-infra>=0.34.0"
+  # OMN-20866: the arm decision reads the ledger and lab proof projections.
+  - "asyncpg>=0.30.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "pr-landing", "fsm", "workflow"]

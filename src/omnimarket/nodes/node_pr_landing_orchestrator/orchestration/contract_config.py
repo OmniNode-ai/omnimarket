@@ -10,16 +10,30 @@ prompted by the PR watcher's observations, and the arm gate's policy. The
 handler builds :class:`PrLandingOrchestratorConfig` from it, so the contract,
 not a code default, decides whether a mutation is sent.
 
+The ``landing_gate_facts`` block beside it declares the ledger facts every
+green head is checked against before an arm (the lab-proof repositories, the
+ledger projection's freshness bound and the projections read); it is required,
+so the runtime never arms without reading them.
+
 A malformed block is refused at load: an unknown key, mode or operation is an
 error, never a silent fallback to the shadow defaults.
+
+A string value may be a ``${env.VAR}`` / ``${env.VAR:default}`` overlay
+reference (OMN-20867), expanded through the sanctioned overlay boundary before
+validation, so a lane's private overlay sets whether that lane acts while the
+shipped default stays in the contract. An expanded value is validated like a
+literal one: a malformed override is refused, not replaced by the default.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
+from datetime import timedelta
 from pathlib import Path
 
 import yaml
+from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 
 from omnimarket.events.pr_arm_gate import ModelArmGatePolicy
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
@@ -29,11 +43,15 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import
     EnumPrLandingGithubOperation,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
+    GATE_ENV_RE,
+    GATE_RELATION_RE,
+    PrLandingGateFactsConfig,
     PrLandingOrchestratorConfig,
 )
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 CONFIG_KEY = "landing_config"
+GATE_FACTS_KEY = "landing_gate_facts"
 
 _KEYS = frozenset(
     {
@@ -55,8 +73,32 @@ _READS = frozenset(
 )
 
 
+_GATE_KEYS = frozenset(
+    {"lab_proof_repositories", "ledger_freshness_bound_minutes", "source"}
+)
+_SOURCE_KEYS = frozenset(
+    {
+        "dsn_env",
+        "hold_state_relation",
+        "ledger_rows_relation",
+        "lab_proof_receipts_relation",
+    }
+)
+
+
 class PrLandingContractConfigError(ValueError):
     """The contract's landing_config block is missing or malformed."""
+
+
+def _expanded(value: object) -> object:
+    """``value`` with every string in it overlay-expanded; mapping keys stay literal."""
+    if isinstance(value, str):
+        return expand_contract_env_refs(value)
+    if isinstance(value, Mapping):
+        return {key: _expanded(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_expanded(item) for item in value]
+    return value
 
 
 def _repositories(block: Mapping[str, object], key: str) -> frozenset[str]:
@@ -82,6 +124,7 @@ def config_from_block(block: object) -> PrLandingOrchestratorConfig:
     if not isinstance(block, Mapping):
         msg = f"the contract declares no {CONFIG_KEY} mapping"
         raise PrLandingContractConfigError(msg)
+    block = {key: _expanded(value) for key, value in block.items()}
     unknown = set(block) - _KEYS
     if unknown:
         msg = f"{CONFIG_KEY} has unknown keys {sorted(unknown)}"
@@ -130,6 +173,50 @@ def config_from_block(block: object) -> PrLandingOrchestratorConfig:
     )
 
 
+def gate_facts_from_block(block: object) -> PrLandingGateFactsConfig:
+    """The gate facts one ``landing_gate_facts`` mapping declares (OMN-20866)."""
+    where = GATE_FACTS_KEY
+    if not isinstance(block, Mapping):
+        msg = f"the contract declares no {where} mapping"
+        raise PrLandingContractConfigError(msg)
+    unknown = set(block) - _GATE_KEYS
+    if unknown:
+        msg = f"{where} has unknown keys {sorted(unknown)}"
+        raise PrLandingContractConfigError(msg)
+    repositories = block.get("lab_proof_repositories")
+    if not isinstance(repositories, list) or not all(
+        isinstance(v, str) and "/" in v for v in repositories
+    ):
+        msg = (
+            f"{where}.lab_proof_repositories must be a list of owner/name repositories"
+        )
+        raise PrLandingContractConfigError(msg)
+    minutes = block.get("ledger_freshness_bound_minutes")
+    if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+        msg = f"{where}.ledger_freshness_bound_minutes must be a positive integer"
+        raise PrLandingContractConfigError(msg)
+    source = block.get("source")
+    if not isinstance(source, Mapping) or set(source) != _SOURCE_KEYS:
+        msg = f"{where}.source must name exactly {sorted(_SOURCE_KEYS)}"
+        raise PrLandingContractConfigError(msg)
+    if not GATE_ENV_RE.match(str(source["dsn_env"])):
+        msg = f"{where}.source.dsn_env must be an environment variable name"
+        raise PrLandingContractConfigError(msg)
+    relations = {k: str(v) for k, v in source.items() if k != "dsn_env"}
+    for key, relation in relations.items():
+        if not GATE_RELATION_RE.match(relation):
+            msg = f"{where}.source.{key} must be a schema.table relation"
+            raise PrLandingContractConfigError(msg)
+    return PrLandingGateFactsConfig(
+        lab_proof_repos=frozenset(repositories),
+        ledger_freshness_bound=timedelta(minutes=minutes),
+        dsn_env=str(source["dsn_env"]),
+        hold_state_relation=relations["hold_state_relation"],
+        ledger_rows_relation=relations["ledger_rows_relation"],
+        lab_proof_receipts_relation=relations["lab_proof_receipts_relation"],
+    )
+
+
 def load_contract_config(path: Path = CONTRACT_PATH) -> PrLandingOrchestratorConfig:
     """The config node_pr_landing_orchestrator's contract.yaml declares."""
     with path.open(encoding="utf-8") as stream:
@@ -137,13 +224,18 @@ def load_contract_config(path: Path = CONTRACT_PATH) -> PrLandingOrchestratorCon
     if not isinstance(contract, Mapping):
         msg = f"{path} is not a contract mapping"
         raise PrLandingContractConfigError(msg)
-    return config_from_block(contract.get(CONFIG_KEY))
+    return replace(
+        config_from_block(contract.get(CONFIG_KEY)),
+        gate_facts=gate_facts_from_block(contract.get(GATE_FACTS_KEY)),
+    )
 
 
 __all__: list[str] = [
     "CONFIG_KEY",
     "CONTRACT_PATH",
+    "GATE_FACTS_KEY",
     "PrLandingContractConfigError",
     "config_from_block",
+    "gate_facts_from_block",
     "load_contract_config",
 ]

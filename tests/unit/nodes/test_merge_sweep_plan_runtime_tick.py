@@ -237,6 +237,49 @@ async def test_runtime_tick_boot_second_tick_inside_the_interval_publishes_nothi
     assert seen == []
 
 
+def test_jittered_ticks_open_every_merge_sweep_window_exactly_once() -> None:
+    """A late tick still opens its window, and no window opens on two ticks (OMN-20867).
+
+    The ticks a slot-aligned scheduler emits when its loop wakes 1.03 s to 3.3 s apart against a
+    1000 ms interval, as the dev lane's did: each carries the slot it was due on as
+    ``scheduled_at``.
+    """
+    epoch = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
+    slot = dt.timedelta(milliseconds=TICK_MS)
+    pattern = [1.12, 1.12, 1.106, 1.559, 1.12, 1.03, 3.3, 1.12, 1.25, 1.12]
+    start = dt.datetime(2026, 10, 10, 20, 31, 9, 314184, tzinfo=dt.UTC)
+    handler = _handler()
+    now = start
+    due = epoch + ((start - epoch) // slot) * slot
+    fired: list[dt.datetime] = []
+    last = now
+    for i in range(3600):
+        last = now
+        tick = ModelRuntimeTick(
+            now=now,
+            tick_id=uuid4(),
+            sequence_number=i + 1,
+            scheduled_at=due,
+            correlation_id=uuid4(),
+            scheduler_id="omn20867-test",
+            tick_interval_ms=TICK_MS,
+        )
+        fire = handler.handle(tick)
+        if fire is not None:
+            fired.append(fire.window_start)
+        due = epoch + ((now - epoch) // slot + 1) * slot
+        now = now + dt.timedelta(seconds=pattern[i % len(pattern)])
+    expected = [
+        dt.datetime(2026, 10, 10, 20, tzinfo=dt.UTC) + dt.timedelta(seconds=s)
+        for s in range(0, 3 * 3600, INTERVAL)
+        if start
+        < dt.datetime(2026, 10, 10, 20, tzinfo=dt.UTC) + dt.timedelta(seconds=s)
+        <= last
+    ]
+    assert len(expected) >= 3
+    assert fired == expected
+
+
 _HOST_LOCAL = (
     "import os",
     "from os ",

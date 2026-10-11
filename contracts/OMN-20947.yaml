@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20947"
+title: "The Hostile Reviewer hands cli_review the pull request head, at an omniintelligence revision that substitutes receipts for a lost voter"
+summary: "omnimarket's Hostile Reviewer clones omniintelligence at 64b95097, whose gate lets clean signed off-CI review receipts stand in for a required voter that timed out or was unavailable (including an unavailable served-model read), and passes --head-sha with the pull request's head commit so those receipts can be read for exactly that commit. Substitution still needs substitute_votes in the voters overlay; with none declared nothing changes. The quorum rule and the fail-closed gate are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-review-passes-head-sha"
+    statement: "The review step passes cli_review the pull request's head commit with --head-sha, and clones omniintelligence at the revision that substitutes receipts for a lost voter."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the review step's HEAD_SHA is github.event.pull_request.head.sha, cli_review gets --head-sha \"$HEAD_SHA\", and omniintelligence is cloned at 64b950973a5686d33e0b439fb80749d66362d06d -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q fails over the merge base's workflow, which passes no head and pins f4bf0a19"
+evidence_requirements:
+  - kind: "tests"
+    description: "The review step hands cli_review the pull request head at the substitute revision."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20947-ac1-review-passes-head-sha"
+    description: "The review step passes the pull request head with --head-sha and clones omniintelligence at the substitute revision."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
