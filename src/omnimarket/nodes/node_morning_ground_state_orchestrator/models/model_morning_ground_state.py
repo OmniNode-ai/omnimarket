@@ -4,6 +4,7 @@
 
 from datetime import date as calendar_date
 from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
@@ -25,6 +26,45 @@ DROPPED_HEADLINE_KEYS = (
     "unread_lane_reports",
     "proposed_dispatch",
 )
+
+
+class ModelMorningWatcherFacts(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    repo: str
+    number: int
+    state: Literal["OPEN", "CLOSED", "MERGED"]
+    head_sha: str
+    title: str = ""
+    armed: bool | None = None
+
+
+class ModelMorningWatcherCi(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    sha: str
+    verdict: Literal["GREEN", "RED", "PENDING", "NONE"]
+    read_at: str
+    runs: list[tuple[str, str, str, str]] | None = None
+    detail: list[tuple[str, str, str]] | None = None
+
+
+class ModelMorningWatcherRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+    facts: ModelMorningWatcherFacts
+    queued: bool | None = None
+    ci: ModelMorningWatcherCi | None = None
+    reason: str = ""
+
+
+class ModelMorningWatcherSnapshot(BaseModel):
+    """Only the existing watcher's inventory fields; never a second poller."""
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+    schema_version: Literal[1] = Field(alias="schema")
+    operator: str
+    repos: dict[str, dict[str, str]]
+    last_tick: str
+    last_full_resync: str
+    prs: dict[str, ModelMorningWatcherRecord]
 
 
 class ModelMorningGroundStateRequest(BaseModel):
@@ -89,6 +129,9 @@ class ModelMorningGroundStateResult(BaseModel):
     publish: bool
     force: bool
     window: str
+    pr_inventory: dict[str, JsonValue] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     ledger_reconcile_failure: ModelMorningPhaseFailure | None = Field(
         default=None, exclude_if=lambda value: value is None
     )

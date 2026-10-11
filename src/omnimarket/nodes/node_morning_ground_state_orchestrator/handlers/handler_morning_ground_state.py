@@ -10,9 +10,11 @@ packaged with the node.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
+from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
 from typing import cast
@@ -21,7 +23,7 @@ import yaml
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from ..models.model_morning_ground_state import (
     DROPPED_HEADLINE_KEYS,
@@ -32,6 +34,8 @@ from ..models.model_morning_ground_state import (
     ModelMorningGroundStateResult,
     ModelMorningPhaseFailure,
     ModelMorningPhaseRequest,
+    ModelMorningWatcherRecord,
+    ModelMorningWatcherSnapshot,
 )
 from ..models.model_morning_overlay import ModelMorningOverlay
 from ..protocols.protocol_morning_phase_gateway import ProtocolMorningPhaseGateway
@@ -40,6 +44,10 @@ PACKAGE = "omnimarket.nodes.node_morning_ground_state_orchestrator"
 NODE_NAME = "node_morning_ground_state_orchestrator"
 OVERLAY_ENV = "OMNIMARKET_MORNING_GROUND_STATE_OVERLAY"
 ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+WATCHER_STATE_ENV = "ONEX_PR_WATCHER_STATE"
+WATCHER_BYTE_LIMIT = 16 * 1024 * 1024
+WATCHER_TICK_BOUND = timedelta(minutes=8)
+WATCHER_RESYNC_BOUND = timedelta(minutes=90)
 DELEGATION_REASON_RE = re.compile(r"^(route-refused:\S+|route-unavailable:\S+)$")
 LABELS = {
     "GroundState": "ground-state",
@@ -180,6 +188,7 @@ class HandlerMorningGroundState:
         # Refuse a run without its overlay before any phase, reconcile or agent runs.
         _ = self.overlay
         values = self._values(request)
+        pr_inventory: dict[str, JsonValue] | None = None
         outcomes: dict[str, dict[str, JsonValue] | None] = {}
         # Reconciliation stays best-effort; its failure is terminal evidence.
         ledger_reconcile_failure = None
@@ -193,7 +202,14 @@ class HandlerMorningGroundState:
         async def invoke(
             label: str, phase: str, model: str = "opus", effort: str = "high"
         ) -> dict[str, JsonValue] | None:
+            nonlocal pr_inventory
             rendered = self._render(self.templates[label], values)
+            if phase == "GroundState":
+                pr_inventory = self._pr_inventory(datetime.now(UTC))
+                rendered += (
+                    "\nPR WATCHER INVENTORY (one bounded snapshot):\n"
+                    + json_text(pr_inventory)
+                )
             return await self.gateway.run(
                 request,
                 ModelMorningPhaseRequest(
@@ -338,6 +354,7 @@ class HandlerMorningGroundState:
             publish=request.publish,
             force=request.force,
             window=f"{request.window_start}..{request.date}",
+            pr_inventory=pr_inventory,
             ledger_reconcile_failure=ledger_reconcile_failure,
             precheck=pre
             or {
@@ -361,6 +378,159 @@ class HandlerMorningGroundState:
             dropped_work=outcomes["DroppedWork"],
             goal=outcomes["Goal"],
         )
+
+    @staticmethod
+    def _pr_inventory(now: datetime, *, max_rows: int = 500) -> dict[str, JsonValue]:
+        """Harvest one immutable read of the existing watcher projection.
+
+        Snapshot freshness is eight minutes, full resync ninety minutes. Missing
+        evidence stays unknown; this reader neither bootstraps nor calls GitHub.
+        """
+        result: dict[str, JsonValue] = {
+            "status": "UNREADABLE",
+            "reason": "",
+            "source": WATCHER_STATE_ENV,
+            "last_tick": None,
+            "last_full_resync": None,
+            "age_seconds": None,
+            "max_age_seconds": int(WATCHER_TICK_BOUND.total_seconds()),
+            "row_limit": max_rows,
+            "total_open": None,
+            "omitted": None,
+            "rows": [],
+        }
+
+        def stamp(value: str) -> datetime:
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError("invalid watcher timestamp") from None
+            if parsed.tzinfo is None:
+                raise ValueError("undated timezone")
+            return parsed
+
+        try:
+            configured = os.environ.get(WATCHER_STATE_ENV)
+            if not configured:
+                raise ValueError(f"{WATCHER_STATE_ENV} is not set")
+            # Bound the bytes as well as the prompt rows, including during a replace.
+            with Path(configured).open("rb") as stream:
+                content = stream.read(WATCHER_BYTE_LIMIT + 1)
+            if len(content) > WATCHER_BYTE_LIMIT:
+                raise ValueError("snapshot exceeds 16 MiB")
+            snapshot = ModelMorningWatcherSnapshot.model_validate_json(content)
+            result.update(
+                last_tick=snapshot.last_tick,
+                last_full_resync=snapshot.last_full_resync,
+                snapshot_sha256=hashlib.sha256(content).hexdigest(),
+            )
+            age = now - stamp(snapshot.last_tick)
+            result["age_seconds"] = int(age.total_seconds())
+            if age < timedelta(0):
+                raise ValueError("refresh-in-future")
+            if age > WATCHER_TICK_BOUND:
+                result.update(status="STALE", reason="last complete tick exceeds 480s")
+                return result
+            full_age = now - stamp(snapshot.last_full_resync)
+            if full_age < timedelta(0) or full_age > WATCHER_RESYNC_BOUND:
+                result.update(
+                    status="STALE", reason="full inventory resync outside 90m bound"
+                )
+                return result
+            opened = sorted(
+                (key, rec)
+                for key, rec in snapshot.prs.items()
+                if rec.facts.state == "OPEN"
+            )
+            if not snapshot.operator or not opened:
+                raise ValueError("no operator or open-PR positive control")
+            for key, rec in opened:
+                if (
+                    key != f"{rec.facts.repo}#{rec.facts.number}"
+                    or not rec.facts.head_sha
+                ):
+                    raise ValueError("open PR identity/head missing or inconsistent")
+                if not snapshot.repos.get(rec.facts.repo, {}).get("default_branch"):
+                    raise ValueError("open PR default branch missing")
+            rows = [
+                HandlerMorningGroundState._pr_row(key, rec, now)
+                for key, rec in opened[:max_rows]
+            ]
+            result.update(
+                status="FRESH",
+                reason="",
+                total_open=len(opened),
+                omitted=max(0, len(opened) - max_rows),
+                rows=cast(list[JsonValue], rows),
+            )
+        except (OSError, ValidationError, KeyError) as exc:
+            # Validation errors may contain the source document; never echo its body.
+            result["reason"] = f"snapshot read refused: {type(exc).__name__}"
+        except ValueError as exc:
+            result["reason"] = str(exc)
+        return result
+
+    @staticmethod
+    def _pr_row(
+        key: str, rec: ModelMorningWatcherRecord, now: datetime
+    ) -> dict[str, JsonValue]:
+        facts = rec.facts
+        row: dict[str, JsonValue] = {
+            "pr": key,
+            "title": facts.title,
+            "head_sha": facts.head_sha,
+            "armed": facts.armed,
+            "queued": rec.queued,
+            "armed_not_queued": facts.armed and not rec.queued
+            if facts.armed is not None and rec.queued is not None
+            else None,
+            "blocker": rec.reason,
+            "ci_verdict": "UNKNOWN",
+            "ci_reason": "missing CI",
+            "pending_checks": None,
+        }
+        ci = rec.ci
+        if ci is None:
+            return row
+        row["ci_reason"] = "wrong-head or stale/undated CI"
+        try:
+            read = datetime.fromisoformat(ci.read_at.replace("Z", "+00:00"))
+            if (
+                read.tzinfo is None
+                or ci.sha != facts.head_sha
+                or not timedelta(0) <= now - read <= WATCHER_TICK_BOUND
+            ):
+                return row
+        except ValueError:
+            return row
+        row.update(ci_verdict=ci.verdict, ci_reason="", ci_read_at=ci.read_at)
+        if ci.runs is None or ci.detail is None:
+            row["ci_reason"] = "check status/id/start evidence missing"
+            return row
+        details = {name: (check_id, started) for name, check_id, started in ci.detail}
+        pending: list[JsonValue] = []
+        for name, status, _, _ in ci.runs:
+            if status not in ("queued", "in_progress", "pending", "waiting"):
+                continue
+            check_id, started = details.get(name, ("", ""))
+            age_seconds = None
+            try:
+                start = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                if start.tzinfo is not None and start <= now and check_id:
+                    age_seconds = int((now - start).total_seconds())
+            except ValueError:
+                pass
+            pending.append(
+                {
+                    "name": name,
+                    "status": status,
+                    "id": check_id or None,
+                    "started_at": started or None,
+                    "age_seconds": age_seconds,
+                }
+            )
+        row["pending_checks"] = pending
+        return row
 
     @staticmethod
     def _render(text: str, values: dict[str, str]) -> str:

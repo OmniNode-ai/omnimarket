@@ -34,6 +34,9 @@ evidence_requirements:
     description: "AC1: golden chain and decision parity pass."
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q -p no:randomly"
   - kind: "tests"
+    description: "AC1: the open-PR census reads one dated watcher snapshot and reports unknown evidence as unknown."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_watcher_inventory.py -q -p no:randomly"
+  - kind: "tests"
     description: "AC2: error chain and phase gateway pass."
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py -q -p no:randomly"
   - kind: "tests"
@@ -53,6 +56,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20673-ac1-pr-inventory"
+    description: "AC1: the open-PR census reads one dated watcher snapshot and reports unknown evidence as unknown."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_watcher_inventory.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20673-ac2-error-chain"
