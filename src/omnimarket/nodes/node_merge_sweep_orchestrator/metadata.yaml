@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_merge_sweep_orchestrator
 version: "0.1.0"
-description: "Orchestrator: one whole merge sweep - load the fleet's facts, read them, plan the lanes, then brief, start and retry each lane, by the sibling merge-sweep nodes' operations. Hosted by the serve process that hosts node_merge_sweep_effect, never by a shared runtime."
+description: "Orchestrator: one whole merge sweep - load the fleet's facts, read them, plan the lanes, then brief, start and retry each lane, by the sibling merge-sweep nodes' operations. Called over the bus on its declared command topic, by the caller's local runtime on the host that holds the sweep's files; a runtime where the request's paths do not resolve refuses the sweep with no lane started."
 pack: operator_tooling
 node_role: orchestrator
 display_name: "Merge Sweep Orchestrator"
