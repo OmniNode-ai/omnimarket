@@ -96,12 +96,16 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
+    # OMN-19987: the directory carries only the migrations omnibase_infra
+    # vendors; its contract, handlers and entry point land with the node,
+    # which removes this line and the MIGRATION_ONLY_NODE_DIRS entry together.
+    "node_projection_run_trace",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = set()
+MIGRATION_ONLY_NODE_DIRS: set[str] = {"node_projection_run_trace"}
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -255,9 +259,8 @@ def test_market_node_inventory_fails_on_a_missing_or_extra_node(
 def test_migration_only_dir_fails_once_it_gains_a_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # No directory is migration-only on this head, so the self-expiring entry
-    # is exercised against a directory that does have a contract: listing it
-    # must be reported.
+    # The self-expiring entry is exercised against a directory that does have
+    # a contract: listing it must be reported.
     node = "node_similarity_compute"
     monkeypatch.setitem(globals(), "MIGRATION_ONLY_NODE_DIRS", {node})
     violations = _inventory_violations(_real_inventory())
