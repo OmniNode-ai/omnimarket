@@ -14,7 +14,7 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Model setup EFFECT. Reports which of the models delegation can use (Gemini,
-  OpenRouter, OpenAI, Ollama) are set up on this machine, and tests one by
+  OpenRouter, OpenAI, Anthropic, Ollama) are set up on this machine, and tests one by
   running a single delegation pinned to its backend (`onex delegate
   --backend-id`, pin-or-refuse), recording pass, or fail with the provider's
   reason, and the time. Storing a key is not this node's work: the `onex models`
