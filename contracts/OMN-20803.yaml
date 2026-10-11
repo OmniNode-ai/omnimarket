@@ -12,29 +12,29 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: a recorded, paginated runs response emits one event per scheduled run, resumes from its cursor after downtime, and a disabled workflow emits MISSED -- falsifier: uv run pytest tests -q -k gh_schedule_observer_paginated_cursor"
-      - id: "AC1b"
-        statement: "AC1b: a run first seen in progress whose completion lands after the cursor moved still emits its finished event -- falsifier: uv run pytest tests -q -k gh_schedule_outstanding_runs_complete"
       - id: "AC2"
-        statement: "AC2: a clone whose head differs from its remote default branch makes its workflows UNOBSERVABLE -- falsifier: uv run pytest tests -q -k gh_schedule_stale_clone_unobservable"
+        statement: "AC2: a run first seen in progress whose completion lands after the cursor moved still emits its finished event -- falsifier: uv run pytest tests -q -k gh_schedule_outstanding_runs_complete"
       - id: "AC3"
-        statement: "AC3: an inaccessible repository or an exhausted budget reports UNOBSERVABLE, never zero runs -- falsifier: uv run pytest tests -q -k gh_schedule_access_and_budget"
+        statement: "AC3: a clone whose head differs from its remote default branch makes its workflows UNOBSERVABLE -- falsifier: uv run pytest tests -q -k gh_schedule_stale_clone_unobservable"
       - id: "AC4"
-        statement: "AC4: a runtime-affecting merge whose bus publication was lost still opens its expectation from the closed-pull-request read, and one that was published opens no second -- falsifier: uv run pytest tests -q -k gh_observer_reconciles_lost_triggers"
+        statement: "AC4: an inaccessible repository or an exhausted budget reports UNOBSERVABLE, never zero runs -- falsifier: uv run pytest tests -q -k gh_schedule_access_and_budget"
+      - id: "AC5"
+        statement: "AC5: a runtime-affecting merge whose bus publication was lost still opens its expectation from the closed-pull-request read, and one that was published opens no second -- falsifier: uv run pytest tests -q -k gh_observer_reconciles_lost_triggers"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: a recorded, paginated runs response emits one event per scheduled run, resumes from its cursor after downtime, and a disabled workflow emits MISSED."
     command: "uv run pytest tests -q -k gh_schedule_observer_paginated_cursor"
   - kind: "tests"
-    description: "AC1b: a run first seen in progress whose completion lands after the cursor moved still emits its finished event."
+    description: "AC2: a run first seen in progress whose completion lands after the cursor moved still emits its finished event."
     command: "uv run pytest tests -q -k gh_schedule_outstanding_runs_complete"
   - kind: "tests"
-    description: "AC2: a clone whose head differs from its remote default branch makes its workflows UNOBSERVABLE."
+    description: "AC3: a clone whose head differs from its remote default branch makes its workflows UNOBSERVABLE."
     command: "uv run pytest tests -q -k gh_schedule_stale_clone_unobservable"
   - kind: "tests"
-    description: "AC3: an inaccessible repository or an exhausted budget reports UNOBSERVABLE, never zero runs."
+    description: "AC4: an inaccessible repository or an exhausted budget reports UNOBSERVABLE, never zero runs."
     command: "uv run pytest tests -q -k gh_schedule_access_and_budget"
   - kind: "tests"
-    description: "AC4: a runtime-affecting merge whose bus publication was lost still opens its expectation from the closed-pull-request read, and one that was published opens no second."
+    description: "AC5: a runtime-affecting merge whose bus publication was lost still opens its expectation from the closed-pull-request read, and one that was published opens no second."
     command: "uv run pytest tests -q -k gh_observer_reconciles_lost_triggers"
 emergency_bypass:
   enabled: false
@@ -49,35 +49,42 @@ dod_evidence:
         check_value: "uv run pytest tests -q -k gh_schedule_observer_paginated_cursor"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn20803-ac1b-outstanding-runs"
-    description: "AC1b: a run first seen in progress whose completion lands after the cursor moved still emits its finished event."
+  - id: "dod-omn20803-ac2-outstanding-runs"
+    description: "AC2: a run first seen in progress whose completion lands after the cursor moved still emits its finished event."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests -q -k gh_schedule_outstanding_runs_complete"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1b"]
-  - id: "dod-omn20803-ac2-stale-clone"
-    description: "AC2: a clone whose head differs from its remote default branch makes its workflows UNOBSERVABLE."
+    binds_ac: ["AC2"]
+  - id: "dod-omn20803-ac3-stale-clone"
+    description: "AC3: a clone whose head differs from its remote default branch makes its workflows UNOBSERVABLE."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests -q -k gh_schedule_stale_clone_unobservable"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
-  - id: "dod-omn20803-ac3-access-and-budget"
-    description: "AC3: an inaccessible repository or an exhausted budget reports UNOBSERVABLE, never zero runs."
+    binds_ac: ["AC3"]
+  - id: "dod-omn20803-ac4-access-and-budget"
+    description: "AC4: an inaccessible repository or an exhausted budget reports UNOBSERVABLE, never zero runs."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests -q -k gh_schedule_access_and_budget"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
-  - id: "dod-omn20803-ac4-lost-triggers"
-    description: "AC4: a runtime-affecting merge whose bus publication was lost still opens its expectation from the closed-pull-request read, and one that was published opens no second."
+    binds_ac: ["AC4"]
+  - id: "dod-omn20803-ac5-lost-triggers"
+    description: "AC5: a runtime-affecting merge whose bus publication was lost still opens its expectation from the closed-pull-request read, and one that was published opens no second."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests -q -k gh_observer_reconciles_lost_triggers"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC4"]
+    binds_ac: ["AC5"]
+  - id: "dod-omn20803-deployed-handler"
+    description: "The merged GitHub schedule observer handler is present at the checked-out commit on the repository."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_schedule_observer_effect/handlers/handler_github_schedule_observer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerGithubScheduleObserver'"
+    binds_ac: ["AC1"]
