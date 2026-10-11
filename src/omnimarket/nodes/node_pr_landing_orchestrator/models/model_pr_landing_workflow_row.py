@@ -13,11 +13,12 @@ exactly as frozen:
   redelivered or reordered answer for an older read is dropped whole;
 * the effect in flight (R4): at most one GitHub effect per PR, with the
   correlation id its completion must carry;
-* the deduplication keys (F9): agent-needed per (head, reason) and terminals
-  per (PR, episode);
+* the deduplication keys (F9): agent-needed per (head, reason), conflict requests
+  per (head, base head) and terminals per (PR, episode);
 * the facts the effects need that the reducer does not: the ETags of the two
   conditional reads, the PR's GraphQL node id, the check-run ids the last
-  check read saw, the base branch and when the head checks were last read.
+  check read saw, the base branch and its head, whether GitHub reports armed,
+  and when the head checks were last read.
 
 ``landing`` is None until the first snapshot has been applied: the first
 autobind prompt carries no head, so the row exists only to order the read it
@@ -74,6 +75,15 @@ class ModelPrLandingAgentNeededKey(BaseModel):
     reason: EnumPrLandingAgentReason
 
 
+class ModelPrLandingConflictKey(BaseModel):
+    """One (head, base head) a conflict request was already emitted for (OMN-20750)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    head_sha: str = Field(..., pattern=HEAD_SHA_PATTERN)
+    base_sha: str | None = Field(default=None, pattern=HEAD_SHA_PATTERN)
+
+
 class ModelPrLandingCheckRunRef(BaseModel):
     """A check name and the workflow run that produced its newest copy."""
 
@@ -116,6 +126,13 @@ class ModelPrLandingWorkflowRow(BaseModel):
     )
     effect_in_flight: ModelPrLandingInFlight | None = Field(default=None)
     agent_needed_sent: tuple[ModelPrLandingAgentNeededKey, ...] = Field(default=())
+    conflict_requested: tuple[ModelPrLandingConflictKey, ...] = Field(
+        default=(),
+        description=(
+            "The (head, base head) pairs a conflict request was sent for; "
+            "a moved head or base is a new pair."
+        ),
+    )
     terminal_episodes: tuple[int, ...] = Field(
         default=(),
         description="Episodes a merged or closed terminal was already emitted for.",
@@ -131,6 +148,21 @@ class ModelPrLandingWorkflowRow(BaseModel):
         description=(
             "GitHub's mergeable_state from the newest PR read, for the arm "
             "gate's merge-state fact (OMN-20866)."
+        ),
+    )
+    base_sha: str | None = Field(
+        default=None,
+        pattern=HEAD_SHA_PATTERN,
+        description=(
+            "The base branch's head from the newest PR read, half of the "
+            "conflict request key (OMN-20750)."
+        ),
+    )
+    github_armed: bool = Field(
+        default=False,
+        description=(
+            "GitHub reported auto-merge armed or the PR in the merge queue on "
+            "the newest PR read, whoever armed it (OMN-20750)."
         ),
     )
     check_runs: tuple[ModelPrLandingCheckRunRef, ...] = Field(default=())
@@ -164,12 +196,16 @@ class ModelPrLandingWorkflowRow(BaseModel):
         if len(set(self.agent_needed_sent)) != len(self.agent_needed_sent):
             msg = "one agent-needed per (head, reason)"
             raise ValueError(msg)
+        if len(set(self.conflict_requested)) != len(self.conflict_requested):
+            msg = "one conflict request per (head, base head)"
+            raise ValueError(msg)
         return self
 
 
 __all__: list[str] = [
     "ModelPrLandingAgentNeededKey",
     "ModelPrLandingCheckRunRef",
+    "ModelPrLandingConflictKey",
     "ModelPrLandingInFlight",
     "ModelPrLandingWorkflowRow",
 ]

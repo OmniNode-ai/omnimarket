@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Claim a red-CI owner and return a scoped command through the existing sweep path."""
+"""Claim a red-CI owner and return a scoped command through the existing sweep path.
+
+Acting is a contract flag per red class (``ci_red_triage.act``). A runner-class
+owner reruns the failed Actions runs of its head once, through
+node_pr_landing_github_effect's ``rerun_runs``; every other class starts the
+existing scoped sweep. A class whose flag is false only records its decision.
+"""
 
 from __future__ import annotations
 
@@ -15,9 +21,19 @@ from typing import Protocol, TypeVar
 import yaml
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
+    EnumPrLandingGithubMode,
+)
+from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import (
+    EnumPrLandingGithubOperation,
+)
+from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
+    ModelPrLandingGithubRequest,
+)
 from omnimarket.events.topics import (
     CI_RED_TRIAGE_DECIDED_TOPIC_V1,
     CI_RUN_FAILED_TOPIC_V1,
+    PR_LANDING_GITHUB_REQUESTED_TOPIC_V1,
     PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1,
 )
 from omnimarket.handlers.cause_signature import (
@@ -40,6 +56,7 @@ from omnimarket.models.ci_red_triage import (
     ci_red_owner_correlation_id,
     ci_red_owner_run_id,
     ci_red_repo_slug,
+    facts_from_event,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims import (
     CiRedClaimsUnreadError,
@@ -52,6 +69,9 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
 
 _K = TypeVar("_K")
 _V = TypeVar("_V")
+_Published = (
+    ModelPrLifecycleStartCommand | ModelPrLandingGithubRequest | ModelCiRedTriageDecided
+)
 
 OWNER_ACTIONS = {
     EnumCiRedClass.SHARED_CAUSE: EnumCiRedAction.START_CAUSE_OWNER,
@@ -59,6 +79,37 @@ OWNER_ACTIONS = {
     EnumCiRedClass.DEV_HEAD: EnumCiRedAction.START_DEV_CAUSE,
     EnumCiRedClass.RUNNER: EnumCiRedAction.RERUN_FAILED,
 }
+# The controller's red classes whose rerun the bus path owns; reviewer_pool keeps
+# the controller's reviewer-slot rule.
+RERUN_LANDING_CLASSES = frozenset({"runner_saturation", "cancelled_producer"})
+_ACTIONS_RUN = "/actions/runs/"
+
+
+def ci_red_act_flags(block: object) -> dict[EnumCiRedClass, bool]:
+    """The contract's per-class act flags; an unknown class or a non-bool is refused.
+
+    A class the block does not name does not act.
+    """
+    if not isinstance(block, Mapping):
+        raise ValueError("ci_red_triage.act must map each red class to true or false")
+    known = {cls.value: cls for cls in EnumCiRedClass}
+    flags = dict.fromkeys(EnumCiRedClass, False)
+    for name, value in block.items():
+        if name not in known:
+            raise ValueError(f"ci_red_triage.act names unknown red class {name!r}")
+        if not isinstance(value, bool):
+            raise ValueError(f"ci_red_triage.act.{name} must be true or false")
+        flags[known[name]] = value
+    return flags
+
+
+def _run_id_of(details_url: object) -> int | None:
+    """The Actions workflow run id in a check run's details URL, if it has one."""
+    url = str(details_url or "")
+    if _ACTIONS_RUN not in url:
+        return None
+    tail = url.split(_ACTIONS_RUN, 1)[1].split("/", 1)[0]
+    return int(tail) if tail.isdigit() and int(tail) > 0 else None
 
 
 def _member_cause_keys(
@@ -88,7 +139,8 @@ class GhCiRedFactsReader:
     """
 
     @staticmethod
-    def _checks(slug: str, ref: str) -> dict[str, str]:
+    def _checks(slug: str, ref: str) -> dict[str, tuple[str, int | None]]:
+        """Each check's newest copy: its conclusion and its Actions run id."""
         result = subprocess.run(
             [
                 "gh",
@@ -106,14 +158,14 @@ class GhCiRedFactsReader:
         runs = payload["check_runs"]
         if not isinstance(runs, list):
             raise ValueError("check_runs must be a list")
-        newest: dict[str, tuple[tuple[str, int], str]] = {}
+        newest: dict[str, tuple[tuple[str, int], tuple[str, int | None]]] = {}
         for run in runs:
             key = (str(run.get("started_at") or ""), int(run["id"]))
             name = str(run["name"])
             conclusion = str(run.get("conclusion") or "").lower()
             if name not in newest or key > newest[name][0]:
-                newest[name] = (key, conclusion)
-        return {name: conclusion for name, (_, conclusion) in newest.items()}
+                newest[name] = (key, (conclusion, _run_id_of(run.get("details_url"))))
+        return {name: copy for name, (_, copy) in newest.items()}
 
     @staticmethod
     def _annotations(
@@ -152,11 +204,14 @@ class GhCiRedFactsReader:
             head = self._checks(slug, event.head_sha)
             base = self._checks(slug, event.base)
             checks = {
-                "check_conclusions": head,
+                "check_conclusions": {name: c for name, (c, _) in head.items()},
+                "check_run_ids": {
+                    name: run for name, (_, run) in head.items() if run is not None
+                },
                 "base_red_checks": tuple(
                     sorted(
                         name
-                        for name, conclusion in base.items()
+                        for name, (conclusion, _) in base.items()
                         if conclusion in {"failure", "timed_out"}
                     )
                 ),
@@ -178,6 +233,23 @@ class GhCiRedFactsReader:
         return ModelCiRedFacts.model_validate({"event": event, **checks, **annotations})
 
 
+class EventCiRedFactsReader:
+    """Take the facts from the event; read GitHub only for an event that does not carry them.
+
+    A red-CI event derived from a PR-state observation of schema version 2, or from a webhook check
+    run, states every failing check's conclusion and the base branch's red checks, so the runner and
+    dev-head classes are decided without a GitHub read. An event that lacks any of that keeps the
+    read, which retires when every watcher publishes version 2 with the base branch read.
+    """
+
+    def __init__(self, fallback: ProtocolCiRedFactsReader | None = None) -> None:
+        self._fallback = fallback if fallback is not None else GhCiRedFactsReader()
+
+    def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts:
+        facts = facts_from_event(event)
+        return facts if facts is not None else self._fallback.read(event)
+
+
 class HandlerCiRedTriage:
     """Durable decision and owner claims; identities never read the clock.
 
@@ -194,6 +266,7 @@ class HandlerCiRedTriage:
     subscribe_topic = CI_RUN_FAILED_TOPIC_V1
     published_event_topics = {
         ModelPrLifecycleStartCommand: PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1,
+        ModelPrLandingGithubRequest: PR_LANDING_GITHUB_REQUESTED_TOPIC_V1,
         ModelCiRedTriageDecided: CI_RED_TRIAGE_DECIDED_TOPIC_V1,
     }
 
@@ -202,11 +275,12 @@ class HandlerCiRedTriage:
         *,
         facts_reader: ProtocolCiRedFactsReader | None = None,
         classifier: Callable[[ModelCiRedFacts], ModelCiRedClassification] | None = None,
-        act: bool | None = None,
+        act: bool | Mapping[EnumCiRedClass, bool] | None = None,
         claims: ProtocolCiRedClaims | None = None,
     ) -> None:
+        """``act`` is a flag per red class (a bool sets every class); ``None`` reads the contract."""
         self._facts_reader = (
-            facts_reader if facts_reader is not None else GhCiRedFactsReader()
+            facts_reader if facts_reader is not None else EventCiRedFactsReader()
         )
         self._classifier = classifier
         if act is None or claims is None:
@@ -215,10 +289,14 @@ class HandlerCiRedTriage:
             ).open() as stream:
                 block = yaml.safe_load(stream)["ci_red_triage"]
             if act is None:
-                act = bool(block["act"])
+                act = ci_red_act_flags(block["act"])
             if claims is None:
                 claims = claims_from_contract(block["claims"])
-        self._act = act
+        self._act = (
+            dict.fromkeys(EnumCiRedClass, act)
+            if isinstance(act, bool)
+            else ci_red_act_flags({str(cls): on for cls, on in act.items()})
+        )
         self._claims = claims
         self._seen_events: OrderedDict[str, str] = OrderedDict()
         self._decided: OrderedDict[str, None] = OrderedDict()
@@ -296,7 +374,7 @@ class HandlerCiRedTriage:
             f"{slug}#{event.pr_number}@{event.head_sha}:{classification.check}"
         )
         unread: list[str] = []
-        events: list[ModelPrLifecycleStartCommand | ModelCiRedTriageDecided] = []
+        events: list[_Published] = []
         if not await self._was_decided(decision_key, unread):
             events = await self._decide(event, facts, classification, slug, unread)
             self._remember(self._decided, decision_key, None, self.MEMORY_LIMIT)
@@ -312,8 +390,8 @@ class HandlerCiRedTriage:
         classification: ModelCiRedClassification,
         slug: str,
         unread: list[str],
-    ) -> list[ModelPrLifecycleStartCommand | ModelCiRedTriageDecided]:
-        events: list[ModelPrLifecycleStartCommand | ModelCiRedTriageDecided] = []
+    ) -> list[_Published]:
+        events: list[_Published] = []
         owner_key = classification.owner_key
         run_id = None
         action_applied = False
@@ -347,25 +425,31 @@ class HandlerCiRedTriage:
             run_id = ci_red_owner_run_id(owner_key)
             if classification.red_class == EnumCiRedClass.SHARED_CAUSE:
                 absorbed = await self._absorbed_members(event, classification, slug)
-            if not self._act:
+            start: ModelPrLifecycleStartCommand | ModelPrLandingGithubRequest | None
+            start = None
+            if not self._act[classification.red_class]:
                 # A dry-run lifecycle run reads GitHub on the operator login and cannot act;
                 # shadow mode starts no run, so it claims no owner either.
                 start_evidence = " start=withheld:act=false"
             elif not claims_read:
                 start_evidence = " start=withheld:claims-unread"
-            else:
-                events.append(
-                    ModelPrLifecycleStartCommand(
-                        run_id=run_id,
-                        correlation_id=ci_red_owner_correlation_id(owner_key),
-                        repos=slug,
-                        pr_numbers=classification.members
-                        if classification.red_class == EnumCiRedClass.SHARED_CAUSE
-                        else (event.pr_number,),
-                        fix_only=True,
-                        dry_run=not self._act,
-                    )
+            elif classification.red_class == EnumCiRedClass.RUNNER:
+                start, start_evidence = self._rerun_request(
+                    event, facts, classification, owner_key
                 )
+            else:
+                start = ModelPrLifecycleStartCommand(
+                    run_id=run_id,
+                    correlation_id=ci_red_owner_correlation_id(owner_key),
+                    repos=slug,
+                    pr_numbers=classification.members
+                    if classification.red_class == EnumCiRedClass.SHARED_CAUSE
+                    else (event.pr_number,),
+                    fix_only=True,
+                    dry_run=False,
+                )
+            if start is not None:
+                events.append(start)
                 action_applied = True
                 self._remember(self._owners, owner_key, run_id, self.MEMORY_LIMIT)
                 if classification.red_class == EnumCiRedClass.SHARED_CAUSE:
@@ -416,6 +500,47 @@ class HandlerCiRedTriage:
         )
         return events
 
+    @staticmethod
+    def _rerun_request(
+        event: ModelCiRunFailedEvent,
+        facts: ModelCiRedFacts,
+        classification: ModelCiRedClassification,
+        owner_key: str,
+    ) -> tuple[ModelPrLandingGithubRequest | None, str]:
+        """The head's one rerun: the Actions runs of its timed-out or cancelled reds.
+
+        Keyed by the runner owner (one per head), so a head is rerun at most once.
+        A reviewer-pool red, a red with no Actions run and an unpinned head are withheld.
+        """
+        landing = classification.landing_red_class
+        if landing not in RERUN_LANDING_CLASSES:
+            return None, f" start=withheld:{landing or classification.reason}"
+        run_ids = tuple(
+            sorted(
+                {
+                    facts.check_run_ids[check]
+                    for check in event.failing_checks
+                    if check in facts.check_run_ids
+                    and facts.check_conclusions.get(check) in {"timed_out", "cancelled"}
+                }
+            )
+        )
+        if not run_ids:
+            return None, " start=withheld:no-run-ids"
+        try:
+            request = ModelPrLandingGithubRequest(
+                correlation_id=ci_red_owner_correlation_id(owner_key),
+                operation=EnumPrLandingGithubOperation.RERUN_RUNS,
+                mode=EnumPrLandingGithubMode.ENFORCE,
+                repository=ci_red_repo_slug(event.repo),
+                pr_number=event.pr_number,
+                head_sha=event.head_sha,
+                run_ids=run_ids,
+            )
+        except ValueError as exc:
+            return None, f" start=withheld:invalid-rerun:{type(exc).__name__}"
+        return request, " rerun_runs=" + ",".join(str(run) for run in run_ids)
+
     async def _absorbed_members(
         self,
         event: ModelCiRunFailedEvent,
@@ -441,7 +566,7 @@ class HandlerCiRedTriage:
     @staticmethod
     def _output(
         decision_key: str,
-        events: tuple[ModelPrLifecycleStartCommand | ModelCiRedTriageDecided, ...],
+        events: tuple[_Published, ...],
     ) -> ModelHandlerOutput[None]:
         correlation_id = ci_red_decision_correlation_id(decision_key)
         return ModelHandlerOutput.for_orchestrator(

@@ -1,0 +1,107 @@
+{
+  "scenario": "arm_auto_merge_clean_merges",
+  "operation": "arm_auto_merge",
+  "provenance": "documented",
+  "provenance_note": "OMN-20866. The policy read's shape and values were recorded 2026-10-10 with a read-only gh api -i graphql call of the landing policy query against omnimarket#3538, except mergeStateStatus (recorded DIRTY, set to CLEAN) and autoMergeRequest (recorded armed, set to null), which stand for a green, unarmed PR GitHub reports mergeable now. GitHub refuses enablePullRequestAutoMerge on such a PR, so the effect sends mergePullRequest at the expected head; that response is GitHub's documented GraphQL shape, not recorded, because recording it would need a mutating call. Header values are from the recorded read.",
+  "recorded_at": null,
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 3538,
+    "head_sha": "0602197a367e310761feb68d2425f24ce040cad4",
+    "pr_node_id": "PR_kwDOR6jjtc8AAAABHOa7Kw",
+    "merge_method": "SQUASH"
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue mergeStateStatus labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
+          "variables": {
+            "owner": "OmniNode-ai",
+            "name": "omnimarket",
+            "number": 3538
+          }
+        },
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "4678",
+          "X-Ratelimit-Reset": "1791622398",
+          "X-Ratelimit-Resource": "graphql",
+          "X-Ratelimit-Used": "322"
+        },
+        "body": {
+          "data": {
+            "repository": {
+              "autoMergeAllowed": true,
+              "pullRequest": {
+                "id": "PR_kwDOR6jjtc8AAAABHOa7Kw",
+                "number": 3538,
+                "headRefOid": "0602197a367e310761feb68d2425f24ce040cad4",
+                "baseRefName": "dev",
+                "isDraft": false,
+                "title": "feat(OMN-16294): worktree lease node refuses a second lane in a held worktree",
+                "state": "OPEN",
+                "merged": false,
+                "isMergeQueueEnabled": false,
+                "isInMergeQueue": false,
+                "mergeStateStatus": "CLEAN",
+                "labels": {
+                  "nodes": []
+                },
+                "autoMergeRequest": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!) { mergePullRequest(input: {pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head}) { pullRequest { number merged } } }",
+          "variables": {
+            "id": "PR_kwDOR6jjtc8AAAABHOa7Kw",
+            "method": "SQUASH",
+            "head": "0602197a367e310761feb68d2425f24ce040cad4"
+          }
+        },
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "4677",
+          "X-Ratelimit-Reset": "1791622398",
+          "X-Ratelimit-Resource": "graphql",
+          "X-Ratelimit-Used": "323"
+        },
+        "body": {
+          "data": {
+            "mergePullRequest": {
+              "pullRequest": {
+                "number": 3538,
+                "merged": true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

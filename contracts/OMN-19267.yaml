@@ -24,6 +24,11 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "When two items of one ticket's contract declare the same check, the receipt runner executes it once and writes one supersession record; the other item keeps its standing receipt, and when that receipt does not stand the runner records a write refusal and exits non-zero instead of writing a second record -- falsifier: uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q finds two records with the same replacement check_value in one cohort, or a second record written for the shared check, or a zero exit status on the refusal"
+  - id: "req-reasoning-thinking-budget"
+    statement: "The reasoning thinking-on profile bounds the trace with a 2048-token thinking budget in both server spellings, so one local reasoning call fits the effect's per-call ceiling and still returns a non-empty, accepted deliverable."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the local-qwen38-reasoning-thinking-on profile carries thinking_token_budget (vLLM) and thinking_budget_tokens (llama.cpp) of 2048, both travel on the request, and a response that spent the whole budget on thinking fails the class gate -- falsifier: uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py -q fails when either budget field is absent from the profile or the request"
 evidence_requirements:
   - kind: "tests"
     description: "Run the verifier over a contract whose declared item collides with the derived falsifier id and is retired by a marker."
@@ -37,6 +42,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Run the OCC receipt runner over a ticket whose contract declares one check on two items."
     command: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q"
+  - kind: "tests"
+    description: "AC6: the reasoning thinking-on profile carries the 2048-token thinking budget in both spellings and the request carries it."
+    command: "uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -74,3 +82,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn19267-ac6-reasoning-thinking-budget"
+    description: "AC6 hosted probe. The reasoning thinking-on profile carries the 2048-token thinking budget in both server spellings, the budget travels on the request, and a response that spent the whole budget on thinking fails the class gate. Passes at the head; fails at the merge base, whose inference_protocols.v1.yaml carries no budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

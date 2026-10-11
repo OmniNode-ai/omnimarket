@@ -3,6 +3,8 @@
 import hashlib
 import json
 import subprocess
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -41,12 +43,20 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecy
     HandlerPrLifecycleStateReducer,
 )
 from omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_ci_red import (
+    PROCESS_INDEX,
     HandlerDetectCiRed,
 )
 from omnimarket.projection.pr_ledger_projection import PR_LEDGER_PROJECTION_TABLE
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 CHECK = "branch-claim-check / branch-claim-check"
+
+
+@pytest.fixture(autouse=True)
+def empty_process_index() -> Iterator[None]:
+    PROCESS_INDEX.clear()
+    yield
+    PROCESS_INDEX.clear()
 
 
 def event(
@@ -82,7 +92,12 @@ def event(
 
 
 def claims(database: InmemoryDatabaseAdapter | None = None) -> ProjectionCiRedClaims:
-    return ProjectionCiRedClaims(database or InmemoryDatabaseAdapter())
+    # A restart here happens a minute after the reds were observed, inside every
+    # claim's lease (test_claim_lease_terminal_refused.py covers its expiry).
+    return ProjectionCiRedClaims(
+        database or InmemoryDatabaseAdapter(),
+        now=lambda: datetime(2026, 10, 8, 10, 1, tzinfo=UTC),
+    )
 
 
 def project(database: InmemoryDatabaseAdapter, outputs: list[Any]) -> None:
@@ -155,9 +170,14 @@ async def test_shadow_mode_records_decision_and_starts_nothing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_contract_defaults_to_shadow_mode_and_starts_nothing() -> None:
+async def test_contract_acts_on_the_runner_class_only() -> None:
     handler = HandlerCiRedTriage(facts_reader=FakeFactsReader())
-    assert handler._act is False
+    assert handler._act == {
+        EnumCiRedClass.RUNNER: True,
+        EnumCiRedClass.PR_OWN: False,
+        EnumCiRedClass.SHARED_CAUSE: False,
+        EnumCiRedClass.DEV_HEAD: False,
+    }
     output = await handler.handle(event())
     assert not any(isinstance(ev, ModelPrLifecycleStartCommand) for ev in output.events)
     assert len(output.events) == 1
@@ -296,15 +316,9 @@ async def test_facts_reader_raising_is_unread_conservative_pr_fix() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("facts", "action"),
-    [
-        (
-            FakeFactsReader(conclusions={CHECK: "timed_out"}),
-            EnumCiRedAction.RERUN_FAILED,
-        ),
-        (FakeFactsReader(base=(CHECK,)), EnumCiRedAction.START_DEV_CAUSE),
-    ],
+    [(FakeFactsReader(base=(CHECK,)), EnumCiRedAction.START_DEV_CAUSE)],
 )
-async def test_runner_and_dev_owner_starts(
+async def test_dev_owner_starts(
     facts: FakeFactsReader, action: EnumCiRedAction
 ) -> None:
     output = await HandlerCiRedTriage(
@@ -551,7 +565,12 @@ def test_contract_routes_dispatch_to_exact_topics(node: str) -> None:
         assert declared[model.__name__.removeprefix("Model")] == topic
         assert topic in raw["event_bus"]["publish_topics"]
     if node.endswith("orchestrator"):
-        assert raw["ci_red_triage"]["act"] is False
+        assert raw["ci_red_triage"]["act"] == {
+            "runner": True,
+            "pr_own": False,
+            "shared_cause": False,
+            "dev_head": False,
+        }
         assert raw["ci_red_triage"]["claims"] == {
             "table": PR_LEDGER_PROJECTION_TABLE,
             "dsn_env": "OMNIDASH_ANALYTICS_DB_URL",
