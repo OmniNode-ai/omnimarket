@@ -16,7 +16,7 @@ requirements:
           AC1: The handler's credential-registered event bytes do not contain a planted value, its fingerprint is `sha256(value)[:8]`, and revoke returns the mirror event; both delivery orders, a duplicate delivery and a delete-then-set give the expected rows -- falsifier: uv run pytest tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q
       - id: "AC2"
         statement: |-
-          AC2 (data half): a planted value appears in no credential event, no tenant_inference_credentials row, no CLI output and no refusal text, through the node and through the real onex secret CLI -- falsifier: uv run pytest tests/unit/cli/test_omn19985_secret_cli_folds_credential_events.py tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py -q -k "c1_c2_c5 or c4 or h1 or h4 or h5"
+          AC2 (data half): a planted value appears in no credential event, no tenant_inference_credentials row, no CLI output and no refusal text, through the node and through the real onex secret CLI, and in no HTTP response the local dashboard gives for that store (the catalogue, every contract-declared exposure and the error bodies) after a set, a re-set and a delete -- falsifier: uv run pytest tests/unit/cli/test_omn19985_secret_cli_folds_credential_events.py tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py -q -k "c1_c2_c5 or c4 or h1 or h4 or h5", and uv run pytest tests/projection/test_omn19985_no_planted_value_in_any_response.py -q
       - id: "AC3"
         statement: |-
           AC3 (data half): the tenant-credentials exposure serves the key ref with its provider, fingerprint prefix and set time, names the Credentials page as its consumer, and a set then delete leaves the row revoked with its fingerprint and set time kept -- falsifier: uv run pytest tests/test_omn19985_credential_fingerprint_set_at.py tests/nodes/node_local_secret_store_effect/test_golden_chain_local_secret_store_effect.py -q
@@ -49,6 +49,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/cli/test_omn19985_secret_cli_folds_credential_events.py tests/nodes/node_local_secret_store_effect/test_omn19985_local_secret_store.py -q -k \"c1_c2_c5 or c4 or h1 or h4 or h5\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19985-ac2-value-in-no-http-response"
+    description: "After the real onex secret CLI sets, re-sets and deletes a planted provider key, no body the local dashboard serves for that store holds either value, raw, base64 or URL-encoded: the catalogue, every contract-declared exposure, an unknown topic and a refused tenant. Controls in the same test: the store file holds the value, and the credentials exposure answers 200 with the key's row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn19985_no_planted_value_in_any_response.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn19985-ac3-exposure-serves-fp-and-set-time"
