@@ -31,7 +31,6 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'JOB_LOG_TAIL = \"job_log_tail\"' > /dev/null"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
   - id: "dod-omn20912-ac1-gateway-reads"
     description: "AC1: workflow_runs, run_jobs, job_log_tail, artifacts, pr_text and releases answer on a recorded fake transport, with paging inside the node and typed size refusals."
     source: "manual"
