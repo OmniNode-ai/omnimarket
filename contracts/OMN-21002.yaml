@@ -41,7 +41,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+    check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 -k 'caller_uses_core or canonical_shape_hook'
   binds_ac:
   - AC1
 - id: dod-omn21002-ac2-own-shrink-only-allowlist
@@ -50,7 +50,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+    check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 -k 'own_allowlist or core_ratchet'
   binds_ac:
   - AC2
 - id: dod-omn21002-ac3-live-guard-refusal
@@ -59,6 +59,8 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+    check_value: uv run pytest 'tests/ci/test_imperative_contract_guard_caller_omn21002.py::test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler[clean]' -q -n 0
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/ci/test_imperative_contract_guard_caller_omn21002.py::test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler[planted]' -q -n 0
   binds_ac:
   - AC3

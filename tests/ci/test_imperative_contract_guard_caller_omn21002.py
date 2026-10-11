@@ -374,8 +374,10 @@ def test_core_ratchet_accepts_unchanged_and_shrinking_but_refuses_an_extra_path(
     assert planted["added"] == [extra]
 
 
+@pytest.mark.parametrize("plant_http", [False, True], ids=["clean", "planted"])
 def test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler(
     tmp_path: Path,
+    plant_http: bool,
 ) -> None:
     # Use the caller's input; the merge-base caller cannot provide it.
     jobs = _mapping(CALLER)["jobs"]
@@ -396,8 +398,12 @@ def test_core_guard_accepts_clean_tree_and_refuses_a_planted_live_handler(
         "--scan-freestanding",
         "--json",
     )
-    clean = _core(*args)
-    assert clean.returncode == 0, clean.stdout + clean.stderr
+    # Each input is a separate bound check so neither scanner run shares the
+    # released verifier's 30-second command budget with the other input.
+    if not plant_http:
+        clean = _core(*args)
+        assert clean.returncode == 0, clean.stdout + clean.stderr
+        return
     handler = root / LIVE_HANDLER
     original = handler.read_text(encoding="utf-8")
     # The scanner reads this source; it does not execute a network request.
