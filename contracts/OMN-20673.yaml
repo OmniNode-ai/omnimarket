@@ -66,6 +66,13 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_watcher_inventory.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20673-ac1-pr-inventory-deploy-probe"
+    description: "AC1 deploy probe: the handler module GitHub serves at the checked-out commit reads the watcher snapshot pointer ONEX_PR_WATCHER_STATE."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_morning_ground_state_orchestrator/handlers/handler_morning_ground_state.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'WATCHER_STATE_ENV = \"ONEX_PR_WATCHER_STATE\"' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20673-ac2-error-chain"
     description: "AC2: error chain and phase gateway pass."
     source: "manual"
