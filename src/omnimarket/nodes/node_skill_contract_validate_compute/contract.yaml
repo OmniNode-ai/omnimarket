@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_skill_contract_validate_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Skill contract parity over one skills tree (SKILL.md args used by prompt.md, sub-skill references resolve, dispatched sub-skill args declared, no duplicate frontmatter keys, spec predicates present in prompt.md). The verdict passes when no violation is an error.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: skill_contract_validate
+    handler:
+      name: HandlerSkillContractValidate
+      module: omnimarket.nodes.node_skill_contract_validate_compute.handlers.handler_skill_contract_validate
+handler:
+  module: omnimarket.nodes.node_skill_contract_validate_compute.handlers.handler_skill_contract_validate
+  class: HandlerSkillContractValidate
+  input_model: omnimarket.nodes.node_skill_contract_validate_compute.models.model_skill_contract_validate_request.ModelSkillContractValidateRequest
+descriptor:
+  node_archetype: compute
+  purity: pure  # read-only deterministic over the skills tree on disk
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - main
+inputs:
+  skills_root:
+    type: str
+    required: true
+    description: Directory whose child directories are skills.
+  strict:
+    type: bool
+    required: false
+    description: Promote spec-prompt-predicates from warning to error.
+outputs:
+  skills_root:
+    type: str
+  strict:
+    type: bool
+  violations:
+    type: tuple
+  error_count:
+    type: int
+  warning_count:
+    type: int
+  passed:
+    type: bool
+terminal_event: onex.evt.omnimarket.skill-contract-validated.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.skill-contract-validate-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.skill-contract-validated.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.skill-contract-validate-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.skill-contract-validated.v1
