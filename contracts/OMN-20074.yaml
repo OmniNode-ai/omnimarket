@@ -70,7 +70,17 @@ requirements:
       - id: "AC9"
         statement: |-
           AC8: .pre-commit-config.yaml declares no-hardcoded-topics once, in an omnibase_core block pinned to a full commit sha, with its exclude (773 characters, sha256 7782a602) and settings unchanged and no onex_change_control block -- falsifier: uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q fails at the merge base
+  - id: "req-retire-approval-comments"
+    statement: |-
+      The rejection node and its exported hook reject bypass tokens even when the scanned text carries a receipt-id approval comment, preserving clean-text and source-file behavior.
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: staged prose, committed evidence, commit messages and PR bodies carrying a bypass token remain blocked with a receipt-id approval comment; clean text still passes and the node agrees with its exported hook -- falsifier: the head's rejection tests fail against the merge-base handler and hook, which still accept approval comments.
 evidence_requirements:
+  - kind: "tests"
+    description: "This PR's rejection behavior and hook parity fail against the merge-base implementation and pass at the head."
+    command: "uv run pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q -p no:randomly"
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
     command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly"
@@ -103,6 +113,22 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omnimarket-pr-3775-rejection"
+    description: "The rejection handler and exported hook block receipt-comment cases while preserving clean-text behavior. Run the head's tests over the merge-base implementation as the must-fail control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omnimarket-pr-3775-deploy-probe"
+    description: "Read the published rejection handler at the checked-out commit. Its verdict branches directly on findings after approval-comment support is removed; this branch is absent at the merge base. The content read or missing branch fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_reject_skip_token_compute/handlers/handler_reject_skip_token.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^            if findings$'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
   - id: "dod-omn20074-contract-in-another-repo"
     description: "The #1907 shape prints contract_in_another_repo as an expected OCC difference."
     source: "manual"
