@@ -1,0 +1,26 @@
+name: node_lane_liveness_gather_effect
+version: "1.0.0"
+description: "Runtime-tick gather of hook events and work-ledger CLAIM/TERMINAL rows for lane liveness"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_liveness_gather_effect: "omnimarket.nodes.node_lane_liveness_gather_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_infra"
+  - "pyyaml>=6.0"
+  - "psycopg2-binary>=2.9"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "hook-ledger", "lane-liveness", "schedule"]
+pack: "data"
+display_name: "Effect: Lane Liveness Gather"
+node_role: "effect"

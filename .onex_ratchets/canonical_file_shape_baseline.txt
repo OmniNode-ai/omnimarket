@@ -211,7 +211,6 @@ scripts/hooks/prepush_smart_tests.sh
 scripts/hooks/prepush_snapshot_adapter.py
 scripts/hooks/pytest_full_suite_host_guard.py
 scripts/install_codex_skills.py
-scripts/lane_liveness_reader.py
 scripts/lint_no_hardcoded_topics.py
 scripts/merge-proof
 scripts/producer_effect_assertion.py
