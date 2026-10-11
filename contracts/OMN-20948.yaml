@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20948"
+title: "The captured-secret writer creates through the secret store effect node instead of its own store client"
+summary: "The captured-secret writer (node_captured_secret_store_effect) drops its private store REST client and its node-local create-only protocol, and creates each detected secret through node_secret_store_effect, the platform's one secret store adapter. The writer keeps its reference digest, dedupe cache, sticky refusal and typed outcomes, and the omniclaude producer contract is unchanged. The captured_secret_store overlay block gains a provider key, which the writer requires."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20948-writer-through-node"
+    statement: "The writer stores a detected secret through node_secret_store_effect (create-only), returns the same secret://onex/captured reference, dedupes equal values, and maps refused, unreachable and failed store answers to its existing typed outcomes with no value in any result."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: tests show the writer stores a detected secret through node_secret_store_effect (create-only), returns the same secret://onex/captured reference, dedupes equal values, and maps refused, unreachable and failed store answers to its existing typed outcomes with no value in any result -- falsifier: uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py -q"
+  - id: "req-omn20948-no-private-client"
+    statement: "The writer module no longer defines its own store transport or protocol and imports no vendor client."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the writer module no longer defines its own store transport or protocol and imports no vendor client -- falsifier: grep -c \"universal-auth\" src/omnimarket/nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py expecting 0"
+evidence_requirements:
+  - kind: "tests"
+    description: "The writer golden chain, rewritten against a fake ProtocolSecretStore and against a local HTTP server reached through node_secret_store_effect."
+    command: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20948-writer-golden-chain"
+    description: "Store then reference then resolve, dedupe within and across handlers, login refused, write refused, unreachable and failed outcomes that stick, configuration refusals that touch no store, a writer block without a provider refused, and the writer end to end over HTTP through the node, with no value in any result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20948-no-private-client"
+    description: "The writer module carries no store REST path of its own; the merge base carries the private client, so the count there is nonzero."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "test \"$(grep -c 'universal-auth' src/omnimarket/nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py)\" = 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20948-deploy-probe"
+    description: "Deploy probe. The writer module at the checked-out commit builds its store through node_secret_store_effect; the probe reads it from GitHub at that commit and exits nonzero on a tree without that import, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'from omnimarket.nodes.node_secret_store_effect import HandlerSecretStore'"
+        cwd: "${OMNI_HOME}/omnimarket"
