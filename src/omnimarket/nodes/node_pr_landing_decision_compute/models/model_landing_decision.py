@@ -39,6 +39,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     REPO_PATTERN,
     SHA_PATTERN,
     SUBJECT_PATTERN,
+    ModelLandingCauseAttempt,
     ModelLandingCausePair,
     ModelLandingControllerState,
     ModelLandingMemberRef,
@@ -87,6 +88,8 @@ CAUSE_RESULT_RULE: Final[str] = (
     "{fix_ref, fix_head} naming the one fix PR and its head; cause_not_shared"
     "{reason} when the members only share an annotation by coincidence; "
     "external_blocker{kind, ref} with kind one of operator_decision, "
+    "operator_approval, operator_credential (only when the fix needs a decision, "
+    "an approval or a credential that only the operator can give), "
     "production_gate, hold_row, collaborator, upstream_open. Any other result is "
     "invalid and spends the attempt. Do not write the ledger and do not choose "
     "other work."
@@ -139,6 +142,15 @@ BRIEF_INSTRUCTIONS: Final[dict[EnumLandingBriefClass, str]] = {
         "the source; draft code through the code delegation step and text through "
         "the landing text step."
     ),
+    EnumLandingBriefClass.CAUSE_DIAGNOSIS: (
+        "Earlier attempts at this shared cause failed; they are listed in "
+        "prior_attempts. Do not repeat them. In a detached worktree of the source "
+        "repository at its base: read the failing job log of one member and of the "
+        "base head's run of the same check, state in one paragraph why each earlier "
+        "attempt did not clear the cause, then fix it once at the source by a "
+        "different route, or return the external_blocker that stops it; draft code "
+        "through the code delegation step and text through the landing text step."
+    ),
 }
 
 
@@ -171,6 +183,11 @@ class ModelLandingWorkerBrief(BaseModel):
         return self
 
 
+CAUSE_BRIEF_CLASSES: Final[frozenset[EnumLandingBriefClass]] = frozenset(
+    {EnumLandingBriefClass.SHARED_CAUSE, EnumLandingBriefClass.CAUSE_DIAGNOSIS}
+)
+
+
 class ModelLandingCauseBrief(BaseModel):
     """The fixed brief one headless cause worker is dispatched with."""
 
@@ -185,6 +202,9 @@ class ModelLandingCauseBrief(BaseModel):
         default=(), description="The cause's checks that also fail on the base head."
     )
     attempt: int = Field(..., ge=1, description="This attempt's number in the episode.")
+    prior_attempts: tuple[ModelLandingCauseAttempt, ...] = Field(
+        default=(), description="cause_diagnosis: the attempts already spent."
+    )
     lease_id: int = Field(..., ge=1)
     engine: EnumLandingEngine
     deadline_at: datetime
@@ -195,8 +215,14 @@ class ModelLandingCauseBrief(BaseModel):
 
     @model_validator(mode="after")
     def _fixed_text(self) -> ModelLandingCauseBrief:
-        if self.brief_class is not EnumLandingBriefClass.SHARED_CAUSE:
-            raise ValueError("a cause brief is the shared_cause class")
+        if self.brief_class not in CAUSE_BRIEF_CLASSES:
+            raise ValueError(
+                "a cause brief is the shared_cause or cause_diagnosis class"
+            )
+        if self.prior_attempts and (
+            self.brief_class is not EnumLandingBriefClass.CAUSE_DIAGNOSIS
+        ):
+            raise ValueError("only a diagnosis brief carries prior attempts")
         if self.instructions != BRIEF_INSTRUCTIONS[self.brief_class]:
             raise ValueError("a brief's instructions are fixed by its class")
         if (
@@ -229,7 +255,13 @@ class ModelLandingAction(BaseModel):
     cause_brief: ModelLandingCauseBrief | None = None
     dedupe_key: str | None = Field(
         default=None,
-        description="escalate_operator: <cause key>@<parked_until>, one per park.",
+        description=(
+            "escalate_operator and file_cause_ticket: <cause key>@<parked_until>, "
+            "one per park."
+        ),
+    )
+    attempts: tuple[ModelLandingCauseAttempt, ...] = Field(
+        default=(), description="file_cause_ticket: the attempts the ticket carries."
     )
 
     @model_validator(mode="after")
@@ -245,6 +277,10 @@ class ModelLandingAction(BaseModel):
             self.dedupe_key is None or not self.members
         ):
             raise ValueError("escalate_operator carries its dedupe key and members")
+        if kind is EnumLandingActionKind.FILE_CAUSE_TICKET and (
+            self.dedupe_key is None or not self.members
+        ):
+            raise ValueError("file_cause_ticket carries its dedupe key and members")
         if kind is EnumLandingActionKind.COMPANION_REBUILD and (
             self.rebuild_key is None or not self.members or self.target_repo is None
         ):
@@ -324,6 +360,7 @@ class ModelLandingDecision(BaseModel):
 
 __all__: list[str] = [
     "BRIEF_INSTRUCTIONS",
+    "CAUSE_BRIEF_CLASSES",
     "CAUSE_PUSH_RULE",
     "CAUSE_RESULT_KINDS",
     "CAUSE_RESULT_RULE",
