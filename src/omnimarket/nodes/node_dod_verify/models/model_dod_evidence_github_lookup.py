@@ -23,6 +23,11 @@ from omnimarket.delegated_test_loop.must_fail_models import ModelPrDiffFacts
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
 )
+from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
+    ModelRepoContractRead,
+    ModelRepoEvidenceCheckRun,
+    ModelTicketMergedPr,
+)
 
 
 class EnumDodEvidenceGithubOperation(StrEnum):
@@ -34,6 +39,13 @@ class EnumDodEvidenceGithubOperation(StrEnum):
     FETCH_PR_CHECKS_GREEN = "fetch_pr_checks_green"
     #: OMN-20032: a merged PR's merge commit, its first parent and its files.
     FETCH_PR_DIFF_FACTS = "fetch_pr_diff_facts"
+    #: OMN-20886: every merged PR of the ticket in a repository that carries
+    #: ``contracts/<TICKET>.yaml``, with its head, merge commit and merge time.
+    LIST_CONTRACT_REPO_MERGED_PRS = "list_contract_repo_merged_prs"
+    #: OMN-20886: ``contracts/<TICKET>.yaml`` of ``repo`` at ``commit_sha``.
+    READ_REPO_CONTRACT = "read_repo_contract"
+    #: OMN-20886: the ``repo-evidence / dod-verify`` check runs on ``commit_sha``.
+    READ_REPO_EVIDENCE_CHECK_RUNS = "read_repo_evidence_check_runs"
 
 
 class ModelDodEvidenceGithubLookupCommand(BaseModel):
@@ -59,6 +71,13 @@ class ModelDodEvidenceGithubLookupCommand(BaseModel):
     pr_number: int | None = Field(
         default=None,
         description="Required for FETCH_PR_MERGE_STATE / FETCH_PR_CHECKS_GREEN.",
+    )
+    commit_sha: str | None = Field(
+        default=None,
+        description=(
+            "Required for READ_REPO_CONTRACT (with repo and ticket_id) and "
+            "READ_REPO_EVIDENCE_CHECK_RUNS (with repo)."
+        ),
     )
 
 
@@ -120,6 +139,18 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
         default=None,
         description="The merged PR's merge commit, first parent and changed files.",
     )
+
+    # LIST_CONTRACT_REPO_MERGED_PRS (OMN-20886). ``resolved`` is False when a
+    # repository or one of its merged PRs could not be read: a missing PR could
+    # be the newest one, so a partial list is never returned.
+    merged_prs: tuple[ModelTicketMergedPr, ...] = Field(default=())
+
+    # READ_REPO_CONTRACT (OMN-20886). Always set for that operation.
+    repo_contract: ModelRepoContractRead | None = Field(default=None)
+
+    # READ_REPO_EVIDENCE_CHECK_RUNS (OMN-20886). ``resolved`` is False when the
+    # check runs are unreadable.
+    check_runs: tuple[ModelRepoEvidenceCheckRun, ...] = Field(default=())
 
     # LOOKUP_PR_FOR_TICKET / LOOKUP_REPO_FOR_TICKET failure classification
     # (OMN-15382). Set only when ``text_value`` is empty; ``None`` on success
