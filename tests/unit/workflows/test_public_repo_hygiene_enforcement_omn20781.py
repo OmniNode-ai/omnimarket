@@ -112,3 +112,40 @@ def test_hygiene_context_is_not_recorded_as_exempt() -> None:
     from tests.unit.scripts.ci.test_ci_summary_gate import EXEMPT_CONTEXTS
 
     assert ("public-repo-hygiene.yml", "public-repo-hygiene") not in EXEMPT_CONTEXTS
+
+
+DEPLOYMENT_CONTEXT = "public-repo-hygiene / deployment-config"
+
+
+def test_precommit_runs_the_deployment_config_hook_at_the_workflow_pin() -> None:
+    """OMN-20940: the local twin of the required deployment-config context."""
+    config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
+    matches = [
+        (repo, hook)
+        for repo in config["repos"]
+        if repo["repo"] == "https://github.com/OmniNode-ai/omniclaude"
+        for hook in repo["hooks"]
+        if hook["id"] == "deployment-config"
+    ]
+    assert len(matches) == 1, "exactly one deployment-config hook is declared"
+    repo, hook = matches[0]
+    assert repo["rev"].split()[0] == _workflow_pin()
+    for narrowing in ("args", "files", "exclude", "types", "stages", "entry"):
+        assert narrowing not in hook, narrowing
+
+
+def test_deployment_config_context_is_asserted_by_the_ci_summary() -> None:
+    assert DEPLOYMENT_CONTEXT in EXPECTED_EXTERNAL_CONTEXTS
+    producer = EXTERNAL_CONTEXT_PRODUCERS[DEPLOYMENT_CONTEXT]
+    assert producer.workflow == "public-repo-hygiene.yml"
+    assert "pull_request" in producer.events
+
+
+def test_queue_commit_reports_the_deployment_config_context() -> None:
+    workflow = yaml.safe_load(
+        (
+            ROOT / ".github" / "workflows" / "merge-group-pr-scoped-contexts.yml"
+        ).read_text()
+    )
+    names = {job.get("name") for job in workflow["jobs"].values()}
+    assert DEPLOYMENT_CONTEXT in names
