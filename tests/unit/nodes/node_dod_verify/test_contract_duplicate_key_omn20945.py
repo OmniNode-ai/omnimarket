@@ -15,6 +15,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from omnibase_core.errors.error_duplicate_yaml_mapping_key import (
+    DuplicateYamlMappingKeyError,
+)
+from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 
 from omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator import (
     _check_receipt_exists,
@@ -99,3 +103,21 @@ class TestContractDuplicateKey:
         assert result.details["reason"] == "yaml_parse_error"
         assert ":7:" in result.details["error"]
         assert "'command'" in result.details["error"]
+
+
+@pytest.mark.unit
+def test_scan_positive_control_names_the_planted_duplicate(tmp_path: Path) -> None:
+    """The AC3 scan loop names a planted duplicate and passes a clean sibling."""
+    (tmp_path / "OMN-1.yaml").write_text(_CLEAN, encoding="utf-8")
+    (tmp_path / "OMN-2.yaml").write_text(_DUPLICATED, encoding="utf-8")
+
+    found = []
+    for contract in sorted(tmp_path.glob("*.yaml")):
+        try:
+            load_yaml_mapping_no_duplicates(
+                contract.read_text(encoding="utf-8"), source=contract.name
+            )
+        except DuplicateYamlMappingKeyError as error:
+            found.append((error.source, error.line, error.key))
+
+    assert found == [("OMN-2.yaml", 7, "command")]
