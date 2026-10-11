@@ -79,6 +79,10 @@ MERGE_STATE_TRANSITION_TOPIC_V1 = "onex.evt.omnimarket.merge-state-transition.v1
 # with zero manual edits.
 OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-13317)
 
+# node_pr_lifecycle_fix_effect's command topic, routed by block_reason;
+# the landing orchestrator sends its conflict requests here.
+PR_LIFECYCLE_FIX_START_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-20750)
+
 # Canonical RSD-3 write-EFFECT command (OMN-14941 born path). Thin-published by
 # the call-occ-companion-effect GHA caller (via the omniclaude reusable) on
 # product-PR opened/synchronize; consumed by node_occ_companion_effect, which
