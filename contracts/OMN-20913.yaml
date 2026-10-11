@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20913"
+title: "Lanes reach GitHub through one onex scm command that wraps the source-control nodes, and the lane rules block and omni skills name it instead of gh verbs"
+summary: "onex scm <verb> is registered in the onex.cli entry-point group. Each verb maps to one operation of node_github_repo_gateway_effect or node_github_repo_write_effect; it publishes the node's typed command on the contract's command topic and waits for the terminal event, and the PR and CI state reads answer from the PR watcher state and the canonical clones before the bus. merge, arm, rerun and update-branch are refused, naming the landing controller. This contract binds AC1; AC2 (the lane skills) and AC3 (the dev lane readback) are not part of this change and are not declared or bound here."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-onex-scm-entry-point"
+    statement: |-
+      Lanes reach GitHub through one onex scm command that wraps the source-control nodes.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: onex scm with a verb publishes the typed command and returns the terminal event for every covered verb, and answers PR and CI state reads from the PR watcher state and the canonical clones before the bus -- falsifier: uv run pytest of the command against a fake bus and a fixture watcher state file
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: every verb of onex scm publishes its node's typed request on the contract command topic of a fake bus and returns the terminal event with topic, partition, offset and envelope ids; every operation the two node contracts declare has exactly one verb; pr-view, pr-status, pr-checks, pr-list and pr-merge-commit answer from a fixture watcher state file (and a git clone) with no publish; merge, arm, rerun and update-branch are refused naming the landing controller."
+    command: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20913-ac1-onex-scm-command"
+    description: "AC1: onex scm against a fake bus and a fixture watcher state file: each covered verb publishes the typed command and returns the terminal event; the state reads answer locally before the bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20913-ac1-onex-scm-deploy-probe"
+    description: "AC1 deploy probe: the pyproject GitHub serves at the checked-out commit registers the scm group in the onex.cli entry points."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep '^scm = \"omnimarket.handlers.scm.scm_cli:scm_group\"' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"

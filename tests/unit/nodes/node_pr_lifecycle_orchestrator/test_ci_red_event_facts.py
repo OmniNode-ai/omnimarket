@@ -13,10 +13,14 @@ from omnimarket.models.ci_red_triage import (
     ModelCiRunFailedEvent,
     ci_run_failed_event_id,
 )
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.ci_red_claims import (
+    ProjectionCiRedClaims,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_ci_red_triage import (
     EventCiRedFactsReader,
     HandlerCiRedTriage,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 pytestmark = pytest.mark.unit
 
@@ -68,7 +72,9 @@ class UnreadableGitHub:
 async def decide(event: ModelCiRunFailedEvent) -> tuple[ModelCiRedTriageDecided, int]:
     github = UnreadableGitHub()
     handler = HandlerCiRedTriage(
-        facts_reader=EventCiRedFactsReader(fallback=github), act=False
+        facts_reader=EventCiRedFactsReader(fallback=github),
+        act=False,
+        claims=ProjectionCiRedClaims(InmemoryDatabaseAdapter()),
     )
     output = await handler.handle(event)
     [decision] = [e for e in output.events if isinstance(e, ModelCiRedTriageDecided)]

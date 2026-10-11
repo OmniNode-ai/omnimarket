@@ -4,8 +4,8 @@
 # Hooks:
 #   - ruff format + lint (auto-fix)
 #   - Stub implementation detection (from omnibase_core)
-#   - TODO format enforcement (from onex_change_control)
-#   - Hardcoded topic string prevention (from onex_change_control)
+#   - TODO format enforcement (from omnibase_core)
+#   - Hardcoded topic string prevention (from omnibase_core)
 #
 # Usage:
 #   pre-commit install
@@ -242,9 +242,11 @@ repos:
         require_serial: true
         files: ^(\.duplicate-id-registries\.yaml|src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/nodes/node_ab_compare_orchestrator/models_registry\.yaml)$
 
-  # Shared ONEX governance hooks (onex_change_control)
-  - repo: https://github.com/OmniNode-ai/onex_change_control
-    rev: 8d7e85bc00e7f1b1306d1cb40949be1ab6e7e91a  # pragma: allowlist secret
+  # Hardcoded topic string prevention (OMN-20074, OCC retirement S8): the hook of
+  # this id is no longer pulled from the change-control repository; omnibase_core
+  # exports it under the same id.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 4a4177335d11b138a29fe28e2f4c5575afa92b2b  # pragma: allowlist secret
     hooks:
       - id: no-hardcoded-topics
         require_serial: true
