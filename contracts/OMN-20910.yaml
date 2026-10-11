@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20910"
+title: "Review-voter models are declared in a contract overlay, not repo variables or workflow files"
+summary: "omnimarket's Hostile Reviewer workflow reads every voter from the review voters overlay (since OMN-20923 a private CI overlay fetched at run time from the repository the org variable OMNI_CI_OVERLAY_REPO names, never a file of a shipped repository) through omniintelligence's cli_review --voters-overlay, its retry-budget check and its preflight. The workflow names no voter endpoint, port, model flag or endpoint variable, and a ratchet with a known-bad positive control keeps it that way. The quorum rule and the fail-closed gate are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-workflow-reads-overlay"
+    statement: "The hostile-review job resolves its voters only from the review voters overlay, at the preflight, retry-budget and review sites."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the preflight, retry-budget and review steps read the overlay and the overlay path is the CI overlay outside the workspace -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or outside_the_workspace'"
+  - id: "req-no-voter-endpoint-in-workflows"
+    statement: "No workflow file names a review voter endpoint, port, model flag or endpoint variable."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: a ratchet over every reviewer workflow finds no voter endpoint, port, model flag or endpoint variable, and finds all five lines of a known-bad fixture -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or llm_endpoint_variable'"
+evidence_requirements:
+  - kind: "tests"
+    description: "The workflow reads the overlay at every roster site."
+    command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20910-ac1-workflow-reads-overlay"
+    description: "The preflight, retry-budget and review steps read the review voters overlay."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or outside_the_workspace'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20910-ac3-no-voter-endpoint"
+    description: "No reviewer workflow names a voter endpoint; the ratchet's positive control finds the known-bad lines."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or llm_endpoint_variable'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
