@@ -122,6 +122,13 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         verb="release-list", node=_G, operation="releases", replaces="gh release list"
     ),
     ModelScmVerb(
+        verb="pr-heads",
+        node=_G,
+        operation="pr_heads",
+        replaces="gh pr list --state merged --json headRefName,headRefOid",
+        local_read=EnumScmLocalRead.PR_HEADS,
+    ),
+    ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),
     ModelScmVerb(verb="pr-edit", node=_W, operation="pr_edit", replaces="gh pr edit"),

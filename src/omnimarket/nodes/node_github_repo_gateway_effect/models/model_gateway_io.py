@@ -38,6 +38,9 @@ class EnumGithubGatewayOperation(StrEnum):
     ARTIFACTS = "artifacts"
     PR_TEXT = "pr_text"
     RELEASES = "releases"
+    # OMN-20977: every PR's head commit and merge outcome, the read the worktree
+    # prune tools made with `gh pr list --state merged --json headRefName,headRefOid`.
+    PR_HEADS = "pr_heads"
 
 
 # Operations scoped to a single PR require ``pr_number``.
@@ -106,12 +109,12 @@ class ModelGithubGatewayRequest(BaseModel):
     branch: str | None = Field(
         default=None,
         min_length=1,
-        description="workflow_runs only: runs on this branch.",
+        description="workflow_runs: runs on this branch; pr_heads: PRs from this head branch.",
     )
     head_sha: str | None = Field(
         default=None,
         pattern=r"^[0-9a-f]{40}$",
-        description="workflow_runs only: runs at this head commit.",
+        description="workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit.",
     )
     workflow: str | None = Field(
         default=None,
@@ -535,6 +538,39 @@ class ModelReleasesResult(BaseModel):
     tags_truncated: bool
 
 
+class ModelPrHead(BaseModel):
+    """One PR's head commit and merge outcome (OMN-20977).
+
+    ``state`` is MERGED, OPEN or CLOSED when the source can tell them apart.
+    UNMERGED is a PR the canonical clone shows was not merged into a base it
+    scanned; a clone cannot tell an open PR from a closed one.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = Field(..., gt=0)
+    state: Literal["MERGED", "OPEN", "CLOSED", "UNMERGED"]
+    head_oid: str = Field(..., pattern=r"^[0-9a-f]{40}$")
+    head_ref: str | None = Field(
+        default=None, description="The head branch, when the source names it."
+    )
+    base_ref: str | None = None
+    merge_commit_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    merged_at: str | None = None
+
+
+class ModelPrHeadsResult(_ModelBoundedList):
+    """Every PR's head commit and merge outcome, newest first (OMN-20977).
+
+    Replaces ``gh pr list --state merged|open --json headRefName,headRefOid``.
+    The ``branch`` and ``head_sha`` request fields narrow the list.
+    """
+
+    operation: Literal["pr_heads"] = "pr_heads"
+    repo: str
+    prs: list[ModelPrHead] = Field(default_factory=list)
+
+
 GithubGatewayResult = Annotated[
     ModelPrStatusResult
     | ModelCiChecksResult
@@ -548,7 +584,8 @@ GithubGatewayResult = Annotated[
     | ModelJobLogTailResult
     | ModelArtifactsResult
     | ModelPrTextResult
-    | ModelReleasesResult,
+    | ModelReleasesResult
+    | ModelPrHeadsResult,
     Field(discriminator="operation"),
 ]
 
@@ -591,6 +628,8 @@ __all__: list[str] = [
     "ModelOpenPrSummary",
     "ModelOpenPrsResult",
     "ModelPrComment",
+    "ModelPrHead",
+    "ModelPrHeadsResult",
     "ModelPrStatusResult",
     "ModelPrTextResult",
     "ModelRelease",

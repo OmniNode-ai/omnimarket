@@ -65,3 +65,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_node_declares_no_plugin_class_and_no_envelope -q -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn19362-compact-result-deploy-probe
+  description: Hermetic source probe for the compact-result change, whose injected ports are not activated on a live runtime here. GitHub must serve the handler at the checked-out commit with the _compact_result function introduced by this pull request; the same probe fails at the merge base where that function is absent. This checks shipped source presence; the existing compact-result tests verify the byte bound and receipt retention.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegated_test_loop_orchestrator/handlers/handler_delegated_test_loop_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^def _compact_result('
+    cwd: ${OMNI_HOME}/omnimarket
