@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20950"
+title: "A key set with onex secret set reaches no local dashboard HTTP response"
+summary: "A pytest reads every HTTP response the local dashboard serves for a store holding a planted provider key, after a set, a re-set and a delete through the real onex secret CLI, and finds the key in none of them. Split out of OMN-19985 by Jonah's ruling of 2026-10-11 so that ticket's AC2 can close by hand."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20950-no-key-in-any-dashboard-response"
+    statement: |-
+      A provider key stays in the local store by design, and the local dashboard serves every contract-declared exposure from that same file; no body it serves carries the key.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: After `onex secret set`, a re-set and a delete of a planted provider key, no body the local dashboard serves for that store (the catalogue, every contract-declared exposure, an unknown topic, a refused tenant) contains either key, raw, base64 or URL-encoded, while the store file holds the key and the credentials exposure answers 200 with its row -- falsifier: the test fails with the key copied into a served column, or with the credentials exposure pointed at the raw secret table
+evidence_requirements:
+  - kind: "tests"
+    description: "The response-scan test passes at the head; hand leaks (the key in a served column, the credentials exposure pointed at the raw secret table) turn it red."
+    command: "uv run pytest tests/projection/test_omn20950_no_planted_value_in_any_response.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20950-ac1-no-key-in-any-response"
+    description: "After the real onex secret CLI sets, re-sets and deletes a planted provider key, no body the local dashboard serves for that store holds either value, raw, base64 or URL-encoded. Controls in the same test: the store file holds the value, and the credentials exposure answers 200 with the key's row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20950_no_planted_value_in_any_response.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
