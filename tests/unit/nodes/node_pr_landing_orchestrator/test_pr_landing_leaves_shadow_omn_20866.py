@@ -15,6 +15,7 @@ heads through ``classify_head_checks``.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workf
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.contract_config import (
     PrLandingContractConfigError,
     config_from_block,
+    gate_facts_from_block,
     load_contract_config,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.core import (
@@ -526,6 +528,17 @@ _SHIPPED_BLOCK: dict[str, object] = {
     "observed_prompt_repositories": [CANARY, "OmniNode-ai/omnibase_infra"],
     "arm_policy": {"action_mode": "enforce", "kill_switch": False},
 }
+# The landing_gate_facts block beside it (OMN-20866), which takes no overlay.
+_SHIPPED_GATE_FACTS_BLOCK: dict[str, object] = {
+    "lab_proof_repositories": ["OmniNode-ai/omnibase_infra", CANARY],
+    "ledger_freshness_bound_minutes": 60,
+    "source": {
+        "dsn_env": "OMNINODE_INTERNAL_DB_URL",
+        "hold_state_relation": "omninode_internal.work_ledger_state",
+        "ledger_rows_relation": "omninode_internal.work_ledger_rows",
+        "lab_proof_receipts_relation": "omninode_internal.lab_proof_receipts",
+    },
+}
 
 
 async def _ready_canary_requests(
@@ -551,7 +564,10 @@ def test_overlay_unset_the_contract_declares_todays_config(
 ) -> None:
     monkeypatch.delenv(MODE_ENV, raising=False)
     monkeypatch.delenv(ARM_ENV, raising=False)
-    assert load_contract_config() == config_from_block(_SHIPPED_BLOCK)
+    assert load_contract_config() == replace(
+        config_from_block(_SHIPPED_BLOCK),
+        gate_facts=gate_facts_from_block(_SHIPPED_GATE_FACTS_BLOCK),
+    )
 
 
 async def test_overlay_non_acting_sends_only_reads_for_a_ready_pr(
