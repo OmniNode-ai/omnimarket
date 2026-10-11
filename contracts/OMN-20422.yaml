@@ -1,29 +1,29 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20422"
-title: "The Hostile Reviewer's second voter is Qwen3.6-35B-A3B on the Studio's :8131"
-summary: "The hostile-review job sets LLM_GPT_OSS_REVIEW_URL at job level to the Studio's second llama-server on port 8131 (Qwen3.6-35B-A3B), so the gpt-oss-review voter is a different model from qwen3-review. LLM_ENDPOINT_CIDR_ALLOWLIST moves to the same job-level env block. The voter names and quorum rule are unchanged."
+title: "The Hostile Reviewer's second voter is a different model from the first"
+summary: "The hostile-review job's second voter is a different model from the first, so the two votes are independent. The endpoint allowlist moves to the job-level env block. The quorum rule is unchanged. Superseded for the roster itself by OMN-20910 and OMN-20923: the workflow names no voter, endpoint or model."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-second-voter-8131"
+  - id: "req-second-voter-distinct"
     statement: |-
-      The hostile-review job in .github/workflows/hostile-reviewer.yml must carry a job-level env that points LLM_GPT_OSS_REVIEW_URL at port 8131 and holds LLM_ENDPOINT_CIDR_ALLOWLIST, and must still request both qwen3-review and gpt-oss-review.
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must carry a job-level env that holds the endpoint allowlist, and must still request two distinct voters.
     acceptance:
       - id: "AC1"
         statement: |-
           AC1 (superseded by OMN-20910, RULING 2026-10-10T18:17:37Z): the second voter is no longer a job-level URL; the workflow reads every voter from the review voters overlay and names no voter endpoint, and the CIDR allowlist stays job-level -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q
   - id: "req-reviewer-pin-and-key"
     statement: |-
-      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 33a29cdfba6f14be6f94c3c77a05e29f345c692b (the dev tip carrying the failed-vote parse fix and the registry key rename), name the second voter local-studio-planner at every roster site, and resolve its URL from LLM_LOCAL_STUDIO_PLANNER_URL on :8131.
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 33a29cdfba6f14be6f94c3c77a05e29f345c692b (the dev tip carrying the failed-vote parse fix and the registry key rename), name the second voter at every roster site, and resolve its URL from a repository variable.
     acceptance:
       - id: "AC2"
         statement: |-
           AC2 (superseded by OMN-20910): no registry key or endpoint variable is named at the preflight, retry-budget or review sites; all three read the review voters overlay -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q
   - id: "req-shadow-review-runner"
     statement: |-
-      node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (knowledge-base-internal never; GLM on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
+      node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (a private planning repository never; GLM on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
     acceptance:
       - id: "AC3"
         statement: |-
@@ -53,8 +53,8 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-second-voter-8131-ac1"
-    description: "The hostile-review job env names the :8131 voter URL and the CIDR allowlist, and both models are requested."
+  - id: "dod-second-voter-distinct-ac1"
+    description: "The hostile-review job env holds the endpoint allowlist, and two distinct voters are requested."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -86,7 +86,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20422-ac1-second-voter-url-from-variable"
-    description: "The hostile-review job env sets LLM_LOCAL_STUDIO_PLANNER_URL from the repository variable, which this pull request introduces; the test fails on the merge base, where the value is a literal :8131 address."
+    description: "The hostile-review job env sets the second voter's URL from a repository variable, which this pull request introduces; the test fails on the merge base, where the value is a literal address."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -94,7 +94,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20422-ac2-roster-url-from-variable"
-    description: "The renamed second voter resolves its URL from the LLM_LOCAL_STUDIO_PLANNER_URL repository variable at the workflow level, which this pull request introduces; the test fails on the merge base."
+    description: "The renamed second voter resolves its URL from a repository variable at the workflow level, which this pull request introduces; the test fails on the merge base."
     source: "manual"
     checks:
       - check_type: "test_passes"

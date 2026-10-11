@@ -38,16 +38,16 @@ _VOTER_ENDPOINT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bREVIEW_MODEL_KEYS\b"),
 )
 # The endpoint variables the overlay replaced; no workflow may name them at all.
-_RETIRED_ENDPOINT_VARS = ("LLM_LOCAL_STUDIO_PLANNER_URL", "LLM_QWEN3_REVIEW_URL")
+_RETIRED_ENDPOINT_VARS = ("LLM_EXAMPLE_VOTER_B_URL", "LLM_EXAMPLE_VOTER_A_URL")
 
 # Positive control: the lines this repository's workflow carried before the
 # overlay. The ratchet must find every one of them.
 _KNOWN_BAD = """\
-      LLM_LOCAL_STUDIO_PLANNER_URL: "http://studio.lab.example:8131"
-          LLM_LOCAL_STUDIO_PLANNER_URL: ${{ vars.LLM_LOCAL_STUDIO_PLANNER_URL }}
-          REVIEW_MODEL_KEYS: "qwen3-review local-studio-planner"
-            --model qwen3-review \\
-            --model local-studio-planner \\
+      LLM_EXAMPLE_VOTER_B_URL: "http://voter-b.example.invalid:9002"
+          LLM_EXAMPLE_VOTER_B_URL: ${{ vars.LLM_EXAMPLE_VOTER_B_URL }}
+          REVIEW_MODEL_KEYS: "example-voter-a example-voter-b"
+            --model example-voter-a \\
+            --model example-voter-b \\
 """
 
 

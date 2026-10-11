@@ -29,8 +29,8 @@
 #
 # OMN-15110: degraded used to exit 0 ("informational, pilot phase" per OMN-8524).
 # Live measurement 2026-07-25 showed degraded in 5 of 6 concurrent PR runs
-# (qwen3-review-b, a single-slot llama-server endpoint on .201:8001, timing out
-# under concurrent-PR contention) — a gate that is green with one of two
+# (one voter, a single-slot endpoint, timing out under concurrent-PR
+# contention) — a gate that is green with one of two
 # adversarial reviewers dead is not an adversarial gate, it is a formality.
 # The "Enforce hostile-review verdict" step below is the single place that
 # turns any non-"passed" verdict into job failure, regardless of which of the
@@ -76,15 +76,14 @@ jobs:
     # OMN-15066: was 35 (2100s). The "Run adversarial review" step calls the
     # two models SEQUENTIALLY (cli_review.run_review, a plain for loop), and
     # each call retries up to max_retries=3 (4 attempts) with exponential
-    # backoff on a per-model timeout_seconds from
-    # omniintelligence/.../model_registry.yaml. Worst case:
-    #   qwen3-review:   4 x 120s + 14s backoff =  494s
-    #   qwen3-review-b: 4 x 600s + 14s backoff = 2414s
-    #   sequential sum                         = 2908s
-    # (OMN-17492: the roster is now qwen3-review + local-studio-planner, whose
-    # registry entry is 300s x (1 + max_retries 1) = 600s + backoff, so the
-    # sum is ~1100s; the ceiling below is unchanged and the invariant step
-    # re-derives the sum from the live registry on every run.)
+    # backoff on a per-model timeout_seconds from the voters overlay. Worst
+    # case, for a two-voter roster with a 120s and a 600s timeout:
+    #   voter A: 4 x 120s + 14s backoff =  494s
+    #   voter B: 4 x 600s + 14s backoff = 2414s
+    #   sequential sum                  = 2908s
+    # (The roster is whatever the overlay declares; the ceiling below is
+    # unchanged and the invariant step re-derives the sum from the resolved
+    # voters on every run.)
     # 2908s > the old 2100s ceiling — that mismatch is what silently stalled
     # jobs 89616541439/89616551741 to a 35m21s cancellation with zero log
     # output. 60 min (3600s) leaves ~400s of margin over 2908s plus the
@@ -602,8 +601,8 @@ jobs:
         # normal verdict-parse branch at ~line 460) each `exit 0` on
         # verdict=degraded, justified as "pilot phase informational, does not
         # block merge" (OMN-8524). Live measurement (OMN-15110) showed
-        # degraded in 5 of 6 concurrent PR runs on 2026-07-25 -- qwen3-review-b
-        # (a single-slot llama-server endpoint) timing out under concurrent-PR
+        # degraded in 5 of 6 concurrent PR runs on 2026-07-25 -- one voter
+        # (a single-slot endpoint) timing out under concurrent-PR
         # GPU contention even after the OMN-15066 timeout-minutes raise. This
         # step is the single point of truth that turns ANY non-"passed"
         # verdict into job failure, regardless of which upstream branch
