@@ -60,6 +60,7 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
     assert bus["subscribe_topics"] == [
         "onex.cmd.omnimarket.lab-fill-plan-requested.v1",
         "onex.intent.platform.runtime-tick.v1",
+        "onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1",
     ]
     assert bus["publish_topics"] == [
         "onex.evt.omnimarket.lab-fill-plan-decided.v1",
@@ -80,6 +81,7 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
         "plan_lab_fill_headroom",
         "verify_lab_fill_fanout",
         "lab_fill.scheduled_fire",
+        "plan_lab_fill_fire",
     }
 
 

@@ -1,0 +1,155 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - GitHub repo write effect (OMN-20912, slice 1 of OMN-20768)
+#
+# The PR authoring writes lanes ran with gh: pr_create, pr_edit, pr_ready,
+# pr_close, pr_comment and workflow_dispatch. A separate node from
+# node_github_repo_gateway_effect because that node declares itself read-only
+# (metadata side_effect_class read_only, descriptor idempotent true); a write
+# needs a mode, a quota floor and guards a read never does.
+name: node_github_repo_write_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
+  onex.cmd.omnimarket.github-repo-write-requested.v1 is answered by one
+  ModelRepoWriteCompleted on onex.evt.omnimarket.github-repo-write-completed.v1
+  or one ModelRepoWriteFailed on onex.evt.omnimarket.github-repo-write-failed.v1.
+  Every call goes through the shared landing transport; no gh subprocess. The
+  mode comes from write_config per repository (dry_run plans the calls and
+  sends nothing). The quota floor is the landing effect's rule, read from the
+  x-ratelimit-* response headers. pr_edit, pr_ready and pr_close refuse a moved
+  head (head_moved) before any mutation; pr_create and workflow_dispatch check
+  the branch tip when given an expected head. A retried command with the same
+  idempotency key writes nothing twice. pr_close is refused (claim_not_held)
+  unless the requesting lane and run hold a live claim on the PR in
+  node_pr_claim_registry_effect.
+
+input_model:
+  name: ModelRepoWriteRequest
+  module: omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io
+
+output_model:
+  name: ModelRepoWriteCompleted
+  module: omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io
+
+# The operation table slice 2 (`onex scm`) and slice 3 (the gh shim coverage
+# table) read. Names are stable and match the gh verb each one replaces.
+operations:
+  - name: pr_create
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr create. POST /repos/{o}/{r}/pulls; an open PR for the head is returned replayed instead."
+    transport: rest
+  - name: pr_edit
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr edit. GET the PR (expected head), PATCH title/body/base, GraphQL convertPullRequestToDraft or markPullRequestReadyForReview for draft."
+    transport: rest
+  - name: pr_ready
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr ready. GET the PR (expected head), GraphQL markPullRequestReadyForReview."
+    transport: graphql
+  - name: pr_close
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr close. Claim check in node_pr_claim_registry_effect, GET the PR (expected head), PATCH state=closed."
+    transport: rest
+  - name: pr_comment
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr comment. Scan comments for the idempotency marker, POST /repos/{o}/{r}/issues/{n}/comments."
+    transport: rest
+  - name: workflow_dispatch
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh workflow run. POST /repos/{o}/{r}/actions/workflows/{w}/dispatches."
+    transport: rest
+
+modes:
+  - dry_run
+  - enforce
+
+# Default dry_run. enforce is declared for omnimarket only, the repository the
+# lab proof writes a scratch PR in; the landing orchestrator's per-repository
+# github_mode (OMN-20866) is the precedent. Widening it is a contract change.
+write_config:
+  github_mode: dry_run
+  github_mode_by_repository:
+    OmniNode-ai/omnimarket: enforce
+
+quota_floor:
+  # The landing effect's rule (OMN-19826): quota is read only from response
+  # headers, never the rate_limit endpoint; an undeclared resource is refused.
+  source: response_headers
+  min_remaining:
+    core: 500
+    graphql: 500
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # The same contract-declared ref the landing effect and the gateway use.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for API calls (REST + GraphQL)."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.github-repo-write-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.github-repo-write-completed.v1
+    - onex.evt.omnimarket.github-repo-write-failed.v1
+
+published_events:
+  - event_type: "RepoWriteCompleted"
+    topic: onex.evt.omnimarket.github-repo-write-completed.v1
+    description: "The write ran (or, in dry_run, the requests it would send), with the quota reading from its response headers."
+  - event_type: "RepoWriteFailed"
+    topic: onex.evt.omnimarket.github-repo-write-failed.v1
+    description: "The write was refused or failed, with a typed reason; no mutation was sent after a refusal."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "github_repo.write"
+      message_category: "command"
+      handler:
+        name: "HandlerGithubRepoWriteEffect"
+        module: "omnimarket.nodes.node_github_repo_write_effect.handlers.handler_github_repo_write"
+      event_model:
+        name: "ModelRepoWriteRequest"
+        module: "omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io"
+      topic: onex.cmd.omnimarket.github-repo-write-requested.v1
+      description: "One PR authoring write from a lane (or the onex scm command); answered by one completed or failed event."
+
+terminal_event: onex.evt.omnimarket.github-repo-write-completed.v1
+
+runtime_dispatch:
+  # The CLI/skill dispatcher (slice 2, onex scm) is this node's producer.
+  command_topic: onex.cmd.omnimarket.github-repo-write-requested.v1
+  # ModelRepoWriteFailed carries terminal_failure_cause, so the runtime's
+  # failure-terminal guard (OMN-15468) publishes it on the failure topic.
+  terminal_events:
+    success: onex.evt.omnimarket.github-repo-write-completed.v1
+    failure: onex.evt.omnimarket.github-repo-write-failed.v1
+
+# Both results leave the ONEX node graph here: the caller reads them.
+externally_consumed_topics:
+  - onex.evt.omnimarket.github-repo-write-completed.v1
+  - onex.evt.omnimarket.github-repo-write-failed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Typed GitHub PR authoring write effect node"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "github"
+    - "write"

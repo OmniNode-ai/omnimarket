@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Self
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -47,6 +47,41 @@ def ci_red_owner_run_id(owner_key: str) -> str:
 def ci_red_cause_key(slug: str, check: str) -> str:
     """Check-level cause key, used for a red whose annotations are unread."""
     return f"cause:{slug}:{hashlib.sha256(check.encode()).hexdigest()[:12]}"
+
+
+# The owner claim is a lease. Its writer (node_pr_lifecycle_state_reducer) stamps
+# the expiry, the row's next_check_at, from the TTL its contract declares; an owner
+# read counts a claim only before that expiry. So an owner that never closes, as a
+# lane whose TERMINAL the ledger refused, stops owning its PRs at the TTL.
+def ci_red_owner_claim_ttl(block: object) -> timedelta:
+    """The contract's ``owner_claim_lease`` block; a missing or unknown TTL is refused."""
+    if not isinstance(block, dict) or set(block) != {"ttl_seconds"}:
+        raise ValueError(
+            "owner_claim_lease must declare exactly ttl_seconds, got "
+            f"{sorted(block) if isinstance(block, dict) else type(block).__name__}"
+        )
+    ttl = block["ttl_seconds"]
+    if type(ttl) is not int or ttl <= 0:
+        raise ValueError(
+            f"owner_claim_lease.ttl_seconds must be a positive integer, got {ttl!r}"
+        )
+    return timedelta(seconds=ttl)
+
+
+def ci_red_claim_holds(lease_expires_at: object, now: datetime) -> bool:
+    """True while an owner claim's lease (its row's next_check_at) has not expired.
+
+    Raises ValueError for an expiry that is not a timezone-aware time: an unknown
+    lease is unread, never a claim held or released.
+    """
+    expires = (
+        lease_expires_at
+        if isinstance(lease_expires_at, datetime)
+        else datetime.fromisoformat(str(lease_expires_at))
+    )
+    if expires.tzinfo is None:
+        raise ValueError(f"lease expiry has no timezone: {lease_expires_at!r}")
+    return now < expires
 
 
 class EnumCiRedClass(StrEnum):
@@ -141,11 +176,16 @@ class ModelCiRedFacts(BaseModel):
     same per peer PR number at the peer's head; a check or peer absent is
     unread and ``""`` is a check read with no annotation. With
     ``annotations_read`` false the classifier clusters by check name only.
+    ``check_run_ids`` is the Actions workflow run of each check's newest copy
+    at the event head, read from its details URL or taken from the event's
+    per-check run id; a check absent from it is not an Actions check or was
+    unread, and a runner rerun never names it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     event: ModelCiRunFailedEvent
     check_conclusions: dict[str, str] = Field(default_factory=dict)
+    check_run_ids: dict[str, int] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
     peer_annotations: dict[int, dict[str, str]] = Field(default_factory=dict)
     annotations_read: bool = False
@@ -164,12 +204,20 @@ def facts_from_event(event: ModelCiRunFailedEvent) -> ModelCiRedFacts | None:
     return ModelCiRedFacts(
         event=event,
         check_conclusions={run.check: run.conclusion for run in event.failing_runs},
+        check_run_ids={
+            run.check: run.run_id for run in event.failing_runs if run.run_id
+        },
         base_red_checks=event.base_red_checks,
         base_read=event.base_read,
     )
 
 
 class ModelCiRedClassification(BaseModel):
+    """``landing_red_class`` is the landing controller's red class of the same
+    head (the triage node's ``classify_red``), set for the runner class:
+    ``runner_saturation`` and ``cancelled_producer`` earn the bus path's rerun,
+    ``reviewer_pool`` stays with the controller's reviewer-slot rule."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
     red_class: EnumCiRedClass
     check: str
@@ -177,6 +225,7 @@ class ModelCiRedClassification(BaseModel):
     owner_key: str
     cause_key: str | None = None
     reason: str
+    landing_red_class: str | None = None
 
 
 class ModelCiRedTriageDecided(BaseModel):

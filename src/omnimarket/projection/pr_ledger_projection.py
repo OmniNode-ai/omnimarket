@@ -45,9 +45,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from enum import StrEnum
+from importlib import resources
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.models.ci_red_triage import ci_red_owner_claim_ttl
 
 
 @runtime_checkable
@@ -104,6 +109,29 @@ PR_LEDGER_PROJECTION_CONFLICT_KEY = "sweep_id,repo,pr_number,iteration"
 # found_at + this window. Declared here (not hardcoded at call sites) so the SLA
 # is discoverable and consistent with the OMN-12569 ledger SLA.
 PR_LEDGER_PROJECTION_FRESHNESS_SLA_SECONDS = 900
+
+# An owner claim row is a lease whose TTL node_pr_lifecycle_state_reducer's
+# contract declares (owner_claim_lease); its next_check_at is found_at + that TTL.
+PR_LEDGER_PROJECTION_WRITER_NODE = "node_pr_lifecycle_state_reducer"
+
+
+def load_owner_claim_lease_ttl(contract_path: Path | None = None) -> timedelta:
+    """The owner claim lease TTL the writer's contract declares.
+
+    Raises ValueError for a contract with no ``owner_claim_lease`` or an
+    unknown one (see :func:`ci_red_owner_claim_ttl`).
+    """
+    text = (
+        contract_path.read_text()
+        if contract_path is not None
+        else resources.files(f"omnimarket.nodes.{PR_LEDGER_PROJECTION_WRITER_NODE}")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    contract = yaml.safe_load(text)
+    return ci_red_owner_claim_ttl(
+        contract.get("owner_claim_lease") if isinstance(contract, dict) else None
+    )
 
 
 class EnumPrLedgerAction(StrEnum):

@@ -18,16 +18,20 @@ an exception message.
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from email.message import Message
+from typing import IO, Literal
 
 from pydantic import SecretStr
 
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
 from omnimarket.github_landing.model_github_http_exchange import (
     GITHUB_GRAPHQL_PATH,
+    ModelGithubBytesResponse,
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
@@ -35,6 +39,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
 GITHUB_API_VERSION = "2026-03-10"
 REQUEST_TIMEOUT_SECONDS = 30.0
 _MAX_TEXT_BODY = 1000
+_READ_CHUNK = 64 * 1024
 
 
 class GithubLandingTransportError(RuntimeError):
@@ -139,6 +144,101 @@ class UrllibGithubLandingTransport:
     async def send(self, request: ModelGithubHttpRequest) -> ModelGithubHttpResponse:
         """Send one request without blocking the event loop."""
         return await asyncio.to_thread(self.send_sync, request)
+
+    def send_bytes_sync(
+        self,
+        request: ModelGithubHttpRequest,
+        *,
+        limit: int,
+        keep: Literal["head", "tail"],
+    ) -> ModelGithubBytesResponse:
+        """Send one GET whose body is bytes, read under a size cap (OMN-20912).
+
+        GitHub answers a job-log or artifact-archive GET with a redirect to a
+        signed storage URL. The redirect is followed without the Authorization
+        header, which must never leave api.github.com. An error status comes
+        back with at most the first 1000 bytes of its body.
+
+        Raises:
+            GithubLandingTransportError: when no response arrived.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1 byte")
+        opener = urllib.request.build_opener(_AuthStrippingRedirectHandler())
+        try:
+            with opener.open(
+                self._urllib_request(request), timeout=self._timeout
+            ) as resp:
+                content, total, over = _read_capped(resp, limit=limit, keep=keep)
+                return ModelGithubBytesResponse(
+                    status=resp.status,
+                    headers=_headers(resp.headers),
+                    content=content,
+                    total_bytes=total,
+                    over_limit=over,
+                    keep=keep,
+                )
+        except urllib.error.HTTPError as exc:
+            body = exc.read(_MAX_TEXT_BODY)
+            return ModelGithubBytesResponse(
+                status=exc.code,
+                headers=_headers(exc.headers),
+                content=body,
+                total_bytes=len(body),
+                over_limit=False,
+                keep=keep,
+            )
+        except (urllib.error.URLError, OSError) as exc:
+            reason = str(getattr(exc, "reason", exc)).replace(
+                self._token.get_secret_value(), "[redacted]"
+            )
+            raise GithubLandingTransportError(
+                f"{request.method} {request.path}: no response ({reason})"
+            ) from None
+
+
+class _AuthStrippingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect, dropping Authorization when the host changes."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and (
+            urllib.parse.urlsplit(newurl).netloc
+            != urllib.parse.urlsplit(req.full_url).netloc
+        ):
+            new.remove_header("Authorization")
+        return new
+
+
+def _read_capped(
+    stream: IO[bytes], *, limit: int, keep: Literal["head", "tail"]
+) -> tuple[bytes, int, bool]:
+    """Read ``stream`` keeping ``limit`` bytes: (kept, total read, over limit).
+
+    ``head`` stops after the first chunk past the limit. ``tail`` reads to the
+    end and keeps the last ``limit``; memory stays bounded by the limit.
+    """
+    kept = bytearray()
+    total = 0
+    while True:
+        chunk = stream.read(_READ_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        kept.extend(chunk)
+        if len(kept) > limit:
+            if keep == "head":
+                return bytes(kept[:limit]), total, True
+            del kept[: len(kept) - limit]
+    return bytes(kept), total, total > limit
 
 
 __all__: list[str] = [

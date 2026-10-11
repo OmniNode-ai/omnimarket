@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The contract-declared quota floor of node_pr_landing_github_effect (OMN-19826)."""
+"""The contract-declared GitHub quota floor (OMN-19826).
+
+First declared by node_pr_landing_github_effect; promoted here (OMN-20912) so
+node_github_repo_write_effect reads its own contract's ``quota_floor`` block
+with the same rule, without reaching into the landing node's models package
+(OMN-9263).
+"""
 
 from __future__ import annotations
 
@@ -10,10 +16,10 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_failure_reason import (
+from omnimarket.events.pr_landing_github.enum_pr_landing_github_failure_reason import (
     EnumPrLandingGithubFailureReason,
 )
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_reading import (
+from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
 )
 

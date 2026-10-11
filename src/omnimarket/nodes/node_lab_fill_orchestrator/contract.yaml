@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_orchestrator
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: orchestrator
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Close the loop from a lab-fill fire to a headroom plan on the bus. The node holds the
+  newest capacity advertisement of every pool host from the readings topic. When
+  node_lab_fill_plan_compute publishes a lab-fill fire, the node emits one fire-plan
+  request carrying those readings; the compute's plan leaves on the decided terminal,
+  or on the failure terminal as HEADROOM_UNKNOWN when a host with an idle slot has no
+  fresh reading or no host has published one. A fire_id already planned emits nothing.
+  Effect work is not dispatched here.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  # Every lab-work serve process publishes its host's reading here each cadence
+  # (node_lab_work_unit_effect capacity block); the node keeps the newest per host.
+  - operation: record_lab_host_capacity
+    topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+    message_category: event
+    handler:
+      name: HandlerLabFillHostReadings
+      module: omnimarket.nodes.node_lab_fill_orchestrator.handlers.handler_lab_fill_host_readings
+    event_model:
+      name: ModelHostCapacityAdvertisement
+      module: omnimarket.models.model_host_capacity_advertisement
+  # node_lab_fill_plan_compute's tick route publishes the fire on its decided terminal,
+  # beside the plans. The route takes every record there and acts on fires only, so a
+  # plan is never dead-lettered as a malformed fire.
+  - operation: plan_lab_fill_fire
+    topic: onex.evt.omnimarket.lab-fill-plan-decided.v1
+    message_category: event
+    handler:
+      name: HandlerLabFillFireHeadroom
+      module: omnimarket.nodes.node_lab_fill_orchestrator.handlers.handler_lab_fill_fire_headroom
+    event_model:
+      name: ModelLabFillDecidedRecord
+      module: omnimarket.models.model_lab_fill_fire_headroom
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.lab-host-capacity-advertised.v1
+  - onex.evt.omnimarket.lab-fill-plan-decided.v1
+  # The fire-plan request is emitted as an envelope naming this topic.
+  publish_topics:
+  - onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1
+config:
+  lab_fill_orchestrator:
+    # The fires this node plans; node_lab_fill_plan_compute's schedule names them.
+    workflow: lab-fill
+    max_hosts: 256
+    max_fires_remembered: 4096
+    max_lanes: 8
+metadata:
+  ticket: OMN-20867
+  transport_type: kafka
+lifecycle: experimental
