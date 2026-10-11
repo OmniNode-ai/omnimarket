@@ -378,12 +378,12 @@ def test_a_scheduled_tick_runs_once_per_interval_and_skips_in_between() -> None:
     assert sorted(store.deleted) == [10, 11, 12, 20]
 
     store.rows[40] = row(40, EDGE)
-    soon = h.handle(tick(AS_OF + dt.timedelta(hours=23)))
-    assert soon.verdict == EnumConsumerFlowPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
+    assert h.handle(tick(AS_OF + dt.timedelta(hours=23))) is None
     assert 40 in store.rows
 
     store.rows[50] = row(50, NEW + dt.timedelta(days=1))
     later = h.handle(tick(AS_OF + dt.timedelta(hours=24)))
+    assert later is not None
     assert later.verdict == EnumConsumerFlowPruneVerdict.PRUNED
     # the cutoff moves with the tick: NEW is now a whole day older than 30 days
     assert later.cutoff_day == NEW + dt.timedelta(days=1)
@@ -413,6 +413,25 @@ def test_unconfigured_sink_refuses(
     assert result.rows_pruned == 0
 
 
+def test_the_scheduled_run_result_has_a_declared_destination() -> None:
+    """OMN-20867: a result with no publish topic made every runtime tick undeliverable.
+
+    The boundary dead-lettered the tick and the DLQ replay put it back on the tick
+    topic. The tick route now returns nothing inside the interval, and the run it
+    does make is published on the declared completed topic.
+    """
+    raw = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_consumer_flow_prune_effect/contract.yaml"
+        ).read_text()
+    )
+    completed = "onex.evt.omnimarket.consumer-flow-prune-completed.v1"
+    assert raw["terminal_event"] == completed
+    assert raw["event_bus"]["publish_topics"] == [completed]
+    assert [e["topic"] for e in raw["published_events"]] == [completed]
+
+
 def test_skipped_tick_never_resolves_sink() -> None:
     class UnresolvableSink(MemorySink):
         def __init__(self) -> None:
@@ -429,9 +448,7 @@ def test_skipped_tick_never_resolves_sink() -> None:
     with pytest.raises(RuntimeError, match="sink resolution attempted"):
         h.handle(first)
     later = AS_OF + dt.timedelta(seconds=60)
-    skipped = h.handle(tick(later))
-    assert skipped.verdict == EnumConsumerFlowPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
-    assert skipped.sink_location is None
+    assert h.handle(tick(later)) is None
 
 
 def test_the_contract_declares_the_database_transport_its_store_imports(
@@ -537,10 +554,7 @@ def test_refused_configuration_is_only_resolved_once_per_interval(
     monkeypatch.setattr(module, "load_prune_binding", resolve)
     h = HandlerConsumerFlowPrune()
     assert h.handle(tick(AS_OF)).verdict == EnumConsumerFlowPruneVerdict.REFUSED
-    assert (
-        h.handle(tick(AS_OF + dt.timedelta(minutes=1))).verdict
-        == EnumConsumerFlowPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
-    )
+    assert h.handle(tick(AS_OF + dt.timedelta(minutes=1))) is None
     assert seen == ["consumer_flow"]
     assert (
         h.handle(tick(AS_OF + dt.timedelta(days=1))).verdict
