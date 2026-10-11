@@ -24,6 +24,16 @@ requirements:
         statement: "AC3: .github/workflows/occ-s7-replay.yml triggers only on workflow_dispatch with a required repository choice of the seven remaining repositories, holds permissions contents: read with the default token and no secret, and has no cron, no pull_request trigger and no continue-on-error -- falsifier: uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -k 'dispatch_only or seven_target or default_token or forbidden_change' in omnimarket, where adding a cron, a pull_request trigger, a write permission, a secret, continue-on-error or dropping a repository from the choice must turn the check red"
       - id: "AC4"
         statement: "AC4: The job replays with --count 30 --record-to rows.json --table-to table.md, writes table.md to the job summary and uploads rows.json and table.md as an artifact on every run, and a non-zero replay exit is a red run -- falsifier: uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -k 'thirty_pr_window or summary_and_artifact or job_command' in omnimarket, where the job's own command line run against recorded rows holding an OCC/new-path disagreement must exit 1 and against agreeing rows exit 0"
+  - id: "req-replay-extraction-drains-history"
+    statement: "Merged-PR extraction drains first-parent history under pipefail while retaining the newest 200 PR numbers."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: The clone step's merged-PR extraction exits 0 under bash -euo pipefail with more than 200 matching subjects and emits exactly the newest 200 numbers -- falsifier: uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -k extraction_drains, whose real git history makes the original head pipeline exit nonzero"
+  - id: "req-replay-repository-occ-context"
+    statement: "Replay reads the checked-out target repository's own OCC context and refuses an unresolved context before invoking replay."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: The replay step passes --occ-context resolved from the replayed repository's checked-out workflows, and fails closed on a missing, empty, dynamic or ambiguous declaration while preserving the replay exit code -- falsifier: uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -k repository_occ_context, which runs the step with distinct repository declarations and invalid declarations"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the replay mode classifies recorded rows and exits 1 on an unclassified or forbidden row."
@@ -42,6 +52,20 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20917-ac5-extraction-drains"
+    description: "AC5: the workflow's extraction pipeline drains a real git history and keeps exactly the newest 200 PR numbers under pipefail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -k extraction_drains"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20917-ac6-repository-occ-context"
+    description: "AC6: the workflow resolves the target repository's declared context, passes it to replay, refuses unresolved declarations and preserves the replay exit code."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -k repository_occ_context"
+    binds_ac: ["AC6"]
   - id: "dod-omn20917-ac1-replay"
     description: "AC1: the replay mode classifies recorded rows and exits 1 on an unclassified or forbidden row."
     source: "manual"
