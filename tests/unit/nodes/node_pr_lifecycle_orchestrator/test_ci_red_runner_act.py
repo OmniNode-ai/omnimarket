@@ -521,3 +521,131 @@ async def test_runtime_routes_the_rerun_to_the_github_effects_rerun_failed_jobs(
         ("POST", f"{base}/{RUN_TESTS}/rerun-failed-jobs"),
         ("POST", f"{base}/{RUN_LINT}/rerun-failed-jobs"),
     ]
+
+
+# ------------------------------------------- per-lane act overlay (OMN-20867)
+
+ACT_ENV = {
+    EnumCiRedClass.RUNNER: "ONEX_CI_RED_TRIAGE_ACT_RUNNER",
+    EnumCiRedClass.PR_OWN: "ONEX_CI_RED_TRIAGE_ACT_PR_OWN",
+    EnumCiRedClass.SHARED_CAUSE: "ONEX_CI_RED_TRIAGE_ACT_SHARED_CAUSE",
+    EnumCiRedClass.DEV_HEAD: "ONEX_CI_RED_TRIAGE_ACT_DEV_HEAD",
+}
+
+
+def _unbind(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ACT_ENV.values():
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_overlay_unset_the_contract_acts_on_the_runner_class_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _unbind(monkeypatch)
+    handler = contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())
+    assert handler._act == {
+        EnumCiRedClass.RUNNER: True,
+        EnumCiRedClass.PR_OWN: False,
+        EnumCiRedClass.SHARED_CAUSE: False,
+        EnumCiRedClass.DEV_HEAD: False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_overlay_non_acting_records_a_runner_red_and_reruns_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _unbind(monkeypatch)
+    for name in ACT_ENV.values():
+        monkeypatch.setenv(name, "false")
+    handler = contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())
+    assert not any(handler._act.values())
+    output = await handler.handle(event())
+    assert reruns([output]) == []
+    assert not any(isinstance(ev, ModelPrLifecycleStartCommand) for ev in output.events)
+    [decided] = decisions([output])
+    assert decided.red_class is EnumCiRedClass.RUNNER
+    assert decided.action_applied is False
+    assert "start=withheld:act=false" in decided.evidence
+
+
+@pytest.mark.parametrize("bound", [False, True])
+@pytest.mark.asyncio
+async def test_overlay_acting_reruns_a_runner_red(
+    monkeypatch: pytest.MonkeyPatch, bound: bool
+) -> None:
+    """The positive control: unset, or bound to true, the runner red is rerun."""
+    _unbind(monkeypatch)
+    if bound:
+        monkeypatch.setenv(ACT_ENV[EnumCiRedClass.RUNNER], "true")
+    output = await contract_handler(TIMED_OUT, InmemoryDatabaseAdapter()).handle(
+        event()
+    )
+    [request] = reruns([output])
+    assert request.operation is EnumPrLandingGithubOperation.RERUN_RUNS
+    assert decisions([output])[0].action_applied is True
+
+
+@pytest.mark.parametrize("value", ["yes", "True", "0", ""])
+def test_overlay_a_malformed_value_fails_at_contract_load(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    _unbind(monkeypatch)
+    monkeypatch.setenv(ACT_ENV[EnumCiRedClass.RUNNER], value)
+    with pytest.raises(
+        ValueError, match=r"ci_red_triage\.act\.runner must be true or false"
+    ):
+        contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())
+
+
+@pytest.mark.parametrize("red_class", list(EnumCiRedClass))
+def test_overlay_a_set_but_empty_value_names_the_class_it_refuses(
+    monkeypatch: pytest.MonkeyPatch, red_class: EnumCiRedClass
+) -> None:
+    _unbind(monkeypatch)
+    monkeypatch.setenv(ACT_ENV[red_class], "")
+    with pytest.raises(
+        ValueError,
+        match=rf"ci_red_triage\.act\.{red_class.value} must be true or false, not ''",
+    ):
+        contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())
+
+
+@pytest.mark.parametrize("red_class", list(EnumCiRedClass))
+def test_overlay_each_env_name_flips_only_its_own_class(
+    monkeypatch: pytest.MonkeyPatch, red_class: EnumCiRedClass
+) -> None:
+    _unbind(monkeypatch)
+    expected = {cls: cls is EnumCiRedClass.RUNNER for cls in EnumCiRedClass}
+    flipped = red_class is not EnumCiRedClass.RUNNER
+    monkeypatch.setenv(ACT_ENV[red_class], "true" if flipped else "false")
+    expected[red_class] = flipped
+    assert contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())._act == expected
+
+
+@pytest.mark.parametrize("value", [1, 0, 1.0, None, ["true"]])
+def test_a_flag_that_is_neither_a_bool_nor_a_reference_is_refused(
+    value: object,
+) -> None:
+    with pytest.raises(ValueError, match=r"ci_red_triage\.act\.runner must be true"):
+        ci_red_act_flags({"runner": value})
+
+
+def test_overlay_refs_expand_and_an_unbound_ref_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ONEX_TEST_UNBOUND_ACT", raising=False)
+    monkeypatch.setenv("ONEX_TEST_BOUND_ACT", "true")
+    assert ci_red_act_flags(
+        {
+            "runner": "${env.ONEX_TEST_BOUND_ACT}",
+            "pr_own": "${env.ONEX_TEST_UNBOUND_ACT:false}",
+        }
+    ) == {
+        EnumCiRedClass.RUNNER: True,
+        EnumCiRedClass.PR_OWN: False,
+        EnumCiRedClass.SHARED_CAUSE: False,
+        EnumCiRedClass.DEV_HEAD: False,
+    }
+    with pytest.raises(ValueError, match="must be true or false"):
+        ci_red_act_flags({"runner": "${env.ONEX_TEST_UNBOUND_ACT}"})
