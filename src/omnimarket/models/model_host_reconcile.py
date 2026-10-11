@@ -21,6 +21,7 @@ class ModelHostReconcileCommand(BaseModel):
     lock_stale_s: int = Field(default=3600, gt=0)
     clone_delegate: str | None = None
     venv_delegate: str | None = None
+    guard_delegate: str | None = None
     receipt: str | None = None
     dispatch_venv: str | None = None
     ledger: str = ""

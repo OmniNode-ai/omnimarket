@@ -65,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             clone_delegate=os.environ.get("ONEX_RECONCILE_CLONE_DELEGATE"),
             venv_delegate=os.environ.get("ONEX_RECONCILE_VENV_DELEGATE"),
+            guard_delegate=os.environ.get("ONEX_RECONCILE_GUARD_DELEGATE"),
             receipt=os.environ.get("ONEX_RECONCILE_RECEIPT"),
             dispatch_venv=os.environ.get("ONEX_DISPATCH_VENV"),
             ledger=os.environ.get("ONEX_LEDGER_PATH", ""),

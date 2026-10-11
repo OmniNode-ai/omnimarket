@@ -6,9 +6,9 @@ Pure compute: maps stall category to a fixer dispatch spec.
 Zero network calls, zero side effects. All routing is table-driven.
 
 Routing table (stall category -> fixer):
-    RED            -> node_ci_fix_effect   (CI failing)
-    CONFLICTED     -> node_conflict_hunk_effect (merge conflict)
-    BEHIND         -> node_rebase_effect   (needs rebase)
+    RED            -> node_pr_lifecycle_fix_effect (delegated fix, code_failure)
+    CONFLICTED     -> node_pr_lifecycle_fix_effect (update-branch, conflict)
+    BEHIND         -> node_pr_lifecycle_fix_effect (update-branch, conflict)
     DEPLOY_GATE    -> advisory (deploy-gate skip token)
     UNKNOWN/STALE  -> escalate (no auto-fix)
 
@@ -51,17 +51,17 @@ _CONTRACT_COMMAND_TOPICS: dict[str, str] = _load_command_topics()
 _ROUTING_TABLE: dict[str, tuple[str, str, float]] = {
     EnumStallCategory.RED: (
         EnumFixerAction.DISPATCH_CI_FIX,
-        "node_ci_fix_effect",
+        "node_pr_lifecycle_fix_effect",
         0.95,
     ),
     EnumStallCategory.CONFLICTED: (
         EnumFixerAction.DISPATCH_CONFLICT_RESOLVE,
-        "node_conflict_hunk_effect",
+        "node_pr_lifecycle_fix_effect",
         0.90,
     ),
     EnumStallCategory.BEHIND: (
         EnumFixerAction.DISPATCH_REBASE,
-        "node_rebase_effect",
+        "node_pr_lifecycle_fix_effect",
         0.90,
     ),
     EnumStallCategory.DEPLOY_GATE: (
@@ -236,10 +236,13 @@ class HandlerFixerDispatcher:
         # Category-specific hints
         if category == EnumStallCategory.RED:
             hint["fix_type"] = "ci"
+            hint["block_reason"] = "code_failure"
         elif category == EnumStallCategory.CONFLICTED:
             hint["fix_type"] = "conflict"
+            hint["block_reason"] = "conflict"
         elif category == EnumStallCategory.BEHIND:
             hint["fix_type"] = "rebase"
+            hint["block_reason"] = "conflict"
 
         return hint
 

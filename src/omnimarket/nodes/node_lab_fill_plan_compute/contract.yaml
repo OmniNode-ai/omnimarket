@@ -15,77 +15,152 @@ description: >
   choice, dispatch planning, ownership and completion, authorized lane briefs and
   structured launches, receipt placement, single engine fallbacks and status with
   idle diagnostics. Identities, reader facts and observed times arrive in requests.
+  Headroom comes from the pool hosts' capacity advertisements on the bus; a host
+  with idle runner slots and no fresh advertisement is a HEADROOM_UNKNOWN failure,
+  published on the failure terminal.
 handler_routing:
   routing_strategy: operation_match
+  # OMN-20867: each entry is scoped to its own topic, so no entry spans the command and
+  # intent categories (OMN-18013).
   handlers:
   - operation: plan_lab_fill_capacity
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillCapacity
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_capacity
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCapacityRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCapacityResult
   - operation: choose_lab_fill_candidates
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillCandidateChoice
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_candidate_choice
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCandidateChoiceRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillCandidateChoiceResult
   - operation: plan_lab_fill_dispatch
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillDispatchPlan
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_dispatch_plan
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillDispatchPlanRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_plan.ModelLabFillDispatchPlanResult
   - operation: decide_lab_fill_ownership
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillOwnership
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_ownership
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_ownership.ModelLabFillOwnershipRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_ownership.ModelLabFillOwnershipResult
   - operation: render_lab_fill_lane
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillLaneRender
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_lane_render
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_render.ModelLabFillLaneRenderRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_lane_render.ModelLabFillLaneRenderResult
   - operation: verify_lab_fill_placement
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillPlacement
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_placement
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_placement.ModelLabFillPlacementRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_placement.ModelLabFillPlacementResult
   - operation: plan_lab_fill_fallbacks
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillFallbackPlan
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fallback_plan
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_fallback_plan.ModelLabFillFallbackPlanRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_fallback_plan.ModelLabFillFallbackPlanResult
   - operation: compose_lab_fill_status
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
     handler:
       name: HandlerLabFillStatus
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_status
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_status.ModelLabFillStatusResult
+  - operation: plan_lab_fill_headroom
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+    handler:
+      name: HandlerLabFillHeadroomPlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_headroom_plan
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillHeadroomPlanRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillHeadroomPlanResult
+  - operation: verify_lab_fill_fanout
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+    handler:
+      name: HandlerLabFillFanoutReadback
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fanout_readback
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillFanoutRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillFanoutResult
+  # OMN-20867: the schedule's entry. The tick that opens a config.lab_fill_plan.schedule
+  # window returns that window's fire (ModelScheduledFire) on the terminal topic; every other
+  # tick returns nothing. Stateless, so the compute stays pure.
+  - operation: lab_fill.scheduled_fire
+    topic: onex.intent.platform.runtime-tick.v1
+    handler:
+      name: HandlerLabFillScheduledFire
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_scheduled_fire
+    event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+    event_type: platform.runtime-tick
+    output_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
+  # OMN-20867: a lab-fill fire's plan. node_lab_fill_orchestrator sends the fire with the
+  # newest capacity reading of every pool host on this route's own topic; the result is
+  # the headroom plan keyed by the fire_id, published on the decided terminal, or on the
+  # failure terminal when a host's headroom is unknown (terminal_failure_cause).
+  - operation: plan_lab_fill_fire
+    topic: onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1
+    handler:
+      name: HandlerLabFillFirePlan
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fire_plan
+    event_model: omnimarket.models.model_lab_fill_fire_headroom.ModelLabFillFireHeadroomRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillHeadroomPlanResult
 descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
   side_effects: []
   runtime_profiles: [main]
+# OMN-20867: the runtime tick is the only schedule the runtime dispatches.
+input_subscriptions:
+- topic: onex.intent.platform.runtime-tick.v1
+  operation: lab_fill.scheduled_fire
 event_bus:
   subscribe_topics:
   - onex.cmd.omnimarket.lab-fill-plan-requested.v1
+  - onex.intent.platform.runtime-tick.v1
+  - onex.cmd.omnimarket.lab-fill-fire-plan-requested.v1
   publish_topics:
   - onex.evt.omnimarket.lab-fill-plan-decided.v1
+  - onex.evt.omnimarket.lab-fill-plan-failed.v1
+config:
+  lab_fill_plan:
+    headroom:
+      # The lab-work serve process on each pool host publishes this every 10 s
+      # (node_lab_work_unit_effect capacity block).
+      reading_topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+      # A reading older than this, or dated this far in the future, is not fresh:
+      # a host with idle slots then fails HEADROOM_UNKNOWN (OMN-20867).
+      max_age_seconds: 60
+    # OMN-20867: lab-fill's cadence, the launchd timer's (10, 30 and 50 past each hour).
+    schedule:
+      workflow: lab-fill
+      interval_seconds: 1200
+      offset_seconds: 600
 terminal_event: onex.evt.omnimarket.lab-fill-plan-decided.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lab-fill-plan-decided.v1
+    failure: onex.evt.omnimarket.lab-fill-plan-failed.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.lab-fill-plan-decided.v1
+- onex.evt.omnimarket.lab-fill-plan-failed.v1
 metadata:
   ticket: OMN-20668
   origin_tickets:
   - OMN-17427
   - OMN-20662
+  - OMN-20867
   transport_type: kafka
 lifecycle: experimental

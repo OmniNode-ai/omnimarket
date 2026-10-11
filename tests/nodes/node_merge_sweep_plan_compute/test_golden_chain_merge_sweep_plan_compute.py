@@ -41,7 +41,8 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
     assert contract["descriptor"]["side_effects"] == []
     bus = contract["event_bus"]
     assert bus["subscribe_topics"] == [
-        "onex.cmd.omnimarket.merge-sweep-plan-requested.v1"
+        "onex.cmd.omnimarket.merge-sweep-plan-requested.v1",
+        "onex.intent.platform.runtime-tick.v1",
     ]
     assert bus["publish_topics"] == ["onex.evt.omnimarket.merge-sweep-planned.v1"]
     assert contract["terminal_event"] in bus["publish_topics"]
@@ -51,6 +52,7 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
         "plan_merge_sweep_lanes",
         "decide_merge_sweep_lane_retry",
         "render_merge_sweep_lane_brief",
+        "merge_sweep.scheduled_fire",
     }
 
 

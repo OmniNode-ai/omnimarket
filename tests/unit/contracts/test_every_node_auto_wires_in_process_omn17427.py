@@ -99,9 +99,6 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
     "node_delegation_acceptance_judged_replay_compute": (
         "ModelDispatchRoute ValidationError on the derived route id (see _IDS_OVER_LIMIT)"
     ),
-    "node_handshake_policy_gate_effect": (
-        "the routing authority declares secret GH_TOKEN, resolved from the store on a lane"
-    ),
     "node_adr_canary_orchestrator": (
         "HandlerCanaryOrchestrator needs the ADR bus protocol as an explicit dependency"
     ),

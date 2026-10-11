@@ -29,7 +29,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
@@ -170,24 +170,27 @@ class HandlerDeadLetterPrune:
 
     # -- entry ---------------------------------------------------------------
 
+    @overload
+    def handle(
+        self, request: ModelDeadLetterPruneRequest
+    ) -> ModelDeadLetterPruneResult: ...
+
+    @overload
+    def handle(
+        self, request: ModelRuntimeTick
+    ) -> ModelDeadLetterPruneResult | None: ...
+
     def handle(
         self, request: ModelDeadLetterPruneRequest | ModelRuntimeTick
-    ) -> ModelDeadLetterPruneResult:
+    ) -> ModelDeadLetterPruneResult | None:
         if isinstance(request, ModelRuntimeTick):
+            # OMN-20867: a tick inside the schedule interval has no output. A
+            # skip result here was bus-bound output with no publish topic, so
+            # the runtime dead-lettered every tick and the DLQ replay fed each
+            # tick back onto the tick topic up to five more times.
             gated = self._gate_scheduled_run(request)
             if gated is None:
-                now = (self._now or request.now).astimezone(dt.UTC)
-                retention = self._cfg.retention_days
-                return ModelDeadLetterPruneResult(
-                    verdict=EnumDeadLetterPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED,
-                    cutoff_day=now.date() - dt.timedelta(days=retention),
-                    sink_location=None,
-                    detail=(
-                        "schedule.run_interval_seconds "
-                        f"({self._cfg.schedule.run_interval_seconds}s) has not "
-                        "elapsed since the last scheduled run"
-                    ),
-                )
+                return None
             request = gated
         as_of = (request.as_of or self._now or dt.datetime.now(dt.UTC)).astimezone(
             dt.UTC

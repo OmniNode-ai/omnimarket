@@ -6,6 +6,10 @@ Contract 1.1.0 adds ``pr_state`` (read_pr_state, and the read an arm or
 enqueue makes before its mutation), ``started_attempts`` (rerun_runs, F7),
 the conditional read fields on read_pr_state, and lets ``head_sha`` be None on
 a read_pr_state that was asked without one.
+
+``required_contexts`` (OMN-20866): on a read_head_checks asked with a base
+branch, the base's required status contexts, from classic protection and the
+rulesets in force. None when they were not read.
 """
 
 from __future__ import annotations
@@ -73,6 +77,7 @@ class ModelPrLandingGithubCompleted(BaseModel):
     not_modified: bool = False
     etag: str | None = None
     check_runs: tuple[ModelGithubCheckRunFact, ...] = ()
+    required_contexts: tuple[str, ...] | None = None
     pr_state: ModelGithubPrStateFact | None = None
     started_attempts: tuple[ModelGithubRunAttempt, ...] = ()
     quota: ModelGithubQuotaReading | None
@@ -100,6 +105,11 @@ class ModelPrLandingGithubCompleted(BaseModel):
             )
         if op is not EnumPrLandingGithubOperation.READ_HEAD_CHECKS and self.check_runs:
             raise ValueError("check_runs are only valid on read_head_checks")
+        if (
+            op is not EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+            and self.required_contexts is not None
+        ):
+            raise ValueError("required_contexts are only valid on read_head_checks")
         if op not in _PR_STATE_OPERATIONS and self.pr_state is not None:
             raise ValueError(
                 "pr_state is only valid on read_pr_state, arm_auto_merge and enqueue"

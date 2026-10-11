@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Replay supplied ledger facts and select lab-fill work without I/O (OMN-20662)."""
+"""Replay supplied ledger facts and select lab-fill work without I/O (OMN-20662).
+
+OMN-20864: the slots ordinary work leaves idle fall back to pr-land lanes on parked, escalated or
+unowned-red open PRs, decided by the shared rule ``omnimarket.handlers.rules_lab_fill_pr_land``. The
+ledger replay adds what only it knows: a live lane's claim on a PR, and a landing lane's escalation.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,9 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+
+from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback, pr_key
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts
 
 from ..models import (
     EnumLabFillSkipReason,
@@ -327,9 +335,52 @@ class HandlerLabFillSelection:
             if new_baseline is not None:
                 baselines = [b for b in baselines if b.ticket != new_baseline.ticket]
                 baselines.append(new_baseline)
+        pr_land = None
+        if request.pr_land is not None:
+            ordinary = sum(d.reason is None for d in decisions)
+            pr_land = plan_pr_land_fallback(
+                self._with_ledger_facts(request, history, escalated),
+                request.idle_slots - ordinary,
+                request.now,
+            )
         return ModelLabFillSelectionResult(
-            tuple(decisions), tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane)))
+            tuple(decisions),
+            tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
+            pr_land,
         )
+
+    @staticmethod
+    def _with_ledger_facts(
+        request: ModelLabFillSelectionRequest,
+        history: _History,
+        escalated: Callable[[str], bool],
+    ) -> ModelLabFillPrLandFacts:
+        """Fill each PR's owner from a live lane's claim, and its controller park and escalation."""
+        facts = request.pr_land
+        assert facts is not None
+        landing = request.landing_lane.lower()
+        claims: dict[str, str] = {}
+        for lane, claimed, _ in history.open_prs:
+            if lane != landing:
+                claims.setdefault(claimed, lane)
+        controller = request.controller
+        parked = (
+            {pr_key(p) for p in controller.parked_prs} if controller.read else set()
+        )
+        prs = []
+        for pr in facts.prs:
+            key = pr_key(pr.pr)
+            prs.append(
+                pr.model_copy(
+                    update={
+                        "owner": pr.owner or claims.get(key, ""),
+                        "controller_parked": pr.controller_parked or key in parked,
+                        "controller_escalated": pr.controller_escalated
+                        or escalated(key),
+                    }
+                )
+            )
+        return facts.model_copy(update={"prs": tuple(prs)})
 
     @staticmethod
     def _select(

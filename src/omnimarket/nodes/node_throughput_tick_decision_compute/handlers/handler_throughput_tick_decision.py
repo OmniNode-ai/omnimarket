@@ -18,6 +18,17 @@ a repository with zero merges past `park_max_hours` is MISSING with the manual-u
 host with no recent reading is UNKNOWN, never a quiet NOTE; a runner receipt that ended without
 running (no-host, host-limited, a guard limit, failed) is MISSING until a later receipt of its
 brief runs; and an open count rising across the last three tick runs is MISSING.
+
+OMN-20864 (operator ruling 2026-10-10T04:08:23Z): idle lab capacity is never left idle while PRs are
+open. Given `pr_land` facts, a free-slot FIX also names the pr-land lanes to dispatch through the
+lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule lab-fill selection runs
+(omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
+hold source is UNKNOWN and names no lane.
+
+OMN-20851: a lane the ledger records as dispatched with no placement receipt for more than
+`unplaced_lane_alarm_minutes`, and a cross-host dispatch-venv divergence older than
+`venv_divergence_alarm_minutes`, are ALARM verdicts (typed in `alarms`, exit code 1), a younger one a NOTE;
+a running receipt counts as a running lane only when a CLAIM carrying `host=` and a run id backs it.
 """
 
 from __future__ import annotations
@@ -29,12 +40,15 @@ from typing import Any
 
 from omnibase_core.types import JsonType
 
+from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelLabHeadroomFacts,
     ModelLabMark,
     ModelLabReceipt,
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
+    ModelTickAlarmVerdict,
 )
 
 CELLS = ("causes", "cause_leases", "cause_members", "cause_exhausted", "fixer_hold")
@@ -92,6 +106,17 @@ OPEN_TREND_FIX = (
     "merge-pulse) and dispatch ONE fix lane for that class under RULING 2026-10-09T04:10:56Z "
     "lane=orchestrator-9f8a; the tick dispatches nothing"
 )
+UNPLACED_LANE_FIX = (
+    "the lane has no placement receipt and no CLAIM-backed run: never report it as running; read "
+    "~/.local/state/omni/remote-lanes/<lane>/rlane-*.json for its status, then re-dispatch its brief "
+    "through the remote-lane runner once a lab-headroom line shows a free slot, or tell the operator it "
+    "never ran; the tick dispatches nothing"
+)
+VENV_DIVERGENCE_FIX = (
+    "bring the dispatch venvs back in step: reconcile the lagging host's venv from the dev head, read "
+    "both hosts' venvs again, and until they agree place no lane on either host that needs the diverged "
+    "package set; the tick dispatches nothing"
+)
 PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
@@ -106,6 +131,7 @@ class Report:
     missing: list[str] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
+    alarms: list[ModelTickAlarmVerdict] = field(default_factory=list)
     # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
     floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -117,10 +143,28 @@ class Report:
         self.unknown.append(loop)
         self.lines.append(f"UNKNOWN {loop} | {why} | FIX: {fix}")
 
+    def alarm(
+        self, loop: str, since: str, age_minutes: float, why: str, fix: str
+    ) -> None:
+        """An ALARM is its own verdict class: typed for the caller's evidence file, never also a
+        MISSING or UNKNOWN finding (OMN-20851)."""
+        self.alarms.append(
+            ModelTickAlarmVerdict(
+                loop=loop, since=since, age_minutes=age_minutes, why=why, fix=fix
+            )
+        )
+        self.lines.append(f"ALARM {loop} | {why} | FIX: {fix}")
+
     def note(self, text: str) -> None:
         self.lines.append(f"NOTE {text}")
 
     def status(self, prefix: str, bad: str) -> str:
+        if self.alarms:
+            names = ", ".join(
+                [alarm.loop for alarm in self.alarms] + self.missing + self.unknown
+            )
+            n = len(self.alarms) + len(self.missing) + len(self.unknown)
+            return f"{prefix} ALARM n={n} unknown={len(self.unknown)}: {names}"
         if not self.missing and not self.unknown:
             return f"{prefix} OK checked={','.join(self.checked)}"
         names = ", ".join(self.missing + self.unknown)
@@ -681,7 +725,9 @@ def _receipt_summary(
         if host and not receipt.final and receipt.status in ("preparing", "running"):
             if not receipt.pid_valid:
                 continue
-            if receipt.pid_alive is None or receipt.pid_alive:
+            # A running lane needs a CLAIM carrying `host=` and a run id (OMN-20851).
+            claimed = bool(receipt.claim_host and receipt.claim_run_id)
+            if claimed and (receipt.pid_alive is None or receipt.pid_alive):
                 running[host] = running.get(host, 0) + 1
         for reading in receipt.readings:
             name, _, _ = reading.partition(":")
@@ -690,19 +736,33 @@ def _receipt_summary(
     return running, latest
 
 
+PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
+HOLD_SOURCE_FIX = (
+    "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
+    "are unread"
+)
+
+
 def check_lab_headroom(
-    rep: Report, facts: ModelLabHeadroomFacts, now: datetime
-) -> None:
-    """Free lane slots in the runner's recent placement receipts; never probes or places."""
+    rep: Report,
+    facts: ModelLabHeadroomFacts,
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None = None,
+) -> ModelLabFillPrLandPlan | None:
+    """Free lane slots in the runner's recent placement receipts; never probes or places. With PR-land
+    facts, the free slots' FIX names the pr-land fallback's lanes (OMN-20864)."""
     rep.checked.append("lab-headroom")
     if facts.module_unavailable:
         rep.note("lab-headroom: placement module unavailable")
-        return
+        return None
     for name in facts.unavailable_hosts:
         rep.note(f"lab-headroom:{name} | unavailable in host table; no dispatch")
     if facts.placement_error is not None:
         rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
-        return
+        return None
+    free_lines: list[
+        tuple[int, int]
+    ] = []  # (index in rep.lines, free slots), host order
     running, latest = _receipt_summary(facts)
     placed: dict[str, int] = {}
     for name in facts.live_marker_hosts:
@@ -775,6 +835,7 @@ def check_lab_headroom(
             rep.note(f"{label} | incomplete placement reading; no dispatch")
             continue
         if free:
+            free_lines.append((len(rep.lines), free))
             rep.miss(
                 label,
                 f"running lanes {count} of cap {cap}, free slots {free}",
@@ -783,6 +844,22 @@ def check_lab_headroom(
             )
         else:
             rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    if pr_land is None:
+        return None
+    plan = plan_pr_land_fallback(
+        pr_land, sum(free for _, free in free_lines), now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    if plan.failure is not None:
+        rep.unk("lab-headroom:pr-land", plan.reason, HOLD_SOURCE_FIX)
+        return plan
+    lanes = [f"{d.pr} ({d.pr_class})" for d in plan.dispatch]
+    for index, free in free_lines:
+        mine, lanes = lanes[:free], lanes[free:]
+        if mine:
+            rep.lines[index] += PR_LAND_FIX.format(prs=", ".join(mine))
+    if free_lines and not plan.dispatch:
+        rep.note(f"lab-headroom:pr-land | {plan.reason}")
+    return plan
 
 
 def _receipt_reason(receipt: ModelLabReceipt) -> str:
@@ -883,6 +960,77 @@ def check_open_trend(
         )
 
 
+def _minutes(value: float) -> str:
+    return f"{round(value, 1):g}"
+
+
+def check_unplaced_lanes(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A lane recorded as dispatched with no placement receipt for longer than the bound is an ALARM
+    and is never counted as running; a younger one is a NOTE (OMN-20851)."""
+    rep.checked.append("unplaced-lanes")
+    bound = request.unplaced_lane_alarm_minutes
+    aged: list[tuple[datetime, str, float]] = []
+    for lane in request.dispatched_lanes or []:
+        if lane.placement_receipt:
+            continue
+        at = parse_stamp(lane.dispatched_at)
+        aged.append((at, lane.lane, max(0.0, (now - at).total_seconds() / 60)))
+    for at, name, age in sorted(aged):
+        loop = f"unplaced-lane:{name}"
+        since = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if age > bound:
+            rep.alarm(
+                loop,
+                since,
+                age,
+                f"dispatched {since}, {_minutes(age)} min ago with no placement receipt (> {bound}); "
+                "not counted as running",
+                UNPLACED_LANE_FIX,
+            )
+        else:
+            rep.note(
+                f"{loop} | dispatched {since}, {_minutes(age)} min ago with no placement receipt yet "
+                f"(alarm after {bound})"
+            )
+
+
+def check_venv_divergence(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A cross-host dispatch-venv divergence older than the bound is an ALARM; a younger one is a NOTE
+    (OMN-20851)."""
+    rep.checked.append("venv-divergence")
+    bound = request.venv_divergence_alarm_minutes
+    aged = sorted(
+        (
+            (parse_stamp(d.diverged_since), d.surface, d)
+            for d in request.venv_divergences or []
+        ),
+        key=lambda item: (item[0], item[1]),
+    )
+    for at, _, divergence in aged:
+        age = max(0.0, (now - at).total_seconds() / 60)
+        loop = f"venv-divergence:{divergence.surface}"
+        since = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        hosts = ", ".join(divergence.hosts)
+        detail = f": {divergence.detail}" if divergence.detail else ""
+        if age > bound:
+            rep.alarm(
+                loop,
+                since,
+                age,
+                f"{hosts} have differed since {since} ({_minutes(age)} min, > {bound}){detail}",
+                VENV_DIVERGENCE_FIX,
+            )
+        else:
+            rep.note(
+                f"{loop} | {hosts} have differed since {since} ({_minutes(age)} min, "
+                f"alarm after {bound}){detail}"
+            )
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -906,18 +1054,29 @@ class HandlerThroughputTickDecision:
         report_escalated(rep, escalated, covers, ticks)
         if request.open_history is not None:
             check_open_trend(rep, request, now, opened)
+        pr_land = None
         if request.lab_headroom is not None:
-            check_lab_headroom(rep, request.lab_headroom, now)
+            pr_land = check_lab_headroom(
+                rep, request.lab_headroom, now, request.pr_land
+            )
             if request.dispatch_window_hours is not None:
                 check_dispatches(
                     rep, request.lab_headroom, now, request.dispatch_window_hours
                 )
+        if request.dispatched_lanes is not None:
+            check_unplaced_lanes(rep, request, now)
+        if request.venv_divergences is not None:
+            check_venv_divergence(rep, request, now)
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
             missing=rep.missing,
             unknown=rep.unknown,
             checked=rep.checked,
-            exit_code=0 if not rep.missing and not rep.unknown else 1,
+            alarms=rep.alarms,
+            exit_code=0
+            if not rep.missing and not rep.unknown and not rep.alarms
+            else 1,
             open_count=opened,
+            pr_land=pr_land,
         )

@@ -3823,6 +3823,7 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_delegation_dod_verify_request_compute",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
         "node_llm_delegation_call_effect",
@@ -4879,6 +4880,7 @@
       "readers": [
         "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
+        "node_lab_job_check_effect",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",
         "service:omnimarket_projection_migration_runner"
@@ -5186,6 +5188,7 @@
       "partitioning": [],
       "producer": "node_projection_lab_proof_receipts",
       "readers": [
+        "node_pr_landing_orchestrator",
         "node_projection_lab_proof_receipts",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -6486,6 +6489,7 @@
       "producer": "node_pr_lifecycle_state_reducer",
       "readers": [
         "node_database_sweep",
+        "node_pr_lifecycle_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -6599,6 +6603,7 @@
       "producer": "node_projection_pr_state",
       "readers": [
         "node_dod_verify",
+        "node_lab_job_check_effect",
         "node_linear_triage",
         "node_occ_companion_compute",
         "node_occ_state_effect",
@@ -8434,6 +8439,8 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_branch_claim_check_effect",
+        "node_lab_job_check_effect",
+        "node_pr_landing_orchestrator",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect"
       ],
@@ -8491,7 +8498,9 @@
       "owner_declaration": "node_projection_work_ledger",
       "partitioning": [],
       "producer": "node_projection_work_ledger",
-      "readers": [],
+      "readers": [
+        "node_pr_landing_orchestrator"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_work_ledger",

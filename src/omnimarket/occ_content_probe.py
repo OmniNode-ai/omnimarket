@@ -43,6 +43,7 @@ so the whole derivation is unit-testable with no live GitHub.
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 from collections import Counter
@@ -998,6 +999,9 @@ _PIN_ONLY_TOML_PREFIXES = (
     "project.optional-dependencies",
     "dependency-groups",
     "tool.uv.sources",
+    # OMN-20074: the sibling lock refresh moves a git rev here as well as in
+    # tool.uv.sources (omniclaude#2646); an override is a pin, like a source.
+    "tool.uv.override-dependencies",
     "tool.poetry.version",
     "tool.poetry.dependencies",
     "tool.poetry.group",
@@ -1269,3 +1273,122 @@ def classify_workflow_core_pin_only(
     return True, (
         f"omnibase_core workflow checkout pin only -> {sha[:12]}: " + ", ".join(moved)
     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-20074 -- plugin manifest version bumps (the OMN-20710 post-merge bump).
+# ---------------------------------------------------------------------------
+
+# The plugin manifests a version-only diff may move, by basename, and only
+# inside a ``.claude-plugin/`` directory. An EXEMPTION surface, scoped as
+# narrowly as :data:`DEPENDENCY_MANIFEST_BASENAMES`.
+PLUGIN_MANIFEST_BASENAMES = ("plugin.json", "marketplace.json")
+PLUGIN_MANIFEST_DIR = ".claude-plugin"
+MAX_PLUGIN_MANIFEST_FILES = 5
+
+# The only flattened JSON keys a version bump may change: the manifest's own
+# ``version`` and, in a marketplace, each listed plugin's ``version``.
+_PLUGIN_VERSION_KEY_RE = re.compile(r"^(?:version|plugins\.\d+\.version)$")
+_PLUGIN_SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+
+
+def _flatten_json(value: object, prefix: str = "") -> dict[str, object]:
+    """Pure: flatten parsed JSON to ``{dotted.key: scalar}``, indexing lists."""
+    if isinstance(value, dict):
+        flat: dict[str, object] = {}
+        for key, sub in value.items():
+            flat.update(_flatten_json(sub, f"{prefix}.{key}" if prefix else str(key)))
+        return flat
+    if isinstance(value, list):
+        flat = {}
+        for index, sub in enumerate(value):
+            flat.update(
+                _flatten_json(sub, f"{prefix}.{index}" if prefix else str(index))
+            )
+        return flat
+    return {prefix: value}
+
+
+def classify_plugin_manifest_version_only(
+    changed_paths: Sequence[str],
+    *,
+    contents: Mapping[str, tuple[str | None, str | None]],
+) -> tuple[bool, str]:
+    """Pure: is this diff only a plugin manifest version bump?
+
+    OMN-20074. omniclaude's post-merge plugin version bump (OMN-20710,
+    omniclaude#2644) moves the ``version`` of ``.claude-plugin/plugin.json``
+    and of the matching entry in a ``.claude-plugin/marketplace.json``, and
+    nothing else. Like the pin bumps above it carries no behavioural claim, so
+    no changed-file candidate is RED-derivable and evidence cannot be bound.
+
+    ``contents`` maps each changed path to ``(head, base)`` file content.
+
+    FAIL-CLOSED in every ambiguous direction:
+
+    * an empty changed-file list, or more than a bounded number of files, is
+      refused;
+    * a path whose basename is not a plugin manifest, or whose parent
+      directory is not ``.claude-plugin``, is refused;
+    * a file unreadable, added or deleted at either ref, or not a JSON object,
+      is refused;
+    * any flattened key other than the manifest ``version`` or a marketplace
+      entry's ``plugins.<n>.version`` that is added, removed or changed is
+      refused;
+    * every moved version must be ``MAJOR.MINOR.PATCH`` at both refs and must
+      increase, and at least one version must move.
+    """
+    if not changed_paths:
+        return False, "no changed files observed (unobservable diff, not an empty one)"
+    if len(changed_paths) > MAX_PLUGIN_MANIFEST_FILES:
+        return False, f"more than {MAX_PLUGIN_MANIFEST_FILES} plugin manifests changed"
+    moved: list[str] = []
+    for path in changed_paths:
+        p = str(path)
+        parts = p.split("/")
+        if (
+            parts[-1] not in PLUGIN_MANIFEST_BASENAMES
+            or len(parts) < 2
+            or parts[-2] != PLUGIN_MANIFEST_DIR
+        ):
+            return False, f"changed path is not a plugin manifest: {p}"
+        head, base = contents.get(p, (None, None))
+        if head is None or base is None:
+            return False, f"plugin manifest unreadable at one or both refs: {p}"
+        try:
+            head_doc = json.loads(head)
+            base_doc = json.loads(base)
+        except json.JSONDecodeError as exc:
+            return False, f"{p} does not parse as JSON: {exc}"
+        if not isinstance(head_doc, dict) or not isinstance(base_doc, dict):
+            return False, f"{p} is not a JSON object at one or both refs"
+        head_flat = _flatten_json(head_doc)
+        base_flat = _flatten_json(base_doc)
+        offending = sorted(
+            key
+            for key in set(head_flat) | set(base_flat)
+            if (
+                key not in head_flat
+                or key not in base_flat
+                or head_flat[key] != base_flat[key]
+            )
+            and not _PLUGIN_VERSION_KEY_RE.match(key)
+        )
+        if offending:
+            return False, f"{p} changes outside its version keys: " + ", ".join(
+                offending
+            )
+        for key in sorted(set(head_flat) | set(base_flat)):
+            if head_flat.get(key) == base_flat.get(key):
+                continue
+            new, old = head_flat.get(key), base_flat.get(key)
+            m_new = _PLUGIN_SEMVER_RE.match(new) if isinstance(new, str) else None
+            m_old = _PLUGIN_SEMVER_RE.match(old) if isinstance(old, str) else None
+            if m_new is None or m_old is None:
+                return False, f"{p} {key} is not MAJOR.MINOR.PATCH at one or both refs"
+            if tuple(map(int, m_new.groups())) <= tuple(map(int, m_old.groups())):
+                return False, f"{p} {key} does not increase: {old} -> {new}"
+            moved.append(f"{p} {key} {old} -> {new}")
+    if not moved:
+        return False, "no plugin version moved"
+    return True, "plugin manifest version only: " + "; ".join(moved)

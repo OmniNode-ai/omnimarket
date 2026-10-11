@@ -414,6 +414,8 @@ class TestAlreadyBoundGuard:
                 return {
                     "head": {"ref": "auto/omninode-ai-omnimarket-pr-5-occ-autobind"},
                 }
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected call: {method} {path}")
 
         with (
@@ -473,6 +475,8 @@ class TestAlreadyBoundGuard:
                         "ref": ("auto/omninode-ai-omnibase_core-pr-1575-occ-autobind")
                     },
                 }
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected call: {method} {path}")
 
         with (

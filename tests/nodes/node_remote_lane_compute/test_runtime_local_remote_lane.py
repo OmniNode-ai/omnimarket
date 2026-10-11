@@ -62,6 +62,38 @@ _CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
         {"host": "h202", "engine": "codex", "local": False},
     ),
     (
+        # Dispatch-venv drift (OMN-20862): no host only because the hashes differ is a
+        # VENV_DRIFT answer on the decided event, not a bare no-host.
+        "node_remote_lane_compute",
+        {
+            "engine": "claude_sonnet",
+            "launching_venv_hash": "a1" * 32,
+            "readings": [
+                {
+                    "name": "h201",
+                    "engines": ["claude_sonnet"],
+                    "lane_slots": 2,
+                    "lane_cap": 4,
+                    "dispatch_venv_hash": "b2" * 32,
+                },
+            ],
+        },
+        {
+            "host": None,
+            "engine": "claude_sonnet",
+            "outcome": "VENV_DRIFT",
+            "venv_drift": {
+                "launching_hash": "a1" * 32,
+                "hosts": [{"host": "h201", "hash": "b2" * 32}],
+            },
+            "reconcile": {
+                "script": "omnibase_infra/scripts/reconcile-workspace-venvs.sh",
+                "hosts": ["h201"],
+                "target_hash": "a1" * 32,
+            },
+        },
+    ),
+    (
         "node_remote_lane_close_compute",
         {
             "engine_exit_code": 0,

@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Validate the typed observation inside an enriched bus payload, without envelope imports."""
 
-import json
 from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from omnimarket.events.pr_state import (
     ModelPrStateObservedEvent,
+    pr_state_event_from_wire,
 )
 
 
@@ -22,16 +22,6 @@ class ModelPrStateFoldRequest(BaseModel):
         if isinstance(value, Mapping) and "event" not in value:
             # Strip transport enrichment only at this boundary. The event itself
             # stays strict; JSON validation handles wire arrays and enum strings.
-            payload = {
-                k: value[k]
-                for k in ModelPrStateObservedEvent.model_fields
-                if k in value
-            }
-            if "digest" not in payload:
-                raise ValueError("wire observation must carry digest")
-            return {
-                "event": ModelPrStateObservedEvent.model_validate_json(
-                    json.dumps(payload)
-                )
-            }
+            # Either schema version folds: the projection keeps the version 1 columns.
+            return {"event": pr_state_event_from_wire(value)}
         return value

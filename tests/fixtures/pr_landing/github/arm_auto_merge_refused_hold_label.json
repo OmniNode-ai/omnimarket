@@ -22,7 +22,7 @@
         "method": "POST",
         "path": "/graphql",
         "body": {
-          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
+          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue mergeStateStatus labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
           "variables": {
             "owner": "OmniNode-ai",
             "name": "omnimarket",

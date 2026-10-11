@@ -20,6 +20,10 @@ Contract 1.1.0 (plan revision 1, R4 and section 6):
   ``head_sha`` as ``expectedHeadOid`` so GitHub itself refuses a moved head.
   The handler sends the mutation only when that read shows the PR open, not
   draft, not held, at ``head_sha`` and armable by the live policy.
+- ``read_head_checks`` with ``base_ref`` (OMN-20866) also reads the base
+  branch's required status contexts (classic protection and rulesets), so the
+  head-check classifier knows which checks decide the verdict. Those reads
+  depend on the check-runs answer (none follows a 304), so they are not planned.
 """
 
 from __future__ import annotations
@@ -103,6 +107,14 @@ class ModelPrLandingGithubRequest(BaseModel):
             "read_head_checks and read_pr_state only: the last ETag, for If-None-Match."
         ),
     )
+    base_ref: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "read_head_checks only: the PR's base branch, whose required status "
+            "contexts the effect reads beside the check runs (OMN-20866)."
+        ),
+    )
 
     @field_validator("repository")
     @classmethod
@@ -143,6 +155,13 @@ class ModelPrLandingGithubRequest(BaseModel):
                 raise ValueError("disarm requires armed_method (auto_merge or queue)")
         elif self.armed_method is not None:
             raise ValueError(f"armed_method is only valid on disarm, not {op.value}")
+        if (
+            self.base_ref is not None
+            and op is not EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+        ):
+            raise ValueError(
+                f"base_ref is only valid on read_head_checks, not {op.value}"
+            )
         if self.etag is not None and op not in _CONDITIONAL_READS:
             raise ValueError(
                 f"etag is only valid on read_head_checks and read_pr_state, not {op.value}"

@@ -109,7 +109,8 @@ def test_topics_are_registered_in_the_topic_registry() -> None:
 
 
 def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
-    """The orchestrator sends the request and consumes both results; nobody else."""
+    """The orchestrator sends the request and consumes both results; the PR lifecycle
+    orchestrator also sends it, for a runner-class red's one rerun."""
     claims: dict[tuple[str, str], list[str]] = {}
     for path in sorted(_NODES.glob("*/contract.yaml")):
         bus = _load(path).get("event_bus") or {}
@@ -119,8 +120,9 @@ def test_only_the_effect_and_the_orchestrator_claim_the_topics() -> None:
                     claims.setdefault((topic, key), []).append(path.parent.name)
     effect = "node_pr_landing_github_effect"
     orchestrator = "node_pr_landing_orchestrator"
+    lifecycle = "node_pr_lifecycle_orchestrator"
     assert claims == {
-        (_REQUESTED, "publish_topics"): [orchestrator],
+        (_REQUESTED, "publish_topics"): [orchestrator, lifecycle],
         (_REQUESTED, "subscribe_topics"): [effect],
         (_COMPLETED, "publish_topics"): [effect],
         (_COMPLETED, "subscribe_topics"): [orchestrator],
@@ -147,9 +149,12 @@ def test_contract_declares_the_seven_operations_and_two_modes() -> None:
 
 
 def test_contract_version_is_bumped_for_the_wiring() -> None:
-    """1.1.0 added read_pr_state (plan revision 1 section 5); 1.2.0 wires the bus."""
+    """1.1.0 added read_pr_state (plan revision 1 section 5); 1.2.0 wires the bus.
+
+    1.3.0 (OMN-20866): an arm of a PR GitHub reports mergeable now merges it.
+    """
     contract = _load(_CONTRACT)
-    assert contract["contract_version"] == {"major": 1, "minor": 2, "patch": 0}
+    assert contract["contract_version"] == {"major": 1, "minor": 3, "patch": 0}
 
 
 def test_contract_models_resolve_to_the_seam_models() -> None:

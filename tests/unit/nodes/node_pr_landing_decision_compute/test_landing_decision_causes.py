@@ -83,10 +83,7 @@ def sha(subject: str, n: int) -> str:
 
 
 def key_for(check: str = CHECK, text: str = ANN, repo: str = REPO) -> str:
-    from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
-        cause_key,
-        normalize_signature,
-    )
+    from omnimarket.handlers.cause_signature import cause_key, normalize_signature
 
     return cause_key(repo, normalize_signature(check, text))
 
@@ -103,6 +100,7 @@ class Pr:
     annotations: dict[str, str] = field(default_factory=lambda: {CHECK: ANN})
     suspensions: tuple[str, ...] = ()
     gate_since: datetime | None = None
+    gate_reasons: tuple[str, ...] = ()
     process_fix: bool = False
     rerun_runs: list[dict[str, Any]] = field(default_factory=list)
 
@@ -131,6 +129,8 @@ class Pr:
             data["red_annotations"] = dict(self.annotations)
         if self.gate_since is not None:
             data["gate_since"] = self.gate_since.isoformat()
+        if "gate" in self.suspensions:
+            data["gate_reasons"] = list(self.gate_reasons or ("companion_wait",))
         return data
 
 
@@ -318,7 +318,7 @@ def three() -> list[Pr]:
 # ------------------------------------------------------------------ signature
 @pytest.mark.unit
 def test_normalize_signature_replaces_what_varies_per_pr() -> None:
-    from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
+    from omnimarket.handlers.cause_signature import (
         UNREAD,
         normalize_annotation,
         normalize_signature,
@@ -572,7 +572,7 @@ def test_cause_scenario_s22_fix_merges_members_rerun_and_go_green() -> None:
 
 
 @pytest.mark.unit
-def test_cause_scenario_s23_two_failed_attempts_park_with_one_escalation_then_fallback() -> (
+def test_cause_scenario_s23_three_failed_attempts_park_with_one_ticket_then_fallback() -> (
     None
 ):
     world = CauseWorld(three())
@@ -588,15 +588,24 @@ def test_cause_scenario_s23_two_failed_attempts_park_with_one_escalation_then_fa
     assert decision.actions[0].cause_brief is not None
     assert decision.actions[0].cause_brief.attempt == 2
     world.step(advance=timedelta(seconds=5400))  # deadline with the process alive
+    decision = world.step()  # the budget is spent: one opus diagnosis attempt
+    assert f"{key} timed_out deadline" in recorded(decision)
+    assert dispatched(decision) == [key]
+    assert decision.actions[0].cause_brief is not None
+    assert decision.actions[0].cause_brief.attempt == 3
+    assert actions_of(decision, "escalate_operator") == []
+    world.step(advance=timedelta(seconds=5400))
     decision = world.step()
     assert f"{key} timed_out deadline" in recorded(decision)
-    escalations = actions_of(decision, "escalate_operator")
-    assert len(escalations) == 1
+    tickets = actions_of(decision, "file_cause_ticket")
+    assert len(tickets) == 1
+    assert actions_of(decision, "escalate_operator") == []
     rec = world.cause(key)
-    assert rec.attempts == 2
+    assert rec.attempts == 3
     assert rec.parked_until == world.now + timedelta(hours=12)
-    assert escalations[0].dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
-    assert [m.pr for m in escalations[0].members] == [p.key for p in three()]
+    assert tickets[0].dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
+    assert [m.pr for m in tickets[0].members] == [p.key for p in three()]
+    assert len(tickets[0].attempts) == 3
     assert cause_dispatched(decision) == []
     assert sorted(per_pr_dispatched(decision)) == [p.key for p in three()]  # fallback
     assert [(d.reason.value, d.subject) for d in decision.degraded] == [
@@ -608,8 +617,8 @@ def test_cause_scenario_s23_two_failed_attempts_park_with_one_escalation_then_fa
         assert [(d.reason.value, d.subject) for d in later.degraded] == [
             ("cause_exhausted", key)
         ]
-    total = sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
-    assert total == 1
+    assert _tickets(world) == [tickets[0]]
+    assert _asks_operator(world) == 0
 
 
 @pytest.mark.unit
@@ -749,7 +758,8 @@ def test_budget_three_spawn_failures_park_the_cause_and_members_fall_back() -> N
     decision = _park_by_spawn_failures(world, key)
     rec = world.cause(key)
     assert (rec.attempts, rec.spawn_failures) == (0, 3)
-    assert len(actions_of(decision, "escalate_operator")) == 1
+    assert len(actions_of(decision, "file_cause_ticket")) == 1
+    assert actions_of(decision, "escalate_operator") == []
     assert cause_dispatched(decision) == []
     assert sorted(per_pr_dispatched(decision)) == [p.key for p in three()]  # fallback
     assert world.step().actions == ()  # parked: no cause worker, members working
@@ -1046,7 +1056,7 @@ def _exit_mid_run(
 
 
 @pytest.mark.unit
-def test_lc_f2_a_worker_that_keeps_dying_mid_run_parks_after_two_attempts() -> None:
+def test_lc_f2_a_worker_that_keeps_dying_mid_run_parks_after_three_attempts() -> None:
     world = CauseWorld(three())
     key = key_for()
     world.step()
@@ -1055,17 +1065,20 @@ def test_lc_f2_a_worker_that_keeps_dying_mid_run_parks_after_two_attempts() -> N
     assert dispatched(first) == [key]
     second = _exit_mid_run(world, key)
     assert recorded(second) == [f"{key} timed_out exited"]
-    assert cause_dispatched(second) == []
-    assert len(actions_of(second, "escalate_operator")) == 1
+    assert dispatched(second) == [key]  # the opus diagnosis attempt
+    third = _exit_mid_run(world, key)
+    assert recorded(third) == [f"{key} timed_out exited"]
+    assert cause_dispatched(third) == []
+    assert len(actions_of(third, "file_cause_ticket")) == 1
     rec = world.cause(key)
-    assert (rec.attempts, rec.spawn_failures) == (2, 0)
+    assert (rec.attempts, rec.spawn_failures) == (3, 0)
     assert rec.parked_until == world.now + timedelta(hours=12)
     for _ in range(4):
         later = world.step()
         assert cause_dispatched(later) == []
-        assert actions_of(later, "escalate_operator") == []
-    total = sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
-    assert total == 1
+        assert actions_of(later, "file_cause_ticket") == []
+    assert len(_tickets(world)) == 1
+    assert _asks_operator(world) == 0
 
 
 @pytest.mark.unit
@@ -1091,16 +1104,25 @@ def test_lc_f2_exits_before_and_after_the_window_each_count_toward_one_budget() 
     assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (0, 1)
     _exit_mid_run(world, key, after=1800)  # a late exit: an attempt
     assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (1, 1)
-    decision = _exit_mid_run(world, key, after=1800)  # the second attempt parks it
+    diagnosis = _exit_mid_run(world, key, after=1800)  # the second: budget spent
     assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (2, 1)
-    assert len(actions_of(decision, "escalate_operator")) == 1
+    assert cause_dispatched(diagnosis) == [key]
+    decision = _exit_mid_run(world, key, after=1800)  # the diagnosis attempt parks it
+    assert (world.cause(key).attempts, world.cause(key).spawn_failures) == (3, 1)
+    assert len(actions_of(decision, "file_cause_ticket")) == 1
     assert cause_dispatched(decision) == []
 
 
 def _park_tick(world: CauseWorld, key: str) -> tuple[ModelLandingControllerState, Any]:
+    """A worker returns a blocker only the operator can clear; the park tick asks."""
+    world.step()
+    world.result(
+        key, "external_blocker", blocker_kind="operator_decision", blocker_ref="x#1"
+    )
+    world.step()  # recorded
+    world.step()  # the kill
     before = world.state
-    world.exit(key)
-    decision = world.step(advance=timedelta(seconds=900))
+    decision = world.step()  # released: the cause parks and asks
     escalations = actions_of(decision, "escalate_operator")
     assert len(escalations) == 1
     return before, escalations[0]
@@ -1118,8 +1140,6 @@ def _ledger_row(world: CauseWorld, key: str, action: Any) -> dict[str, Any]:
 def test_lc_f3_a_crash_between_the_msg_and_the_state_write_escalates_once() -> None:
     world = CauseWorld(three())
     key = key_for()
-    world.step()
-    _exit_mid_run(world, key)
     before, action = _park_tick(world, key)
     row = _ledger_row(world, key, action)
     world.state = before  # the controller died before it wrote the next state
@@ -1139,8 +1159,6 @@ def test_lc_f3_without_a_ledger_row_the_same_crash_still_escalates() -> None:
     """Positive control: the row, and only the row, suppresses the second MSG."""
     world = CauseWorld(three())
     key = key_for()
-    world.step()
-    _exit_mid_run(world, key)
     before, _ = _park_tick(world, key)
     world.state = before
     decision = world.step()
@@ -1151,8 +1169,6 @@ def test_lc_f3_without_a_ledger_row_the_same_crash_still_escalates() -> None:
 def test_lc_f3_two_crashes_in_a_row_still_escalate_once() -> None:
     world = CauseWorld(three())
     key = key_for()
-    world.step()
-    _exit_mid_run(world, key)
     before, action = _park_tick(world, key)
     world.extra["cause_escalations"] = [_ledger_row(world, key, action)]
     for _ in range(2):
@@ -1165,8 +1181,6 @@ def test_lc_f3_two_crashes_in_a_row_still_escalate_once() -> None:
 def test_lc_f3_a_row_older_than_the_park_does_not_cover_a_new_episode() -> None:
     world = CauseWorld(three())
     key = key_for()
-    world.step()
-    _exit_mid_run(world, key)
     before, action = _park_tick(world, key)
     stale = _ledger_row(world, key, action)
     stale["at"] = (world.now - timedelta(hours=13)).isoformat()
@@ -1179,8 +1193,6 @@ def test_lc_f3_a_row_older_than_the_park_does_not_cover_a_new_episode() -> None:
 def test_lc_f3_a_release_after_the_row_starts_a_new_episode() -> None:
     world = CauseWorld(three())
     key = key_for()
-    world.step()
-    _exit_mid_run(world, key)
     before, action = _park_tick(world, key)
     row = _ledger_row(world, key, action)
     world.state = before
@@ -1199,8 +1211,6 @@ def test_lc_f3_rows_for_other_causes_and_their_order_change_nothing() -> None:
     world = CauseWorld(three())
     key = key_for()
     other = key_for(check="build / unit", text="boom")
-    world.step()
-    _exit_mid_run(world, key)
     before, action = _park_tick(world, key)
     rows = [
         _ledger_row(world, key, action),
@@ -1218,8 +1228,8 @@ def test_lc_f3_rows_for_other_causes_and_their_order_change_nothing() -> None:
 # Operator ruling: a parked cause no longer holds its members. Red PRs keep
 # getting fixed per PR while the cause waits out its park; a live cause lease,
 # an open fix PR or an owner still hold them.
-def _park_by_two_failed_attempts(world: CauseWorld, key: str) -> ModelLandingDecision:
-    """The s23 path: two attempts that fail, the second at its deadline."""
+def _park_by_spent_attempts(world: CauseWorld, key: str) -> ModelLandingDecision:
+    """The s23 path: two attempts that fail, then the diagnosis attempt at its deadline."""
     world.step()
     world.result(
         key, "external_blocker", blocker_kind="upstream_open", blocker_ref="acme/lib#7"
@@ -1228,18 +1238,17 @@ def _park_by_two_failed_attempts(world: CauseWorld, key: str) -> ModelLandingDec
     world.step()  # the kill
     world.step()  # released: attempt 2
     world.step(advance=timedelta(seconds=5400))  # deadline with the process alive
+    world.step()  # released: the diagnosis attempt
+    world.step(advance=timedelta(seconds=5400))  # its deadline
     return world.step()
-
-
-def _escalations(world: CauseWorld) -> int:
-    return sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
 
 
 def _assert_fallback_once(
     world: CauseWorld, key: str, park: ModelLandingDecision
 ) -> None:
     members = [p.key for p in three()]
-    assert len(actions_of(park, "escalate_operator")) == 1
+    assert len(actions_of(park, "file_cause_ticket")) == 1
+    assert actions_of(park, "escalate_operator") == []
     assert [s for s in dispatched(park) if is_cause_subject(s)] == []
     assert sorted(per_pr_dispatched(park)) == members
     for action in actions_of(park, "dispatch_worker"):
@@ -1247,19 +1256,20 @@ def _assert_fallback_once(
         assert action.brief.engine.value == "claude_sonnet"
         assert action.brief.brief_class.value == "real_red"
     assert world.cause(key).parked_until is not None
-    for _ in range(3):  # parked, members working: no cause worker, no second MSG
+    for _ in range(3):  # parked, members working: no cause worker, no second ticket
         later = world.step()
         assert dispatched(later) == []
-        assert actions_of(later, "escalate_operator") == []
-    assert _escalations(world) == 1
+        assert actions_of(later, "file_cause_ticket") == []
+    assert len(_tickets(world)) == 1
+    assert _asks_operator(world) == 0
 
 
 @pytest.mark.unit
-def test_fallback_a_cause_parked_by_two_failed_attempts_releases_its_members() -> None:
+def test_fallback_a_cause_parked_by_spent_attempts_releases_its_members() -> None:
     world = CauseWorld(three())
     key = key_for()
-    park = _park_by_two_failed_attempts(world, key)
-    assert world.cause(key).attempts == 2
+    park = _park_by_spent_attempts(world, key)
+    assert world.cause(key).attempts == 3
     _assert_fallback_once(world, key, park)
 
 
@@ -1409,3 +1419,278 @@ def test_fallback_a_parked_pr_stays_parked() -> None:
     )
     decision = world.step()
     assert sorted(per_pr_dispatched(decision)) == [prs[1].key, prs[2].key]
+
+
+# ------------------------------------------------------------ park default ladder
+# A cause that fails two attempts gets one more attempt from the strongest
+# engine with a diagnosis brief; a third failure files one ticket carrying the
+# attempts and leaves the cause parked, with no operator question; the park ends
+# when the base branch head moves; only a blocker that needs a decision, an
+# approval or a credential asks the operator, once.
+BASE_A = "a" * 40
+BASE_B = "b" * 40
+
+
+def _base(head: str) -> list[dict[str, str]]:
+    return [{"repo": REPO, "head_sha": head}]
+
+
+def _fail_attempt(world: CauseWorld, key: str) -> ModelLandingDecision:
+    """One worker result that fails the attempt, then the kill, then the release.
+
+    Returns the tick on which the released cause is decided again.
+    """
+    world.result(
+        key, "external_blocker", blocker_kind="upstream_open", blocker_ref="acme/lib#7"
+    )
+    world.step()  # the result is recorded
+    world.step()  # the kill
+    return world.step()  # released
+
+
+def _asks_operator(world: CauseWorld) -> int:
+    return sum(len(actions_of(d, "escalate_operator")) for d in world.decisions)
+
+
+def _tickets(world: CauseWorld) -> list[ModelLandingAction]:
+    return [a for d in world.decisions for a in actions_of(d, "file_cause_ticket")]
+
+
+@pytest.mark.unit
+def test_park_default_third_attempt_is_one_opus_diagnosis_with_no_operator_msg() -> (
+    None
+):
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    first = world.step()
+    assert first.actions[0].cause_brief is not None
+    assert first.actions[0].cause_brief.brief_class.value == "shared_cause"
+    second = _fail_attempt(world, key)
+    assert second.actions[0].cause_brief is not None
+    assert second.actions[0].cause_brief.attempt == 2
+    assert second.actions[0].cause_brief.brief_class.value == "shared_cause"
+    assert _asks_operator(world) == 0
+    third = _fail_attempt(world, key)
+    assert dispatched(third) == [key]
+    brief = third.actions[0].cause_brief
+    assert brief is not None
+    assert brief.attempt == 3
+    assert brief.engine.value == "claude_opus"
+    assert brief.brief_class.value == "cause_diagnosis"
+    assert [a.engine.value for a in brief.prior_attempts] == [
+        "claude_opus",
+        "claude_opus",
+    ]
+    assert {a.outcome.value for a in brief.prior_attempts} == {"external_blocker"}
+    assert actions_of(third, "escalate_operator") == []
+    assert actions_of(third, "file_cause_ticket") == []
+    assert world.cause(key).parked_until is None
+    assert _asks_operator(world) == 0
+    assert _tickets(world) == []
+
+
+@pytest.mark.unit
+def test_park_default_third_attempt_needs_the_opus_engine() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    world.extra["available_engines"] = ["claude_sonnet", "codex_high"]
+    waiting = _fail_attempt(world, key)
+    assert cause_dispatched(waiting) == []
+    assert world.cause(key).parked_until is None
+    world.extra["available_engines"] = ["claude_sonnet", "claude_opus"]
+    assert cause_dispatched(world.step()) == [key]
+
+
+@pytest.mark.unit
+def test_park_default_files_ticket_after_a_third_failure_and_asks_nobody() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    park = _fail_attempt(world, key)
+    tickets = actions_of(park, "file_cause_ticket")
+    assert len(tickets) == 1
+    ticket = tickets[0]
+    assert ticket.subject == key
+    rec = world.cause(key)
+    assert rec.parked_until is not None
+    assert ticket.dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
+    assert [m.pr for m in ticket.members] == [p.key for p in three()]
+    assert [a.engine.value for a in ticket.attempts] == [
+        "claude_opus",
+        "claude_opus",
+        "claude_opus",
+    ]
+    assert {a.blocker_ref for a in ticket.attempts} == {"acme/lib#7"}
+    assert cause_dispatched(park) == []
+    assert actions_of(park, "escalate_operator") == []
+    for _ in range(4):  # parked: no worker, no second ticket, no question
+        later = world.step()
+        assert cause_dispatched(later) == []
+        assert actions_of(later, "file_cause_ticket") == []
+    assert len(_tickets(world)) == 1
+    assert _asks_operator(world) == 0
+
+
+@pytest.mark.unit
+def test_park_default_files_ticket_for_a_cause_whose_workers_never_start() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    for _ in range(3):
+        world.exit(key)
+        world.step(advance=timedelta(seconds=60))  # inside the spawn window
+        world.step()  # the kill confirmed; redispatched or parked
+    assert world.cause(key).spawn_failures == 3
+    assert len(_tickets(world)) == 1
+    assert len(_tickets(world)[0].attempts) == 3
+    assert _asks_operator(world) == 0
+
+
+@pytest.mark.unit
+def test_park_retry_on_base_head_waits_for_the_head_to_move() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    assert world.cause(key).parked_until is not None
+    assert world.cause(key).parked_base_head == BASE_A
+    for hours in (1, 11, 24, 48):  # the clock alone never ends the park
+        assert cause_dispatched(world.step(advance=timedelta(hours=hours))) == []
+        assert world.cause(key).parked_until is not None
+    world.extra["base_heads"] = _base(BASE_B)
+    retry = world.step()
+    assert dispatched(retry) == [key]
+    brief = retry.actions[0].cause_brief
+    assert brief is not None
+    assert brief.engine.value == "claude_opus"
+    assert brief.brief_class.value == "cause_diagnosis"
+    assert world.cause(key).parked_until is None
+
+
+@pytest.mark.unit
+def test_park_retry_on_base_head_spends_one_attempt_and_files_no_second_ticket() -> (
+    None
+):
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    world.extra["base_heads"] = _base(BASE_B)
+    assert dispatched(world.step()) == [key]
+    parked_again = _fail_attempt(world, key)
+    assert cause_dispatched(parked_again) == []
+    assert actions_of(parked_again, "file_cause_ticket") == []
+    assert world.cause(key).parked_base_head == BASE_B
+    assert len(_tickets(world)) == 1
+    assert _asks_operator(world) == 0
+
+
+@pytest.mark.unit
+def test_park_retry_on_base_head_unread_head_keeps_the_park() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    world.extra["base_heads"] = []  # the base head is unreadable this tick
+    assert cause_dispatched(world.step(advance=timedelta(hours=2))) == []
+    assert world.cause(key).parked_until is not None
+
+
+@pytest.mark.unit
+def test_park_retry_on_base_head_without_a_head_falls_back_to_the_park_window() -> None:
+    world = CauseWorld(three())  # the snapshot carries no base heads
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    assert world.cause(key).parked_base_head is None
+    assert cause_dispatched(world.step(advance=timedelta(hours=11))) == []
+    assert cause_dispatched(world.step(advance=timedelta(hours=1))) == [key]
+
+
+@pytest.mark.unit
+def test_park_retry_on_base_head_a_release_row_still_ends_the_park() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    _fail_attempt(world, key)
+    world.extra["cause_releases"] = [{"cause": key, "at": world.now.isoformat()}]
+    retry = world.step()
+    assert dispatched(retry) == [key]
+    brief = retry.actions[0].cause_brief
+    assert brief is not None
+    assert (brief.attempt, brief.brief_class.value) == (1, "shared_cause")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "kind", ["operator_decision", "operator_approval", "operator_credential"]
+)
+def test_park_operator_only_needs_ask_the_operator_exactly_once(kind: str) -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    world.result(key, "external_blocker", blocker_kind=kind, blocker_ref="acme/app#9")
+    world.step()  # recorded
+    world.step()  # the kill
+    park = world.step()  # released
+    questions = actions_of(park, "escalate_operator")
+    assert len(questions) == 1
+    assert questions[0].subject == key
+    rec = world.cause(key)
+    assert rec.parked_until is not None
+    assert rec.attempts == 1  # no second or diagnosis attempt is spent on it
+    assert questions[0].dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
+    assert cause_dispatched(park) == []
+    assert actions_of(park, "file_cause_ticket") == []
+    world.extra["base_heads"] = _base(BASE_B)  # the base moving does not re-ask
+    for hours in (1, 13, 40):
+        later = world.step(advance=timedelta(hours=hours))
+        assert cause_dispatched(later) == []
+        assert actions_of(later, "escalate_operator") == []
+    assert _asks_operator(world) == 1
+    assert _tickets(world) == []
+
+
+@pytest.mark.unit
+def test_park_operator_only_needs_end_on_the_operators_release_row() -> None:
+    world = CauseWorld(three(), base_heads=_base(BASE_A))
+    key = key_for()
+    world.step()
+    world.result(
+        key, "external_blocker", blocker_kind="operator_decision", blocker_ref="x#1"
+    )
+    for _ in range(3):
+        world.step()
+    assert world.cause(key).parked_until is not None
+    world.extra["cause_releases"] = [{"cause": key, "at": world.now.isoformat()}]
+    answered = world.step()
+    assert dispatched(answered) == [key]
+    assert world.cause(key).operator_need is None
+    assert _asks_operator(world) == 1
+
+
+@pytest.mark.unit
+def test_park_operator_only_needs_other_blockers_never_ask() -> None:
+    for kind in ("production_gate", "hold_row", "collaborator", "upstream_open"):
+        world = CauseWorld(three(), base_heads=_base(BASE_A))
+        key = key_for()
+        world.step()
+        world.result(key, "external_blocker", blocker_kind=kind, blocker_ref="x#1")
+        for _ in range(3):
+            world.step()
+        assert _asks_operator(world) == 0, kind
+        assert world.cause(key).operator_need is None, kind

@@ -9,6 +9,8 @@ from typing import Literal
 from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
 
@@ -58,6 +60,17 @@ class ModelLabReceipt(BaseModel):
     )
     path: str | None = Field(
         default=None, description="Where the caller read the receipt."
+    )
+    claim_host: str | None = Field(
+        default=None,
+        description=(
+            "The `host=` cell of the ledger CLAIM row that names this receipt's run (OMN-20851); a running "
+            "receipt counts as a running lane only when this and `claim_run_id` are both set."
+        ),
+    )
+    claim_run_id: str | None = Field(
+        default=None,
+        description="The `run=` cell of that CLAIM row; None when no CLAIM carries a run id.",
     )
 
 
@@ -122,6 +135,66 @@ class ModelLabHeadroomFacts(BaseModel):
     )
 
 
+class ModelDispatchedLane(BaseModel):
+    """A lane the ledger records as dispatched, with the placement facts the caller read for it (OMN-20851).
+
+    A lane counts as running only with a CLAIM that carries `host=` and a run id; a lane recorded as
+    dispatched whose runner wrote no placement receipt is unplaced.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    dispatched_at: str = Field(
+        pattern=_TS, description="When the ledger recorded the dispatch."
+    )
+    claim_host: str | None = Field(
+        default=None, description="The `host=` cell of the lane's CLAIM row, if any."
+    )
+    claim_run_id: str | None = Field(
+        default=None, description="The `run=` cell of the lane's CLAIM row, if any."
+    )
+    placement_receipt: bool = Field(
+        default=False,
+        description="Whether the runner wrote a placement receipt for this lane.",
+    )
+
+
+class ModelVenvDivergence(BaseModel):
+    """A dispatch venv that differs between lab hosts, and since when (OMN-20851)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    surface: str = Field(
+        description="The diverged surface, e.g. `venv:omnimarket`; names the package set that differs."
+    )
+    hosts: list[str] = Field(
+        min_length=2, description="The hosts whose dispatch venvs disagree."
+    )
+    diverged_since: str = Field(
+        pattern=_TS,
+        description="When the caller first read this divergence; unchanged while it persists.",
+    )
+    detail: str = ""
+
+
+class ModelTickAlarmVerdict(BaseModel):
+    """The typed verdict record of one ALARM, written to the tick's declared evidence file (OMN-20851)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["ALARM"] = "ALARM"
+    loop: str = Field(
+        description="The finding name, e.g. `unplaced-lane:<lane>` or `venv-divergence:<surface>`."
+    )
+    since: str = Field(
+        pattern=_TS, description="When the condition began (dispatch or divergence)."
+    )
+    age_minutes: float = Field(ge=0)
+    why: str
+    fix: str
+
+
 class ModelThroughputTickRequest(BaseModel):
     """Facts the caller read from the landing controller's files, launchd and the PR watcher.
 
@@ -180,6 +253,15 @@ class ModelThroughputTickRequest(BaseModel):
         description="Lab-headroom facts; None skips the finding (and its `checked` entry).",
     )
 
+    pr_land: ModelLabFillPrLandFacts | None = Field(
+        default=None,
+        description=(
+            "Open PRs with their landing facts and hold source (OMN-20864): the lab-headroom FIX names "
+            "pr-land lanes for idle slots on parked, escalated or unowned-red PRs, by the rule lab-fill "
+            "selection runs; None leaves the FIX as it was."
+        ),
+    )
+
     park_max_hours: float = Field(
         default=2.0,
         ge=0,
@@ -210,6 +292,31 @@ class ModelThroughputTickRequest(BaseModel):
         description="Points older than this belong to another session and are not a trend.",
     )
 
+    dispatched_lanes: list[ModelDispatchedLane] | None = Field(
+        default=None,
+        description=(
+            "Lanes the ledger records as dispatched, with the placement facts read for each; None skips "
+            "the unplaced-lane finding (and its `checked` entry) (OMN-20851)."
+        ),
+    )
+    unplaced_lane_alarm_minutes: int = Field(
+        default=10,
+        ge=0,
+        description="A dispatched lane with no placement receipt for longer than this is an ALARM.",
+    )
+    venv_divergences: list[ModelVenvDivergence] | None = Field(
+        default=None,
+        description=(
+            "Cross-host dispatch-venv divergences the caller read; None skips the venv-divergence finding "
+            "(and its `checked` entry) (OMN-20851)."
+        ),
+    )
+    venv_divergence_alarm_minutes: int = Field(
+        default=30,
+        ge=0,
+        description="A divergence older than this is an ALARM; a younger one is a NOTE.",
+    )
+
 
 class ModelThroughputTickResult(BaseModel):
     """The tick's finding lines and its status line, exactly as the retired script printed them."""
@@ -221,8 +328,24 @@ class ModelThroughputTickResult(BaseModel):
     missing: list[str]
     unknown: list[str]
     checked: list[str]
+    alarms: list[ModelTickAlarmVerdict] = Field(
+        default_factory=list,
+        description=(
+            "Every ALARM verdict, for the caller to print, write into the tick's evidence file and exit "
+            "non-zero on (OMN-20851); an ALARM is never also listed in `missing` or `unknown`."
+        ),
+    )
     exit_code: int = Field(ge=0, le=1)
     open_count: int | None = Field(
         default=None,
         description="The open PR count read from a fresh watcher state, for the caller to record; None when unread.",
+    )
+    pr_land: ModelLabFillPrLandPlan | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The idle-slot pr-land fallback the lab-headroom FIX names (OMN-20864); None without PR-land "
+            "facts or with the lab's capacity unread, and then absent from the dump, so a caller that "
+            "sends no PR-land facts reads the result it read before."
+        ),
     )

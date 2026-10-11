@@ -1,0 +1,186 @@
+{
+ "repos/OmniNode-ai/omnimarket/branches/dev": {
+  "protection": {
+   "required_status_checks": {
+    "checks": [
+     {
+      "app_id": 15368,
+      "context": "Dep Provenance Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "dispatcher-route-coverage"
+     },
+     {
+      "app_id": 15368,
+      "context": "call / validate-docs"
+     },
+     {
+      "app_id": 15368,
+      "context": "Canonical Inference Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Hostile Review Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Hostile Reviewer (adversarial gate)"
+     },
+     {
+      "app_id": 15368,
+      "context": "imperative-contract-guard / Imperative Contract Guard"
+     },
+     {
+      "app_id": 15368,
+      "context": "Omni Standards Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "No Faked Boundary Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "PR Arch Review Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Resolve Bot Token"
+     },
+     {
+      "app_id": 15368,
+      "context": "Architectural Compliance Lint"
+     },
+     {
+      "app_id": 15368,
+      "context": "CI Naming Convention"
+     },
+     {
+      "app_id": 15368,
+      "context": "Legacy Compatibility Check"
+     },
+     {
+      "app_id": 15368,
+      "context": "Ecosystem Integration Validation"
+     },
+     {
+      "app_id": 15368,
+      "context": "Repository Structure Validation"
+     },
+     {
+      "app_id": 15368,
+      "context": "pr-title / check-title"
+     },
+     {
+      "app_id": 15368,
+      "context": "Precommit Fail-Loud Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Projection Exposure Drift Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Leaked Literals Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Stale TODO Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "state-coverage-gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "URL Authority Gate"
+     },
+     {
+      "app_id": 15368,
+      "context": "Enforce validator-requirements.yaml (OMN-13291)"
+     },
+     {
+      "app_id": 15368,
+      "context": "main-target-guard"
+     },
+     {
+      "app_id": 15368,
+      "context": "non-dev-base-guard"
+     },
+     {
+      "app_id": 15368,
+      "context": "required-check-skip-guard / check-skip-vectors"
+     },
+     {
+      "app_id": 15368,
+      "context": "CI Summary"
+     },
+     {
+      "app_id": 15368,
+      "context": "Customer Path Boundary (OMN-18012)"
+     },
+     {
+      "app_id": 15368,
+      "context": "JS Toolchain Hermetic (OMN-18012)"
+     },
+     {
+      "app_id": 15368,
+      "context": "Wire Compatibility Gate"
+     }
+    ],
+    "contexts": [
+     "Dep Provenance Gate",
+     "dispatcher-route-coverage",
+     "call / validate-docs",
+     "Canonical Inference Gate",
+     "Hostile Review Gate",
+     "Hostile Reviewer (adversarial gate)",
+     "imperative-contract-guard / Imperative Contract Guard",
+     "Omni Standards Gate",
+     "No Faked Boundary Gate",
+     "PR Arch Review Gate",
+     "Resolve Bot Token",
+     "Architectural Compliance Lint",
+     "CI Naming Convention",
+     "Legacy Compatibility Check",
+     "Ecosystem Integration Validation",
+     "Repository Structure Validation",
+     "pr-title / check-title",
+     "Precommit Fail-Loud Gate",
+     "Projection Exposure Drift Gate",
+     "Leaked Literals Gate",
+     "Stale TODO Gate",
+     "state-coverage-gate",
+     "URL Authority Gate",
+     "Enforce validator-requirements.yaml (OMN-13291)",
+     "main-target-guard",
+     "non-dev-base-guard",
+     "required-check-skip-guard / check-skip-vectors",
+     "CI Summary",
+     "Customer Path Boundary (OMN-18012)",
+     "JS Toolchain Hermetic (OMN-18012)",
+     "Wire Compatibility Gate"
+    ],
+    "enforcement_level": "everyone"
+   }
+  }
+ },
+ "repos/OmniNode-ai/omnimarket/rules/branches/dev": [
+  {
+   "parameters": {
+    "do_not_enforce_on_create": false,
+    "required_status_checks": [
+     {
+      "context": "repo-evidence / dod-verify",
+      "integration_id": 15368
+     }
+    ],
+    "strict_required_status_checks_policy": false
+   },
+   "ruleset_id": 24462257,
+   "ruleset_source": "OmniNode-ai/omnimarket",
+   "ruleset_source_type": "Repository",
+   "type": "required_status_checks"
+  }
+ ]
+}

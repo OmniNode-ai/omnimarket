@@ -6,9 +6,9 @@ Input: ModelFixerDispatchRequest (stall event + PR context)
 Output: ModelFixerDispatchResult (dispatch spec for the right fixer)
 
 Fixer routing table:
-    RED (CI failing)          -> node_ci_fix_effect
-    CONFLICTED (merge conflict) -> node_conflict_hunk_effect
-    BEHIND (needs rebase)     -> node_rebase_effect
+    RED (CI failing)          -> node_pr_lifecycle_fix_effect (code_failure)
+    CONFLICTED (merge conflict) -> node_pr_lifecycle_fix_effect (conflict)
+    BEHIND (needs rebase)     -> node_pr_lifecycle_fix_effect (conflict, update-branch)
     DEPLOY_GATE               -> deploy-gate skip token (emit advisory)
     UNKNOWN / STALE            -> escalate (no auto-fix)
 

@@ -1,0 +1,373 @@
+{
+  "scenario": "read_head_checks_required_contexts",
+  "operation": "read_head_checks",
+  "provenance": "recorded",
+  "provenance_note": "Three real read-only exchanges. The check-runs read is read_head_checks_200's, recorded 2026-09-26T23:18:06Z. The branch read (classic protection, body trimmed to name, protected and protection) and the rules read of OmniNode-ai/omnimarket dev were recorded 2026-10-10T05:59:47Z with gh api -i (OMN-20866).",
+  "recorded_at": "2026-10-10T05:59:47Z",
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2962,
+    "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+    "base_ref": "dev"
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/commits/c5dea513fd94a0e940938f13a798c685ab7a88cb/check-runs?filter=all&per_page=100&page=1",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Content-Type": "application/json; charset=utf-8",
+          "Etag": "W/\"a053947511b701f31e156711c247bad4880289a02ef9b6d4afcdbbdfffd90fd0\"",
+          "Link": "<https://api.github.com/repositories/1202250677/commits/c5dea513fd94a0e940938f13a798c685ab7a88cb/check-runs?filter=all&per_page=100&page=2>; rel=\"next\", <https://api.github.com/repositories/1202250677/commits/c5dea513fd94a0e940938f13a798c685ab7a88cb/check-runs?filter=all&per_page=100&page=2>; rel=\"last\"",
+          "X-Github-Api-Version-Selected": "2022-11-28",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "4892",
+          "X-Ratelimit-Reset": "1790468175",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "108"
+        },
+        "body": {
+          "total_count": 128,
+          "check_runs": [
+            {
+              "id": 108506655517,
+              "name": "product-readiness / evaluate",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+              "started_at": "2026-09-26T23:14:52Z",
+              "completed_at": "2026-09-26T23:15:01Z",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36278000786/job/108506655517",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98238416773
+              }
+            },
+            {
+              "id": 108506655399,
+              "name": "reason-graph",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+              "started_at": "2026-09-26T23:14:51Z",
+              "completed_at": "2026-09-26T23:14:58Z",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36278000786/job/108506655399",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98238416773
+              }
+            },
+            {
+              "id": 108505544734,
+              "name": "Trigger node_redeploy Start / Announce the merged revision for delivery to staging",
+              "status": "completed",
+              "conclusion": "skipped",
+              "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+              "started_at": "2026-09-26T23:07:12Z",
+              "completed_at": "2026-09-26T23:07:11Z",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36278399926/job/108505544734",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98239452573
+              }
+            },
+            {
+              "id": 108505544145,
+              "name": "Trigger node_redeploy Start / Verify the dev lane vendors the merged sibling revision",
+              "status": "completed",
+              "conclusion": "skipped",
+              "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+              "started_at": "2026-09-26T23:07:11Z",
+              "completed_at": "2026-09-26T23:07:11Z",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36278399926/job/108505544145",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98239452573
+              }
+            },
+            {
+              "id": 108505487578,
+              "name": "Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+              "started_at": "2026-09-26T23:06:49Z",
+              "completed_at": "2026-09-26T23:07:11Z",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36278399926/job/108505487578",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98239452573
+              }
+            },
+            {
+              "id": 108505470860,
+              "name": "auto-tag",
+              "status": "completed",
+              "conclusion": "skipped",
+              "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+              "started_at": "2026-09-26T23:06:41Z",
+              "completed_at": "2026-09-26T23:06:33Z",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36278399546/job/108505470860",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98239451719
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/branches/dev",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "Etag": "W/\"9f990ba12b13226aff558470e61d9a354f5108a181f4a988c63f1c79d3179ed9\"",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "1690",
+          "X-Ratelimit-Reset": "1791612397",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "3310"
+        },
+        "body": {
+          "name": "dev",
+          "protected": true,
+          "protection": {
+            "enabled": true,
+            "required_status_checks": {
+              "enforcement_level": "everyone",
+              "contexts": [
+                "Dep Provenance Gate",
+                "dispatcher-route-coverage",
+                "call / validate-docs",
+                "Canonical Inference Gate",
+                "Hostile Review Gate",
+                "Hostile Reviewer (adversarial gate)",
+                "imperative-contract-guard / Imperative Contract Guard",
+                "Omni Standards Gate",
+                "No Faked Boundary Gate",
+                "PR Arch Review Gate",
+                "Resolve Bot Token",
+                "Architectural Compliance Lint",
+                "CI Naming Convention",
+                "Legacy Compatibility Check",
+                "Ecosystem Integration Validation",
+                "Repository Structure Validation",
+                "pr-title / check-title",
+                "Precommit Fail-Loud Gate",
+                "Projection Exposure Drift Gate",
+                "Leaked Literals Gate",
+                "Stale TODO Gate",
+                "state-coverage-gate",
+                "URL Authority Gate",
+                "Enforce validator-requirements.yaml (OMN-13291)",
+                "main-target-guard",
+                "non-dev-base-guard",
+                "required-check-skip-guard / check-skip-vectors",
+                "CI Summary",
+                "Customer Path Boundary (OMN-18012)",
+                "JS Toolchain Hermetic (OMN-18012)",
+                "Wire Compatibility Gate"
+              ],
+              "checks": [
+                {
+                  "context": "Dep Provenance Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "dispatcher-route-coverage",
+                  "app_id": 15368
+                },
+                {
+                  "context": "call / validate-docs",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Canonical Inference Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Hostile Review Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Hostile Reviewer (adversarial gate)",
+                  "app_id": 15368
+                },
+                {
+                  "context": "imperative-contract-guard / Imperative Contract Guard",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Omni Standards Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "No Faked Boundary Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "PR Arch Review Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Resolve Bot Token",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Architectural Compliance Lint",
+                  "app_id": 15368
+                },
+                {
+                  "context": "CI Naming Convention",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Legacy Compatibility Check",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Ecosystem Integration Validation",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Repository Structure Validation",
+                  "app_id": 15368
+                },
+                {
+                  "context": "pr-title / check-title",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Precommit Fail-Loud Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Projection Exposure Drift Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Leaked Literals Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Stale TODO Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "state-coverage-gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "URL Authority Gate",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Enforce validator-requirements.yaml (OMN-13291)",
+                  "app_id": 15368
+                },
+                {
+                  "context": "main-target-guard",
+                  "app_id": 15368
+                },
+                {
+                  "context": "non-dev-base-guard",
+                  "app_id": 15368
+                },
+                {
+                  "context": "required-check-skip-guard / check-skip-vectors",
+                  "app_id": 15368
+                },
+                {
+                  "context": "CI Summary",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Customer Path Boundary (OMN-18012)",
+                  "app_id": 15368
+                },
+                {
+                  "context": "JS Toolchain Hermetic (OMN-18012)",
+                  "app_id": 15368
+                },
+                {
+                  "context": "Wire Compatibility Gate",
+                  "app_id": 15368
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/rules/branches/dev?per_page=100",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "Etag": "W/\"e0c7bde67c934f6963a854a12b90a92c953bd3d325498ed1837ef957f0ec84e9\"",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "1688",
+          "X-Ratelimit-Reset": "1791612397",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "3312"
+        },
+        "body": {
+          "value": [
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "do_not_enforce_on_create": false,
+                "required_status_checks": [
+                  {
+                    "context": "repo-evidence / dod-verify",
+                    "integration_id": 15368
+                  }
+                ]
+              },
+              "ruleset_source_type": "Repository",
+              "ruleset_source": "OmniNode-ai/omnimarket",
+              "ruleset_id": 24462257
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

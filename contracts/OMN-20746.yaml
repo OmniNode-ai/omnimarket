@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20746"
+title: "Annotation-level cause keys for the PR lifecycle triage bus path"
+summary: "The landing decision and lifecycle triage share annotation normalization and cause keys. The facts reader reads failure annotations at each PR's head, and triage clusters readable annotations with the controller's member floor and absorb ratio."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-controller-cause-key-parity"
+    statement: "The bus path and landing controller assign the same annotation-level cause keys on recorded facts."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The recorded tick 725 and 2026-10-09 cause replays return the controller's cause keys and members through the bus path -- falsifier: test_cause_key_parity.py fails when the cause key or cluster membership differs from the recorded controller result.
+  - id: "req-head-bound-annotation-read"
+    statement: "Failure annotations are read at the subject head and unread annotations do not form annotation-level causes."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: The facts reader selects the first useful failure annotation, rejects stale heads, and retains check facts when annotation reads fail; triage separates different signatures and never clusters unread annotations -- falsifier: test_cause_signature.py, test_ci_red_triage.py and test_classify_ci_red.py fail when annotation selection, head binding, read fallback or clustering differs.
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: recorded controller cause keys and members agree with bus triage."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_key_parity.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: annotation selection, head binding, fallback and clustering behavior."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_signature.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20746-ac1-controller-cause-key-parity"
+    description: "AC1: replay the controller's recorded causes through the bus path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_key_parity.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20746-ac2-head-bound-annotation-read"
+    description: "AC2: exercise annotation reads and triage across stale, unread and different-signature facts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_cause_signature.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

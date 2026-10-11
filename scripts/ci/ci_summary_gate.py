@@ -527,7 +527,9 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # test omnimarket's own OCC companion emitter and its schema compatibility
     # against a pinned onex_change_control checkout. Neither reads a PR's
     # companion, so CI Summary keeps enforcing them until the emitter itself is
-    # retired (plan S7 to S9).
+    # retired (plan S7 to S9). OMN-20885: the schema-compatibility job now
+    # reads the ticket-contract schema from omnibase_core, its owner, and checks
+    # out no onex_change_control; it keeps its context name.
     "OCC Emitter Golden Gate",
     "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
@@ -600,6 +602,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # Summary umbrella IS the enforcement surface, so a context missing from
     # this tuple is silently unenforced.
     "public-repo-hygiene / public-repo-hygiene",
+    # OMN-20940 (public-repo-hygiene.yml): the deployment-config job of the same
+    # reusable. No deployment or lab configuration lives in a shipped repository;
+    # the job reads no vocabulary and no secret, so it runs on a fork, and it is a
+    # required context on dev. Same single-job-over-reusable naming as above.
+    "public-repo-hygiene / deployment-config",
     "receipt-honesty",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
     # model for two message categories. Same workflow file and same L4 reasoning as
@@ -1756,7 +1763,10 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             "public-repo-hygiene.yml",
             ("pull_request",),
             (),
-            ("public-repo-hygiene / public-repo-hygiene",),
+            (
+                "public-repo-hygiene / public-repo-hygiene",
+                "public-repo-hygiene / deployment-config",
+            ),
         ),
         (
             "receipt-honesty.yml",

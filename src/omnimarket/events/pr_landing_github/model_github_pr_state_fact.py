@@ -43,10 +43,21 @@ def _require_bool(mapping: object, key: str, context: str) -> bool:
     return value
 
 
+def _optional_str(mapping: dict[str, object], key: str) -> str | None:
+    value = mapping.get(key)
+    return value if isinstance(value, str) and value else None
+
+
 def _head_sha(value: str, context: str) -> str:
     if not _FULL_SHA.match(value):
         raise GithubPrStateParseError(f"{context} head is not a full sha")
     return value
+
+
+def _base_sha(base: object) -> str | None:
+    """The REST base's sha when it is a full sha; anything else is unknown."""
+    value = base.get("sha") if isinstance(base, dict) else None
+    return value if isinstance(value, str) and _FULL_SHA.match(value) else None
 
 
 def _label_names(nodes: object, context: str) -> tuple[str, ...]:
@@ -58,6 +69,12 @@ def _label_names(nodes: object, context: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _merge_state_status(pr: object) -> str | None:
+    """The GraphQL mergeStateStatus in the REST mergeable_state's lower case."""
+    value = pr.get("mergeStateStatus") if isinstance(pr, dict) else None
+    return value.lower() if isinstance(value, str) else None
+
+
 class ModelGithubPrStateFact(BaseModel):
     """Head, draft flag, title, labels, open state, merged and auto-merge state."""
 
@@ -67,6 +84,15 @@ class ModelGithubPrStateFact(BaseModel):
     pr_number: int = Field(gt=0)
     head_sha: str = Field(min_length=40, max_length=40)
     base_ref: str = Field(min_length=1)
+    base_sha: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40}$",
+        description=(
+            "The base branch's head as the REST read reported it (OMN-20750): "
+            "a conflict request is keyed on (PR, head, base head). None from "
+            "the GraphQL policy read, which does not ask for it."
+        ),
+    )
     draft: bool
     title: str
     labels: tuple[str, ...]
@@ -86,6 +112,15 @@ class ModelGithubPrStateFact(BaseModel):
     auto_merge_allowed: bool | None = Field(
         default=None,
         description="GraphQL read only: the repository allows auto-merge.",
+    )
+    mergeable_state: str | None = Field(
+        default=None,
+        description=(
+            "GitHub's merge state (clean, blocked, behind, dirty, unstable, "
+            "has_hooks, draft or unknown), as reported (OMN-20866): the REST "
+            "read's mergeable_state, or the GraphQL policy read's "
+            "mergeStateStatus in lower case. None when GitHub reported none."
+        ),
     )
 
     @classmethod
@@ -114,6 +149,7 @@ class ModelGithubPrStateFact(BaseModel):
             pr_number=number,
             head_sha=_head_sha(_require_str(head, "sha", f"{ctx}.head"), ctx),
             base_ref=_require_str(base, "ref", f"{ctx}.base"),
+            base_sha=_base_sha(base),
             draft=_require_bool(body, "draft", ctx),
             title=_require_str(body, "title", ctx),
             labels=_label_names(_require(body, "labels", ctx), ctx),
@@ -121,6 +157,7 @@ class ModelGithubPrStateFact(BaseModel):
             merged=_require_bool(body, "merged", ctx),
             auto_merge_armed=isinstance(auto_merge, dict),
             auto_merge_method=method,
+            mergeable_state=_optional_str(body, "mergeable_state"),
         )
 
     @classmethod
@@ -163,6 +200,7 @@ class ModelGithubPrStateFact(BaseModel):
             auto_merge_allowed=_require_bool(
                 repository, "autoMergeAllowed", f"{ctx}.repository"
             ),
+            mergeable_state=_merge_state_status(pr),
         )
 
 

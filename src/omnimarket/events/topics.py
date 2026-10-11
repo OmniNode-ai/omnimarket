@@ -79,6 +79,10 @@ MERGE_STATE_TRANSITION_TOPIC_V1 = "onex.evt.omnimarket.merge-state-transition.v1
 # with zero manual edits.
 OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-13317)
 
+# node_pr_lifecycle_fix_effect's command topic, routed by block_reason;
+# the landing orchestrator sends its conflict requests here.
+PR_LIFECYCLE_FIX_START_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-fix-start.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-20750)
+
 # Canonical RSD-3 write-EFFECT command (OMN-14941 born path). Thin-published by
 # the call-occ-companion-effect GHA caller (via the omniclaude reusable) on
 # product-PR opened/synchronize; consumed by node_occ_companion_effect, which
@@ -184,6 +188,8 @@ PR_HANDOFF_LEDGER_APPEND_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-handoff-le
 PR_HANDOFF_LEDGER_APPENDED_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-ledger-appended.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_ledger_effect contract.yaml publish_topics (OMN-20636)
 PR_STATE_OBSERVED_TOPIC_V1 = "onex.evt.omnimarket.pr-state-observed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_state_emit_effect, consumed by node_projection_pr_state and node_pr_handoff_orchestrator (OMN-19999, OMN-20636)
 CI_RUN_FAILED_TOPIC_V1 = "onex.evt.omnimarket.ci-run-failed.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle triage and orchestrator contracts
+GITHUB_CHECK_RUN_TOPIC_V1 = "onex.evt.github.check-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect detect_ci_red_check_run
+GITHUB_WORKFLOW_RUN_TOPIC_V1 = "onex.evt.github.workflow-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect record_workflow_run
 CI_RED_TRIAGE_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.ci-red-triage-decided.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator and reducer contracts
 PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator contract
 

@@ -1,34 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""EnumCheckRunConclusion: the check-runs API ``conclusion`` of one copy."""
+"""Export of the shared ``omnimarket.models.pr_head_check.enum_check_run_conclusion`` models for this node.
+
+The definitions live in :mod:`omnimarket.models.pr_head_check.enum_check_run_conclusion` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
-
-
-class EnumCheckRunConclusion(StrEnum):
-    """A completed check-run's ``conclusion``."""
-
-    SUCCESS = "success"
-    FAILURE = "failure"
-    NEUTRAL = "neutral"
-    CANCELLED = "cancelled"
-    SKIPPED = "skipped"
-    TIMED_OUT = "timed_out"
-    ACTION_REQUIRED = "action_required"
-    STALE = "stale"
-    STARTUP_FAILURE = "startup_failure"
-
-
-# Conclusions that pass a required context.
-CHECK_RUN_PASSING_CONCLUSIONS: frozenset[EnumCheckRunConclusion] = frozenset(
-    {
-        EnumCheckRunConclusion.SUCCESS,
-        EnumCheckRunConclusion.NEUTRAL,
-        EnumCheckRunConclusion.SKIPPED,
-    }
+from omnimarket.models.pr_head_check.enum_check_run_conclusion import (
+    CHECK_RUN_PASSING_CONCLUSIONS,
+    EnumCheckRunConclusion,
 )
 
-
-__all__: list[str] = ["CHECK_RUN_PASSING_CONCLUSIONS", "EnumCheckRunConclusion"]
+__all__: list[str] = [
+    "CHECK_RUN_PASSING_CONCLUSIONS",
+    "EnumCheckRunConclusion",
+]

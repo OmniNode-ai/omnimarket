@@ -184,6 +184,7 @@ def test_delegation_path_config_keys_cover_known_routing_path_reads() -> None:
                 "BIFROST_CONTRACT_PATH",
                 "BIFROST_OVERLAY_PATH",
                 "DELEGATION_ROUTING_TIERS_PATH",
+                "DELEGATION_ROUTING_OVERLAY_PATH",
                 "TASK_CLASS_CONTRACT_PATH",
                 "INFERENCE_PROTOCOL_CONFIG_PATH",
             }

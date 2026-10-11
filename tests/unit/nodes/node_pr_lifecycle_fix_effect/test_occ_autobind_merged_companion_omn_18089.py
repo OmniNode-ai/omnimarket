@@ -101,6 +101,8 @@ class TestHandAuthoredCompanionIsAGenuineBinding:
                 return _product_pr_payload(_bound_body(_MERGED_OCC))
             if path.endswith(f"/pulls/{_MERGED_OCC}"):
                 return {"head": {"ref": _MERGED_OCC_BRANCH}}
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
         def fake_rest_array(method: str, path: str, *, token=None) -> list:
@@ -218,6 +220,8 @@ class TestStampWriterRefusesToDisplaceAMergedCompanion:
             if method == "POST" and path.endswith("/comments"):
                 posted.append({"path": path, "body": body})
                 return {}
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
         def fake_rest_array(method: str, path: str, *, token=None) -> list:
@@ -272,6 +276,8 @@ class TestStampWriterRefusesToDisplaceAMergedCompanion:
             if method == "PATCH":
                 patched = True
                 return {}
+            if path.endswith("/contents/.github/workflows/call-occ-autobind.yml"):
+                return {}  # the base still carries its caller (OMN-20074)
             raise AssertionError(f"unexpected rest_json call: {method} {path}")
 
         with (

@@ -44,6 +44,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The rollback drill's readback equals the pre-pilot context set and the drill precedes the first counted PR."
     command: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
+  - kind: "tests"
+    description: "Dev requires repo-evidence / dod-verify from GitHub Actions only and none of the four OCC contexts, read from the live rules and branch protection."
+    command: "uv run pytest tests/ci/test_ruleset_readback_omn20072.py -q -k s6_ruleset"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -89,3 +92,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_omn20072_s5_pilot_evidence.py -q -k drill"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-s5-s6-ruleset-readback"
+    description: "The ruleset half of AC3: dev's active ruleset requires repo-evidence / dod-verify with GitHub Actions as the only source, and the live rules and branch protection require none of the four OCC contexts; planted payloads violate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ruleset_readback_omn20072.py -q -k s6_ruleset"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

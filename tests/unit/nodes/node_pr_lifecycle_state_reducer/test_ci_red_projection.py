@@ -58,7 +58,9 @@ def test_decision_projects_and_redelivery_upserts(
     }
     handler.handle_dict(payload)
     handler.handle_dict(payload)
-    rows = database.query(PR_LEDGER_PROJECTION_TABLE)
+    rows = database.query(
+        PR_LEDGER_PROJECTION_TABLE, {"sweep_id": str(event.correlation_id)}
+    )
     assert len(rows) == 1
     row = rows[0]
     assert row["sweep_id"] == str(event.correlation_id)
@@ -84,3 +86,58 @@ def test_reducer_has_explicit_decision_topic_route() -> None:
     ]
     assert len(entries) == 1
     assert entries[0]["message_category"] == "event"
+
+
+@pytest.mark.parametrize(
+    ("action", "applied", "members", "claimed"),
+    [
+        (
+            EnumCiRedAction.START_CAUSE_OWNER,
+            True,
+            (2606, 2607, 2608),
+            {2606, 2607, 2608},
+        ),
+        (EnumCiRedAction.START_CAUSE_OWNER, False, (2606, 2607, 2608), set()),
+        (EnumCiRedAction.JOINED_OWNER, False, (2606, 2607, 2608), set()),
+    ],
+)
+def test_applied_start_projects_one_owner_claim_row_per_member(
+    action: EnumCiRedAction, applied: bool, members: tuple[int, ...], claimed: set[int]
+) -> None:
+    decision_key = "OmniNode-ai/omniclaude#2608@head:branch-claim-check"
+    owner_key = "cause:OmniNode-ai/omniclaude:123456789abc"
+    event = ModelCiRedTriageDecided(
+        correlation_id=uuid5(NAMESPACE_URL, "onex:ci-red-decision:" + decision_key),
+        decision_key=decision_key,
+        owner_key=owner_key,
+        event_id="b" * 64,
+        repo="OmniNode-ai/omniclaude",
+        pr_number=2608,
+        head_sha="head",
+        check="branch-claim-check",
+        red_class=EnumCiRedClass.SHARED_CAUSE,
+        action=action,
+        action_applied=applied,
+        orchestrator_run_id="ci-red-owner",
+        members=members,
+        initial_state="ci_red:shared_cause",
+        evidence="class=shared_cause",
+        observed_at="2026-10-08T10:00:00Z",
+    )
+    database = InmemoryDatabaseAdapter()
+    payload = {
+        **event.model_dump(mode="json"),
+        "_topic": CI_RED_TRIAGE_DECIDED_TOPIC_V1,
+        "_db": database,
+    }
+    result = HandlerPrLifecycleStateReducer().handle_dict(payload)
+    HandlerPrLifecycleStateReducer().handle_dict(payload)
+    owner_sweep = str(uuid5(NAMESPACE_URL, "onex:ci-red-owner:" + owner_key))
+    rows = database.query(PR_LEDGER_PROJECTION_TABLE, {"sweep_id": owner_sweep})
+    assert result["rows_upserted"] == 1 + len(claimed)
+    assert {row["pr_number"] for row in rows} == claimed
+    assert len(rows) == len(claimed)
+    assert all(
+        f"claim=owner owner_key={owner_key}" in str(row["evidence"]) for row in rows
+    )
+    assert len(database.query(PR_LEDGER_PROJECTION_TABLE)) == 1 + len(claimed)

@@ -45,6 +45,8 @@ pytestmark = pytest.mark.unit
 _CORRELATION = UUID("00000000-0000-4000-8000-000000019831")
 _IDENTITY = "GITHUB_TOKEN"
 _SCENARIOS = all_scenarios()
+# Scenarios whose policy read chose a mutation other than the planned one.
+_READ_PICKS_THE_MUTATION = frozenset({"arm_auto_merge_clean_merges"})
 
 
 def _command(
@@ -217,7 +219,11 @@ async def test_dry_run_records_the_planned_requests_and_sends_nothing(
     assert result.requests == command.to_http_requests()
     # The planned requests are the first recorded ones, in order (a refused
     # arm or enqueue recorded only its policy read, so compare the overlap).
+    # An arm whose read finds the PR mergeable now merges instead of arming
+    # (OMN-20866): its plan holds the arm, so only the read is compared.
     recorded = tuple(e.request for e in scenario.exchanges)
     overlap = min(len(recorded), len(result.requests))
+    if scenario.scenario in _READ_PICKS_THE_MUTATION:
+        overlap = 1
     assert overlap >= 1
     assert recorded[:overlap] == result.requests[:overlap]

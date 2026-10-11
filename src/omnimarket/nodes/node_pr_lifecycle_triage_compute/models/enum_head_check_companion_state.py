@@ -1,40 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""EnumHeadCheckCompanionState: the change-control companion as seen at a head."""
+"""Export of the shared ``omnimarket.models.pr_head_check.enum_head_check_companion_state`` models for this node.
+
+The definitions live in :mod:`omnimarket.models.pr_head_check.enum_head_check_companion_state` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
-
-
-class EnumHeadCheckCompanionState(StrEnum):
-    """State of the PR's change-control companion when the head was read.
-
-    - ``NONE``: no companion is bound to the PR.
-    - ``OPEN``: a bound companion is open and mergeable.
-    - ``CONFLICTING``: a bound companion is open and in merge conflict.
-    - ``MERGED``: the bound companion has merged.
-    - ``CLOSED``: the bound companion was closed without merging.
-    - ``DECLINED``: the companion producer refused to derive one.
-    """
-
-    NONE = "none"
-    OPEN = "open"
-    CONFLICTING = "conflicting"
-    MERGED = "merged"
-    CLOSED = "closed"
-    DECLINED = "declined"
-
-
-# States in which a companion PR exists and is named.
-COMPANION_STATES_WITH_PR: frozenset[EnumHeadCheckCompanionState] = frozenset(
-    {
-        EnumHeadCheckCompanionState.OPEN,
-        EnumHeadCheckCompanionState.CONFLICTING,
-        EnumHeadCheckCompanionState.MERGED,
-        EnumHeadCheckCompanionState.CLOSED,
-    }
+from omnimarket.models.pr_head_check.enum_head_check_companion_state import (
+    COMPANION_STATES_WITH_PR,
+    EnumHeadCheckCompanionState,
 )
 
-
-__all__: list[str] = ["COMPANION_STATES_WITH_PR", "EnumHeadCheckCompanionState"]
+__all__: list[str] = [
+    "COMPANION_STATES_WITH_PR",
+    "EnumHeadCheckCompanionState",
+]

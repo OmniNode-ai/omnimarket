@@ -102,6 +102,7 @@ class TestMarkedFields:
         assert marked == {
             ("bifrost_delegation.yaml", "backends[].backend_id", kind.BACKEND),
             ("bifrost_delegation.yaml", "backends[].provider", kind.PROVIDER),
+            ("bifrost_delegation.yaml", "backends[].harness", kind.PROVIDER),
             ("bifrost_delegation.yaml", "backends[].endpoint_url", kind.ENDPOINT),
             ("bifrost_delegation.yaml", "backends[].model_name", kind.MODEL_NAME),
             ("bifrost_delegation.yaml", "backends[].secret_ref", kind.SECRET_REF),
@@ -175,11 +176,18 @@ class TestRedOnPr3624:
             "claude-sonnet-5-5",
             "claude-opus-5-5",
         } <= new_models
+        # The backend model declares kind, harness, surface and tenant_scope as
+        # fields, so they are no longer undeclared keys. ``harness`` names the
+        # vendor CLI a backend runs and is marked as a provider fact, so the
+        # harness each added backend names is refused as a new fact; the other
+        # three are closed enums that name no host, model, credential or vendor.
+        new_harnesses = {
+            f.value
+            for f in result.new_facts
+            if f.kind is EnumDeploymentFactKind.PROVIDER and f.path.endswith(".harness")
+        }
+        assert new_harnesses == {"codex", "claude-glm", "claude"}
         assert {(k.file_name, k.path) for k in result.new_undeclared_keys} == {
-            ("bifrost_delegation.yaml", "backends[].kind"),
-            ("bifrost_delegation.yaml", "backends[].harness"),
-            ("bifrost_delegation.yaml", "backends[].surface"),
-            ("bifrost_delegation.yaml", "backends[].tenant_scope"),
             ("routing_tiers.yaml", "harness_tiers"),
             ("task_class_contracts.v1.yaml", "task_classes.{}.escalation_chain"),
         }

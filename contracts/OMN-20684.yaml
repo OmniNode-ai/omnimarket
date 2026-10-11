@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20684"
+title: "The canonical-clone git hook shell scripts become a declared guard node"
+summary: "This is the omnimarket half of AC2. node_host_reconcile_effect read the canonical-guard surface by byte-comparing the omnibase_infra shell scripts, and node_host_reconcile_compute named the infra installer script in its remedy. Both now go through the guard node's onex-canonical-clone-install readback, and no omnimarket source names the retired scripts. The guard node itself lives in its own package (its own merged pull requests) and the omnibase_infra copies are deleted by their own pull request."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-no-omnimarket-caller-of-the-retired-entry-points"
+    statement: "No omnimarket source invokes the retired canonical-clone shell scripts; the host reconcile reads the guard through the guard node's installer readback."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the old script, workflow or module entry point is deleted and no caller still invokes it -- falsifier: a repository grep for the old entry point name outside the node returns a caller"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC2 (omnimarket half): the scan of src/omnimarket for the retired script names finds no caller, a planted caller is found, and the guard surface is read through the installer readback."
+    command: "uv run pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_compute.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20684-ac2-omnimarket-callers-repointed"
+    description: "AC2 (omnimarket half): no omnimarket source names a retired canonical-clone script, and the guard surface is read through the installer readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_compute.py -q -p no:randomly -k 'retired or guard'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20684-deploy-probe"
+    description: "Deploy probe. The host reconcile effect handler at the checked-out commit carries the installer-readback parser this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def _parse_guard_readback'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -305,7 +305,18 @@ class TestNoClaudeEntry:
     def test_no_platform_rung_is_a_claude_rung(self) -> None:
         # "not as a default, not as a fallback": the platform contract the
         # catalogue mirrors has no Anthropic surface either.
+        # OMN-20287: RULING 2026-10-05T22:27:48Z (decision D1) amends INV-064
+        # so Claude Code may be a house-only delegation backend on the internal
+        # surface. Such a backend is a declared `kind: harness` rung that no
+        # customer reaches (INV-068); it is exempt here only when it declares
+        # exactly that, and every other platform rung keeps the rule.
         for b in _platform_backends():
+            if b.get("kind") == "harness":
+                assert b.get("surface") == "internal", b.get("backend_id")
+                assert b.get("tenant_scope") == "house", b.get("backend_id")
+                assert not b.get("endpoint_url"), b.get("backend_id")
+                assert not b.get("secret_ref"), b.get("backend_id")
+                continue
             for field in ("backend_id", "endpoint_url", "model_name", "secret_ref"):
                 value = b.get(field)
                 if isinstance(value, str):

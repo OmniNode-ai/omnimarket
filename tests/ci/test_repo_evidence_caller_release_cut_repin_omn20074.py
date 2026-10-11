@@ -25,7 +25,7 @@ CALLER_PATH = (
 def test_caller_pins_the_reusable_that_derives_writer_release_cut_at_head() -> None:
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
     assert caller["jobs"]["repo-evidence"]["uses"].endswith(
-        "@fb0c6c2117d5868a398b0920cd0048d0824415b1"
+        "@4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa"
     )
 
 

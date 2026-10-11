@@ -8,6 +8,16 @@ from .model_lab_fill_fallback_plan import (
     ModelLabFillFallbackPlanRequest,
     ModelLabFillFallbackPlanResult,
 )
+from .model_lab_fill_headroom import (
+    EnumLabFillPlanFailure,
+    ModelLabFillDispatchRecord,
+    ModelLabFillFanoutRequest,
+    ModelLabFillFanoutResult,
+    ModelLabFillHeadroomPlanRequest,
+    ModelLabFillHeadroomPlanResult,
+    ModelLabFillHeadroomUnknown,
+    ModelLabFillHostProbe,
+)
 from .model_lab_fill_lane_render import (
     ModelLabFillFallbackItem,
     ModelLabFillLaneRenderRequest,
@@ -50,6 +60,7 @@ from .model_lab_fill_status import (
 )
 
 __all__ = [
+    "EnumLabFillPlanFailure",
     "ModelLabFillApprovedRow",
     "ModelLabFillCandidateChoiceRequest",
     "ModelLabFillCandidateChoiceResult",
@@ -59,12 +70,19 @@ __all__ = [
     "ModelLabFillDispatchItem",
     "ModelLabFillDispatchPlanRequest",
     "ModelLabFillDispatchPlanResult",
+    "ModelLabFillDispatchRecord",
     "ModelLabFillFallback",
     "ModelLabFillFallbackItem",
     "ModelLabFillFallbackPlanRequest",
     "ModelLabFillFallbackPlanResult",
+    "ModelLabFillFanoutRequest",
+    "ModelLabFillFanoutResult",
+    "ModelLabFillHeadroomPlanRequest",
+    "ModelLabFillHeadroomPlanResult",
     "ModelLabFillHeadroomPolicy",
+    "ModelLabFillHeadroomUnknown",
     "ModelLabFillHostCapacity",
+    "ModelLabFillHostProbe",
     "ModelLabFillLaneRenderRequest",
     "ModelLabFillLaneRenderResult",
     "ModelLabFillLaunch",

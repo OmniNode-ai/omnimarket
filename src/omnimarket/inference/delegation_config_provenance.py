@@ -221,6 +221,7 @@ def resolve_optional_path_config(
 #: not of either key alone (OMN-15628, OMN-18676).
 BIFROST_CONTRACT_CONFIG_KEY: Final[str] = "BIFROST_CONTRACT_PATH"
 BIFROST_OVERLAY_CONFIG_KEY: Final[str] = "BIFROST_OVERLAY_PATH"
+DELEGATION_ROUTING_OVERLAY_CONFIG_KEY: Final[str] = "DELEGATION_ROUTING_OVERLAY_PATH"
 
 
 class ModelBifrostPathBinding(BaseModel):
@@ -327,6 +328,7 @@ DELEGATION_PATH_CONFIG_KEYS: frozenset[str] = frozenset(
         "BIFROST_CONTRACT_PATH",
         "BIFROST_OVERLAY_PATH",
         "DELEGATION_ROUTING_TIERS_PATH",
+        "DELEGATION_ROUTING_OVERLAY_PATH",
         "TASK_CLASS_CONTRACT_PATH",
         "INFERENCE_PROTOCOL_CONFIG_PATH",
     }
@@ -337,6 +339,7 @@ __all__: list[str] = [
     "BIFROST_CONTRACT_CONFIG_KEY",
     "BIFROST_OVERLAY_CONFIG_KEY",
     "DELEGATION_PATH_CONFIG_KEYS",
+    "DELEGATION_ROUTING_OVERLAY_CONFIG_KEY",
     "LOADER_PACKAGED_DEFAULT",
     "EnumDelegationConfigSource",
     "ModelBifrostPathBinding",

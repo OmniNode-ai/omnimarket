@@ -368,7 +368,9 @@ def test_a_truncated_answer_still_climbs(tmp_path: Path) -> None:
         f"a truncated answer must still reach the higher tier: {called}"
     )
     assert result["status"] == "failed"
-    assert all(
-        attempt["acceptance_decision"] == DECISION_CLIMB
-        for attempt in result["attempts"]
-    )
+    # OMN-18978: every rung that was followed by another climbed; the cloud
+    # rung is the top of this ladder, so the run ended on it and it terminates.
+    *climbed, last = result["attempts"]
+    assert all(attempt["acceptance_decision"] == DECISION_CLIMB for attempt in climbed)
+    assert last["acceptance_decision"] == DECISION_TERMINATE
+    assert last["tier"] == "cheap_cloud"

@@ -107,3 +107,56 @@ def job_attempts_from_jobs_body(body: dict[str, object] | None) -> dict[int, int
             raise ValueError("jobs entry lacks an integer id or run_attempt")
         attempts[job_id] = attempt
     return attempts
+
+
+def required_contexts_from_branch_body(body: dict[str, object] | None) -> set[str]:
+    """Required status contexts of a branch's classic protection (``GET .../branches/{b}``).
+
+    An unprotected branch, or protection with no required status checks,
+    requires none.
+    """
+    if body is None:
+        raise ValueError("branch response has no body")
+    protection = body.get("protection")
+    if not isinstance(protection, dict):
+        return set()
+    checks = protection.get("required_status_checks")
+    if not isinstance(checks, dict):
+        return set()
+    contexts = checks.get("contexts", [])
+    if not isinstance(contexts, list) or not all(isinstance(c, str) for c in contexts):
+        raise ValueError("required_status_checks.contexts is not a list of names")
+    return set(contexts)
+
+
+def required_contexts_from_rules_body(body: dict[str, object] | None) -> set[str]:
+    """Required status contexts of the rulesets in force (``GET .../rules/branches/{b}``).
+
+    The endpoint answers a JSON array, which the landing transport wraps as
+    ``{"value": [...]}``.
+    """
+    if body is None:
+        raise ValueError("rules response has no body")
+    rules = body.get("value")
+    if not isinstance(rules, list):
+        raise ValueError("rules response is not an array")
+    contexts: set[str] = set()
+    for rule in rules:
+        if not isinstance(rule, dict):
+            raise ValueError("rules entry is not an object")
+        if rule.get("type") != "required_status_checks":
+            continue
+        parameters = rule.get("parameters")
+        checks = (
+            parameters.get("required_status_checks")
+            if isinstance(parameters, dict)
+            else None
+        )
+        if not isinstance(checks, list):
+            raise ValueError("required_status_checks rule has no checks list")
+        for check in checks:
+            context = check.get("context") if isinstance(check, dict) else None
+            if not isinstance(context, str) or not context:
+                raise ValueError("required status check has no context name")
+            contexts.add(context)
+    return contexts

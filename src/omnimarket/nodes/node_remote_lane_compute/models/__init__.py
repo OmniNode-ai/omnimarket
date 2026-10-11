@@ -4,16 +4,26 @@
 
 from .model_remote_lane_placement import (
     CODEX_ENGINE,
+    RECONCILE_SCRIPT,
+    EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
+    ModelRemoteLaneHostVenv,
     ModelRemoteLaneHostVerdict,
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
+    ModelRemoteLaneReconcileIntent,
+    ModelRemoteLaneVenvDrift,
 )
 
 __all__ = [
     "CODEX_ENGINE",
+    "RECONCILE_SCRIPT",
+    "EnumRemoteLaneOutcome",
     "ModelRemoteLaneHostReading",
+    "ModelRemoteLaneHostVenv",
     "ModelRemoteLaneHostVerdict",
     "ModelRemoteLanePlacementRequest",
     "ModelRemoteLanePlacementResult",
+    "ModelRemoteLaneReconcileIntent",
+    "ModelRemoteLaneVenvDrift",
 ]

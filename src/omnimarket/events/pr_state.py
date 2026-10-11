@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+ISO_Z_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+PR_STATE_SCHEMA_V2: Final = 2
 
 
 class EnumPrState(StrEnum):
@@ -54,9 +58,7 @@ class ModelPrStateEmitRequest(BaseModel):
     pending_contexts: tuple[str, ...]
     ci_read_at: str
     merged_at: str
-    observed_at: str = Field(
-        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
-    )
+    observed_at: str = Field(pattern=ISO_Z_PATTERN)
 
     @field_validator("observed_at")
     @classmethod
@@ -84,3 +86,83 @@ class ModelPrStateObservedEvent(ModelPrStateEmitRequest):
             raise ValueError("digest does not match canonical PR state")
         object.__setattr__(self, "digest", digest)
         return self
+
+
+class ModelPrCheckFact(BaseModel):
+    """One check's newest completed copy: what a red-CI consumer needs without a GitHub read.
+
+    ``run_id`` and ``workflow`` name the GitHub Actions workflow run the check ran in. A check
+    posted by another app has no workflow run, so both are empty there (``run_id`` 0).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str = Field(min_length=1)
+    conclusion: str = Field(min_length=1)
+    run_id: int = Field(ge=0)
+    workflow: str
+    completed_at: str = Field(pattern=ISO_Z_PATTERN)
+
+    @model_validator(mode="after")
+    def run_and_workflow_come_together(self) -> Self:
+        if (self.run_id == 0) != (self.workflow == ""):
+            raise ValueError("run_id and workflow must both be set or both be empty")
+        datetime.fromisoformat(self.completed_at)
+        return self
+
+
+class ModelPrStateCheckFacts(BaseModel):
+    """Schema version 2 additions, shared by the emit request and the observed event.
+
+    ``checks`` holds the facts of the head's red contexts. ``base_red_checks`` names the checks
+    that are red on the base branch's tip as the watcher last read it, and ``base_read`` says
+    whether it read the tip at all (an unread base is not a green one).
+    """
+
+    schema_version: Literal[2] = PR_STATE_SCHEMA_V2
+    checks: tuple[ModelPrCheckFact, ...]
+    base_red_checks: tuple[str, ...]
+    base_read: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def checks_name_red_contexts_once(self) -> Self:
+        red = getattr(self, "red_contexts", ())
+        names = [fact.check for fact in self.checks]
+        if len(names) != len(set(names)):
+            raise ValueError("checks must name each check once")
+        if not set(names) <= set(red):
+            raise ValueError("checks must name red_contexts only")
+        if self.base_red_checks != tuple(sorted(set(self.base_red_checks))):
+            raise ValueError("base_red_checks must be sorted and unique")
+        if self.base_red_checks and not self.base_read:
+            raise ValueError("base_red_checks without base_read")
+        return self
+
+
+class ModelPrStateEmitRequestV2(ModelPrStateEmitRequest, ModelPrStateCheckFacts):
+    pass
+
+
+class ModelPrStateObservedEventV2(ModelPrStateObservedEvent, ModelPrStateCheckFacts):
+    pass
+
+
+PR_STATE_V2_FIELDS = frozenset(ModelPrStateCheckFacts.model_fields)
+
+
+def pr_state_event_from_wire(
+    value: Mapping[str, object],
+) -> ModelPrStateObservedEvent:
+    """Type a watcher wire payload of either schema version, ignoring transport enrichment.
+
+    A payload without ``schema_version`` is version 1. The digest is required and checked.
+    """
+    event_cls: type[ModelPrStateObservedEvent] = (
+        ModelPrStateObservedEventV2
+        if value.get("schema_version") == PR_STATE_SCHEMA_V2
+        else ModelPrStateObservedEvent
+    )
+    payload = {k: value[k] for k in event_cls.model_fields if k in value}
+    if "digest" not in payload:
+        raise ValueError("wire observation must carry digest")
+    return event_cls.model_validate_json(json.dumps(payload))

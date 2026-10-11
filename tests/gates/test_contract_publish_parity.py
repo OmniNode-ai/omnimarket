@@ -139,3 +139,58 @@ def test_terminal_event_is_exempt(tmp_path: Path) -> None:
     )
 
     assert scan_publish_parity(tmp_path) == []
+
+
+def _failure_terminal_node(tmp_path: Path, handler_source: str) -> None:
+    node_dir = tmp_path / "node_example_compute"
+    (node_dir / "handlers").mkdir(parents=True)
+    (node_dir / "handlers" / "handler_example.py").write_text(
+        handler_source, encoding="utf-8"
+    )
+    (node_dir / "contract.yaml").write_text(
+        "\n".join(
+            [
+                "name: node_example_compute",
+                "terminal_event: onex.evt.omnimarket.example-decided.v1",
+                "runtime_dispatch:",
+                "  terminal_events:",
+                "    success: onex.evt.omnimarket.example-decided.v1",
+                "    failure: onex.evt.omnimarket.example-failed.v1",
+                "event_bus:",
+                "  publish_topics:",
+                "    - onex.evt.omnimarket.example-decided.v1",
+                "    - onex.evt.omnimarket.example-failed.v1",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.unit
+def test_failure_terminal_is_exempt_when_the_node_returns_a_failure_cause(
+    tmp_path: Path,
+) -> None:
+    """The runtime's failure-terminal guard publishes a result carrying
+    ``terminal_failure_cause`` on the declared failure terminal (OMN-20867)."""
+    _failure_terminal_node(
+        tmp_path,
+        "class Result:\n    terminal_failure_cause: str | None = None\n",
+    )
+
+    assert scan_publish_parity(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_failure_terminal_without_a_failure_cause_is_still_an_offender(
+    tmp_path: Path,
+) -> None:
+    """A failure terminal no result can reach stays a declaration nothing publishes."""
+    _failure_terminal_node(tmp_path, "class Result:\n    ok: bool = True\n")
+
+    assert scan_publish_parity(tmp_path) == [
+        ModelPublishParityFinding(
+            node="node_example_compute",
+            undeclared_topics=("onex.evt.omnimarket.example-failed.v1",),
+        )
+    ]

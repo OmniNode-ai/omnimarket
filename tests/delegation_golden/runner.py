@@ -58,7 +58,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
@@ -67,6 +67,9 @@ from tests.delegation_golden.corpus_loader import (
     ModelCorpusCase,
     load_corpus,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 log = logging.getLogger(__name__)
 
@@ -213,12 +216,10 @@ def per_case_timeout_s() -> float:
     ``node_delegation_orchestrator`` (``completion_bound.max_wall_seconds``,
     900s), which is not the node that serves this probe. The corpus is published
     to ``node_delegate_skill_orchestrator``'s command topic, and THAT node
-    declares its own, much shorter wall-clock bound:
-    ``handler_execution_budget.max_handler_duration_seconds`` (OMN-15504). Its
-    handler wraps the whole delegation in ``asyncio.wait_for`` at that value and
-    commits a ``status="timeout"`` terminal when it expires, so no case on this
-    path can take longer than that budget plus projection lag, whatever a
-    different node's contract says about a longer one.
+    cancels a delegation on its own, much shorter wall-clock bound (see
+    ``handler_cancel_bound_s``) and commits a ``status="timeout"`` terminal when
+    it expires, so no case on this path can take longer than that bound plus
+    projection lag, whatever a different node's contract says about a longer one.
 
     Waiting 900s per case was therefore not patience, it was 660 seconds of
     waiting for an event the platform had already decided not to produce --
@@ -231,16 +232,55 @@ def per_case_timeout_s() -> float:
     override = os.environ.get("ONEX_E2E_POLL_TIMEOUT_S", "").strip()
     if override:
         return float(override)
-    return float(declared_handler_budget_s()) + projection_margin_s()
+    return float(handler_cancel_bound_s()) + projection_margin_s()
 
 
-def declared_handler_budget_s() -> int:
-    """The delegate-skill orchestrator's own declared handler wall-clock bound."""
-    from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
-        load_handler_execution_budget,
+def handler_cancel_bound_s(task_types: Iterable[str] | None = None) -> int:
+    """When the delegate-skill handler cancels a corpus case, measured from pickup.
+
+    OMN-18349, third correction. The deadline used to read
+    ``handler_execution_budget.max_handler_duration_seconds`` (240s). The
+    handler does not cancel there. It wraps the dispatch in ``asyncio.wait_for``
+    at the TASK CLASS's execution budget, ``task_class_timeout_ceiling_seconds``
+    plus ``terminal_delivery_margin_seconds`` (240 + 60 for every class in
+    ``configs/task_class_contracts.v1.yaml``), so its budget-timeout terminal is
+    committed 300s after pickup -- and pickup is never before publish. A 300s
+    deadline counted from publish (240 + the 60s projection margin) therefore
+    expired at or before the very terminal it was waiting for, every time a
+    case ran to budget. Measured on nightly run 38035283766:
+
+      * I9 attempt 2 (bbec31e9) published 09:32:50.646Z; the runner scored it
+        "no delegation_events row" at 09:37:51.307Z; the handler's budget
+        terminal was projected at 09:37:51.792Z, 0.5s later.
+      * I9 attempt 1 (b18e443f) published 07:51:48.377Z; its row was created
+        at 07:56:48.778Z, 300.4s after publish, against a 300.0s deadline.
+      * I8 attempt 1 (00d30ea1) published 07:46:47.000Z; its row was created
+        at 07:51:55.470Z, 308.5s after publish.
+
+    The bound is the largest over the task classes being waited on (the whole
+    integration corpus by default), because a wave shares one deadline.
+
+    The runner's deadline counts from publish and this bound counts from
+    pickup, so the projection margin added to it also has to absorb the
+    publish-to-pickup latency, not only projection lag. On the three runs above
+    the row arrived 0.4s to 8.5s past the 300s bound, well inside the 60s
+    margin; a pickup later than the margin would still score a case as missing
+    its row.
+    """
+    from omnimarket.inference.task_class_authority import (
+        resolve_task_class_execution_budget,
     )
 
-    return load_handler_execution_budget().max_handler_duration_seconds
+    if task_types is None:
+        task_types = {case.task_type for case in load_corpus().integration_cases()}
+    bounds = [
+        budget.task_class_timeout_ceiling_seconds
+        + budget.terminal_delivery_margin_seconds
+        for budget in map(resolve_task_class_execution_budget, set(task_types))
+    ]
+    if not bounds:
+        raise ValueError("no task classes to derive a cancel bound from")
+    return max(bounds)
 
 
 _BIFROST_DELEGATION_CONFIG = (
@@ -846,8 +886,8 @@ def _timed_out_result(
         f"{timeout}s (lane={_LANE} pg={PG_HOST}:{PG_PORT}). The broker accepted "
         "the command, so either no runtime on this lane consumes the "
         "delegate-skill command topic, or the delegation produced no terminal "
-        "at all -- not even the cancellation the declared handler execution "
-        f"budget of {declared_handler_budget_s()}s should have committed."
+        "at all -- not even the cancellation the delegate-skill handler "
+        f"commits {handler_cancel_bound_s([case.task_type])}s after pickup."
     )
     return CaseResult(
         case_id=case.id,

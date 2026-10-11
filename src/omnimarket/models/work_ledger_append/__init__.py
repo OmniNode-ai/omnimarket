@@ -6,10 +6,12 @@ from omnimarket.models.work_ledger_append.model_work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+    ModelWorkLedgerTerminalRefused,
 )
 
 __all__ = [
     "EnumWorkLedgerAppendStatus",
     "ModelWorkLedgerAppendReceipt",
     "ModelWorkLedgerAppendRequest",
+    "ModelWorkLedgerTerminalRefused",
 ]

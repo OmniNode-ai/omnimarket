@@ -58,8 +58,8 @@ class TestAislopSweepGateWiring:
     def test_aislop_sweep_runs_strict_diff_scan(self) -> None:
         """The job must run the strict AI-slop scanner scoped to the PR diff."""
         content = CI_WORKFLOW.read_text()
-        assert "check_ai_slop.py" in content, (
-            "aislop-sweep must invoke check_ai_slop.py (canonical scanner)"
+        assert "node_ai_slop_check_compute.runtime_ai_slop_check" in content, (
+            "aislop-sweep must invoke the omnibase_core ai-slop scanner node"
         )
         assert "--strict" in content, (
             "aislop-sweep must run the scanner in --strict mode"

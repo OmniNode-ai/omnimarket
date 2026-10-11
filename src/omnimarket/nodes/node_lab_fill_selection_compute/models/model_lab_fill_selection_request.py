@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from omnimarket.models.lab_fill import ModelLabFillPrLandFacts
+
 from .model_lab_fill_deployment import ModelLabFillDeployment
 
 
@@ -43,6 +45,8 @@ class ModelLandingControllerFacts:
     read: bool = False
     held_prs: tuple[str, ...] = ()
     escalated_prs: tuple[str, ...] = ()
+    # PRs the controller parked (a cause park), for the idle-slot pr-land fallback (OMN-20864).
+    parked_prs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,3 +84,8 @@ class ModelLabFillSelectionRequest:
     scope_repos: tuple[
         str, ...
     ] = ()  # repositories lab-fill works in; empty disables the scope rule
+    # Idle-slot pr-land fallback (OMN-20864): the lab's idle slots this run, and the open PRs with
+    # their landing facts and hold source. The slots ordinary work leaves idle go to pr-land lanes on
+    # parked, escalated or unowned-red PRs; None skips the fallback.
+    idle_slots: int = 0
+    pr_land: ModelLabFillPrLandFacts | None = None

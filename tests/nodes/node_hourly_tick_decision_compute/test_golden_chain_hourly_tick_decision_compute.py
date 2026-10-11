@@ -81,7 +81,10 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
     contract = _contract()
     assert contract["node_type"] == "compute"
     assert contract["runtime_dispatch"]["command_topic"] == COMMAND_TOPIC
-    assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
+    assert contract["event_bus"]["subscribe_topics"] == [
+        COMMAND_TOPIC,
+        "onex.intent.platform.runtime-tick.v1",
+    ]
     assert contract["event_bus"]["publish_topics"] == [TERMINAL_TOPIC]
     assert contract["terminal_event"] == TERMINAL_TOPIC
     binding = contract["handler"]
