@@ -4,7 +4,9 @@
 
 Plan section 5: the orchestrator calls three pure nodes in process, never over
 the bus: the landing reducer (T6), the head-check classifier (T3/T8) and the arm
-gate. Each is a protocol here so the orchestrator is tested against the real
+gate. Before an arm it also reads the ledger's gate facts (OMN-20866): the
+HOLD rows in force and the head's lab pass, from the projections the bus
+feeds. Each is a protocol here so the orchestrator is tested against the real
 handler or an explicit double, and so the handler can be composed on the lab
 (wave 3) without changing this node.
 
@@ -19,6 +21,7 @@ from __future__ import annotations
 import importlib
 import inspect
 from collections.abc import Awaitable
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from omnimarket.events.pr_arm_gate import ModelArmGateDecision, ModelArmGateRequest
@@ -31,6 +34,9 @@ from omnimarket.events.pr_landing_github.model_pr_landing_github_completed impor
 from omnimarket.events.pr_landing_reduce import (
     ModelPrLandingReduceInput,
     ModelPrLandingReduceOutput,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_gate_facts import (
+    ModelPrLandingGateFacts,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workflow_row import (
     ModelPrLandingWorkflowRow,
@@ -77,6 +83,20 @@ class ProtocolPrLandingHeadCheckClassifier(Protocol):
         completed: ModelPrLandingGithubCompleted,
         row: ModelPrLandingWorkflowRow,
     ) -> ModelHeadCheckVerdict: ...
+
+
+@runtime_checkable
+class ProtocolPrLandingGateFacts(Protocol):
+    """The ledger facts one arm decision reads (OMN-20866): holds and the lab pass.
+
+    The one read the leg makes beside its pure nodes. The default
+    (:mod:`.gate_facts_reader`) reads the lab projections the bus feeds; a
+    fact it cannot read comes back UNKNOWN, never empty.
+    """
+
+    async def read(
+        self, repository: str, pr_number: int, head_sha: str, now: datetime
+    ) -> ModelPrLandingGateFacts: ...
 
 
 async def call_reducer(
@@ -127,6 +147,7 @@ __all__: list[str] = [
     "LazyPrLandingReducer",
     "PrLandingPortUnavailableError",
     "ProtocolPrLandingArmGate",
+    "ProtocolPrLandingGateFacts",
     "ProtocolPrLandingHeadCheckClassifier",
     "ProtocolPrLandingReducer",
     "call_reducer",

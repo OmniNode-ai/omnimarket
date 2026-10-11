@@ -359,3 +359,182 @@ def test_runtime_tick_route_reads_no_host_file_env_or_process(
         if needle in text
     ]
     assert found == []
+
+
+# --- OMN-20867 AC3: jitter loses no window; one tick is one record ------------------------
+
+_EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
+
+
+def _slot_aligned_ticks(
+    start: dt.datetime, periods: list[float], interval_ms: int = TICK_MS
+) -> list[ModelRuntimeTick]:
+    """The ticks a slot-aligned runtime scheduler emits when its loop wakes ``periods`` apart.
+
+    Each tick carries the epoch-aligned slot it was due on as ``scheduled_at``; the next tick
+    is due on the first slot after this tick's ``now``. The wake times run late by whatever
+    the period says, as the dev lane's did (1.12 s median against 1000 ms).
+    """
+    slot = dt.timedelta(milliseconds=interval_ms)
+    ticks: list[ModelRuntimeTick] = []
+    now = start
+    due = _EPOCH + ((start - _EPOCH) // slot) * slot
+    for seq, period in enumerate(periods, start=1):
+        ticks.append(
+            ModelRuntimeTick(
+                now=now,
+                tick_id=uuid4(),
+                sequence_number=seq,
+                scheduled_at=due,
+                correlation_id=uuid4(),
+                scheduler_id="omn20867-test",
+                tick_interval_ms=interval_ms,
+            )
+        )
+        due = _EPOCH + ((now - _EPOCH) // slot + 1) * slot
+        now = now + dt.timedelta(seconds=period)
+    return ticks
+
+
+def _jittered_periods(count: int) -> list[float]:
+    """1.12 s steady, with the slow ticks the dev lane showed (1.56 s p90, 3.3 s max)."""
+    pattern = [1.12, 1.12, 1.106, 1.559, 1.12, 1.03, 3.3, 1.12, 1.25, 1.12]
+    return [pattern[i % len(pattern)] for i in range(count)]
+
+
+@pytest.mark.parametrize(
+    ("node", "key", "module", "cls", "workflow", "interval", "offset"),
+    SCHEDULED,
+    ids=IDS,
+)
+def test_jittered_ticks_fire_every_window_exactly_once(
+    node: str,
+    key: str,
+    module: str,
+    cls: str,
+    workflow: str,
+    interval: int,
+    offset: int,
+) -> None:
+    handler = _handler(node, module, cls)
+    # 16:41:09Z for about three hours: crosses 16:50, 17:00 and 17:10, which the dev lane
+    # missed, and every window of all three schedules after them.
+    start = dt.datetime(2026, 10, 10, 16, 41, 9, 314184, tzinfo=dt.UTC)
+    ticks = _slot_aligned_ticks(start, _jittered_periods(9600))
+    fired = [
+        f.window_start for f in (handler.handle(t) for t in ticks) if f is not None
+    ]
+    last = ticks[-1].now
+    expected = [
+        w
+        for w in (
+            dt.datetime(2026, 10, 10, 16, tzinfo=dt.UTC) + dt.timedelta(seconds=s)
+            for s in range(offset, 6 * 3600, interval)
+        )
+        if start < w <= last
+    ]
+    assert len(expected) >= 3
+    assert fired == expected
+
+
+def test_jittered_ticks_open_the_audit_trail_daily_slot_exactly_once() -> None:
+    from omnimarket.nodes.node_audit_trail_compact_schedule_compute.handlers.handler_audit_trail_compact_schedule import (
+        HandlerAuditTrailCompactSchedule,
+        schedule_config,
+    )
+
+    cfg = schedule_config()
+    slot = dt.datetime(
+        2026, 10, 10, cfg.run_hour_utc, cfg.run_minute_utc, tzinfo=dt.UTC
+    )
+    handler = HandlerAuditTrailCompactSchedule()
+    for lead in (0.05, 0.3, 0.6, 0.95):
+        ticks = _slot_aligned_ticks(
+            slot - dt.timedelta(seconds=60 + lead), _jittered_periods(120)
+        )
+        fires = [t.now for t in ticks if handler.handle(t) is not None]
+        assert len(fires) == 1, (lead, fires)
+        assert fires[0] >= slot
+
+
+PRUNE_NODES = ("node_dead_letter_prune_effect", "node_consumer_flow_prune_effect")
+
+
+async def test_runtime_tick_boot_one_tick_is_one_record_and_dead_letters_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Every tick subscriber wired together: the tick and its one fire are the only records.
+
+    The two prune effects returned a result on every tick with no publish topic declared,
+    so the boundary dead-lettered each tick twice and the DLQ replay published it back onto
+    the tick topic up to five more times; every replay fired the window again.
+    """
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("overlay_version: 1.0.0\nenvironment: test\nscope: env\n")
+    overlay.chmod(0o600)
+    monkeypatch.setenv("OMNIMARKET_PRUNE_BINDING_OVERLAY", str(overlay))
+    for name in (
+        "ONEX_DEAD_LETTER_ARCHIVE_DIR",
+        "ONEX_CONSUMER_FLOW_ARCHIVE_DIR",
+        "OMNINODE_INTERNAL_DB_URL",
+        "OMNIBASE_INFRA_DB_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    nodes = [row[0] for row in SCHEDULED] + list(PRUNE_NODES)
+    manifest = discover_contracts_from_paths(
+        [NODES / node / "contract.yaml" for node in nodes]
+    )
+    assert not manifest.errors, manifest.errors
+
+    bus = EventBusInmemory(environment="omn20867", group="omn20867")
+    await bus.start()
+    published: list[str] = []
+    dead_lettered: list[str] = []
+    publish = bus.publish
+
+    async def _recording_publish(topic: str, *args: Any, **kwargs: Any) -> None:
+        published.append(topic)
+        await publish(topic, *args, **kwargs)
+
+    async def _recording_dlq(**kwargs: Any) -> bool:
+        dead_lettered.append(str(kwargs.get("original_topic")))
+        return True
+
+    monkeypatch.setattr(bus, "publish", _recording_publish)
+    monkeypatch.setattr(bus, "_publish_raw_to_dlq", _recording_dlq, raising=False)
+
+    engine = MessageDispatchEngine()
+    report = await wire_from_manifest(
+        ModelAutoWiringManifest(contracts=tuple(manifest.contracts)),
+        engine,
+        event_bus=bus,
+        environment="local",
+    )
+    assert report.total_failed == 0
+    engine.freeze()
+
+    throughput = _contract("node_throughput_tick_decision_compute")["terminal_event"]
+    prune_topics = {node: _contract(node).get("terminal_event") for node in PRUNE_NODES}
+
+    # 17:00:00Z opens the throughput window; it is also the first tick the prune
+    # effects see, so each runs its scheduled prune once (refused: no binding).
+    await bus.publish(
+        TICK_TOPIC, None, _tick_wire(_window(0) + dt.timedelta(hours=11)), None
+    )
+    await asyncio.sleep(2)
+    assert dead_lettered == []
+    assert published.count(TICK_TOPIC) == 1
+    assert published.count(throughput) == 1
+    for node, topic in prune_topics.items():
+        assert published.count(topic) == 1, node
+
+    # A second tick inside every interval: the tick itself and nothing else.
+    published.clear()
+    await bus.publish(
+        TICK_TOPIC, None, _tick_wire(_window(1) + dt.timedelta(hours=11)), None
+    )
+    await asyncio.sleep(2)
+    await bus.close()
+    assert dead_lettered == []
+    assert published == [TICK_TOPIC]
