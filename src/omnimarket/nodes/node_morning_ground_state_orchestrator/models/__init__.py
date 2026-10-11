@@ -8,6 +8,8 @@ from .model_morning_ground_state import (
     ModelMorningGroundStateRequest,
     ModelMorningGroundStateResult,
     ModelMorningPhaseRequest,
+    ModelMorningWatcherRecord,
+    ModelMorningWatcherSnapshot,
 )
 from .model_morning_overlay import ModelMorningOverlay, ModelMorningRequestDefaults
 from .model_phase_results import ModelDroppedWorkResultSectionsItem
@@ -21,4 +23,6 @@ __all__ = [
     "ModelMorningOverlay",
     "ModelMorningPhaseRequest",
     "ModelMorningRequestDefaults",
+    "ModelMorningWatcherRecord",
+    "ModelMorningWatcherSnapshot",
 ]

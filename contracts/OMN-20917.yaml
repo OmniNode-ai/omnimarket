@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20917"
+title: "OCC retirement S7: replay a repository's last 30 merged PRs through both evidence paths, with dependency re-pins as an expected difference"
+summary: "node_dod_verify gains an occ-difference replay mode: for a repository's merged PRs, newest first, it reads OCC's recorded check run on each head and the new path's verdict for the PR's own contract at that head, classifies each pair with the S5 rules, reports a PR with no OCC run as not_compared, and exits 1 on any unclassified or forbidden row. A pin-only PR refused by the must-fail control while OCC admitted classifies as the expected difference dependency_repin."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-occ-replay-mode"
+    statement: "The node_dod_verify CLI replays a repository's merged PRs through both evidence paths and refuses an unclassified or forbidden row."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The node_dod_verify CLI has a replay mode that takes a repository and N and returns one classified row per merged PR, refusing (exit 1) when any row is unclassified_difference, accepted_negative_control or old_behavioral_refusal -- falsifier: uv run pytest tests/test_dod_verify_occ_difference.py -k replay in omnimarket, with a fixture set containing one unclassified row that must exit 1"
+  - id: "req-dependency-repin-expected"
+    statement: "A dependency re-pin refused by the must-fail control while OCC admitted is the expected difference dependency_repin."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: A PR whose diff touches only dependency pins and lock files, where the new path refuses on the must-fail control and OCC admits, classifies as expected_difference with reason dependency_repin; the same refusal on a PR that also changes source still classifies as unclassified_difference -- falsifier: uv run pytest tests/test_dod_verify_occ_difference.py -k dependency_repin in omnimarket, both cases"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the replay mode classifies recorded rows and exits 1 on an unclassified or forbidden row."
+    command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k replay"
+  - kind: "tests"
+    description: "AC2: a pin-only control refusal is dependency_repin; with a source change it stays unclassified."
+    command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k dependency_repin"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20917-ac1-replay"
+    description: "AC1: the replay mode classifies recorded rows and exits 1 on an unclassified or forbidden row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k replay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20917-ac2-dependency-repin"
+    description: "AC2: a pin-only control refusal is dependency_repin; with a source change it stays unclassified."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k dependency_repin"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20917-deploy-probe"
+    description: "Deploy probe. The replay handler at the checked-out commit carries the class this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerOccReplay'"
+        cwd: "${OMNI_HOME}/omnimarket"

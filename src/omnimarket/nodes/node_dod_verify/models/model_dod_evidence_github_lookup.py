@@ -34,6 +34,22 @@ class EnumDodEvidenceGithubOperation(StrEnum):
     FETCH_PR_CHECKS_GREEN = "fetch_pr_checks_green"
     #: OMN-20032: a merged PR's merge commit, its first parent and its files.
     FETCH_PR_DIFF_FACTS = "fetch_pr_diff_facts"
+    #: OMN-20917: a PR's head sha, author, labels and title.
+    FETCH_PR_HEAD_FACTS = "fetch_pr_head_facts"
+    #: OMN-20917: the newest run of one named check on a PR's exact head,
+    #: with its annotation messages (the S7 replay's recorded OCC verdict).
+    FETCH_HEAD_CHECK_RUN = "fetch_head_check_run"
+
+
+class ModelPrHeadFacts(BaseModel):
+    """A PR's head sha, author login, labels and title (OMN-20917)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    head_sha: str
+    author: str = ""
+    labels: tuple[str, ...] = ()
+    title: str = ""
 
 
 class ModelDodEvidenceGithubLookupCommand(BaseModel):
@@ -59,6 +75,12 @@ class ModelDodEvidenceGithubLookupCommand(BaseModel):
     pr_number: int | None = Field(
         default=None,
         description="Required for FETCH_PR_MERGE_STATE / FETCH_PR_CHECKS_GREEN.",
+    )
+    head_sha: str | None = Field(
+        default=None, description="Required for FETCH_HEAD_CHECK_RUN."
+    )
+    check_name: str | None = Field(
+        default=None, description="Required for FETCH_HEAD_CHECK_RUN."
     )
 
 
@@ -121,6 +143,14 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
         description="The merged PR's merge commit, first parent and changed files.",
     )
 
+    # FETCH_PR_HEAD_FACTS (OMN-20917). None when unread; ``resolved`` is False.
+    pr_head_facts: ModelPrHeadFacts | None = Field(default=None)
+
+    # FETCH_HEAD_CHECK_RUN (OMN-20917): ``{"conclusion", "annotations":
+    # [{"message"}], "id"}``. None with ``resolved`` True when the head carries
+    # no run of that name; None with ``resolved`` False when unreadable.
+    check_run: dict[str, object] | None = Field(default=None)
+
     # LOOKUP_PR_FOR_TICKET / LOOKUP_REPO_FOR_TICKET failure classification
     # (OMN-15382). Set only when ``text_value`` is empty; ``None`` on success
     # or for other operations. ``*_LOOKUP_AMBIGUOUS`` means more than one
@@ -140,4 +170,5 @@ __all__ = [
     "EnumDodEvidenceGithubOperation",
     "ModelDodEvidenceGithubLookupCommand",
     "ModelDodEvidenceGithubLookupResultEvent",
+    "ModelPrHeadFacts",
 ]
