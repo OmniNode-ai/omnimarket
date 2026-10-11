@@ -109,3 +109,10 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_lab_job_check_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn20604-check-deploy-probe"
+    description: "Deploy probe. The lab job check schedule handler at the checked-out commit passes the tick's scheduled_at to the shared window rule; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base, where the node does not exist. The dev-lane readout after the deploy agent rolls it is one lab-job-check-requested record on onex.cmd.omnimarket.lab-job-check-requested.v1 per 300-second window."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_job_check_schedule_compute/handlers/handler_lab_job_check_schedule.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'scheduled_at=request.scheduled_at'"
+        cwd: "${OMNI_HOME}/omnimarket"

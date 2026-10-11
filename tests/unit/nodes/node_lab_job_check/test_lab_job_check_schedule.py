@@ -65,6 +65,19 @@ def test_only_the_tick_that_opens_a_window_requests_a_sweep(
     assert (result is not None) is fires
 
 
+def test_a_late_tick_still_opens_its_scheduled_window() -> None:
+    window_start = DAY + dt.timedelta(hours=7)
+    now = window_start + dt.timedelta(seconds=2)
+    tick = _tick(now).model_copy(update={"scheduled_at": window_start})
+    handler = HandlerLabJobCheckSchedule()
+
+    result = handler.handle(tick)
+    assert result is not None
+    assert result.check_id == "lab-job-check-20261011T070000Z"
+    assert result.requested_at == now
+    assert handler.handle(tick.model_copy(update={"scheduled_at": now})) is None
+
+
 def test_the_request_is_a_nonterminal_sweep_named_by_its_window() -> None:
     now = DAY + dt.timedelta(hours=7, minutes=5)
     result = HandlerLabJobCheckSchedule().handle(_tick(now))
