@@ -29,7 +29,7 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: the existing node_dod_verify tests give the same verdicts."
     command: "uv run pytest tests/unit/nodes/node_dod_verify -q -p no:randomly"
-  - kind: "command"
+  - kind: "manual"
     description: "AC3: the strict-loader scan of every contracts/*.yaml on origin/dev of the nine product repos prints each duplicate."
     command: "uv run python -c 'import os, subprocess as s\nfrom omnibase_core.errors.error_duplicate_yaml_mapping_key import DuplicateYamlMappingKeyError as D\nfrom omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates as L\nh = os.environ[\"OMNI_HOME\"]\ndef g(r, *a):\n    return s.run([\"git\", \"-C\", h + \"/\" + r, *a], capture_output=True, text=True, check=True).stdout\nfor r in \"omnibase_core omnibase_infra omniclaude omnimarket omnibase_spi omnibase_compat omnimemory omniintelligence omnidash\".split():\n    for n in g(r, \"ls-tree\", \"-r\", \"--name-only\", \"origin/dev\", \"--\", \"contracts/\").split():\n        if n.endswith(\".yaml\") and n.count(\"/\") == 1:\n            try:\n                L(g(r, \"show\", \"origin/dev:\" + n), source=n)\n            except D as e:\n                print(\"DUPLICATE\", r, n, e.line, e.key)\n'"
 emergency_bypass:
@@ -61,3 +61,11 @@ dod_evidence:
         check_value: "uv run python -c 'import os, subprocess as s\nfrom omnibase_core.errors.error_duplicate_yaml_mapping_key import DuplicateYamlMappingKeyError as D\nfrom omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates as L\nh = os.environ[\"OMNI_HOME\"]\ndef g(r, *a):\n    return s.run([\"git\", \"-C\", h + \"/\" + r, *a], capture_output=True, text=True, check=True).stdout\nfor r in \"omnibase_core omnibase_infra omniclaude omnimarket omnibase_spi omnibase_compat omnimemory omniintelligence omnidash\".split():\n    for n in g(r, \"ls-tree\", \"-r\", \"--name-only\", \"origin/dev\", \"--\", \"contracts/\").split():\n        if n.endswith(\".yaml\") and n.count(\"/\") == 1:\n            try:\n                L(g(r, \"show\", \"origin/dev:\" + n), source=n)\n            except D as e:\n                print(\"DUPLICATE\", r, n, e.line, e.key)\n'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20945-deploy-probe-strict-loader"
+    description: "Deploy probe. The evidence collector at the checked-out commit loads a contract through omnibase_core's load_yaml_mapping_no_duplicates; the probe reads the file from GitHub at that commit and exits nonzero on a tree that still calls yaml.safe_load there, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'load_yaml_mapping_no_duplicates(content, source=str(path))'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
