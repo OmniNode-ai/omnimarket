@@ -32,6 +32,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_check
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_closed import (
     ModelPrLandingClosed,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_conflict_command import (
+    ModelPrLandingConflictCommand,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_intent import (
     ModelPrLandingIntent,
 )
@@ -63,6 +66,7 @@ __all__: list[str] = [
     "ModelPrLandingCheckAttempt",
     "ModelPrLandingClosed",
     "ModelPrLandingCompanion",
+    "ModelPrLandingConflictCommand",
     "ModelPrLandingIntent",
     "ModelPrLandingMerged",
     "ModelPrLandingObservation",

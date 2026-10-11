@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20912"
+title: "Every GitHub operation a lane uses has a typed node operation"
+summary: "node_github_repo_gateway_effect gains the Actions, PR-text and release reads (workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases); a write effect performs the PR authoring writes with quota-floor, expected-head, idempotency and claim guards; ProtocolSourceControl gets one adapter on the same transport. This contract binds AC1, the six reads this change ships; the write effect (AC2), the ProtocolSourceControl adapter (AC3) and the live bus readback (AC4) are not part of this change and are not declared or bound here."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-scm-node-operations"
+    statement: |-
+      Every GitHub operation a lane uses has a typed node operation on the bus.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: node_github_repo_gateway_effect answers workflow_runs, run_jobs, job_log_tail, artifacts, pr_text and releases operations, covered by unit tests on a recorded fake transport -- falsifier: uv run pytest tests/nodes/node_github_repo_gateway_effect -q
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the six new gateway reads replay on a recorded fake transport, page inside the node, honour their byte and item caps, and refuse an over-cap artifact with a typed reason."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20912-ac1-gateway-reads-deploy-probe"
+    description: "AC1 deploy probe: the gateway model module GitHub serves at the checked-out commit declares the job_log_tail operation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'JOB_LOG_TAIL = \"job_log_tail\"' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20912-ac1-gateway-reads"
+    description: "AC1: workflow_runs, run_jobs, job_log_tail, artifacts, pr_text and releases answer on a recorded fake transport, with paging inside the node and typed size refusals."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

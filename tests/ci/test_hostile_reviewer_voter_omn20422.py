@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The Hostile Reviewer's second voter is the Studio's :8131 server (OMN-20422)."""
+"""The Hostile Reviewer's second voter URL is a repository variable (OMN-20422).
+
+RULING 2026-10-10T16:28:58Z: one model on the Mac Studio; the second Studio reviewer seat
+is retired. The variable names the Studio's one served model, so a model swap there is a
+variable change, not a pull request, and no lab address is written into this public file.
+"""
 
 from __future__ import annotations
 
@@ -26,8 +31,11 @@ def _job_env() -> dict[str, str]:
     return env
 
 
-def test_second_voter_url_points_at_studio_8131() -> None:
-    assert _job_env()["LLM_LOCAL_STUDIO_PLANNER_URL"].endswith(":8131")
+def test_second_voter_url_is_the_repository_variable() -> None:
+    assert (
+        _job_env()["LLM_LOCAL_STUDIO_PLANNER_URL"]
+        == "${{ vars.LLM_LOCAL_STUDIO_PLANNER_URL }}"
+    )
 
 
 def test_cidr_allowlist_is_job_level() -> None:

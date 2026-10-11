@@ -4,11 +4,19 @@
 
 The runtime tick arrives every ``tick_interval_ms``. A workflow that runs every
 ``interval_seconds`` (first fire ``offset_seconds`` past the epoch-aligned interval) fires on
-the one tick whose clock falls in ``[window_start, window_start + tick_interval)``; every other
+the one tick whose clock falls in ``[window_start, window_start + tick_interval + lateness)``,
+where ``lateness`` is how far the tick's ``now`` ran past its ``scheduled_at``; every other
 tick inside the interval produces nothing. The decision reads only the tick, so a COMPUTE
 handler stays pure and holds no last-run state, and a restart cannot repeat a window: the
 stateless-slot idiom of node_audit_trail_compact_schedule_compute, generalised from a daily
 slot to an interval (OMN-20867).
+
+Why lateness: the real tick period runs past ``tick_interval_ms``, so a window of exactly one
+interval misses whole windows. The runtime scheduler stamps each tick's ``scheduled_at`` with the epoch-aligned
+slot it was due on and schedules the next tick for the first slot after ``now``, so the window
+``(scheduled_at - tick_interval, now]`` of consecutive ticks tiles the clock: every window start
+on the slot grid falls in exactly one tick's window. A tick whose ``scheduled_at`` equals its
+``now`` reads exactly as before.
 
 Lab-fill, the hourly tick and the merge-throughput tick each consume these models, so they
 live in omnimarket.models and in no node's models package.
@@ -42,15 +50,22 @@ class ModelRuntimeTickScheduleConfig(BaseModel):
             )
         return self
 
-    def due_window(self, now: dt.datetime, tick_interval_ms: int) -> dt.datetime | None:
+    def due_window(
+        self,
+        now: dt.datetime,
+        tick_interval_ms: int,
+        *,
+        scheduled_at: dt.datetime,
+    ) -> dt.datetime | None:
         """The start of the window this tick opens, or None when the tick opens none."""
         if tick_interval_ms <= 0:
             return None
         now = now.astimezone(dt.UTC)
+        lateness = max(dt.timedelta(0), now - scheduled_at.astimezone(dt.UTC))
         since = now - _EPOCH - dt.timedelta(seconds=self.offset_seconds)
         interval = dt.timedelta(seconds=self.interval_seconds)
         start = now - (since % interval)
-        if now - start < dt.timedelta(milliseconds=tick_interval_ms):
+        if now - start < dt.timedelta(milliseconds=tick_interval_ms) + lateness:
             return start.replace(microsecond=0)
         return None
 
@@ -77,12 +92,13 @@ def scheduled_fire(
     config: ModelRuntimeTickScheduleConfig,
     *,
     now: dt.datetime,
+    scheduled_at: dt.datetime,
     tick_interval_ms: int,
     tick_id: UUID,
     scheduler_id: str,
 ) -> ModelScheduledFire | None:
     """The fire this tick opens, or None for every other tick inside the interval."""
-    start = config.due_window(now, tick_interval_ms)
+    start = config.due_window(now, tick_interval_ms, scheduled_at=scheduled_at)
     if start is None:
         return None
     return ModelScheduledFire(

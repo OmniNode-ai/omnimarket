@@ -9,7 +9,9 @@ node_type: EFFECT_GENERIC
 # on the platform runtime tick, the same schedule node_dead_letter_prune_effect
 # takes (OMN-19657). The tick arrives far more often than daily; the handler
 # gates on config.consumer_flow_prune.schedule.run_interval_seconds with an
-# in-process last-run stamp.
+# in-process last-run stamp. A tick inside the interval returns nothing; the
+# tick that runs the prune returns its typed result, which the runtime
+# publishes on the declared completed topic (OMN-20867).
 lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
@@ -80,11 +82,21 @@ input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"
     operation: "consumer_flow.prune_scheduled_run"
 
-# Subscribe only. The handler returns its typed result and publishes nothing
-# itself, so no publish topic is declared that no code emits.
+# OMN-20867: the scheduled run's result has a destination. With no publish
+# topic the runtime wired no result applier for the tick subscription, so
+# every tick's result was undeliverable and the tick went to the DLQ.
 event_bus:
   subscribe_topics:
     - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.consumer-flow-prune-completed.v1"
+
+terminal_event: onex.evt.omnimarket.consumer-flow-prune-completed.v1
+
+published_events:
+  - event_type: ModelConsumerFlowPruneResult
+    topic: onex.evt.omnimarket.consumer-flow-prune-completed.v1
+    description: "One scheduled or requested prune run: per-day counts and a verdict."
 
 config:
   consumer_flow_prune:
