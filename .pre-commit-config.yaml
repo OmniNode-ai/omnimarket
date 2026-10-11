@@ -4,8 +4,8 @@
 # Hooks:
 #   - ruff format + lint (auto-fix)
 #   - Stub implementation detection (from omnibase_core)
-#   - TODO format enforcement (from onex_change_control)
-#   - Hardcoded topic string prevention (from onex_change_control)
+#   - TODO format enforcement (from omnibase_core)
+#   - Hardcoded topic string prevention (from omnibase_core)
 #
 # Usage:
 #   pre-commit install
@@ -242,9 +242,11 @@ repos:
         require_serial: true
         files: ^(\.duplicate-id-registries\.yaml|src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/nodes/node_ab_compare_orchestrator/models_registry\.yaml)$
 
-  # Shared ONEX governance hooks (onex_change_control)
-  - repo: https://github.com/OmniNode-ai/onex_change_control
-    rev: 8d7e85bc00e7f1b1306d1cb40949be1ab6e7e91a  # pragma: allowlist secret
+  # Hardcoded topic string prevention (OMN-20074, OCC retirement S8): the hook of
+  # this id is no longer pulled from the change-control repository; omnibase_core
+  # exports it under the same id.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 4a4177335d11b138a29fe28e2f4c5575afa92b2b  # pragma: allowlist secret
     hooks:
       - id: no-hardcoded-topics
         require_serial: true
@@ -303,9 +305,11 @@ repos:
   # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
   # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 6e47aa311ac5d177d116d9597b07966a233d2463
+    rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae
     hooks:
       - id: public-repo-hygiene
+        require_serial: true
+      - id: deployment-config
         require_serial: true
 
   # Essential file formatting

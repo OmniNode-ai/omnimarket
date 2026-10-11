@@ -560,6 +560,7 @@
   "tests/nodes/node_migration_sync_plan_compute/test_golden_chain_migration_sync_plan_compute.py": 0.04,
   "tests/nodes/node_model_router/test_escalation_chain.py": 0.16,
   "tests/nodes/node_morning_friction_sweep_orchestrator/test_bus_cycle.py": 0.6,
+  "tests/nodes/node_morning_friction_sweep_orchestrator/test_entry_point.py": 0.02,
   "tests/nodes/node_morning_friction_sweep_orchestrator/test_error_chain_morning_friction_sweep_orchestrator.py": 0.35,
   "tests/nodes/node_morning_friction_sweep_orchestrator/test_golden_chain_morning_friction_sweep_orchestrator.py": 0.14,
   "tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py": 0.23,
