@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20935"
+title: "omnimarket routing order, CI bus lanes and lab defaults move to the private overlay"
+summary: "The swarm endpoint registry, the lab hosts and endpoints that the data-flow, database, integration sweeps, the cost publisher, the cost projection wrapper and the type-debt experiment defaulted to, and the lab evaluator and host notes of the packaged routing ladder and model registry leave the shipped package. Each reader takes its value from the deployment (an overlay under ONEX_SKILL_OVERLAY_ROOTS or its environment) and refuses, or takes a neutral default, without it. The deployment's full ladder is resolved through the same overlay roots."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-no-lab-value-in-owned-files"
+    statement: "The omnimarket files whose lab values moved to the private overlay carry no lab endpoint, host or address."
+    acceptance:
+      - id: "AC1"
+        statement: 'AC1: omnimarket at dev carries no lab endpoint, host or routing order in configuration or as a default value -- falsifier: pytest over the gate''s deployment-config class reports zero findings in omnimarket'
+  - id: "req-readers-resolve-from-overlay"
+    statement: "Each repointed reader resolves today's value from the private overlay and the neutral default or a loud refusal without it."
+    acceptance:
+      - id: "AC2"
+        statement: 'AC2: the routing resolver and each repointed reader resolve today''s values from the private overlay and the neutral default without it -- falsifier: pytest focused tests for each repointed reader with and without ONEX_SKILL_OVERLAY_ROOTS'
+evidence_requirements:
+  - kind: "tests"
+    description: "The owned files carry no lab address or host shorthand; the patterns flag a planted lab value and leave documentation ranges alone."
+    command: "uv run pytest tests/ci/test_omn20935_no_lab_values_in_owned_files.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Each repointed reader resolves its value from the overlay or environment and refuses, or takes the neutral default, without it."
+    command: "uv run pytest tests/unit/models/node_overlay tests/nodes/node_data_flow_sweep tests/unit/nodes/node_database_sweep/test_runtime_host_overlay.py tests/nodes/node_integration_sweep_orchestrator src/omnimarket/nodes/node_swarm_registry_compute/tests tests/unit/routing/test_routing_tiers_overlay_resolution.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20935-no-lab-value-in-owned-files"
+    description: "The files cleaned by this change carry no lab address or host shorthand and the removed swarm registry is absent. The remaining owned files (the CI bus lane table, the packaged ladder's tier order and the pre-push host table) are not covered here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20935_no_lab_values_in_owned_files.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20935-readers-resolve-from-overlay"
+    description: "The overlay locator, the data-flow lane resolver, the database sweep host, the integration sweep probe targets, the swarm registry and the routing ladder resolver each resolve with the overlay and without it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/node_overlay -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_data_flow_sweep tests/unit/nodes/node_database_sweep/test_runtime_host_overlay.py tests/nodes/node_integration_sweep_orchestrator -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_swarm_registry_compute/tests tests/unit/routing/test_routing_tiers_overlay_resolution.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20935-script-readers-resolve-from-environment"
+    description: "The cost publisher, the cost projection wrapper and the type-debt experiment take their endpoint from the environment and refuse, or protect nothing, without it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_cost_event_publisher.py tests/unit/scripts/test_run_delegation_cost_projection_process.py tests/unit/experiments/adk_eval/type_debt_scout_poc -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

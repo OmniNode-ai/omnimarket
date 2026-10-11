@@ -31,6 +31,8 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 
 from tests.runtime_local_compat import RuntimeLocal
 
+pytestmark = pytest.mark.usefixtures("integration_sweep_deployment_overlay")
+
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_integration_sweep_orchestrator/contract.yaml"

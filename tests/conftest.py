@@ -135,6 +135,32 @@ def fake_kafka_bootstrap() -> str:
 
 
 @pytest.fixture
+def integration_sweep_deployment_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Supply node_integration_sweep_orchestrator's overlay with documentation-range hosts."""
+    root = tmp_path / "node_overlays"
+    overlay = root / "node_integration_sweep_orchestrator" / "overlay.yaml"
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text(
+        "\n".join(
+            [
+                "runtime_host: 192.0.2.10",
+                "runtime_repo_path: /srv/runtime/repo",
+                "stability_test_runtime_url: http://192.0.2.10:18085",
+                "container_health_host: 192.0.2.10",
+                "infra_runtime_host: 192.0.2.10",
+                "projection_api_url: http://192.0.2.10:3002",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return root
+
+
+@pytest.fixture
 def fake_omni_home(tmp_path: Path) -> Path:
     """Isolated tmp directory standing in for OMNI_HOME / user home paths."""
     home = tmp_path / "omni_home"
@@ -366,6 +392,12 @@ def _isolate_unit_env(
 
     # Clear a lane shell's single-tenant fallback (OMN-17427, item 3 above).
     monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+
+    # Node overlays are deployment data a lane shell may export; a unit test that
+    # needs one writes its own and sets the root in its body.
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    monkeypatch.delenv("ONEX_DATA_FLOW_RUNTIME_HOST", raising=False)
+    monkeypatch.delenv("ONEX_DATABASE_SWEEP_RUNTIME_HOST", raising=False)
 
     # Redirect node-generation-consumer replay state to an isolated tmp dir.
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))

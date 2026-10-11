@@ -44,12 +44,18 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
         description="Optional directory for drift/dod_receipts. Defaults to artifact_root/drift/dod_receipts.",
     )
     runtime_host: str = Field(
-        default="192.168.86.201",  # onex-allow-internal-ip OMN-9334 reason="default runtime host for SHA probe; overridden by caller or env; not a shipping connection string"
-        description="Runtime SSH host for runtime_sha_match probes.",
+        default="",
+        description=(
+            "Runtime SSH host for runtime_sha_match probes. Empty takes the node "
+            "overlay's runtime_host."
+        ),
     )
     runtime_repo_path: str = Field(
-        default="/data/omninode/omni_home/omnimarket",
-        description="Repo path on the runtime host used by the phase-1 SSH git SHA probe.",
+        default="",
+        description=(
+            "Repo path on the runtime host used by the phase-1 SSH git SHA probe. "
+            "Empty takes the node overlay's runtime_repo_path."
+        ),
     )
     artifact_date: str = Field(
         default="",
@@ -73,12 +79,18 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
         ),
     )
     stability_test_runtime_url: str = Field(
-        default="http://192.168.86.201:18085",  # onex-allow-internal-ip OMN-7538 reason="stability-test lane health endpoint; overridden by caller; not a shipping connection string"
-        description="URL for the stability-test runtime health endpoint (RUNTIME_HEALTH probe).",
+        default="",
+        description=(
+            "URL for the runtime health endpoint (RUNTIME_HEALTH probe). Empty "
+            "takes the node overlay's stability_test_runtime_url."
+        ),
     )
     container_health_host: str = Field(
-        default="192.168.86.201",  # onex-allow-internal-ip OMN-7538 reason="stability-test Docker host for container health probe; overridden by caller; not a shipping connection string"
-        description="SSH host for the CONTAINER_HEALTH probe (docker ps).",
+        default="",
+        description=(
+            "SSH host for the CONTAINER_HEALTH probe (docker ps). Empty takes the "
+            "node overlay's container_health_host."
+        ),
     )
     github_ci_repo: str = Field(
         default="omnimarket",
@@ -89,8 +101,11 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
     # Each probe runs only when its config list is non-empty, so an unconfigured
     # caller still gets the health/CI baseline and never a spurious failure.
     infra_runtime_host: str = Field(
-        default="192.168.86.201",  # onex-allow-internal-ip OMN-13145 reason="runtime lane SSH host for rpk/psql probes; overridden by caller; not a shipping connection string"
-        description="SSH host for the KAFKA / DB / GOLDEN_CHAIN probes (rpk + psql via docker exec).",
+        default="",
+        description=(
+            "SSH host for the KAFKA / DB / GOLDEN_CHAIN probes (rpk + psql via "
+            "docker exec). Empty takes the node overlay's infra_runtime_host."
+        ),
     )
     redpanda_container: str = Field(
         default="omnibase-infra-redpanda",
@@ -121,8 +136,11 @@ class ModelIntegrationSweepOrchestratorRequest(BaseModel):
         description="Tail tables the DB probe checks for existence + row presence.",
     )
     projection_api_url: str = Field(
-        default="http://192.168.86.201:3002",  # onex-allow-internal-ip OMN-13145 reason="dev-lane projection-api host; overridden by caller; not a shipping connection string"
-        description="Base URL for the projection API served by the runtime lane.",
+        default="",
+        description=(
+            "Base URL for the projection API served by the runtime lane. Empty "
+            "takes the node overlay's projection_api_url."
+        ),
     )
     projection_topics: list[str] = Field(
         default_factory=list,

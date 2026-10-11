@@ -15,6 +15,9 @@ from typing import Any, Literal
 import httpx
 import yaml
 
+from omnimarket.models.swarm.swarm_endpoint_registry_location import (
+    resolve_endpoint_registry_path,
+)
 from omnimarket.nodes.node_swarm_endpoint_health_effect.models.enums import (
     EnumEndpointStatus,
     EnumModelStatus,
@@ -39,20 +42,18 @@ _HttpGetFn = Callable[
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
-# Shared endpoint registry used for ID-only requests from the orchestrator.
-_DEFAULT_REGISTRY_PATH = (
-    Path(__file__).parent.parent.parent
-    / "node_swarm_registry_compute"
-    / "contracts"
-    / "endpoint_registry.yaml"
-)
-
 
 def _load_endpoint_registry(
     registry_path: Path | None = None,
 ) -> dict[str, ModelSwarmEndpoint]:
-    """Load the endpoint registry and return a map of id → ModelSwarmEndpoint."""
-    path = registry_path or _DEFAULT_REGISTRY_PATH
+    """Load the endpoint registry and return a map of id → ModelSwarmEndpoint.
+
+    The shared registry serves ID-only requests from the orchestrator; it is
+    deployment data, so an unconfigured registry raises
+    :class:`SwarmRegistryNotConfiguredError` naming how to supply one. An
+    unreadable registry is reported and yields no ids.
+    """
+    path = resolve_endpoint_registry_path(registry_path)
     try:
         raw: dict[str, Any] = yaml.safe_load(path.read_text())
         endpoints: dict[str, ModelSwarmEndpoint] = {}

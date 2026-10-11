@@ -168,7 +168,9 @@ class TestParsePriorities:
 @pytest.mark.unit
 class TestRunTypeDebtScout:
     async def test_builds_report_from_router(self) -> None:
-        config = ModelTrackBConfig(repo_name="unit-repo")
+        config = ModelTrackBConfig(
+            repo_name="unit-repo", base_url="http://localhost:8000"
+        )
         findings = _sample_findings()
         fake_response = ModelLlmAdapterResponse(
             generated_text=json.dumps(_fake_response_payload()),
@@ -198,7 +200,9 @@ class TestRunTypeDebtScout:
         assert "src/module_a.py:10" in request.prompt
 
     async def test_propagates_parse_failure(self) -> None:
-        config = ModelTrackBConfig(repo_name="unit-repo")
+        config = ModelTrackBConfig(
+            repo_name="unit-repo", base_url="http://localhost:8000"
+        )
         fake_response = ModelLlmAdapterResponse(
             generated_text="no json at all",
             model_used=config.model_id,
@@ -213,3 +217,17 @@ class TestRunTypeDebtScout:
                 config=config,
                 router=fake_router,
             )
+
+
+class TestBaseUrlIsDeploymentData:
+    """The endpoint is deployment data: the config has no packaged one."""
+
+    def test_config_has_no_packaged_endpoint(self) -> None:
+        with pytest.raises(ValueError, match="base_url"):
+            ModelTrackBConfig.model_validate({"repo_name": "unit-repo"})
+
+    def test_config_takes_the_supplied_endpoint(self) -> None:
+        config = ModelTrackBConfig(
+            repo_name="unit-repo", base_url="http://198.51.100.10:8000"
+        )
+        assert config.base_url == "http://198.51.100.10:8000"

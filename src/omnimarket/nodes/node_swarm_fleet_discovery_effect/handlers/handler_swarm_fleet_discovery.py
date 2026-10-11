@@ -3,7 +3,8 @@
 
 """Effect handler that discovers and health-checks the full model fleet.
 
-Local endpoints are loaded from the shared endpoint_registry.yaml contract.
+Local endpoints are loaded from the deployment's swarm endpoint registry
+(``resolve_endpoint_registry_path``); the package ships none.
 OpenRouter free-tier endpoints are probed via the OpenRouter /api/v1/models API.
 Returns a unified list with per-endpoint health status.
 """
@@ -28,6 +29,10 @@ from omnimarket.inference.openrouter_models import (
     get_openrouter_models,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+from omnimarket.models.swarm.swarm_endpoint_registry_location import (
+    SwarmRegistryNotConfiguredError,
+    resolve_endpoint_registry_path,
+)
 from omnimarket.nodes.node_swarm_fleet_discovery_effect.models.model_fleet_discovery_request import (
     ModelFleetDiscoveryRequest,
 )
@@ -54,13 +59,6 @@ _OPENROUTER_MODELS_PATH = "/models"
 
 # Capability mapping from OpenRouter model characteristics
 _OPENROUTER_CAPABILITIES = ("code_generation", "reasoning", "analysis", "general")
-
-_DEFAULT_REGISTRY_PATH = (
-    Path(__file__).parent.parent.parent
-    / "node_swarm_registry_compute"
-    / "contracts"
-    / "endpoint_registry.yaml"
-)
 
 
 def _resolve_openrouter_base_url() -> str:
@@ -113,7 +111,7 @@ class HandlerSwarmFleetDiscovery:
     ) -> None:
         self._http_get = http_get_fn or _default_http_get
         self._timeout = timeout_seconds
-        self._registry_path = registry_path or _DEFAULT_REGISTRY_PATH
+        self._registry_path = registry_path
         if openrouter_api_key:
             self._api_key = openrouter_api_key
         else:
@@ -187,9 +185,19 @@ class HandlerSwarmFleetDiscovery:
         )
 
     async def _discover_local(self) -> list[ModelDiscoveredEndpoint]:
-        """Load local endpoints from registry and health-check each."""
+        """Load local endpoints from registry and health-check each.
+
+        A deployment without a local endpoint registry has no local endpoints:
+        that is reported, naming how to supply one, and discovery goes on to the
+        remote providers. An unreadable registry is reported the same way.
+        """
         try:
-            raw: dict[str, Any] = yaml.safe_load(self._registry_path.read_text())
+            registry_path = resolve_endpoint_registry_path(self._registry_path)
+        except SwarmRegistryNotConfiguredError as exc:
+            logger.warning("No local endpoints discovered: %s", exc)
+            return []
+        try:
+            raw: dict[str, Any] = yaml.safe_load(registry_path.read_text())
         except Exception as exc:
             logger.warning("Failed to load local endpoint registry: %s", exc)
             return []

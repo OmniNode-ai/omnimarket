@@ -111,6 +111,7 @@ from omnimarket.routing.byok_provider_backends import (
     catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
+from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
@@ -219,11 +220,6 @@ _FALLBACK_PRICE_PER_1M: dict[str, tuple[Decimal, Decimal]] = {
     "default": (Decimal("0.15"), Decimal("0.60")),
 }
 
-# Path to the routing registry (routing_tiers.yaml).
-_ROUTING_TIERS_PATH = (
-    Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
-)
-
 # Opus 3.5 pricing for savings calculation baseline (per 1M tokens)
 _OPUS_PRICE_IN_PER_1M = Decimal("15.00")
 _OPUS_PRICE_OUT_PER_1M = Decimal("75.00")
@@ -239,7 +235,7 @@ def _get_tier_price_per_1m(tier_name: str) -> tuple[Decimal, Decimal] | None:
     _FALLBACK_PRICE_PER_1M when this returns None.
     """
     try:
-        raw = yaml.safe_load(_ROUTING_TIERS_PATH.read_text())
+        raw = yaml.safe_load(resolve_routing_tiers_path().read_text())
         if not isinstance(raw, dict):
             return None
         for tier in raw.get("tiers") or []:

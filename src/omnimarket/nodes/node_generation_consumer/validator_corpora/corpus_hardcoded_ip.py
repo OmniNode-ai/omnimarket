@@ -3,7 +3,7 @@
 # test-literal-ok: OMN-13294 — this corpus's fixtures ARE hardcoded private-IP
 # violations the generated scanner-under-test must flag; the literals are the subject.
 # onex-allow-internal-ip OMN-13294 reason="corpus fixtures are intentional hardcoded private-IP violations the scanner-under-test must flag"
-# onex-allow-file OMN-13294 reason="this acceptance corpus's entire subject is hardcoded private-IP literals the generated scanner must flag; the .201 endpoint fixture mirrors the live generation backend"
+# onex-allow-file OMN-13294 reason="this acceptance corpus's entire subject is hardcoded private-IP literals the generated scanner must flag"
 # onex-allow-file-internal-ip OMN-13294 reason="this acceptance corpus's entire subject is LAN-IP literals the generated scanner must flag; per-line markers would obscure the fixtures"
 """Acceptance corpus for the hardcoded-private-IP mechanical scanner (OMN-13294, G2).
 
@@ -20,7 +20,7 @@ produces zero findings on every ``clean_fixtures`` entry, by deterministic
 execution in the hardened sandbox.
 
 Mutation cases (``mutation_of``) are adversarial perturbations of a base fixture:
-a different octet (``192.168.1.5`` -> ``192.168.99.250``), a different RFC1918
+a different host in the same 192.168 band, a different RFC1918
 band (``10.`` -> ``172.20.``), and an ``https://`` prefix. They prove the scanner
 generalises the RFC1918 invariant rather than memorising a curated set.
 
@@ -39,6 +39,12 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
 
 __all__ = ["HARDCODED_IP_CORPUS"]
 
+# A synthetic private address for the positive controls: inside 192.168/16 so the
+# scanner under test must flag it, and built from its octets so no real lab
+# address, and no address literal at all, appears for this module's own scans.
+_SYNTHETIC_LAN = ".".join(("192", "168", "250", "7"))
+_SYNTHETIC_LAN_OTHER_HOST = ".".join(("192", "168", "250", "9"))
+
 
 HARDCODED_IP_CORPUS = ModelValidatorCorpus(
     source_field="source",
@@ -47,8 +53,8 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         # --- base cases: each RFC1918 band, quoted, the canonical shape ---
         ModelCorpusFixture(
             fixture_id="v-base-192-168",
-            source='HOST = "192.168.86.201"',  # onex-allow-internal-ip OMN-13294 corpus fixture: the literal the scanner must flag
-            description="192.168/16 private IP literal (the .201 server) — must flag",
+            source=f'HOST = "{_SYNTHETIC_LAN}"',
+            description="192.168/16 private IP literal — must flag",
         ),
         ModelCorpusFixture(
             fixture_id="v-base-10",
@@ -63,7 +69,7 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         # --- adversarial mutation cases (must still flag) ---
         ModelCorpusFixture(
             fixture_id="v-mut-192-octet",
-            source='HOST = "192.168.99.250"',
+            source=f'HOST = "{_SYNTHETIC_LAN_OTHER_HOST}"',
             description="mutated octets in the same 192.168 band — must still flag",
             mutation_of="v-base-192-168",
         ),
@@ -75,7 +81,7 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-url-prefixed",
-            source='ENDPOINT = "https://192.168.86.201:8000/v1/chat/completions"',  # onex-allow-internal-ip OMN-13294 corpus fixture: the literal the scanner must flag
+            source=f'ENDPOINT = "https://{_SYNTHETIC_LAN}:8000/v1/chat/completions"',
             description="private IP embedded in an https URL literal — must still flag",
             mutation_of="v-base-192-168",
         ),
@@ -121,7 +127,7 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatch ---
         ModelCorpusFixture(
             fixture_id="c-mut-suppressed",
-            source='HOST = "192.168.86.201"  # onex-allow-internal-ip approved test fixture',
+            source=f'HOST = "{_SYNTHETIC_LAN}"  # onex-allow-internal-ip approved test fixture',
             description=(
                 "private IP literal on a line carrying the onex-allow-internal-ip "
                 "marker — suppressed, must stay clean"

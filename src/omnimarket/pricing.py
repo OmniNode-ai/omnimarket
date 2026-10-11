@@ -12,7 +12,6 @@ from __future__ import annotations
 import functools
 import logging
 from decimal import Decimal
-from pathlib import Path
 from typing import Literal
 
 from omnibase_core.models.delegation.wire import (
@@ -27,12 +26,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
-# Canonical routing-tier registry — the single source for each tier's typed
-# cost model (OMN-13234). The projection's actual-cost recompute resolves the
-# serving tier's ModelTierCost by name from here so the persisted cost_usd is a
-# MEASUREMENT (tier rate x measured tokens), not the hardcoded 0.0 the workflow
-# handler currently emits on the durable event.
-ROUTING_TIERS_YAML = Path(__file__).resolve().parent / "configs" / "routing_tiers.yaml"
+# The routing-tier registry in force (``resolve_routing_tiers_path``) is the
+# single source for each tier's typed cost model (OMN-13234). The projection's
+# actual-cost recompute resolves the serving tier's ModelTierCost by name from
+# it so the persisted cost_usd is a MEASUREMENT (tier rate x measured tokens),
+# not the hardcoded 0.0 the workflow handler currently emits on the durable
+# event.
 
 DEFAULT_BASELINE_MODEL = "claude-sonnet-5-5"
 DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = (
@@ -393,8 +392,11 @@ def _load_routing_config() -> ModelDelegationConfig:
         from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
             parse_delegation_config_yaml,
         )
+        from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 
-        return parse_delegation_config_yaml(ROUTING_TIERS_YAML.read_text())
+        return parse_delegation_config_yaml(
+            resolve_routing_tiers_path().read_text(encoding="utf-8")
+        )
     except Exception as exc:
         logger.warning(
             "Failed to load routing_tiers.yaml for cost recompute: %s — "
@@ -496,7 +498,6 @@ def recompute_actual_cost_and_savings(
 __all__: list[str] = [
     "DEFAULT_BASELINE_MODEL",
     "DEFAULT_FRONTIER_COMPARISON_MODELS",
-    "ROUTING_TIERS_YAML",
     "ModelActualCostMeasurement",
     "ModelBaselineSavings",
     "ModelTierCostResult",

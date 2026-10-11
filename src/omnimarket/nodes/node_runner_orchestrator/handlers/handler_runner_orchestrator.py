@@ -8,7 +8,7 @@ Bounded production slice: dry-run previews runner actions and all live runner
 operations require an injected adapter.
 
 Runner actions (per runner/SKILL.md):
-  deploy  — SSH to CI host (192.168.86.201), invoke deploy-runners.sh.  # onex-allow-internal-ip OMN-12218 reason="runner orchestrator contract docstring; implementation remains deferred"
+  deploy  — SSH to the CI host (e.g. 192.0.2.10), invoke deploy-runners.sh.
              Prerequisites: gh token with org scope + SSH key loaded in agent.
   update  — Force Docker image rebuild then redeploy (--rebuild flag).
   status  — GitHub API runner list + SSH Docker-label inspect + host disk metrics.

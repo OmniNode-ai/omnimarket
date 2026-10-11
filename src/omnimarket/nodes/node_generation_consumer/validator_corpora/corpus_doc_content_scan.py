@@ -58,6 +58,11 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
 
 __all__ = ["DOC_CONTENT_SCAN_CORPUS"]
 
+# A synthetic private address for the positive controls: inside 192.168/16 so the
+# scanner under test must flag it, and built from its octets so no real lab
+# address appears in this module.
+_SYNTHETIC_LAN = ".".join(("192", "168", "250", "7"))
+
 
 DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
     source_field="source",
@@ -66,7 +71,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         # --- base cases: one per violation class, in documentation prose --------
         ModelCorpusFixture(
             fixture_id="v-base-lan-ip",
-            source="The broker runs on 192.168.86.201 in the lab.",  # onex-allow-internal-ip OMN-13568 corpus fixture
+            source=f"The broker runs on {_SYNTHETIC_LAN} in the lab.",
             description="RFC1918 LAN IP literal in doc prose — must flag",
         ),
         ModelCorpusFixture(
@@ -81,7 +86,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         ),
         ModelCorpusFixture(
             fixture_id="v-base-ssh-line",
-            source="Connect with `ssh jonah@192.168.86.201` then tail the logs.",  # onex-allow-internal-ip OMN-13568 corpus fixture
+            source=f"Connect with `ssh jonah@{_SYNTHETIC_LAN}` then tail the logs.",
             description="ssh <user>@<host> line in a doc — must flag",
         ),
         ModelCorpusFixture(
@@ -225,7 +230,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatches -----------------------------------------
         ModelCorpusFixture(
             fixture_id="c-mut-line-suppressed",
-            source="The broker runs on 192.168.86.201.  <!-- doc-content-ok approved example -->",  # onex-allow-internal-ip OMN-13568 corpus fixture
+            source=f"The broker runs on {_SYNTHETIC_LAN}.  <!-- doc-content-ok approved example -->",
             description=(
                 "LAN IP on a line carrying the doc-content-ok marker — suppressed, "
                 "must stay clean"

@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.swarm.swarm_endpoint_registry_location import (
+    SwarmRegistryNotConfiguredError,
+    resolve_endpoint_registry_path,
+)
 from omnimarket.nodes.node_swarm_registry_compute.handlers.handler_swarm_registry import (
     HandlerSwarmRegistry,
     _load_registry,
@@ -368,9 +372,35 @@ class TestSelectionEvidence:
 
 @pytest.mark.unit
 class TestRegistryLoading:
-    def test_default_registry_loads_without_error(self) -> None:
+    def test_no_registry_configured_refuses_and_names_how_to_supply_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+        monkeypatch.delenv("OMNIMARKET_SWARM_ENDPOINT_REGISTRY", raising=False)
         handler = HandlerSwarmRegistry()
-        assert handler is not None
+        with pytest.raises(SwarmRegistryNotConfiguredError) as caught:
+            handler.handle(_request([_subtask("t1", "reasoning")]))
+        assert "ONEX_SKILL_OVERLAY_ROOTS" in str(caught.value)
+        assert "node_swarm_registry_compute/overlay.yaml" in str(caught.value)
+
+    def test_overlay_root_supplies_the_registry(
+        self, registry_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        overlay = tmp_path / "roots" / "node_swarm_registry_compute" / "overlay.yaml"
+        overlay.parent.mkdir(parents=True)
+        overlay.write_text(registry_file.read_text())
+        monkeypatch.delenv("OMNIMARKET_SWARM_ENDPOINT_REGISTRY", raising=False)
+        monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "roots"))
+        assert HandlerSwarmRegistry() is not None
+        assert resolve_endpoint_registry_path().read_text() == registry_file.read_text()
+
+    def test_pointer_supplies_the_registry(
+        self, registry_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+        monkeypatch.setenv("OMNIMARKET_SWARM_ENDPOINT_REGISTRY", str(registry_file))
+        assert HandlerSwarmRegistry() is not None
+        assert resolve_endpoint_registry_path().read_text() == registry_file.read_text()
 
     def test_custom_registry_path_loads(self, registry_file: Path) -> None:
         handler = HandlerSwarmRegistry(registry_path=registry_file)

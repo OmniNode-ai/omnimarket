@@ -7,7 +7,13 @@ from typing import Any
 import yaml
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.validation.runtime_sha_match import CHECK_TYPE_RUNTIME_SHA_MATCH
+from pydantic import ValidationError
 
+from omnimarket.models.node_overlay.node_overlay_reader import (
+    NodeOverlayError,
+    load_node_overlay,
+    overlay_hint,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify import (
     HandlerRuntimeShaVerify,
     ModelRuntimeShaVerifyRequest,
@@ -20,6 +26,9 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probe
     probe_kafka_topics,
     probe_projection_api,
     probe_runtime_health,
+)
+from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_deployment import (
+    ModelIntegrationSweepDeployment,
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
@@ -47,6 +56,51 @@ PROBE_STATUS_INVALID = "invalid"
 # (could not reach the surface at all) dict instead.
 _SURFACE_NON_SUCCESS_STATUSES = frozenset({"fail", "error"})
 
+NODE_NAME = "node_integration_sweep_orchestrator"
+
+# Request fields whose value is a deployment fact: an empty request value takes
+# the node overlay's value, and no overlay leaves it empty (never a packaged one).
+_DEPLOYMENT_FIELDS = (
+    "runtime_host",
+    "runtime_repo_path",
+    "stability_test_runtime_url",
+    "container_health_host",
+    "infra_runtime_host",
+    "projection_api_url",
+)
+
+
+class IntegrationSweepConfigurationError(ValueError):
+    """A deployment fact the requested work needs is not configured."""
+
+
+def load_deployment_overlay() -> ModelIntegrationSweepDeployment | None:
+    """Read this node's deployment overlay, or ``None`` when none is supplied."""
+    raw = load_node_overlay(NODE_NAME)
+    if raw is None:
+        return None
+    try:
+        return ModelIntegrationSweepDeployment.model_validate(raw)
+    except ValidationError as exc:
+        fields = ", ".join(sorted({str(e["loc"][0]) for e in exc.errors() if e["loc"]}))
+        raise NodeOverlayError(
+            f"overlay for {NODE_NAME} is invalid (fields: {fields})"
+        ) from None
+
+
+def _not_configured(field: str) -> str:
+    return (
+        f"{field} is not configured: set it in the request or {overlay_hint(NODE_NAME)}"
+    )
+
+
+def _unconfigured_probe(surface: str, field: str) -> dict[str, Any]:
+    return {
+        "surface": surface,
+        "status": "error",
+        "details": {"error": _not_configured(field)},
+    }
+
 
 class HandlerIntegrationSweepOrchestrator:
     """Write deterministic integration sweep artifacts."""
@@ -64,9 +118,25 @@ class HandlerIntegrationSweepOrchestrator:
     ) -> None:
         self._runtime_sha_handler = runtime_sha_handler or HandlerRuntimeShaVerify()
 
+    @staticmethod
+    def _with_deployment(
+        request: ModelIntegrationSweepOrchestratorRequest,
+    ) -> ModelIntegrationSweepOrchestratorRequest:
+        """Fill the request's empty deployment fields from the node overlay."""
+        overlay = load_deployment_overlay()
+        if overlay is None:
+            return request
+        updates = {
+            name: getattr(overlay, name)
+            for name in _DEPLOYMENT_FIELDS
+            if not getattr(request, name).strip() and getattr(overlay, name).strip()
+        }
+        return request.model_copy(update=updates) if updates else request
+
     def handle(
         self, request: ModelIntegrationSweepOrchestratorRequest
     ) -> ModelIntegrationSweepOrchestratorResult:
+        request = self._with_deployment(request)
         artifact_root = self._resolve_root(request.artifact_root)
         contracts_dir = self._resolve_dir(
             request.contracts_dir, artifact_root / "contracts"
@@ -261,7 +331,7 @@ class HandlerIntegrationSweepOrchestrator:
                 "target": target,
             }
             if not target.strip():
-                entry["reason"] = "empty probe target"
+                entry["reason"] = "empty probe target: " + overlay_hint(NODE_NAME)
             entry.update(extra)
             return entry
 
@@ -342,10 +412,21 @@ class HandlerIntegrationSweepOrchestrator:
         gets the baseline and never a spurious infra-probe failure.
         """
         results: list[dict[str, Any]] = []
-        results.append(probe_runtime_health(request.stability_test_runtime_url))
-        results.append(probe_container_health(request.container_health_host))
+        if request.stability_test_runtime_url.strip():
+            results.append(probe_runtime_health(request.stability_test_runtime_url))
+        else:
+            results.append(
+                _unconfigured_probe("RUNTIME_HEALTH", "stability_test_runtime_url")
+            )
+        if request.container_health_host.strip():
+            results.append(probe_container_health(request.container_health_host))
+        else:
+            results.append(
+                _unconfigured_probe("CONTAINER_HEALTH", "container_health_host")
+            )
         results.append(probe_github_ci(request.github_ci_repo))
 
+        infra_configured = bool(request.infra_runtime_host.strip())
         if request.kafka_topics or request.kafka_consumer_groups:
             results.append(
                 probe_kafka_topics(
@@ -354,6 +435,8 @@ class HandlerIntegrationSweepOrchestrator:
                     request.kafka_topics,
                     request.kafka_consumer_groups,
                 )
+                if infra_configured
+                else _unconfigured_probe("KAFKA", "infra_runtime_host")
             )
         if request.db_tables:
             results.append(
@@ -364,6 +447,8 @@ class HandlerIntegrationSweepOrchestrator:
                     request.db_database,
                     request.db_tables,
                 )
+                if infra_configured
+                else _unconfigured_probe("DB", "infra_runtime_host")
             )
         if request.projection_topics:
             results.append(
@@ -371,8 +456,15 @@ class HandlerIntegrationSweepOrchestrator:
                     request.projection_api_url,
                     request.projection_topics,
                 )
+                if request.projection_api_url.strip()
+                else _unconfigured_probe("PROJECTION", "projection_api_url")
             )
         for chain in request.golden_chains:
+            if not infra_configured:
+                results.append(
+                    _unconfigured_probe("GOLDEN_CHAIN", "infra_runtime_host")
+                )
+                continue
             results.append(
                 probe_golden_chain(
                     runtime_host=request.infra_runtime_host,
@@ -461,9 +553,13 @@ class HandlerIntegrationSweepOrchestrator:
         request: ModelIntegrationSweepOrchestratorRequest,
     ) -> list[dict[str, str]]:
         records: list[dict[str, str]] = []
-        for ticket_id, evidence_item_id, merge_sha in self._enumerate_ticket_sha_checks(
+        checks = self._enumerate_ticket_sha_checks(
             tickets=tickets, contracts_dir=contracts_dir
-        ):
+        )
+        for field in ("runtime_host", "runtime_repo_path"):
+            if checks and not getattr(request, field).strip():
+                raise IntegrationSweepConfigurationError(_not_configured(field))
+        for ticket_id, evidence_item_id, merge_sha in checks:
             receipt = self._runtime_sha_handler.handle(
                 ModelRuntimeShaVerifyRequest(
                     ticket_id=ticket_id,

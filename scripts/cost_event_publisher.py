@@ -59,7 +59,6 @@ VALID_REPORTING_SOURCES = frozenset(
     {"build-loop", "claude-session", "codex", "unknown"}
 )
 
-DEFAULT_BOOTSTRAP_SERVERS = "192.168.86.201:19092"  # onex-allow-internal-ip OMN-10580 reason="lab Kafka bootstrap default; override via KAFKA_BOOTSTRAP_SERVERS env var"
 DEFAULT_POLL_INTERVAL_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
@@ -151,7 +150,7 @@ class CostEventPublisher:
     def __init__(
         self,
         spool_dir: Path,
-        bootstrap_servers: str = DEFAULT_BOOTSTRAP_SERVERS,
+        bootstrap_servers: str,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
     ) -> None:
@@ -287,6 +286,23 @@ class CostEventPublisher:
             await asyncio.sleep(poll_interval)
 
 
+def bootstrap_servers_from_env() -> str:
+    """Return the broker from ``COST_PUBLISHER_BOOTSTRAP_SERVERS``, else ``KAFKA_BOOTSTRAP_SERVERS``.
+
+    The broker is deployment data supplied by whoever runs the publisher, so
+    there is no packaged address to fall back to: with neither set this refuses.
+    """
+    for name in ("COST_PUBLISHER_BOOTSTRAP_SERVERS", "KAFKA_BOOTSTRAP_SERVERS"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    raise RuntimeError(
+        "no Kafka bootstrap server is configured: export the host:port this "
+        "publisher should write to as COST_PUBLISHER_BOOTSTRAP_SERVERS (or "
+        "KAFKA_BOOTSTRAP_SERVERS)"
+    )
+
+
 def _spool_dir_from_env() -> Path:
     omni_home = Path(os.environ["OMNI_HOME"])
     return omni_home / ".onex_state" / "llm-cost-events"
@@ -302,9 +318,7 @@ def main() -> None:
     spool_dir = _spool_dir_from_env()
     spool_dir.mkdir(parents=True, exist_ok=True)
 
-    bootstrap_servers = os.environ.get(
-        "KAFKA_BOOTSTRAP_SERVERS", DEFAULT_BOOTSTRAP_SERVERS
-    )
+    bootstrap_servers = bootstrap_servers_from_env()
     poll_interval = float(
         os.environ.get(
             "COST_PUBLISHER_POLL_INTERVAL", str(DEFAULT_POLL_INTERVAL_SECONDS)

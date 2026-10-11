@@ -9,6 +9,10 @@ from urllib.parse import urlparse
 
 import yaml
 
+from omnimarket.models.swarm.swarm_endpoint_registry_location import (
+    SwarmRegistryNotConfiguredError,
+    resolve_endpoint_registry_path,
+)
 from omnimarket.nodes.node_swarm_registry_compute.models.enums import (
     EnumEndpointStatus,
     EnumSwarmCapability,
@@ -27,10 +31,6 @@ from omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_se
 )
 
 _VALID_CAPABILITIES: frozenset[str] = frozenset(c.value for c in EnumSwarmCapability)
-
-_DEFAULT_REGISTRY_PATH = (
-    Path(__file__).parent.parent / "contracts" / "endpoint_registry.yaml"
-)
 
 
 def _load_registry(path: Path) -> tuple[list[ModelRegistryEndpoint], str]:
@@ -123,15 +123,31 @@ def _select_for_subtask(
 
 
 class HandlerSwarmRegistry:
-    """Select endpoints for subtasks. Pure compute: no I/O, no side effects."""
+    """Select endpoints for subtasks. Pure compute: no I/O, no side effects.
+
+    The registry is deployment data: ``registry_path``, else the node overlay
+    (see :func:`resolve_endpoint_registry_path`). A registry that is supplied is
+    loaded and validated at construction. With none supplied the handler still
+    constructs, so the node can be wired, and ``handle`` raises
+    :class:`SwarmRegistryNotConfiguredError` naming how to supply one.
+    """
 
     def __init__(self, registry_path: Path | None = None) -> None:
-        path = registry_path if registry_path is not None else _DEFAULT_REGISTRY_PATH
+        self._not_configured: SwarmRegistryNotConfiguredError | None = None
+        self._endpoints: list[ModelRegistryEndpoint] = []
+        self._registry_hash = ""
+        try:
+            path = resolve_endpoint_registry_path(registry_path)
+        except SwarmRegistryNotConfiguredError as exc:
+            self._not_configured = exc
+            return
         self._endpoints, self._registry_hash = _load_registry(path)
 
     def handle(
         self, request: ModelSwarmEndpointSelectionRequest
     ) -> ModelSwarmEndpointSelectionResult:
+        if self._not_configured is not None:
+            raise self._not_configured
         assignments: dict[str, str] = {}
         unroutable: list[str] = []
         evidence: list[ModelEndpointSelectionEvidence] = []

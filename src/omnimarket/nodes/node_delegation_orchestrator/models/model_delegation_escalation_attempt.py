@@ -94,15 +94,15 @@ class ModelDelegationEscalationAttempt(BaseModel):
         description="ID of the ModelRoutingDecision that produced this attempt, for cross-event correlation.",
     )
     # OMN-19234: ``routing_decision_id`` is uuid5 of the MODEL id, so every
-    # backend serving one model (local-coder and local-heavy-reasoning on .201,
-    # local-omnipc2-chat on .202) records the same value and no receipt could
+    # backend serving one model (two backends on one host, another on a second
+    # host) records the same value and no receipt could
     # say which host answered. The decision already carries the backend key;
     # this keeps it on the attempt, where the terminal reads it.
     backend_ref: str | None = Field(
         default=None,
         description=(
             "The routing contract's backend key that served this attempt (the "
-            "decision's selected_backend_ref), e.g. 'local-omnipc2-chat'. Never "
+            "decision's selected_backend_ref), e.g. 'local-chat'. Never "
             "an endpoint URL. None when the decision carried no key."
         ),
     )

@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import uuid
 from pathlib import Path
@@ -26,6 +27,7 @@ from pydantic import ValidationError
 from scripts.cost_event_publisher import (
     TOPIC,
     CostEventPublisher,
+    bootstrap_servers_from_env,
     build_envelope_bytes,
     compute_idempotency_key,
     compute_source_file_sha256,
@@ -616,3 +618,43 @@ class TestPollOnce:
             count = await publisher.poll_once()
 
         assert count == 1
+
+
+class TestBootstrapServersFromEnv:
+    """The broker is deployment data: a set variable is honoured, an unset one refuses."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("COST_PUBLISHER_BOOTSTRAP_SERVERS", raising=False)
+        monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+
+    def test_returns_the_configured_broker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", " 192.0.2.10:9092 ")
+        assert bootstrap_servers_from_env() == "192.0.2.10:9092"
+
+    def test_the_publisher_specific_variable_wins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "192.0.2.10:9092")
+        monkeypatch.setenv("COST_PUBLISHER_BOOTSTRAP_SERVERS", "192.0.2.20:9092")
+        assert bootstrap_servers_from_env() == "192.0.2.20:9092"
+
+    @pytest.mark.parametrize("value", [None, "", "  "])
+    def test_unset_or_empty_refuses_and_names_the_variables(
+        self, monkeypatch: pytest.MonkeyPatch, value: str | None
+    ) -> None:
+        if value is not None:
+            monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", value)
+            monkeypatch.setenv("COST_PUBLISHER_BOOTSTRAP_SERVERS", value)
+        with pytest.raises(RuntimeError) as caught:
+            bootstrap_servers_from_env()
+        assert "COST_PUBLISHER_BOOTSTRAP_SERVERS" in str(caught.value)
+        assert "KAFKA_BOOTSTRAP_SERVERS" in str(caught.value)
+
+    def test_publisher_has_no_packaged_broker(self) -> None:
+        parameter = inspect.signature(CostEventPublisher).parameters[
+            "bootstrap_servers"
+        ]
+        assert parameter.default is inspect.Parameter.empty

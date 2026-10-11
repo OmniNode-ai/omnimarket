@@ -39,18 +39,24 @@ from omnimarket.models.delegation.model_delegation_routing_overlay import (
     ModelDelegationRoutingOverlay,
 )
 from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
+from omnimarket.models.node_overlay.node_overlay_reader import (
+    NodeOverlayError,
+    find_node_overlay,
+)
 
 #: Env key a contract overlay / deployment MUST bind to pin the tiers file.
 ROUTING_TIERS_PATH_ENV_KEY = "DELEGATION_ROUTING_TIERS_PATH"
 DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY = DELEGATION_ROUTING_OVERLAY_CONFIG_KEY
 
-# OMN-15628: this is the single canonical routing_tiers.yaml location (the
-# diverged omnibase_infra copy was deleted; this repo's packaged copy is the
-# only source of truth). OMN-16200: it is also what an installed package
-# resolves when DELEGATION_ROUTING_TIERS_PATH is unbound -- a customer's clean
-# install has no deployment to bind the key, and the shipped ladder is the one
-# it runs. The fallback is logged with provenance (source=bootstrap_default),
-# never silent, exactly as the sibling TASK_CLASS_CONTRACT_PATH read already is.
+# The packaged routing_tiers.yaml is the NEUTRAL DEFAULT ladder: the tier schema and
+# one `local` tier on capability-named backends, with no host, vendor, metered
+# tier or evaluator model (operator rulings 2026-09-26, 2026-09-30, 2026-10-09 and
+# 2026-10-10: a deployment's routing order lives in its overlay, never in the
+# package). OMN-16200: it is also what an installed package resolves when nothing
+# else is supplied -- a customer's clean install has no deployment to bind the
+# key, and declares its own local model in its bifrost overlay. The fallback is
+# logged with provenance (source=bootstrap_default), never silent, exactly as the
+# sibling TASK_CLASS_CONTRACT_PATH read already is.
 #
 # ``.parent`` x2 from ``src/omnimarket/routing/routing_tiers_path.py`` lands on
 # ``src/omnimarket`` → ``src/omnimarket/configs/routing_tiers.yaml``, the single
@@ -58,6 +64,10 @@ DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY = DELEGATION_ROUTING_OVERLAY_CONFIG_KEY
 ROUTING_TIERS_PACKAGED_DEFAULT_PATH = (
     Path(__file__).parent.parent / "configs" / "routing_tiers.yaml"
 )
+
+#: The node whose ``overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS`` is a
+#: deployment's own ladder, a file of exactly the shape the packaged one has.
+ROUTING_TIERS_OVERLAY_NODE = "node_delegation_routing_reducer"
 
 
 def resolve_routing_tiers_path() -> Path:
@@ -71,18 +81,29 @@ def resolve_routing_tiers_path() -> Path:
     at a nonexistent ``src/configs/routing_tiers.yaml``, silently nulling the
     provenance hash; one derivation per shape is the fix.
 
-    OMN-16200: an unbound key resolves to the packaged file rather than
-    refusing. The refusal left a clean install with no way to delegate at all:
-    the customer's first ``onex delegate`` died naming an env var nothing they
-    installed documents, while the file it wanted ships inside the wheel. The
-    choice is recorded, not hidden -- :func:`resolve_path_config` logs a
-    ``source=bootstrap_default`` provenance line naming the resolved path, and
-    a deployment that binds the key still gets exactly the file it bound.
+    Resolution order: the file ``DELEGATION_ROUTING_TIERS_PATH`` pins, then the
+    deployment's ladder at
+    ``<root>/node_delegation_routing_reducer/overlay.yaml`` under the first
+    directory of ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one, then the packaged
+    neutral default. The choice is recorded, not hidden --
+    :func:`resolve_path_config` logs a ``source=bootstrap_default`` provenance
+    line naming the resolved path, and a deployment that binds the key or
+    supplies the overlay gets exactly the file it supplied.
 
     Returns:
         The env-pinned :class:`Path` from ``DELEGATION_ROUTING_TIERS_PATH`` when
-        bound, otherwise :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`.
+        bound, else the overlay's ladder when one is supplied, otherwise
+        :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`.
     """
+    pinned, _ = resolve_optional_path_config(ROUTING_TIERS_PATH_ENV_KEY)
+    if pinned is not None:
+        return pinned
+    try:
+        overlay = find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)
+    except NodeOverlayError as exc:
+        raise ProtocolConfigurationError(str(exc)) from exc
+    if overlay is not None:
+        return overlay
     config_path, _ = resolve_path_config(
         ROUTING_TIERS_PATH_ENV_KEY, ROUTING_TIERS_PACKAGED_DEFAULT_PATH
     )
@@ -139,6 +160,7 @@ def load_harness_tiers(
 
 __all__ = [
     "DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY",
+    "ROUTING_TIERS_OVERLAY_NODE",
     "ROUTING_TIERS_PACKAGED_DEFAULT_PATH",
     "ROUTING_TIERS_PATH_ENV_KEY",
     "load_delegation_routing_overlay",

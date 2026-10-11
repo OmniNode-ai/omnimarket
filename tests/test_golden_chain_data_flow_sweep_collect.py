@@ -67,20 +67,23 @@ def _local_target() -> ModelLaneTarget:
 # ---------------------------------------------------------------------------
 
 
+_RUNTIME_HOST = "runtime-host.example.invalid"
+
+
+@pytest.fixture(autouse=True)
+def _configured_runtime_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remote lanes need a deployment-supplied runtime host; tests supply a fixture one."""
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    monkeypatch.setenv("ONEX_DATA_FLOW_RUNTIME_HOST", _RUNTIME_HOST)
+
+
 @pytest.mark.unit
 class TestLaneResolution:
     def test_dev_lane_resolves_to_remote_host(self) -> None:
-        """dev resolves to the .201 runtime host + unprefixed container names.
-
-        OMN-14531: the default host is the Tailscale MagicDNS name, not the raw
-        private LAN IP — a raw ``192.168.86.201`` default is unroutable
-        off-network (feedback_use_tailscale_magicdns_hostnames), and was a Rule
-        #6 hardcoded-LAN-IP violation. Mirrors the node_database_sweep OMN-14526
-        fix.
-        """
+        """dev resolves to the configured runtime host + unprefixed container names."""
         target = resolve_lane_target("dev")
         assert target.is_remote is True
-        assert target.runtime_host == "omninode-pc.tail75df5e.ts.net"
+        assert target.runtime_host == _RUNTIME_HOST
         assert target.redpanda_container == "omnibase-infra-redpanda"
         assert target.postgres_container == "omnibase-infra-postgres"
 
@@ -160,7 +163,7 @@ class TestRemoteTransport:
         assert captured, "no command was run"
         argv = captured[0]
         assert argv[0] == "ssh", f"remote lane must use ssh, got {argv!r}"
-        assert argv[1] == "jonah@omninode-pc.tail75df5e.ts.net"
+        assert argv[1] == f"jonah@{_RUNTIME_HOST}"
         assert "docker exec omnibase-infra-redpanda" in argv[2]
 
     def test_local_lane_probe_uses_bare_docker(self) -> None:

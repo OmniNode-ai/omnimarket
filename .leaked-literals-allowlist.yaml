@@ -66,11 +66,6 @@ exemptions:
     ticket: OMN-10580
     reason: uses lab git actor handle as synthetic PR author in webhook test fixtures
 
-  - file: tests/unit/scripts/test_run_delegation_cost_projection_process.py
-    type: file_level
-    ticket: OMN-10580
-    reason: uses lab Kafka address as monkeypatched env var in delegation cost tests
-
   - file: tests/unit/nodes/node_overnight/test_main_publish_events.py
     type: file_level
     ticket: OMN-10580
@@ -105,11 +100,6 @@ exemptions:
     type: file_level
     ticket: OMN-10580
     reason: uses lab endpoint as command model test input
-
-  - file: tests/integration/test_cost_event_publisher_kafka.py
-    type: file_level
-    ticket: OMN-10580
-    reason: integration test using lab Kafka bootstrap address as test target
 
   - file: tests/conftest.py
     type: file_level

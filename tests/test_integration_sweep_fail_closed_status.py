@@ -44,6 +44,8 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
     ModelIntegrationSweepOrchestratorRequest,
 )
 
+pytestmark = pytest.mark.usefixtures("integration_sweep_deployment_overlay")
+
 _PROBES_SUBPROCESS = (
     "omnimarket.nodes.node_integration_sweep_orchestrator."
     "handlers.surface_probes.subprocess.run"
@@ -64,7 +66,7 @@ def _dead_infra_run(argv: list[str], **_kwargs: object) -> MagicMock:
     out = MagicMock()
     out.returncode = 1
     out.stdout = ""
-    out.stderr = "ssh: connect to host 192.168.86.201 port 22: Connection refused"  # onex-allow-internal-ip OMN-14538 reason="mocked ssh stderr text in a unit test fixture; no live connection is made"
+    out.stderr = "ssh: connect to host 192.0.2.10 port 22: Connection refused"
     return out
 
 

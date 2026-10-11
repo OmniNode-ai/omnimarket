@@ -16,6 +16,9 @@ from typing import Any, Protocol
 
 import yaml
 
+from omnimarket.models.swarm.swarm_endpoint_registry_location import (
+    resolve_endpoint_registry_path,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_swarm_fanout_orchestrator.models.enums import (
     EnumExecutionStatus,
@@ -40,13 +43,6 @@ from omnimarket.nodes.node_swarm_fanout_orchestrator.models.model_swarm_fanout_r
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
-
-_DEFAULT_REGISTRY_PATH = (
-    Path(__file__).parent.parent.parent
-    / "node_swarm_registry_compute"
-    / "contracts"
-    / "endpoint_registry.yaml"
-)
 
 # OMN-18568: the contract of the node that PUBLISHES the three delegation terminals this
 # node waits on. They used to be read out of this node's own ``subscribe_topics``, which
@@ -135,7 +131,9 @@ def _compute_waves(subtasks: tuple[ModelSubtask, ...]) -> list[list[ModelSubtask
 def _load_endpoint_registry(
     registry_path: Path | None = None,
 ) -> dict[str, ModelSwarmEndpoint]:
-    path = registry_path or _DEFAULT_REGISTRY_PATH
+    # The registry is deployment data: unconfigured, this raises
+    # SwarmRegistryNotConfiguredError naming how to supply one.
+    path = resolve_endpoint_registry_path(registry_path)
     try:
         raw: dict[str, Any] = yaml.safe_load(path.read_text())
         endpoints: dict[str, ModelSwarmEndpoint] = {}

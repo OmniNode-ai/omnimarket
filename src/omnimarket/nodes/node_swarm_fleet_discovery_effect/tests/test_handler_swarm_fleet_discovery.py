@@ -57,15 +57,16 @@ def openrouter_base_url_env(
 
 
 _REGISTRY_PATH = (
-    Path(__file__).parent.parent.parent
-    / "node_swarm_registry_compute"
-    / "contracts"
+    Path(__file__).resolve().parents[5]
+    / "tests"
+    / "fixtures"
+    / "swarm"
     / "endpoint_registry.yaml"
 )
 
 
 def _local_health_url(host_octet: str, port: int) -> str:
-    host = ".".join(("192", "168", "86", host_octet))
+    host = ".".join(("192", "0", "2", host_octet))
     return f"http://{host}:{port}/v1/health"
 
 

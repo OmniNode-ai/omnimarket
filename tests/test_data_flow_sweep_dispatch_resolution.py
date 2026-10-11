@@ -92,8 +92,13 @@ class TestResolveFlowsPrecedence:
         resolved = resolve_flows(DataFlowSweepRequest(flows=[], collect=False))
         assert len(resolved) == 3
 
-    def test_collect_runs_live_collector_on_dispatch_path(self) -> None:
+    def test_collect_runs_live_collector_on_dispatch_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """collect=True invokes the live collector on the dispatch path (OMN-13534)."""
+        monkeypatch.setenv(
+            "ONEX_DATA_FLOW_RUNTIME_HOST", "runtime-host.example.invalid"
+        )
         populated = ModelFlowInput(
             topic="onex.evt.platform.node-introspection.v1",
             handler_name="projectNodeIntrospection",
@@ -117,8 +122,13 @@ class TestResolveFlowsPrecedence:
         assert mock_collect.called
         assert all(f.producer_status == EnumProducerStatus.ACTIVE for f in resolved)
 
-    def test_collect_per_flow_failure_falls_back_to_descriptor(self) -> None:
+    def test_collect_per_flow_failure_falls_back_to_descriptor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A single failing probe falls back to the descriptor, not an abort."""
+        monkeypatch.setenv(
+            "ONEX_DATA_FLOW_RUNTIME_HOST", "runtime-host.example.invalid"
+        )
         with (
             patch(
                 "omnimarket.nodes.node_data_flow_sweep.collector.assert_lane_reachable",

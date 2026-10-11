@@ -1,0 +1,26 @@
+# Fixture swarm endpoint registry: RFC 5737 documentation addresses only, in the
+# schema the deployment's node_swarm_registry_compute overlay uses.
+registry_schema_version: "1.0.0"
+endpoints:
+  - id: "qwen3.6-35b-a3b"
+    base_url: "http://192.0.2.201:8000/v1"
+    model_id: "Qwen3.8-27B"
+    endpoint_ref: "LLM_LOCAL_PRIMARY_URL"
+    provider: "vllm"
+    capabilities: [code_generation, structured_output, refactoring, analysis, reasoning, math, general]
+    context_window: 131072
+    context_window_source: "probe"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"
+  - id: "text-embedding-gte"
+    base_url: "http://192.0.2.201:8002/v1"
+    model_id: "text-embedding-gte"
+    endpoint_ref: "LLM_LOCAL_EMBEDDINGS_URL"
+    provider: "vllm"
+    capabilities: [embeddings]
+    context_window: 8192
+    context_window_source: "probe"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"

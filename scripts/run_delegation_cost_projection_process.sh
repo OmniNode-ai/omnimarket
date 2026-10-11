@@ -43,7 +43,10 @@ Required:
   - KAFKA_BROKERS or KAFKA_BOOTSTRAP_SERVERS in that env/environment
 
 Safety:
-  The wrapper refuses 192.168.86.201 endpoints so the local lane cannot mutate .201.  # onex-allow-internal-ip OMN-10580 reason="safety guard docstring; the IP appears as a string to reject, not a connection target"
+  OMNIMARKET_PROTECTED_RUNTIME_PATTERNS, set in that env/environment, is a
+  comma-separated list of substrings (a host, an address) the wrapper refuses to
+  see in any endpoint, so the local lane cannot mutate a runtime you protect.
+  Unset or empty protects nothing.
   Secrets are never printed.
 EOF
 }
@@ -71,9 +74,15 @@ refuse_protected_runtime() {
   local name="$1"
   local value="${!name:-}"
   [[ -z "${value}" ]] && return 0
-  if [[ "${value}" == *"192.168.86.201"* ]]; then  # onex-allow-internal-ip OMN-10580 reason="safety guard that BLOCKS connections to .201; IP used as a pattern to reject, not a target"
-    die "${name} points at protected .201 runtime; use local bus/database endpoints"
-  fi
+  local pattern
+  local -a patterns
+  IFS=',' read -r -a patterns <<<"${OMNIMARKET_PROTECTED_RUNTIME_PATTERNS:-}"
+  for pattern in "${patterns[@]}"; do
+    [[ -n "${pattern}" ]] || continue
+    if [[ "${value}" == *"${pattern}"* ]]; then
+      die "${name} points at a protected runtime (matches OMNIMARKET_PROTECTED_RUNTIME_PATTERNS entry); use local bus/database endpoints"
+    fi
+  done
 }
 
 prepare_env() {

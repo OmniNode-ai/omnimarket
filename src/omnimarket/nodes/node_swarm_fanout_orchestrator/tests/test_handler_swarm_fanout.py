@@ -48,7 +48,7 @@ def _make_endpoint(
 ) -> ModelSwarmEndpoint:
     return ModelSwarmEndpoint(
         endpoint_id=ep_id,
-        base_url="http://192.168.86.201:8000/v1",  # onex-allow-internal-ip OMN-12118 reason="test fixture uses lab endpoint to exercise real endpoint_ref wiring"
+        base_url="http://192.0.2.10:8000/v1",
         model_id="Qwen3.6-35B-A3B",
         endpoint_ref=ref,
     )
@@ -276,7 +276,7 @@ def test_endpoint_missing_endpoint_ref_fails_immediately() -> None:
     """Endpoint without endpoint_ref cannot be dispatched."""
     ep = ModelSwarmEndpoint(
         endpoint_id="ep1",
-        base_url="http://192.168.86.201:8000/v1",  # onex-allow-internal-ip OMN-12118 reason="test fixture uses lab endpoint to exercise real endpoint_ref wiring"
+        base_url="http://192.0.2.10:8000/v1",
         model_id="m1",
         endpoint_ref="",
     )

@@ -6,6 +6,23 @@ import csv
 import glob
 import hashlib
 import json
+import os
+
+# Second-host attribution is deployment data, supplied by whoever runs the
+# benchmark: MEM_TO_CONTENT_SECOND_HOST_LABEL is the suffix appended to the
+# model name, MEM_TO_CONTENT_SECOND_HOST_OVERLAYS is a comma list of overlay file
+# names, each optionally ``overlay:backend`` to match only that last backend.
+SECOND_HOST_LABEL = os.environ.get("MEM_TO_CONTENT_SECOND_HOST_LABEL", "")
+SECOND_HOST_OVERLAYS = [
+    entry.partition(":")[::2]
+    for entry in os.environ.get("MEM_TO_CONTENT_SECOND_HOST_OVERLAYS", "").split(",")
+    if entry
+]
+if SECOND_HOST_OVERLAYS and not SECOND_HOST_LABEL:
+    raise SystemExit(
+        "MEM_TO_CONTENT_SECOND_HOST_OVERLAYS is set but "
+        "MEM_TO_CONTENT_SECOND_HOST_LABEL is not"
+    )
 
 HOUSE = "820272f9-4aaf-5add-a2df-0af942852ab2"
 seen = set()
@@ -32,10 +49,13 @@ for f in sorted(glob.glob("/tmp/omn20032/genmem_*.jsonl")):
         seen.add(cid)
         ov = d.get("overlay", "dev.local.bifrost.yaml")
         be = (d.get("backends") or [""])[-1]
-        host202 = ov == "dev.local202b.bifrost.yaml" or (
-            ov == "dev.local202.bifrost.yaml" and be == "local-heavy-reasoning"
+        second_host = any(
+            ov == overlay and (not backend or be == backend)
+            for overlay, backend in SECOND_HOST_OVERLAYS
         )
-        d["model_name"] = d["model_name"] + ("@omnipc2-llamacpp" if host202 else "")
+        d["model_name"] = d["model_name"] + (
+            f"@{SECOND_HOST_LABEL}" if second_host else ""
+        )
         content.append(
             {
                 "correlation_id": cid,

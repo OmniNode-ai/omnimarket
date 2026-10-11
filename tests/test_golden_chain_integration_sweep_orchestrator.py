@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file OMN-9334 reason="test fixture — uses .201 lab endpoint as integration-sweep test input; not a runtime default or shipping connection string"
 from __future__ import annotations
 
 import json
@@ -29,6 +28,8 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probe
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
 )
+
+pytestmark = pytest.mark.usefixtures("integration_sweep_deployment_overlay")
 
 
 def test_integration_sweep_writes_drift_artifact(tmp_path: Path) -> None:
@@ -213,7 +214,7 @@ def test_probe_runtime_health_pass() -> None:
     mock_result.stdout = '{"status": "ok"}'
     mock_result.stderr = ""
 
-    url = "http://192.168.86.201:18085"  # onex-allow-internal-ip: test fixture
+    url = "http://192.0.2.10:18085"
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
         return_value=mock_result,
@@ -232,7 +233,7 @@ def test_probe_runtime_health_fail_on_nonzero_exit() -> None:
     mock_result.stdout = ""
     mock_result.stderr = "Connection refused"
 
-    url = "http://192.168.86.201:18085"  # onex-allow-internal-ip: test fixture
+    url = "http://192.0.2.10:18085"
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
         return_value=mock_result,
@@ -245,7 +246,7 @@ def test_probe_runtime_health_fail_on_nonzero_exit() -> None:
 
 @pytest.mark.unit
 def test_probe_runtime_health_error_on_exception() -> None:
-    url = "http://192.168.86.201:18085"  # onex-allow-internal-ip: test fixture
+    url = "http://192.0.2.10:18085"
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
         side_effect=TimeoutError("timed out"),
@@ -264,7 +265,7 @@ def test_probe_container_health_pass() -> None:
     mock_result.stdout = "omnibase-runtime\tUp 2 hours\nomnibase-postgres\tUp 2 hours\n"
     mock_result.stderr = ""
 
-    host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    host = "192.0.2.10"
     run_mock = MagicMock(return_value=mock_result)
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
@@ -292,7 +293,7 @@ def test_probe_container_health_fail_on_unhealthy() -> None:
     mock_result.stdout = "omnibase-runtime\tUp 2 hours (unhealthy)\n"
     mock_result.stderr = ""
 
-    host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    host = "192.0.2.10"
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
         return_value=mock_result,
@@ -306,7 +307,7 @@ def test_probe_container_health_fail_on_unhealthy() -> None:
 
 @pytest.mark.unit
 def test_probe_container_health_error_on_exception() -> None:
-    host = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+    host = "192.0.2.10"
     with patch(
         "omnimarket.nodes.node_integration_sweep_orchestrator.handlers.surface_probes.subprocess.run",
         side_effect=TimeoutError("ssh timeout"),
@@ -415,7 +416,7 @@ _PROBES_RUN = (
     "omnimarket.nodes.node_integration_sweep_orchestrator."
     "handlers.surface_probes.subprocess.run"
 )
-_HOST = "192.168.86.201"  # onex-allow-internal-ip: test fixture
+_HOST = "192.0.2.10"
 
 
 @pytest.mark.unit
@@ -541,7 +542,7 @@ def test_probe_projection_api_pass() -> None:
     mock.returncode = 0
     mock.stdout = "200"
     mock.stderr = ""
-    url = "http://192.168.86.201:3002"  # onex-allow-internal-ip: test fixture
+    url = "http://192.0.2.10:3002"
     with patch(_PROBES_RUN, return_value=mock):
         result = probe_projection_api(url, ["onex.evt.foo.v1"])
     assert result["surface"] == "PROJECTION"
@@ -555,7 +556,7 @@ def test_probe_projection_api_fail_on_non_200() -> None:
     mock.returncode = 22
     mock.stdout = "404"
     mock.stderr = ""
-    url = "http://192.168.86.201:3002"  # onex-allow-internal-ip: test fixture
+    url = "http://192.0.2.10:3002"
     with patch(_PROBES_RUN, return_value=mock):
         result = probe_projection_api(url, ["onex.evt.missing.v1"])
     assert result["status"] == "fail"
@@ -663,11 +664,11 @@ class _StubRuntimeShaHandler:
             commit_sha=self._deployed_sha,
             runner="integration-sweep-verifier",
             verifier="integration-sweep-test-verifier",
-            probe_command="ssh 192.168.86.201 git -C /data/omninode/omni_home/omnimarket rev-parse HEAD",  # onex-allow-internal-ip: test fixture
+            probe_command="ssh 192.0.2.10 git -C /srv/runtime/repo rev-parse HEAD",
             probe_stdout=f"{self._deployed_sha}\n",
             actual_output=json.dumps(
                 {
-                    "runtime_host": "192.168.86.201",  # onex-allow-internal-ip: test fixture
+                    "runtime_host": "192.0.2.10",
                     "deployed_sha": self._deployed_sha,
                     "merge_sha": self._merge_sha,
                     "match": match,

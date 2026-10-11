@@ -2,11 +2,20 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 OmniNode Team
 #
-# routing_tiers.yaml — Declarative delegation escalation ladder.
+# routing_tiers.yaml — Declarative delegation escalation ladder (default).
 #
-# Loaded by node_delegation_routing_reducer at startup.
-# To change tier order, model assignments, or retry counts, edit this file only.
-# No handler changes are needed for operational tuning.
+# Loaded by node_delegation_routing_reducer at startup. This is the packaged
+# default every install starts from; it names no host and no endpoint, and the
+# evaluator model a deployment scores a tier with is not named here. A
+# deployment's own ladder -- its tier order, model assignments, retry counts and
+# evaluator -- is a file of this same shape that it supplies, never one edited
+# into this package (operator rulings 2026-09-26, 2026-09-30, 2026-10-09 and
+# 2026-10-10: routing order lives in the deployment's overlay).
+# omnimarket.routing.routing_tiers_path.resolve_routing_tiers_path resolves, in
+# order: the file DELEGATION_ROUTING_TIERS_PATH pins; the overlay at
+# <root>/node_delegation_routing_reducer/overlay.yaml under the first directory
+# of ONEX_SKILL_OVERLAY_ROOTS that holds one; then this file. No handler changes
+# are needed for operational tuning.
 #
 # Tier evaluation order: local → cheap_cloud → claude
 # The handler iterates tiers top-to-bottom, stopping at the first accepted result.
@@ -38,7 +47,7 @@
 #   - OMN-10657: Endpoint resolution from bifrost contract, not env vars
 #   - OMN-10717: Default contract + endpoint overlay merge semantics
 #   - OMN-13215: Canonical, provider-swappable ceiling tier; remove shelled CLI
-#   - OMN-14625: GLM z.ai route believed dead from .201 — cheap_cloud/ceiling/
+#   - OMN-14625: GLM z.ai route believed dead from the runtime host — cheap_cloud/ceiling/
 #     judge repointed to Gemini (cloud-gemini-2-5-flash). Premise DISPROVED by
 #     OMN-6790; the ceiling/judge stay on Gemini by choice, not by necessity.
 #   - OMN-6790: GLM endpoint pinned to the Coding Plan surface
@@ -48,7 +57,7 @@ tiers:
   - name: local
     cost_per_1k_tokens: 0.0
     # OMN-13234: typed per-tier cost model. local is served on owned GPUs
-    # (.201/.200) — no marginal API cost. The dollar figure for a local call,
+    # — no marginal API cost. The dollar figure for a local call,
     # when surfaced, comes from the pricing manifest's GPU compute_cost
     # (electricity + amortization), not a per-token rate.
     cost:
@@ -56,7 +65,7 @@ tiers:
     models:
       # OMN-16419: was "Qwen3.6-35B-A3B" — repointed to match the corrected
       # bifrost_delegation.yaml local-coder model_name (live-verified served id
-      # "Qwen3.6-35B-A3B" at .201:8000). Keeping this id in sync with the backend's
+      # "Qwen3.6-35B-A3B" at the primary local endpoint). Keeping this id in sync with the backend's
       # model_name is required for the task_model_overrides id-match escape
       # hatch in task_class_contracts.v1.yaml to resolve (see that file's
       # header comment) — a mismatch here would strand routing.
@@ -67,9 +76,9 @@ tiers:
         # CODE backend only; `test` and `research` were removed here so the
         # code-only fast_path_threshold did not bleed local-coder into task
         # types the local-reasoner rung owned. That rung is GONE — OMN-16442
-        # deleted the local-reasoner entry because its endpoint (.201:8001) is
+        # deleted the local-reasoner entry because its endpoint (the second local endpoint) is
         # the RTX 4090 slot physically removed for RMA (OMN-16407; re-probed
-        # 2026-08-28: `curl .201:8001/v1/models` → exit 7
+        # 2026-08-28: `curl <second local endpoint>/v1/models` → exit 7
         # "Couldn't connect to server"). `test` was left with ZERO local rung
         # by that deletion, so it is restored here rather than demoted to the
         # metered cheap_cloud tier. This is not a reversal of OMN-13599's
@@ -100,11 +109,11 @@ tiers:
         # code_generation.
         fast_path_threshold_tokens: 65536
       # OMN-16442: the `local-reasoner` rung (id Qwen3.6-27B-MTP-IQ4_XS.gguf,
-      # .201:8001) was DELETED here. That endpoint is the RTX 4090 slot
-      # physically removed from .201 for RMA (OMN-16407); re-probed 2026-08-28
+      # the second local endpoint) was DELETED here. That endpoint is the RTX 4090 slot
+      # physically removed from the host for RMA (OMN-16407); re-probed 2026-08-28
       # against the canonical inventory (omni_home/docs/reference/
       # AI_LAB_HARDWARE.md, "Last verified: 2026-08-28"), `curl
-      # .201:8001/v1/models` returns exit 7 "Couldn't connect
+      # <second local endpoint>/v1/models` returns exit 7 "Couldn't connect
       # to server" and the inventory marks the slot DEAD / RETIRED. It was the
       # FIRST unpinned pick for test/research/reasoning/planning/review/
       # document/documentation/summarization (OMN-16442's defect report), so
@@ -117,8 +126,8 @@ tiers:
       # before/after resolution table on OMN-16442 and
       # test_no_task_type_loses_its_last_local_backend_omn16442.
       # OMN-16419: was "Qwen3.6-35B-A3B" — same repoint as local-coder above
-      # (same .201:8000 SGLang endpoint, live-verified served id "Qwen3.6-35B-A3B").
-      # OMN-16442 re-probe 2026-08-28: GET .201:8000/v1/models still reports
+      # (same primary local SGLang endpoint, live-verified served id "Qwen3.6-35B-A3B").
+      # OMN-16442 re-probe 2026-08-28: GET <primary local endpoint>/v1/models still reports
       # id "Qwen3.6-35B-A3B" with max_model_len 131072. The endpoint currently permits
       # ONE running generation request, so concurrency must be queued ABOVE
       # the model server — a second concurrent delegation to this backend
@@ -167,7 +176,7 @@ tiers:
           # `first_eligible_tier("documentation") != "local"` — but that was
           # never a contract, it was the observable effect of `documentation`'s
           # ONLY local declarant (local-reasoner, added by OMN-15630) pointing
-          # at .201:8001, which was already dead. The class was declared local
+          # at the second local endpoint, which was already dead. The class was declared local
           # and un-routable at the same time. Repairing the endpoint side of
           # that makes the declared contract true; the OMN-16868 assertion is
           # rewritten to guard the exact-token trap it actually cares about
@@ -176,8 +185,7 @@ tiers:
           - documentation
           - summarization
         fast_path_threshold_tokens: 8192
-    eval_before_accept: true
-    eval_model: qwen3.6-35b
+    eval_before_accept: false
     max_retries: 2
   - name: cheap_cloud
     cost_per_1k_tokens: 0.002
@@ -199,7 +207,7 @@ tiers:
       # skill), never from routing.
       # OMN-14625 (historical): this entry was PRIMARY-by-declaration-order
       # for cheap-cloud code-gen, repointed here off direct z.ai GLM on a
-      # "GLM route is DEAD from .201" finding (resolve_api_key succeeded but
+      # "GLM route is DEAD from the runtime host" finding (resolve_api_key succeeded but
       # every completion call 401s — see reference_glm_zai_wiring_and_consumers).
       # OMN-6790 later disproved that premise: the GLM route authenticates and
       # serves 200s on the Coding Plan endpoint. OMN-13640 moved this entry
@@ -287,8 +295,7 @@ tiers:
       # authority — then restore this entry. Do NOT restore it first: the
       # OMN-16833 gate (omnimarket.validators.routing_tier_backend_bindability)
       # fails on a tier that references a non-local backend with a null endpoint.
-    eval_before_accept: true
-    eval_model: qwen3.6-35b
+    eval_before_accept: false
     max_retries: 1
   # cheap_frontier tier — high-capability free-tier cloud models for the June 5
   # model-experimentation campaign (OMN-12492). Requires OPENROUTER_API_KEY.
@@ -397,8 +404,7 @@ tiers:
       # north-mini-code is a spread peer of openrouter-nemotron-ultra via its
       # placement in bifrost_delegation.yaml. The mirrored entry copies the
       # ultra rung's use_for, so it still serves every class that rung serves.
-    eval_before_accept: true
-    eval_model: qwen3.6-35b
+    eval_before_accept: false
     max_retries: 1
   # Ceiling tier (OMN-13215). Executes through the canonical HTTP inference path
   # like every lower tier — NO subprocess, NO shelled CLI. The model maps to an
@@ -429,7 +435,7 @@ tiers:
   #
   # OMN-14625: ceiling repointed a THIRD time — from GLM-5.2 z.ai direct
   # (cloud-glm) back to Gemini (cloud-gemini-2-5-flash, gemini-2.5-flash). The z.ai
-  # GLM route is DEAD from the .201 runtime: resolve_api_key succeeds but every
+  # GLM route is DEAD from the runtime host: resolve_api_key succeeds but every
   # completion call 401s / loops FAILED-only (forensics this ticket; see memory
   # reference_glm_zai_wiring_and_consumers). The openrouter-nemotron-ultra
   # fallback entry added under OMN-13667 is REMOVED — with the primary ceiling
@@ -452,7 +458,7 @@ tiers:
     models:
       # OMN-14625: primary ceiling model repointed from GLM-5.2 z.ai direct
       # (cloud-glm) to Gemini (cloud-gemini-2-5-flash, model gemini-2.5-flash). The
-      # z.ai GLM route is DEAD from the .201 runtime — resolve_api_key succeeds
+      # z.ai GLM route is DEAD from the runtime host — resolve_api_key succeeds
       # but every completion call 401s / loops FAILED-only (OMN-14625
       # forensics; see reference_glm_zai_wiring_and_consumers). Gemini's
       # cloud-gemini-2-5-flash backend is proven resolvable on this lane (live 200s,

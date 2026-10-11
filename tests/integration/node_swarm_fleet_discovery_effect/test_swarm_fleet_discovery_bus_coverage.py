@@ -63,18 +63,15 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _OPENROUTER_MODELS_URL = f"{_OPENROUTER_BASE_URL}/models"
 
 _REGISTRY_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "nodes"
-    / "node_swarm_registry_compute"
-    / "contracts"
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "swarm"
     / "endpoint_registry.yaml"
 )
 
 
 def _local_health_url(host_octet: str, port: int) -> str:
-    host = ".".join(("192", "168", "86", host_octet))
+    host = ".".join(("192", "0", "2", host_octet))
     return f"http://{host}:{port}/v1/health"
 
 

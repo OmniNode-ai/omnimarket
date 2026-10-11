@@ -36,6 +36,8 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
     ModelIntegrationSweepOrchestratorRequest,
 )
 
+pytestmark = pytest.mark.usefixtures("integration_sweep_deployment_overlay")
+
 _DEPLOYED_SHA = "abc1234def5678abc1234def5678abc1234def56"
 
 
