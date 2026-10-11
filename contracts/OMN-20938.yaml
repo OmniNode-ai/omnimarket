@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20938"
+title: "OCC retirement M: omnimarket's dod_verify supersession differential runs against recorded OCC verdicts instead of a live onex_change_control checkout"
+summary: "node_dod_verify's supersession differential compared its resolution with onex_change_control's _superseded_dod_ids only through a live checkout that ci.yml's test job and the nightly full suite carried. The verdicts OCC returned at 6adc28168d023d027bf9c1172f262ac03c9d9055 for every parity-corpus case and every contract of the exhaustive domain are now recorded in tests/fixtures/dod_supersession/occ_recorded_verdicts.yaml, and the differential compares against them on every run with no skip path. Removing the two OCC parity-differential checkout steps follows in a separate pull request under this ticket, which adds its own criterion."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-occ-verdicts-recorded"
+    statement: "OCC's supersession verdicts are recorded in omnimarket beside the differential."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: OCC's verdicts are recorded in omnimarket -- falsifier: a committed fixture under `tests/fixtures/dod_supersession/` holds, for every case of the parity corpus and every contract of the exhaustive small-contract domain the differential iterates today, the output of OCC's `_superseded_dod_ids` at 6adc28168d023d027bf9c1172f262ac03c9d9055, with that sha and the generating command in the fixture header; regenerating it from that OCC revision reproduces the file byte for byte (shown on the PR body's Lab: line)"
+  - id: "req-differential-discriminates"
+    statement: "The differential compares the resolver with the recorded verdicts on every run and still fails on a broken resolver."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: The differential still discriminates -- falsifier: the test compares node_dod_verify's resolution against the recorded verdicts on every hosted run with no skip path, and a deliberately broken resolver (one mutation shown in the PR body, e.g. honouring a forward marker) fails it"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the record names the OCC sha and its generating command and spans every corpus case and the full domain."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k test_the_recorded_occ_verdicts_carry_their_provenance"
+  - kind: "tests"
+    description: "AC2: the runner is compared with the recorded verdicts over the corpus and the whole domain, with no skip path."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k recorded_occ_verdicts"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20938-ac1-occ-verdicts-recorded"
+    description: "AC1: the recorded fixture carries the OCC sha and the generating command and covers the whole differential."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k test_the_recorded_occ_verdicts_carry_their_provenance"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20938-ac2-differential-discriminates"
+    description: "AC2: the runner matches the recorded OCC verdicts on every corpus case and every domain contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k recorded_occ_verdicts"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

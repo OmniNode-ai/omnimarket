@@ -41,7 +41,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
+from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
@@ -148,18 +148,14 @@ def _check_receipt_exists(
             details={"reason": "contract_missing", "ticket_id": ticket_id},
         )
     try:
-        raw: Any = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        raw: Any = load_yaml_mapping_no_duplicates(
+            contract_path.read_text(encoding="utf-8"), source=str(contract_path)
+        )
     except Exception as exc:
         return ModelDodCheckResult(
             check="receipt_exists",
             status="fail",
             details={"reason": "yaml_parse_error", "error": str(exc)},
-        )
-    if not isinstance(raw, dict):
-        return ModelDodCheckResult(
-            check="receipt_exists",
-            status="fail",
-            details={"reason": "contract_not_a_mapping"},
         )
     dod_items = raw.get("dod_evidence", [])
     has_evidence = isinstance(dod_items, list) and len(dod_items) > 0
