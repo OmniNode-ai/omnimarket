@@ -68,3 +68,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py -q -k criteria_unchanged_verifies"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20858-deploy-criteria-drift"
+    description: "Deploy probe against the explicitly selected runtime container. Its loaded criteria-drift code accepts an unchanged criterion, reports an edited AC1 with an amendment, and stops counting a prior PASS bound to AC1. The probe fails on a runtime without this change. Recorded criterion text is used; this probe does not read Linear. Run only at the local Done gate, where the selected container is available."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |
+          docker exec "${RUNTIME_CONTAINER:?set RUNTIME_CONTAINER to the runtime under test}" python -c 'from omnimarket.nodes.node_dod_verify.services.criteria_drift import compare_criteria, invalidate_drifted_results; from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import ModelCriteriaPins, ModelCriterionPin; from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import ModelCriteriaCheck; from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import ModelEvidenceCheckResult; from omnimarket.occ_contract_pin import criterion_hash; original="AC1: original wording"; pins=ModelCriteriaPins(known_labels=("AC1",), bindings=(ModelCriterionPin(item_id="runtime-probe", label="AC1", criterion_hash=criterion_hash(original), accepted=True),)); assert compare_criteria(pins, "OMN-20858", original)==((), None); drift, amendment=compare_criteria(pins, "OMN-20858", "AC1: edited wording"); assert len(drift)==1 and drift[0].label=="AC1" and drift[0].kind=="edited" and amendment is not None; prior=ModelEvidenceCheckResult(evidence_id="runtime-probe", description="recorded PASS", status="verified", binds_ac=("AC1",)); result=invalidate_drifted_results([prior], ModelCriteriaCheck(drift=drift, amendment=amendment)); assert result[0].status=="skipped" and "CRITERIA_DRIFT" in result[0].message; print("LAB_CRITERIA_DRIFT_READBACK unchanged=accepted edited=AC1 prior_pass=skipped")'
+        cwd: "${OMNI_HOME}/omnimarket"
