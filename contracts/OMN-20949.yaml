@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20949"
+title: "OCC retirement: kafka_boundaries.yaml moves into omnimarket beside node_duplication_sweep, and the node's D2 reads it there"
+summary: "node_duplication_sweep's D2 resolved the cross-repo Kafka boundary manifest only from an onex_change_control checkout in the workspace. The manifest now ships beside the node (byte-identical to onex_change_control dev 9de1f3a52e58320b63f53744a3a23b0f0d8a4c79) and D2 reads it from the installed package by default. Parsing and verdict logic are unchanged. omnibase_infra's Duplication Sweep is repointed in a follow-up pull request under this ticket (AC3), and the onex_change_control copy is deleted only after that."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-manifest-beside-node"
+    statement: "The Kafka boundary manifest lives in omnimarket beside node_duplication_sweep."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The manifest lives in omnimarket beside the node -- falsifier: src/omnimarket/nodes/node_duplication_sweep/contracts/kafka_boundaries.yaml exists, is byte-identical to onex_change_control dev's src/onex_change_control/boundaries/kafka_boundaries.yaml at the sha named in the PR body, and a test asserts it parses with topic_name, producer_repo and consumer_repo on every entry"
+  - id: "req-d2-reads-omnimarket"
+    statement: "D2 reads the omnimarket copy and no onex_change_control path."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: D2 reads the omnimarket copy and no onex_change_control path -- falsifier: a test runs _check_d2_kafka_topics against a workspace with no onex_change_control directory and gets PASS from the bundled manifest, and a planted conflicting producer at the node's manifest path still FAILs"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the bundled manifest exists beside the node and parses."
+    command: "uv run pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -k test_d2_bundled_manifest_lives_beside_the_node"
+  - kind: "tests"
+    description: "AC2: D2 reads the bundled manifest with no onex_change_control checkout and still fails on a planted conflict."
+    command: "uv run pytest tests/test_golden_chain_duplication_sweep.py tests/integration/node_duplication_sweep/test_duplication_sweep_multiparam.py -q -p no:randomly -k d2"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20949-ac1-manifest-beside-node"
+    description: "AC1: the bundled manifest exists beside node_duplication_sweep and parses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -k test_d2_bundled_manifest_lives_beside_the_node"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20949-ac2-d2-reads-omnimarket"
+    description: "AC2: D2 reads the bundled manifest without an onex_change_control checkout and fails on a planted conflict."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_duplication_sweep.py tests/integration/node_duplication_sweep/test_duplication_sweep_multiparam.py -q -p no:randomly -k d2"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

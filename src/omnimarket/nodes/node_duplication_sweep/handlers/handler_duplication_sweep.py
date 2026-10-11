@@ -27,14 +27,12 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 _ALL_CHECKS = ["D1", "D2", "D3", "D4"]
-_KAFKA_BOUNDARY_RELATIVE_PATHS = (
-    Path("onex_change_control")
-    / "src"
-    / "onex_change_control"
-    / "boundaries"
-    / "kafka_boundaries.yaml",
-    Path("onex_change_control") / "boundaries" / "kafka_boundaries.yaml",
+# OMN-20949: the cross-repo Kafka boundary manifest lives beside this node, so D2
+# reads it from the installed package and needs no onex_change_control checkout.
+_KAFKA_BOUNDARIES_YAML = (
+    Path(__file__).resolve().parent.parent / "contracts" / "kafka_boundaries.yaml"
 )
+_KAFKA_BOUNDARIES_LABEL = "omnimarket/src/omnimarket/nodes/node_duplication_sweep/contracts/kafka_boundaries.yaml"
 _EXCLUDED_MIGRATION_REPO_DIRS = {"omni_worktrees"}
 
 # Wall-clock budget for the D3 ``check-migration-conflicts`` subprocess. The real
@@ -88,16 +86,6 @@ class DuplicationSweepResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Resolvers
 # ---------------------------------------------------------------------------
-
-
-def _resolve_kafka_boundaries_yaml(omni_home: str) -> Path | None:
-    """Locate OCC Kafka boundaries across current and legacy layouts."""
-    root = Path(omni_home)
-    for relative_path in _KAFKA_BOUNDARY_RELATIVE_PATHS:
-        candidate = root / relative_path
-        if candidate.exists():
-            return candidate
-    return None
 
 
 def _migration_conflict_command(omni_home: str) -> tuple[list[str], Path] | None:
@@ -211,20 +199,27 @@ def _check_d1_drizzle_tables(omni_home: str) -> ModelDuplicationCheckResult:
 
 
 def _check_d2_kafka_topics(omni_home: str) -> ModelDuplicationCheckResult:
-    """D2: Detect Kafka topic registration conflicts."""
+    """D2: Detect Kafka topic registration conflicts.
+
+    Reads the manifest shipped beside this node (OMN-20949), resolved at call
+    time from ``_KAFKA_BOUNDARIES_YAML``.
+    """
+    boundaries_yaml = _KAFKA_BOUNDARIES_YAML
     topics_py = (
         Path(omni_home) / "omniclaude" / "src" / "omniclaude" / "hooks" / "topics.py"
     )
-    boundaries_yaml = _resolve_kafka_boundaries_yaml(omni_home)
+    boundaries_label = (
+        _KAFKA_BOUNDARIES_LABEL
+        if boundaries_yaml == _KAFKA_BOUNDARIES_YAML
+        else str(boundaries_yaml)
+    )
 
-    if not topics_py.exists() or boundaries_yaml is None:
+    if not topics_py.exists() or not boundaries_yaml.is_file():
         missing = []
         if not topics_py.exists():
             missing.append("omniclaude/src/omniclaude/hooks/topics.py")
-        if boundaries_yaml is None:
-            missing.append(
-                " or ".join(str(path) for path in _KAFKA_BOUNDARY_RELATIVE_PATHS)
-            )
+        if not boundaries_yaml.is_file():
+            missing.append(boundaries_label)
         return ModelDuplicationCheckResult(
             check_id="D2",
             status="WARN",
@@ -274,7 +269,7 @@ def _check_d2_kafka_topics(omni_home: str) -> ModelDuplicationCheckResult:
                     name=topic,
                     locations=[
                         "omniclaude/topics.py",
-                        str(boundaries_yaml.relative_to(Path(omni_home))),
+                        boundaries_label,
                     ],
                     detail=f"omniclaude claims producer but boundaries.yaml says producer_repo={producer}",
                 )
