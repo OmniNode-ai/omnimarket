@@ -209,6 +209,22 @@ class ModelTicketMergedPr(BaseModel):
     )
 
 
+class ModelEngagedRepoContract(BaseModel):
+    """A deciding PR's merged contract and its repo-evidence check runs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: ModelTicketMergedPr = Field(...)
+    contract: dict[str, object] = Field(
+        ..., description="contracts/<TICKET>.yaml parsed at the PR's merge commit."
+    )
+    check_runs: tuple[ModelRepoEvidenceCheckRun, ...] = Field(
+        ...,
+        min_length=1,
+        description="The repo-evidence / dod-verify runs on the PR's head.",
+    )
+
+
 class EnumRepoEvidenceOutcome(StrEnum):
     """Whether the product-repository path decided the ticket."""
 
@@ -233,6 +249,37 @@ class ModelRepoEvidenceVerdict(BaseModel):
     )
 
 
+class ModelDurableEvidenceGateRunCommand(BaseModel):
+    """Inputs for one gate evaluation on the node's path (OMN-20886)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str = Field(..., min_length=1)
+    contract: dict[str, object] = Field(
+        ...,
+        description=(
+            "The contract the node verified: the OCC one, or the first governing "
+            "product-repository contract."
+        ),
+    )
+    merged_prs: tuple[ModelTicketMergedPr, ...] = Field(default=())
+    occ_repo_path: str = Field(
+        default="", description="The OCC clone; empty when none resolves."
+    )
+    occ_governance_ref: str = Field(default="origin/dev")
+
+
+class ModelDurableEvidenceGateRun(BaseModel):
+    """The gate's result, and why the ticket could not be read when it could not."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    result: ModelDurableEvidenceGateResult = Field(...)
+    ticket_read_detail: str = Field(
+        default="", description="Empty when the ticket description was read."
+    )
+
+
 __all__: list[str] = [
     "EnumDefectLabel",
     "EnumDoneClassLabel",
@@ -243,6 +290,9 @@ __all__: list[str] = [
     "ModelCitedMergeCommit",
     "ModelDurableEvidenceCheckResult",
     "ModelDurableEvidenceGateResult",
+    "ModelDurableEvidenceGateRun",
+    "ModelDurableEvidenceGateRunCommand",
+    "ModelEngagedRepoContract",
     "ModelRepoContractRead",
     "ModelRepoEvidenceCheckRun",
     "ModelRepoEvidenceVerdict",

@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20928"
+title: "OCC retirement K1: omnimarket hosts the skill-hygiene and skill-contracts validators as compute nodes"
+summary: "node_skill_hygiene_validate_compute carries the seven skill-hygiene rules of onex_change_control 1b0d2f03 scripts/validation/validate_skill_hygiene.py, strict mode included, and node_skill_contract_validate_compute carries the five skill-contract rules of onex_change_control 47342e56 scripts/validation/validate_skill_contracts.py. Each is contract.yaml + node + handler with a definition-B handle(request) -> result, pure over a skills-tree snapshot that node_skill_tree_read_effect reads from disk (the node purity gate refuses file reads in compute nodes). Run over a skills root as python -m omnimarket.nodes.node_skill_tree_read_effect --skills-root <dir> | python -m omnimarket.nodes.<validator> [--strict] [--json], with the script's exit status (0 pass, 1 errors, 2 no such root). Parity tests run the byte-pinned change-control copy as an oracle beside the node on the same trees."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "public_api"
+requirements:
+  - id: "req-ac1-nodes"
+    statement: "Two compute nodes in canonical shape implement the skill-hygiene rules (with strict mode) and the skill-contract rules, each runnable over a skills root through its node entrypoint."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: omnimarket dev carries two compute nodes (contract.yaml + node + handler, canonical definition-B handler signature, no envelope types) that implement the skill-hygiene rules of OCC 1b0d2f03 (including its strict mode) and the skill-contract rules of OCC 47342e56, each runnable over a skills root from the command line through the repo's canonical node entrypoint -- falsifier: the repo's canon-shape and node-contract checks conclude success on the PR head, and `git diff --name-only origin/dev...HEAD` shows the nodes under `src/omnimarket/nodes/` with no file outside canonical locations"
+  - id: "req-ac2-parity"
+    statement: "Each node's verdict equals the change-control script's verdict on the same trees."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: Verdict parity with the OCC copies -- falsifier: focused tests run each node and the OCC script on the same fixtures (at least one clean skill tree and, per rule family, one defective skill the OCC copy rejects) and assert identical pass/fail verdicts; recorded on the PR body's Lab: line together with a run of both nodes over omniclaude's real `plugins/onex/skills` at its dev head showing the same verdict as the OCC copy"
+  - id: "req-ac3-no-loosening"
+    statement: "No rule is dropped, downgraded or allowlisted in the move."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: No rule is loosened in the move -- falsifier: the PR body lists every rule each OCC script enforces and the test that covers it in the node; no rule is dropped, downgraded to a warning, or allowlisted"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: each node's contract route resolves to its definition-B handler and request model."
+    command: "uv run pytest tests/nodes/node_skill_hygiene_validate_compute/test_registration.py tests/nodes/node_skill_contract_validate_compute/test_registration.py tests/nodes/node_skill_tree_read_effect -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2 and AC3: per rule family, the node's exit status, text report and JSON report equal the byte-pinned change-control script's on the same tree, strict and non-strict."
+    command: "uv run pytest tests/nodes/node_skill_hygiene_validate_compute/test_golden_chain_skill_hygiene_validate_compute.py tests/nodes/node_skill_contract_validate_compute/test_golden_chain_skill_contract_validate_compute.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20928-ac1-routes"
+    description: "The validator nodes' and the tree reader's contract routes resolve to their definition-B handlers and request models, and the reader records what the validators judge in their order. The test files are added by this pull request and fail on the merge base, where the nodes do not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_skill_hygiene_validate_compute/test_registration.py tests/nodes/node_skill_contract_validate_compute/test_registration.py tests/nodes/node_skill_tree_read_effect -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20928-ac1-entrypoints"
+    description: "Each validator runs over a skills root from the node entrypoints, the reader piped into it, and exits 0 on an empty tree."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "d=$(mktemp -d) && uv run python -m omnimarket.nodes.node_skill_tree_read_effect --skills-root \"$d\" | uv run python -m omnimarket.nodes.node_skill_hygiene_validate_compute --strict && uv run python -m omnimarket.nodes.node_skill_tree_read_effect --skills-root \"$d\" | uv run python -m omnimarket.nodes.node_skill_contract_validate_compute"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20928-ac2-hygiene-parity"
+    description: "Skill-hygiene parity: a clean tree and a defective tree per rule (underscore-names, no-duplicate-names, no-unindexed-nesting, skill-md-required, name-matches-dir, no-python-in-skills, no-orphan-topics), strict and non-strict, give the node the change-control script's exit status, text report and JSON report."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_skill_hygiene_validate_compute/test_golden_chain_skill_hygiene_validate_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
+  - id: "dod-omn20928-ac2-contract-parity"
+    description: "Skill-contract parity: a clean tree and a defective tree per rule (args-parity, sub-skill-exists, sub-skill-args, duplicate-frontmatter, spec-prompt-predicates), strict and non-strict, give the node the change-control script's exit status, text report and JSON report."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_skill_contract_validate_compute/test_golden_chain_skill_contract_validate_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
+  - id: "dod-omn20928-deploy-registration"
+    description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers all three nodes (the two validators and the tree reader) under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_skill_(hygiene_validate_compute|contract_validate_compute|tree_read_effect) = ' | grep -qx 3"
+        cwd: "${OMNI_HOME}/omnimarket"
