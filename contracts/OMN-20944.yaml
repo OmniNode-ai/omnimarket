@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20944"
+title: "One Infisical API adapter as a canonical secret store effect node: resolve a secret reference, create-only put, list a folder"
+summary: "Adds node_secret_store_effect, a vendor-neutral EFFECT node whose handler handle(ModelSecretStoreRequest) -> ModelSecretStoreResult depends only on the omnibase_spi ProtocolSecretStore seam. The Infisical REST implementation (universal-auth login, raw secret read, create-only create, folder list) lives in the node's adapters package, the only place the product is named. Store addressing and the identity's credential references come from the machine's private overlay (secret_store block of the ONEX home config); credentials resolve at run time from the injected bootstrap secret store or a 0600 credentials file. Values are excluded from serialization, so no event or log carries one, and every failure is a typed outcome."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20944-resolve-list-no-value"
+    statement: "The handler resolves a secret by reference or folder and key, lists a folder's key names, and never places a value in a serialized result or a log record."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: tests with a fake store show the handler resolves a secret reference and a folder/key path, lists a folder by key name only, and never places a value in its serialized result or in a log record -- falsifier: uv run pytest tests/unit/nodes/node_secret_store_effect -q"
+  - id: "req-omn20944-create-only"
+    statement: "Create is create-only: a new key is created, an existing key reports exists without a read or an update, and a refused or unreachable store gives a typed outcome with no value."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: tests show create is create-only: a new key is created, an existing key reports exists without a read or an update, and a refused or unreachable store gives a typed outcome with no value -- falsifier: uv run pytest tests/unit/nodes/node_secret_store_effect -q -k create"
+  - id: "req-omn20944-http-adapter"
+    statement: "Against a local HTTP fake of the store API the adapter logs in by machine identity, maps 404, 401/403, 409 and transport failure to typed outcomes, and fails closed when the overlay names no identity."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: tests against a local HTTP fake of the Infisical API show the adapters/ handler logs in by machine identity, maps 404, 401/403, 409 and transport failure to typed outcomes, and fails closed when the overlay names no identity -- falsifier: uv run pytest tests/unit/nodes/node_secret_store_effect -q -k http_fake"
+evidence_requirements:
+  - kind: "tests"
+    description: "The node's unit suite: a fake ProtocolSecretStore for the handler and a local HTTP fake of the store API for the adapter, both asserting a planted value never appears in a serialized result or a log record."
+    command: "uv run pytest tests/unit/nodes/node_secret_store_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20944-handler-fake-store"
+    description: "The handler against a fake ProtocolSecretStore: resolve by folder and key, by plain reference and by the captured namespace reference; list returns key names of that folder only; create is create-only; a create sent as an event carries no value and is refused; failures are typed outcomes; no planted value in any serialized result or log record. The test files are added by this pull request and fail on the merge base, where they do not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20944-create-only"
+    description: "Create-only behaviour through the handler and through the HTTP adapter: created, exists on 400 and on 409 with the original value untouched, and refused, unreachable or failed as typed outcomes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect -q -k create"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20944-http-fake"
+    description: "The node end to end against a local HTTP fake: overlay from config.yaml, identity from a 0600 credentials file, one login reused, 404 not_found, 401 refused, 403/503/422 typed, a closed port unreachable, and an overlay with no identity or a world-readable credentials file failing closed before any request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_secret_store_effect -q -k http_fake"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20944-deploy-probe"
+    description: "Deploy probe. The node's adapter module at the checked-out commit carries the store implementation this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout is the node listing a folder and answering not_found for a missing key with a lab identity, recorded in the pull request's Lab line."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_secret_store_effect/adapters/handler_infisical_http.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'class HandlerInfisicalHttp'"
+        cwd: "${OMNI_HOME}/omnimarket"
