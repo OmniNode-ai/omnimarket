@@ -20,7 +20,7 @@ requirements:
     statement: "Every check of the change-control script is kept: required contexts per branch role, App binding, Lane Identity Gate, merge-queue bypass, release-synced main ruleset shape, reviews, enforce_admins, delete_branch_on_merge and the Merge Queue ruleset, with the script's report lines, JSONL records and exit status."
     acceptance:
       - id: "AC2"
-        statement: "AC2: the change-control tests for the script, ported, pass against the node, and a fixture missing a required context yields a FAIL finding and exit status 1 -- falsifier: uv run pytest tests/nodes/node_branch_protection_audit_effect -q -p no:randomly"
+        statement: "AC2: the change-control tests for the script, ported, pass against the node, and a fixture missing a required context yields a FAIL finding and exit status 1 -- falsifier: uv run pytest tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_app_binding.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_entrypoint.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_findings.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_lane_identity.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_merge_queue_bypass.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_release_synced.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_fetch.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_policy_load.py tests/nodes/node_branch_protection_audit_effect/test_registration.py -q -p no:randomly"
   - id: "req-omn20955-overlay"
     statement: "The audited fleet and every repository role come from a deployment overlay; the package names no deployment's repositories and refuses to audit an empty or unconfigured fleet."
     acceptance:
@@ -29,7 +29,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the node's focused suite, the change-control tests ported plus the positive control, the overlay loader, the fetch boundary on a fake reader, the entry point and the route registration."
-    command: "uv run pytest tests/nodes/node_branch_protection_audit_effect -q -p no:randomly"
+    command: "uv run pytest tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_app_binding.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_entrypoint.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_findings.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_lane_identity.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_merge_queue_bypass.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_release_synced.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_fetch.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_policy_load.py tests/nodes/node_branch_protection_audit_effect/test_registration.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -48,7 +48,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_branch_protection_audit_effect -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_app_binding.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_entrypoint.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_findings.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_lane_identity.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_merge_queue_bypass.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_audit_release_synced.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_fetch.py tests/nodes/node_branch_protection_audit_effect/test_branch_protection_policy_load.py tests/nodes/node_branch_protection_audit_effect/test_registration.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20955-ac3-overlay"
