@@ -284,6 +284,15 @@ class ModelLandingRepoChecks(BaseModel):
     checks: tuple[str, ...] = ()
 
 
+class ModelLandingRepoHead(BaseModel):
+    """One repo's base branch head sha."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+
+
 class ModelLandingRebuildAck(BaseModel):
     """The producer accepted a delivery of key K (written after delivery)."""
 
@@ -369,6 +378,13 @@ class ModelLandingPolicy(BaseModel):
     )
     cause_lease_seconds: int = Field(default=5400, ge=1)
     cause_park_hours: int = Field(default=12, ge=1)
+    cause_diagnosis_engine: EnumLandingEngine = Field(
+        default=EnumLandingEngine.CLAUDE_OPUS,
+        description=(
+            "The engine of the one attempt after the budget is spent, with a "
+            "diagnosis brief, before the cause parks."
+        ),
+    )
     cause_engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(EnumLandingEngine.CLAUDE_OPUS, EnumLandingEngine.CLAUDE_OPUS),
         min_length=1,
@@ -430,6 +446,14 @@ class ModelLandingFacts(BaseModel):
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
     )
+    base_heads: tuple[ModelLandingRepoHead, ...] = Field(
+        default=(),
+        description=(
+            "Each repo's base branch head sha, as read this tick. A parked cause "
+            "is retried when its repo's head differs from the one it parked on; "
+            "a repo missing here is unread, never moved."
+        ),
+    )
 
     @model_validator(mode="after")
     def _keys_unique(self) -> ModelLandingFacts:
@@ -472,6 +496,7 @@ __all__: list[str] = [
     "ModelLandingRebuildAck",
     "ModelLandingRefUpdate",
     "ModelLandingRepoChecks",
+    "ModelLandingRepoHead",
     "ModelLandingRerunRun",
     "ModelLandingWorkerProbe",
     "ModelLandingWorkerResult",

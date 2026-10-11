@@ -198,7 +198,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA f4bf0a1989fc37bd7ad9b4a7ad591f801d2a1070
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 64b950973a5686d33e0b439fb80749d66362d06d
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
@@ -494,6 +494,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          # The pull request's head commit, never the merge ref: a signed off-CI
+          # review receipt is bound to the head the reviewer read, and cli_review
+          # accepts one in place of a timed-out or unavailable voter only for
+          # exactly this commit, and only when the voters overlay declares
+          # substitute_votes (OMN-20947).
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           # LOCAL_LLM_SHARED_SECRET is wired from a GitHub Actions secret
           # (OMN-14176): the omniintelligence LLM HTTP transport HMAC-signs every
           # call with it and fail-closes if it is absent. The earlier assumption
@@ -523,6 +529,7 @@ jobs:
           REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
+            --head-sha "$HEAD_SHA" \
             --voters-overlay "$REVIEW_VOTERS_OVERLAY" \
             2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
 

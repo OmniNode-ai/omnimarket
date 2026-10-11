@@ -32,6 +32,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3: the parity-differential checkout is gone from ci.yml's test job and from the nightly full suite, and the provenance test replaces the checkout pin."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k 'no_workflow_checks_out_occ or carry_their_provenance'"
+  - kind: "tests"
+    description: "AC3: the workflow action-ref golden lists exactly the uses lines the workflows carry once the two parity checkout steps are gone."
+    command: "uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -q -p no:randomly -k test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -59,5 +62,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py -q -p no:randomly -k 'no_workflow_checks_out_occ or carry_their_provenance'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20938-ac3-action-ref-golden-matches"
+    description: "AC3: the omn20558 action-ref golden drops the two parity checkout rows, so it matches the workflows once the checkout steps are gone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -q -p no:randomly -k test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
