@@ -446,6 +446,47 @@ class TestCompanionMayCoverPr:
             files=files, ticket_id="OMN-17427", repo=_REPO, pr_number=3334
         )
 
+    def test_a_suffixed_hand_authored_id_for_another_pr_does_not_cover_this_one(
+        self,
+    ) -> None:
+        """OMN-20074: OCC#13594 and OCC#13602 carried these ids; read as
+        unreadable, they deferred every PR on the ticket in every repo."""
+        files = _contract_patch(
+            "dod-omniclaude-pr-2656-runnerip-occ-independence-tests",
+            "dod-omniintelligence-pr-1040-codeql-from-core-tests",
+        )
+        assert not companion_may_cover_pr(
+            files=files,
+            ticket_id="OMN-17427",
+            repo="OmniNode-ai/omnibase_core",
+            pr_number=1942,
+        )
+
+    @pytest.mark.parametrize(
+        "evidence_id",
+        [
+            "dod-omnibase-core-pr-1938-cosmetic-lint-tests",
+            "dod-omnibase_core-pr-1938",
+            "dod-OmniNode-ai-omnibase_core-pr-1938-ci",
+        ],
+    )
+    def test_a_hand_authored_id_for_this_pr_still_covers_it(
+        self, evidence_id: str
+    ) -> None:
+        files = _contract_patch(evidence_id)
+        assert companion_may_cover_pr(
+            files=files,
+            ticket_id="OMN-17427",
+            repo="OmniNode-ai/omnibase_core",
+            pr_number=1938,
+        )
+        assert not companion_may_cover_pr(
+            files=files,
+            ticket_id="OMN-17427",
+            repo="OmniNode-ai/omnibase_core",
+            pr_number=19380,
+        )
+
     @pytest.mark.parametrize(
         "files",
         [
