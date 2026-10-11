@@ -26,10 +26,10 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
     ModelWorktreeReconcilePolicy,
 )
+from omnimarket.handlers.handler_ledger_claims import live_claims
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
     is_junk,
-    live_claims,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher import (
     publish_topics,
@@ -714,10 +714,7 @@ def test_a_standalone_clone_counts_its_own_unpushed_stash(
 def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
     from datetime import UTC, datetime
 
-    from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
-        _claimed,
-        live_claims,
-    )
+    from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
 
     now = datetime(2026, 1, 2, tzinfo=UTC)
     ledger = "\n".join(
@@ -735,10 +732,10 @@ def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
     assert len(claims) == 1
     assert "lane=live" in claims[0]
     root = Path("/trees")
-    assert _claimed(root / "TASK-1" / "repo", root, claims)
+    assert claimed(root / "TASK-1" / "repo", root, claims)
     # A ticket id that is a prefix of the claimed one is not claimed.
-    assert not _claimed(root / "TASK" / "repo", root, claims)
-    assert not _claimed(root / "TASK-2" / "repo", root, claims)
+    assert not claimed(root / "TASK" / "repo", root, claims)
+    assert not claimed(root / "TASK-2" / "repo", root, claims)
 
 
 def test_an_error_with_no_tree_to_carry_it_is_never_a_clean_zero(

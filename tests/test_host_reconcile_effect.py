@@ -461,14 +461,22 @@ def test_unrelated_failures_allow_floor_and_observe_guard_facts(
     shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
     shadow.parent.mkdir(parents=True)
     shadow.symlink_to(scripts / "wrong-wrapper")
-    for directory, content in (
-        (scripts / "git-hooks", "source"),
-        (root / "scripts/git-hooks", "drift"),
-    ):
-        directory.mkdir(parents=True)
-        (directory / "canonical_clone_guard.sh").write_text(content)
+    delegate = tmp_path / "guard.sh"
+    delegate.write_text(
+        "#!/bin/sh\n"
+        "cat <<'EOF'\n"
+        "tracked source: /source\n"
+        "live hooks dir: /live\n"
+        "\n[1] hook scripts\n"
+        "  DRIFTED  canonical_clone_hook.sh\n"
+        "EOF\n"
+        "exit 3\n"
+    )
+    delegate.chmod(0o755)
     evaluator = RecordingEvaluator()
-    result = handler(evaluator, RecordingPublisher()).handle(command(root))
+    result = handler(evaluator, RecordingPublisher()).handle(
+        command(root, guard_delegate=str(delegate))
+    )
     assert result.exit_code == 2
     assert result.floor_stamped
     assert [(s.surface, s.verdict) for s in result.surfaces[-3:]] == [
@@ -481,6 +489,108 @@ def test_unrelated_failures_allow_floor_and_observe_guard_facts(
         in result.diagnostics
     )
     assert evaluator.requests[-1].facts[-1].kind == "guard"
+
+
+def test_guard_readback_at_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    delegate = tmp_path / "guard.sh"
+    delegate.write_text(
+        "#!/bin/sh\n"
+        f'[ "$OMNI_HOME" = "{root}" ] || exit 1\n'
+        "cat <<'EOF'\n"
+        "tracked source: /source\n"
+        "live hooks dir: /live\n"
+        "\n[1] hook scripts\n"
+        "  ok       canonical_clone_hook.sh\n"
+        "\n[2] hook-type symlinks\n"
+        "  ok       pre-commit -> ../canonical_clone_hook.sh\n"
+        "\n[3] registry roots file /registry-roots\n"
+        "  ok       2 root(s): /workspace /other\n"
+        "\n[4] canonical clones in /workspace\n"
+        "  ok       omnimarket\n"
+        "  SKIP     scratch (not a canonical clone: .git is not a directory)\n"
+        "EOF\n"
+        "exit 0\n"
+    )
+    delegate.chmod(0o755)
+    evaluator = RecordingEvaluator()
+    result = handler(evaluator, RecordingPublisher()).handle(
+        command(root, guard_delegate=str(delegate))
+    )
+    assert result.exit_code == 0
+    assert (result.surfaces[-1].surface, result.surfaces[-1].verdict) == (
+        "canonical-guard",
+        "ALREADY_AT_TARGET",
+    )
+    fact = evaluator.requests[-1].facts[-1]
+    assert fact.kind == "guard"
+    assert fact.checked == 4
+    assert (fact.live_dir, fact.source_dir, fact.drifted) == ("/live", "/source", ())
+
+
+def test_guard_readback_refusal_is_indeterminate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    delegate = tmp_path / "guard.sh"
+    delegate.write_text("#!/bin/sh\nprintf 'refused\\n' >&2\nexit 1\n")
+    delegate.chmod(0o755)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, guard_delegate=str(delegate))
+    )
+    assert result.exit_code == 2
+    assert (result.surfaces[-1].surface, result.surfaces[-1].verdict) == (
+        "canonical-guard",
+        "INDETERMINATE",
+    )
+    assert result.surfaces[-1].detail == (
+        "onex-canonical-clone-install readback exited 1: refused"
+    )
+
+
+def test_guard_without_delegate_has_no_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert result.exit_code == 0
+    assert all(s.surface != "canonical-guard" for s in result.surfaces)
+
+
+RETIRED_CANONICAL_CLONE_ENTRY_POINTS = (
+    "canonical_clone_guard.sh",
+    "canonical_clone_paths.sh",
+    "canonical_clone_ref_guard.sh",
+    "install-canonical-clone-git-hooks.sh",
+)
+
+
+def retired_entry_point_callers(source: Path) -> list[str]:
+    return sorted(
+        f"{path.relative_to(source)}: {name}"
+        for path in source.rglob("*")
+        if path.is_file() and path.suffix in {".py", ".yaml", ".md", ".sh"}
+        for name in RETIRED_CANONICAL_CLONE_ENTRY_POINTS
+        if name in path.read_text(errors="replace")
+    )
+
+
+def test_retired_entry_point_scan_finds_a_planted_caller(tmp_path: Path) -> None:
+    (tmp_path / "caller.py").write_text(
+        "run('bash install-canonical-clone-git-hooks.sh')\n"
+    )
+    (tmp_path / "clean.py").write_text("run('onex-canonical-clone-install')\n")
+    assert retired_entry_point_callers(tmp_path) == [
+        "caller.py: install-canonical-clone-git-hooks.sh"
+    ]
+
+
+def test_no_omnimarket_source_invokes_a_retired_canonical_clone_entry_point() -> None:
+    source = Path(__file__).resolve().parents[1] / "src" / "omnimarket"
+    assert source.is_dir()
+    assert retired_entry_point_callers(source) == []
 
 
 def test_missing_delegates_and_venv_preserve_record_order(
@@ -586,6 +696,7 @@ def test_cli_all_environment_fields(
         "LOCK_STALE_SECONDS": "40",
         "CLONE_DELEGATE": "/clone",
         "VENV_DELEGATE": "/venv",
+        "GUARD_DELEGATE": "/guard",
         "RECEIPT": "/receipt",
         "ALERT_CMD": "alert",
     }
@@ -609,11 +720,12 @@ def test_cli_all_environment_fields(
     assert (
         cmd.clone_delegate,
         cmd.venv_delegate,
+        cmd.guard_delegate,
         cmd.receipt,
         cmd.dispatch_venv,
         cmd.ledger,
         cmd.alert_command,
-    ) == ("/clone", "/venv", "/receipt", "/dispatch", "/ledger", "alert")
+    ) == ("/clone", "/venv", "/guard", "/receipt", "/dispatch", "/ledger", "alert")
     assert json.loads(capsys.readouterr().out)["correlation_id"] == str(
         cmd.correlation_id
     )

@@ -23,7 +23,8 @@
     ],
     "open_count": 4,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: controller, floor:OmniNode-ai/omniclaude",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-000",
    "request": {
@@ -211,7 +212,8 @@
      "controller",
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-001",
    "request": {
@@ -306,7 +308,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-002",
    "request": {
@@ -396,7 +399,8 @@
      "controller",
      "controller",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-003",
    "request": {
@@ -486,7 +490,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-004",
    "request": {
@@ -576,7 +581,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-005",
    "request": {
@@ -640,7 +646,8 @@
     "status_line": "THROUGHPUT STALL n=3 unknown=1: controller, merges, floor:OmniNode-ai/omnimarket",
     "unknown": [
      "floor:OmniNode-ai/omnimarket"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-006",
    "request": {
@@ -798,7 +805,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-007",
    "request": {
@@ -857,7 +865,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-008",
    "request": {
@@ -943,7 +952,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-009",
    "request": {
@@ -1086,7 +1096,8 @@
     "missing": [],
     "open_count": 4,
     "status_line": "THROUGHPUT OK checked=controller,merges,floors",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-010",
    "request": {
@@ -1355,7 +1366,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-011",
    "request": {
@@ -1440,7 +1452,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: escalated:OmniNode-ai/omnimarket#9, merges",
     "unknown": [
      "merges"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-012",
    "request": {
@@ -1523,7 +1536,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-013",
    "request": {
@@ -1601,7 +1615,8 @@
     "status_line": "THROUGHPUT STALL n=3 unknown=1: controller, merges, floors",
     "unknown": [
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-014",
    "request": {
@@ -1716,7 +1731,8 @@
     ],
     "open_count": 6,
     "status_line": "THROUGHPUT STALL n=1 unknown=0: controller",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-015",
    "request": {
@@ -1979,7 +1995,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-016",
    "request": {
@@ -2097,7 +2114,8 @@
     ],
     "open_count": 7,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: floor:OmniNode-ai/omnimarket, escalated:OmniNode-ai/omnimarket#9",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-017",
    "request": {
@@ -2331,7 +2349,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-018",
    "request": {
@@ -2417,7 +2436,8 @@
     ],
     "open_count": 2,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: controller, controller",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-019",
    "request": {
@@ -2583,7 +2603,8 @@
     ],
     "open_count": 5,
     "status_line": "THROUGHPUT STALL n=1 unknown=0: controller",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-020",
    "request": {
@@ -2743,7 +2764,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: controller, floors",
     "unknown": [
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-021",
    "request": {
@@ -2997,7 +3019,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-022",
    "request": {
@@ -3073,7 +3096,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: controller, merges",
     "unknown": [
      "merges"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-023",
    "request": {
@@ -3143,7 +3167,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-024",
    "request": {
@@ -3217,7 +3242,8 @@
     "unknown": [
      "merges",
      "floor:OmniNode-ai/omniclaude"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-025",
    "request": {
@@ -3362,7 +3388,8 @@
     "unknown": [
      "merges",
      "floor:OmniNode-ai/omniclaude"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-026",
    "request": {
@@ -3459,7 +3486,8 @@
     ],
     "open_count": 4,
     "status_line": "THROUGHPUT STALL n=3 unknown=0: controller, merges, floor:OmniNode-ai/omniclaude",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-027",
    "request": {
@@ -3605,7 +3633,8 @@
     "unknown": [
      "controller",
      "merges"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-028",
    "request": {
@@ -3748,7 +3777,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-029",
    "request": {
@@ -3833,7 +3863,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: controller, merges",
     "unknown": [
      "merges"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-030",
    "request": {
@@ -3942,7 +3973,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-031",
    "request": {
@@ -4011,7 +4043,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-032",
    "request": {
@@ -4094,7 +4127,8 @@
     ],
     "open_count": 6,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: controller, floor:OmniNode-ai/omniclaude",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-033",
    "request": {
@@ -4236,7 +4270,8 @@
      "merges",
      "floor:OmniNode-ai/omnibase_infra",
      "floor:OmniNode-ai/omniclaude"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-034",
    "request": {
@@ -4357,7 +4392,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: controller, controller",
     "unknown": [
      "controller"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-035",
    "request": {
@@ -4616,7 +4652,8 @@
     ],
     "open_count": 0,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: controller, controller",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-036",
    "request": {
@@ -4739,7 +4776,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-037",
    "request": {
@@ -4794,7 +4832,8 @@
     "unknown": [
      "controller",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-038",
    "request": {
@@ -5078,7 +5117,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-039",
    "request": {
@@ -5144,7 +5184,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-040",
    "request": {
@@ -5272,7 +5313,8 @@
     ],
     "open_count": 6,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: controller, merges",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-041",
    "request": {
@@ -5457,7 +5499,8 @@
     ],
     "open_count": 6,
     "status_line": "THROUGHPUT STALL n=1 unknown=0: controller",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-042",
    "request": {
@@ -5683,7 +5726,8 @@
     ],
     "open_count": 4,
     "status_line": "THROUGHPUT STALL n=2 unknown=0: controller, merges",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-043",
    "request": {
@@ -5805,7 +5849,8 @@
      "controller",
      "merges",
      "floor:OmniNode-ai/omnibase_infra"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-044",
    "request": {
@@ -5901,7 +5946,8 @@
      "controller",
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-045",
    "request": {
@@ -5960,7 +6006,8 @@
      "floor:OmniNode-ai/omnibase_infra",
      "floor:OmniNode-ai/omniclaude",
      "floor:OmniNode-ai/omnimarket"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-046",
    "request": {
@@ -6061,7 +6108,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-047",
    "request": {
@@ -6220,7 +6268,8 @@
      "merges",
      "floor:OmniNode-ai/omnibase_infra",
      "floor:OmniNode-ai/omnimarket"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-048",
    "request": {
@@ -6354,7 +6403,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: escalated:OmniNode-ai/omnimarket#9, floors",
     "unknown": [
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-049",
    "request": {
@@ -6610,7 +6660,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-050",
    "request": {
@@ -6660,7 +6711,8 @@
     "unknown": [
      "merges",
      "floor:OmniNode-ai/omniclaude"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-051",
    "request": {
@@ -6790,7 +6842,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-052",
    "request": {
@@ -6862,7 +6915,8 @@
     "unknown": [
      "controller",
      "controller"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-053",
    "request": {
@@ -6958,7 +7012,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-054",
    "request": {
@@ -7053,7 +7108,8 @@
     "missing": [],
     "open_count": 6,
     "status_line": "THROUGHPUT OK checked=controller,merges,floors",
-    "unknown": []
+    "unknown": [],
+    "alarms": []
    },
    "name": "case-055",
    "request": {
@@ -7331,7 +7387,8 @@
     "status_line": "THROUGHPUT STALL n=1 unknown=1: merges",
     "unknown": [
      "merges"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-056",
    "request": {
@@ -7415,7 +7472,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: merges, floors",
     "unknown": [
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-057",
    "request": {
@@ -7602,7 +7660,8 @@
     "unknown": [
      "merges",
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-058",
    "request": {
@@ -7680,7 +7739,8 @@
     "status_line": "THROUGHPUT STALL n=2 unknown=1: controller, floors",
     "unknown": [
      "floors"
-    ]
+    ],
+    "alarms": []
    },
    "name": "case-059",
    "request": {
