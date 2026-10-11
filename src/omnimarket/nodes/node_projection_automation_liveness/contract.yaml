@@ -1,0 +1,241 @@
+---
+name: projection_automation_liveness
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_automation_liveness.models.model_automation_liveness_projection.ModelAutomationLivenessFoldRequest
+description: >
+  One liveness projection for every automatic process: a row per declared
+  process and host, an append-only run history, and the alarm episodes with
+  their delivery and recording receipts.
+
+  TWO CLASSES. HandlerProjectionAutomationLiveness is the pure fold of one seam
+  event against the rows it can touch. AutomationLivenessProjectionWriter
+  subclasses the projection runner base, reads those rows, calls the fold and
+  persists what changed. Only the writer is routed: a routed pure fold cannot
+  prove a write.
+
+  A DECLARED PROCESS THAT NEVER EMITTED IS A ROW. The liveness-declared event
+  carries the overlay as the watchdog loaded it, so the process has its identity,
+  declared_at, state and contract digest and no run, heartbeat or verdict yet.
+
+  THE PROJECTION DOES NOT JUDGE. The verdict, its reason and its state are the
+  watchdog's, carried by its verdict events. Run-derived fields are recomputed
+  from the run history, so a replayed event changes no row.
+
+handler:
+  module: omnimarket.nodes.node_projection_automation_liveness.handlers.handler_projection_automation_liveness
+  class: HandlerProjectionAutomationLiveness
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: automation_liveness_projection_writer
+      handler:
+        name: AutomationLivenessProjectionWriter
+        module: omnimarket.nodes.node_projection_automation_liveness.handlers.handler_automation_liveness_writer
+      handler_module: omnimarket.nodes.node_projection_automation_liveness.handlers.handler_automation_liveness_writer
+
+terminal_event: onex.evt.omnimarket.projection-automation-liveness-applied.v1
+
+golden_path:
+  - "The watchdog publishes the overlay it loaded on onex.evt.omnimarket.automation-liveness-declared.v1"
+  - "The writer upserts one omninode_internal.automation_liveness_state row per declared process and host, with no run, heartbeat or verdict"
+  - "Run, heartbeat, verdict and alarm events fold into the same rows; run and episode rows are keyed so a replay converges"
+  - "The writer publishes a snapshot delta per changed row on onex.snapshot.projection.automation-liveness.v1, onex.snapshot.projection.automation-liveness-runs.v1 and onex.snapshot.projection.automation-liveness-alarms.v1"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-automation-liveness-applied.v1 after a proven write"
+
+dod_evidence:
+  - test: tests/test_automation_liveness_fold.py
+    description: "Folding the fixture stream yields the expected row per process, including a declared process that never emitted"
+  - test: tests/test_automation_liveness_writer_restart.py
+    description: "The writer persists the fold and a restart loses nothing"
+  - test: tests/test_automation_liveness_exposure_read.py
+    description: "The exposure answers a typed read through node_projection_read_effect against the local SQLite store"
+
+db_io:
+  db_tables:
+    - name: automation_liveness_state
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_automation_liveness.sql"
+      access: read_write
+      role: automation_liveness_state
+    - name: automation_run_history
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_automation_liveness.sql"
+      access: read_write
+      role: automation_run_history
+    - name: automation_alarm_episodes
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_automation_liveness.sql"
+      access: read_write
+      role: automation_alarm_episodes
+  dedupe_key:
+    - process_key
+    - run_key
+    - episode_id
+  ordering_key: projected_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.automation-run-observed.v1
+    - onex.evt.omnimarket.automation-heartbeat.v1
+    - onex.evt.omnimarket.automation-liveness-declared.v1
+    - onex.evt.omnimarket.automation-liveness-verdict.v1
+    - onex.evt.omnimarket.automation-liveness-alarm-raised.v1
+    - onex.evt.omnimarket.automation-liveness-alarm-cleared.v1
+    - onex.evt.omnimarket.automation-liveness-alarm-delivered.v1
+    - onex.evt.omnimarket.automation-liveness-alarm-recorded.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-automation-liveness-applied.v1
+    - onex.snapshot.projection.automation-liveness.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    - onex.snapshot.projection.automation-liveness-runs.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    - onex.snapshot.projection.automation-liveness-alarms.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  # A payload that is not one of the seam's events is quarantined, not lost.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-automation-liveness-malformed.v1
+
+# The producers of the seam are other nodes of the monitoring plan, none of them
+# in this repository yet; each names who emits it.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.automation-run-observed.v1
+    producer: "the per-host run observers and the GitHub schedule observer, and any process that reports its own runs"
+  - topic: onex.evt.omnimarket.automation-heartbeat.v1
+    producer: "daemons, the host observers and the watchdog legs reporting their own progress"
+  - topic: onex.evt.omnimarket.automation-liveness-declared.v1
+    producer: "the automation-liveness watchdog, on start and on every overlay change"
+  - topic: onex.evt.omnimarket.automation-liveness-verdict.v1
+    producer: "the automation-liveness watchdog, once per process per changed verdict"
+  - topic: onex.evt.omnimarket.automation-liveness-alarm-raised.v1
+    producer: "the automation-liveness watchdog, when a verdict opens an alarm episode"
+  - topic: onex.evt.omnimarket.automation-liveness-alarm-cleared.v1
+    producer: "the automation-liveness watchdog, when a verdict clears an episode"
+  - topic: onex.evt.omnimarket.automation-liveness-alarm-delivered.v1
+    producer: "the alarm delivery outbox, once per delivery attempt"
+  - topic: onex.evt.omnimarket.automation-liveness-alarm-recorded.v1
+    producer: "the watchdog dead-man, after it writes the ledger line"
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-automation-liveness-applied.v1
+  - onex.snapshot.projection.automation-liveness.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  - onex.snapshot.projection.automation-liveness-runs.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  - onex.snapshot.projection.automation-liveness-alarms.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.automation-liveness.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
+      table: automation_liveness_state
+      # The loader's schema field records the DATABASE the relation lives in;
+      # the physical relation is omninode_internal.automation_liveness_state (db_io above).
+      schema: omnidash_analytics
+      columns:
+        - process_key
+        - process_id
+        - host
+        - declared_at
+        - process_state
+        - contract_digest
+        - last_run_at
+        - last_outcome
+        - last_work_at
+        - last_did_work_count
+        - last_demand_count
+        - failures_in_window
+        - consecutive_idle_with_demand
+        - last_heartbeat_at
+        - last_progress_at
+        - progress_counter
+        - open_run_started_at
+        - verdict
+        - verdict_reason
+        - verdict_state
+        - verdict_since
+        - verdict_evaluated_at
+        - open_episode_id
+        - projected_at
+      order_by: projected_at DESC
+      freshness_column: projected_at
+      cursor_column: process_key
+      limit: 500
+      bus_backed: true
+      key_columns:
+        - process_key
+    - topic: onex.snapshot.projection.automation-liveness-runs.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
+      table: automation_run_history
+      # The loader's schema field records the DATABASE the relation lives in;
+      # the physical relation is omninode_internal.automation_run_history (db_io above).
+      schema: omnidash_analytics
+      columns:
+        - run_key
+        - process_id
+        - host
+        - run_id
+        - phase
+        - started_at
+        - finished_at
+        - outcome
+        - exit_code
+        - did_work_count
+        - demand_count
+        - unseen_runs
+        - work_unit
+        - evidence_ref
+        - emitter
+        - observed_at
+        - contract_digest
+        - projected_at
+      order_by: projected_at DESC
+      freshness_column: projected_at
+      cursor_column: run_key
+      limit: 500
+      bus_backed: true
+      key_columns:
+        - run_key
+    - topic: onex.snapshot.projection.automation-liveness-alarms.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
+      table: automation_alarm_episodes
+      # The loader's schema field records the DATABASE the relation lives in;
+      # the physical relation is omninode_internal.automation_alarm_episodes (db_io above).
+      schema: omnidash_analytics
+      columns:
+        - episode_id
+        - process_id
+        - host
+        - verdict
+        - state
+        - reason
+        - severity
+        - opened_at
+        - delivery_due_at
+        - evidence_ref
+        - action
+        - cleared_at
+        - last_attempt_at
+        - last_attempt_route
+        - last_attempt_delivered
+        - last_attempt_failure
+        - delivered_at
+        - delivery_route
+        - delivery_ref
+        - recorded_at
+        - ledger_line
+        - recorded_by
+        - last_recorded_at
+        - last_ledger_line
+        - projected_at
+      order_by: projected_at DESC
+      freshness_column: projected_at
+      cursor_column: episode_id
+      limit: 200
+      bus_backed: true
+      key_columns:
+        - episode_id
+
+metadata:
+  transport_type: kafka

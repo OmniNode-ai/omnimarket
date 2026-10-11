@@ -306,6 +306,94 @@ CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key
 ON metering_summary (tenant_id, window_kind, window_start, baseline_model)
 """
 
+# OMN-20802: the local half of the automation-liveness projection's three
+# relations, declared beside the Postgres schema
+# (node_projection_automation_liveness/migrations/0000_create_automation_liveness.sql).
+# Same columns; timestamps are ISO text, booleans integers. The *_key columns are
+# the exposures' cursors, unique per row.
+_AUTOMATION_LIVENESS_STATE_DDL = """
+CREATE TABLE IF NOT EXISTS automation_liveness_state (
+    process_key TEXT NOT NULL,
+    process_id TEXT NOT NULL,
+    host TEXT NOT NULL,
+    declared_at TEXT,
+    process_state TEXT,
+    contract_digest TEXT,
+    last_run_at TEXT,
+    last_outcome TEXT,
+    last_work_at TEXT,
+    last_did_work_count INTEGER,
+    last_demand_count INTEGER,
+    failures_in_window INTEGER NOT NULL DEFAULT 0,
+    consecutive_idle_with_demand INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat_at TEXT,
+    last_progress_at TEXT,
+    progress_counter INTEGER,
+    open_run_started_at TEXT,
+    verdict TEXT,
+    verdict_reason TEXT,
+    verdict_state TEXT,
+    verdict_since TEXT,
+    verdict_evaluated_at TEXT,
+    open_episode_id TEXT,
+    projected_at TEXT NOT NULL,
+    PRIMARY KEY (process_key)
+)
+"""
+_AUTOMATION_RUN_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS automation_run_history (
+    run_key TEXT NOT NULL,
+    process_id TEXT NOT NULL,
+    host TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    outcome TEXT,
+    exit_code INTEGER,
+    did_work_count INTEGER,
+    demand_count INTEGER,
+    unseen_runs INTEGER NOT NULL DEFAULT 0,
+    work_unit TEXT,
+    evidence_ref TEXT NOT NULL,
+    emitter TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    contract_digest TEXT NOT NULL,
+    projected_at TEXT NOT NULL,
+    PRIMARY KEY (run_key)
+)
+"""
+_AUTOMATION_ALARM_EPISODES_DDL = """
+CREATE TABLE IF NOT EXISTS automation_alarm_episodes (
+    episode_id TEXT NOT NULL,
+    process_id TEXT,
+    host TEXT,
+    verdict TEXT,
+    state TEXT,
+    reason TEXT,
+    severity TEXT,
+    opened_at TEXT,
+    delivery_due_at TEXT,
+    evidence_ref TEXT,
+    action TEXT,
+    cleared_at TEXT,
+    last_attempt_at TEXT,
+    last_attempt_route TEXT,
+    last_attempt_delivered INTEGER,
+    last_attempt_failure TEXT,
+    delivered_at TEXT,
+    delivery_route TEXT,
+    delivery_ref TEXT,
+    recorded_at TEXT,
+    ledger_line TEXT,
+    recorded_by TEXT,
+    last_recorded_at TEXT,
+    last_ledger_line TEXT,
+    projected_at TEXT NOT NULL,
+    PRIMARY KEY (episode_id)
+)
+"""
+
 # OMN-19968: the local half of the tenant BYOK credential projection's two
 # tables, declared from node_projection_tenant_credentials/migrations (0000,
 # 0001: name and provider nullable for a revoke tombstone) and
@@ -505,6 +593,9 @@ class SqliteDatabaseAdapter:
         conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
+        conn.execute(_AUTOMATION_LIVENESS_STATE_DDL)
+        conn.execute(_AUTOMATION_RUN_HISTORY_DDL)
+        conn.execute(_AUTOMATION_ALARM_EPISODES_DDL)
         conn.commit()
         self._ensure_columns(
             conn,
