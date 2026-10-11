@@ -107,7 +107,10 @@ __all__ = ["delete_secret_value", "models_group", "secret_group", "store_secret_
 #: on the terminal prompt, where a mistyped or mis-pasted value is the failure;
 #: a piped value is a script's choice and is stored as given. A provider absent
 #: here has no documented fixed prefix, so nothing is checked for it.
-_KNOWN_KEY_PREFIXES: dict[str, str] = {"openrouter": "sk-or-v1-"}
+_KNOWN_KEY_PREFIXES: dict[str, str] = {
+    "openrouter": "sk-or-v1-",
+    "anthropic": "sk-ant-",
+}
 
 
 def _offered_provider(secret_ref: str) -> str | None:
@@ -797,13 +800,14 @@ _MODEL_LABELS: dict[str, str] = {
     "gemini": "Gemini",
     "openrouter": "OpenRouter",
     "openai": "OpenAI",
+    "anthropic": "Anthropic",
     "ollama": "Ollama",
-    "anthropic": "Anthropic (Claude)",
 }
 _KEY_PAGES: dict[str, str] = {
     "gemini": "aistudio.google.com/apikey",
     "openrouter": "openrouter.ai/keys",
     "openai": "platform.openai.com/api-keys",
+    "anthropic": "platform.claude.com/settings/keys",
 }
 _OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
@@ -864,8 +868,8 @@ models_group = click.Group(
     "models",
     help=(
         "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
-        "Ollama.\n\nSet up any combination; delegation chooses among them for "
-        "each task."
+        "Anthropic, Ollama.\n\nSet up any combination; delegation chooses among "
+        "them for each task."
     ),
 )
 
