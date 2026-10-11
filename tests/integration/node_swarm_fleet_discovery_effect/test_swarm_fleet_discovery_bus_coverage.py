@@ -63,27 +63,23 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _OPENROUTER_MODELS_URL = f"{_OPENROUTER_BASE_URL}/models"
 
 _REGISTRY_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "nodes"
-    / "node_swarm_registry_compute"
-    / "contracts"
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "swarm_registry"
     / "endpoint_registry.yaml"
 )
 
 
-def _local_health_url(host_octet: str, port: int) -> str:
-    host = ".".join(("192", "168", "86", host_octet))
-    return f"http://{host}:{port}/v1/health"
+def _local_health_url(port: int) -> str:
+    return f"http://192.0.2.10:{port}/v1/health"
 
 
 # OMN-16492: .201:8001 removed — the endpoint is dead (GPU1 decommissioned,
 # OMN-16442) and its registry entry was retired; qwen3.8 on :8000 carries its
 # capabilities.
 _LOCAL_HEALTH_URLS = [
-    _local_health_url("201", 8000),
-    _local_health_url("201", 8002),
+    _local_health_url(8000),
+    _local_health_url(8002),
 ]
 
 _OPENROUTER_LIVE_IDS = [

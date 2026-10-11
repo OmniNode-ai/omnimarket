@@ -22,6 +22,7 @@ from typing import Any, Literal
 import httpx
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import resolve_swarm_endpoint_registry_path
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     ModelOpenRouterModelConfig,
@@ -113,7 +114,9 @@ class HandlerSwarmFleetDiscovery:
     ) -> None:
         self._http_get = http_get_fn or _default_http_get
         self._timeout = timeout_seconds
-        self._registry_path = registry_path or _DEFAULT_REGISTRY_PATH
+        self._registry_path = registry_path or resolve_swarm_endpoint_registry_path(
+            _DEFAULT_REGISTRY_PATH
+        )
         if openrouter_api_key:
             self._api_key = openrouter_api_key
         else:

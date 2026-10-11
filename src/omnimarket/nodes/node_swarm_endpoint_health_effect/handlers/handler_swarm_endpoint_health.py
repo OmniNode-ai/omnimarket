@@ -15,6 +15,7 @@ from typing import Any, Literal
 import httpx
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import resolve_swarm_endpoint_registry_path
 from omnimarket.nodes.node_swarm_endpoint_health_effect.models.enums import (
     EnumEndpointStatus,
     EnumModelStatus,
@@ -52,7 +53,7 @@ def _load_endpoint_registry(
     registry_path: Path | None = None,
 ) -> dict[str, ModelSwarmEndpoint]:
     """Load the endpoint registry and return a map of id → ModelSwarmEndpoint."""
-    path = registry_path or _DEFAULT_REGISTRY_PATH
+    path = registry_path or resolve_swarm_endpoint_registry_path(_DEFAULT_REGISTRY_PATH)
     try:
         raw: dict[str, Any] = yaml.safe_load(path.read_text())
         endpoints: dict[str, ModelSwarmEndpoint] = {}

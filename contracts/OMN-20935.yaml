@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20935"
+title: "omnimarket routing order, CI bus lanes and lab defaults move to the private overlay"
+summary: "The lab defaults in node_database_sweep, node_data_flow_sweep, node_integration_sweep_orchestrator, scripts/cost_event_publisher.py, the delegation cost projection wrapper, the type-debt scout experiment and the memory-to-content benchmark are removed: each reader takes the value from its caller, the environment or the node overlay under ONEX_SKILL_OVERLAY_ROOTS, and refuses naming how to supply it when none does. The swarm endpoint registry ships a neutral registry with no endpoint and is resolved through OMNIMARKET_SWARM_ENDPOINT_REGISTRY or the node overlay. The delegation routing tier resolver reads the node overlay between the DELEGATION_ROUTING_TIERS_PATH pin and the packaged file. The validator corpora fixtures use synthetic private addresses. AC1 is not bound by this change: config/ci_bus_lanes.yaml and the packaged routing_tiers.yaml stay in place until the runtime image build, the runtime lane resolver and the CI workflows in other repositories read the private copies, and the PR body lists those readers."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-readers-take-deployment-facts-from-the-overlay"
+    statement: "Each repointed reader resolves its deployment fact from the caller, the environment or the node overlay, resolves the neutral default or refuses naming how to supply an overlay when none supplies it, and never falls back to a lab value."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the routing resolver and each repointed reader resolve today's values from the private overlay and the neutral default without it -- falsifier: pytest focused tests for each repointed reader with and without ONEX_SKILL_OVERLAY_ROOTS"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC2: the overlay reader, the routing tier resolver and every repointed reader resolve a synthetic overlay, prefer the caller and the environment over it, and refuse or return the neutral default without it."
+    command: "uv run pytest tests/unit/handlers/test_node_overlay_reader_omn20935.py tests/unit/routing/test_routing_tiers_node_overlay_omn20935.py tests/test_golden_chain_data_flow_sweep_collect.py tests/unit/nodes/node_database_sweep tests/test_integration_sweep_deployment_overlay_omn20935.py tests/nodes/node_swarm_registry_compute tests/test_cost_event_publisher.py tests/unit/experiments/adk_eval/type_debt_scout_poc tests/unit/scripts/test_run_delegation_cost_projection_process.py tests/unit/scripts/test_mem_to_content_deployment_env_omn20935.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20935-ac2-readers-take-the-overlay"
+    description: "AC2: every repointed reader resolves a synthetic node overlay and the neutral default or a refusal without it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_node_overlay_reader_omn20935.py tests/unit/routing/test_routing_tiers_node_overlay_omn20935.py tests/test_golden_chain_data_flow_sweep_collect.py tests/unit/nodes/node_database_sweep tests/test_integration_sweep_deployment_overlay_omn20935.py tests/nodes/node_swarm_registry_compute tests/test_cost_event_publisher.py tests/unit/experiments/adk_eval/type_debt_scout_poc tests/unit/scripts/test_run_delegation_cost_projection_process.py tests/unit/scripts/test_mem_to_content_deployment_env_omn20935.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
