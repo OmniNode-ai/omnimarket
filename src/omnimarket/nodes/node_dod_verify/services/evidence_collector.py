@@ -4645,7 +4645,7 @@ class EvidenceCollector:
             )
         except Exception as exc:
             logger.error("Failed to parse %s: %s", path, exc)
-            self.contract_load_error = str(exc)
+            self.contract_load_error = f"YAML parse error in {path}: {exc}"
             return None
 
     def _check_evidence_item(

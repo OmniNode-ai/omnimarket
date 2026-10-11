@@ -5,16 +5,13 @@
 One request names one write operation; the effect answers with one completed
 or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 
-==================  ===========================  =============================
-operation           gh verb replaced             GitHub call
-==================  ===========================  =============================
-pr_create           gh pr create                 POST /pulls
-pr_edit             gh pr edit                   PATCH /pulls/{n}; GraphQL draft
-pr_ready            gh pr ready                  GraphQL markPullRequestReadyForReview
-pr_close            gh pr close                  PATCH /pulls/{n} state=closed
-pr_comment          gh pr comment                POST /issues/{n}/comments
-workflow_dispatch   gh workflow run              POST /actions/workflows/{w}/dispatches
-==================  ===========================  =============================
+- pr_create replaces ``gh pr create`` with POST /pulls.
+- pr_edit replaces ``gh pr edit`` with PATCH /pulls/{n} and GraphQL draft.
+- pr_ready replaces ``gh pr ready`` with GraphQL markPullRequestReadyForReview.
+- pr_close replaces ``gh pr close`` with PATCH /pulls/{n} state=closed.
+- pr_comment replaces ``gh pr comment`` with POST /issues/{n}/comments.
+- workflow_dispatch replaces ``gh workflow run`` with
+  POST /actions/workflows/{w}/dispatches.
 """
 
 from __future__ import annotations
