@@ -8,10 +8,14 @@
 # PR watcher state, starting a lane through the remote-lane runner) is node_merge_sweep_effect's. This
 # node wires them in the order of workflow_coordination below and holds none of their logic.
 #
-# WHO HOSTS THIS NODE. The same serve process that hosts node_merge_sweep_effect: the host that holds
-# the PR watcher's state, the ledger copy, the controller's tick log and the remote-lane runner.
-# Shared runtimes must NOT attach it. The contract declares runtime_dispatch and NO event_bus block,
-# as node_merge_sweep_effect does.
+# WHO HOSTS THIS NODE. The caller's own local runtime, on the host that holds the PR watcher's
+# state, the ledger copy, the controller's tick log and the remote-lane runner: a caller runs
+# `onex node node_merge_sweep_orchestrator --input <request.json>`, which publishes the request on the
+# command topic declared in event_bus below and reads the result from the completed topic. Every path
+# arrives on the request, so an effects runtime that attaches it where they do not resolve refuses
+# the sweep with no lane started. No runtime_lanes scope: a lane-scoped contract must belong to the
+# main profile, and an impure command consumer belongs to effects.
+# node_merge_sweep_effect declares no event_bus block: this node calls its operations in process.
 #
 # OVERLAY. No project, operator, host path, ticket, model or lane name lives in this node: they
 # arrive on the request, read by the caller from its overlay.
@@ -121,6 +125,12 @@ descriptor:
   idempotent: false
   timeout_ms: 25000000
   runtime_profiles: [effects]
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.merge-sweep-run-requested.v1
+  # The handler answers every sweep, a refused one included (ok false), on the completed topic.
+  publish_topics:
+    - onex.evt.omnimarket.merge-sweep-run-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.merge-sweep-run-requested.v1
   terminal_events:
