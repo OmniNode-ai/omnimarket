@@ -1,0 +1,103 @@
+---
+name: projection_lab_job
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_lab_job.models.model_lab_job_projection_request.ModelLabJobProjectionRequest
+description: >
+  OMN-20604, plan step M2 of the lab job supervisor. Materializes one
+  lab-job-transitioned event per reducer transition into lab_job_state, one
+  complete post-transition row per job_id, and lab_job_transitions, one
+  append-only row per (job_id, seq).
+
+  ONE ORDERING AUTHORITY. The orchestrator's per-job seq, assigned in the
+  compare-and-set that writes its state_io row. The state upsert refuses an
+  equal or lower seq in its conflict arm's WHERE; the transitions append
+  refuses a seq it already holds. An event time is never the order: the
+  outbox is at-least-once and can redeliver or emit older transitions late.
+
+  runtime_lanes is not declared, as in the PR landing template: a lane-scoped
+  contract on a runtime that names no lane is a fail-closed discovery error.
+
+handler:
+  module: omnimarket.nodes.node_projection_lab_job.handlers.handler_projection_lab_job
+  class: HandlerProjectionLabJob
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed (OMN-19721, OMN-20604). A routed pure fold is
+    # handed the raw event beside the writer, fails to validate it as its
+    # wrapped request, and dead-letters it, and its zero upserts count against
+    # the projection_apply_divergence health dimension. The writer calls the
+    # fold in process (rule 7a).
+    - operation: lab_job_projection_writer
+      handler:
+        name: LabJobProjectionWriter
+        module: omnimarket.nodes.node_projection_lab_job.handlers.handler_lab_job_writer
+      handler_module: omnimarket.nodes.node_projection_lab_job.handlers.handler_lab_job_writer
+
+terminal_event: onex.evt.omnimarket.projection-lab-job-applied.v1
+
+golden_path:
+  - "node_lab_job_orchestrator (M3) publishes each reducer transition and its post-transition row with the CAS-assigned seq"
+  - "This reducer folds one transitioned event into a state row dict and a transition row dict"
+  - "The writer appends the transition, refusing a seq it already holds"
+  - "The writer upserts the state row, refusing an equal or lower seq in the conflict arm's WHERE"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-lab-job-applied.v1"
+
+dod_evidence:
+  - test: tests/test_lab_job_projection.py::test_an_older_transition_never_replaces_a_newer_row
+    description: "AC1 -- an out-of-order pair: the older seq is refused by the upsert WHERE"
+  - test: tests/test_lab_job_projection.py::test_a_redelivered_transition_writes_nothing
+    description: "AC1 -- a redelivery is refused by both tables"
+  - test: tests/test_golden_chain_projection_lab_job.py::test_trap_a_pure_entry_on_the_projection_arm_writes_no_rows
+    description: "AC2 -- trap one: the pure fold alone returns rows and writes none"
+  - test: tests/test_golden_chain_projection_lab_job.py::test_trap_a_writer_without_in_process_dispatch_is_not_dispatched
+    description: "AC2 -- trap two: the writer declares in-process dispatch, the fold does not"
+  - test: tests/test_lab_job_projection_real_postgres.py::test_replaying_the_same_events_twice_yields_identical_rows
+    description: "AC3 -- a replay against real Postgres yields identical rows"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write`: each conflict arm reads the
+    # stored row (seq, or the existing key) to refuse a stale or repeated write.
+    - name: lab_job_state
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lab_job.sql"
+      access: read_write
+      role: lab_job_state
+    - name: lab_job_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lab_job.sql"
+      access: read_write
+      role: lab_job_transitions
+
+  # The state row's key. Together with seq it also spells the log's key.
+  dedupe_key:
+    - job_id
+  ordering_key: seq
+
+event_bus:
+  # M3 owns this publication but is not yet a node contract. The explicit
+  # external producer below keeps this M2 consumer visible to the HARD graph
+  # gate until the orchestrator's publication declaration lands.
+  subscribe_topics:
+    - onex.evt.omnimarket.lab-job-transitioned.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-lab-job-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-lab-job-malformed.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.lab-job-transitioned.v1
+    producer: "node_lab_job_orchestrator (plan step M3, not yet built), publishing each reducer transition with its CAS-assigned seq -- not yet a node contract"
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-lab-job-applied.v1
+
+metadata:
+  transport_type: kafka

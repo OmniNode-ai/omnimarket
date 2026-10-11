@@ -30,6 +30,7 @@ from omnimarket.models.lab_job.model_lab_job_spec import (
     ModelLabJobRetryPolicy,
     ModelLabJobSpec,
 )
+from omnimarket.models.lab_job.model_lab_job_transitioned import ModelLabJobTransitioned
 
 __all__: list[str] = [
     "TERMINAL_LAB_JOB_STATES",
@@ -52,4 +53,5 @@ __all__: list[str] = [
     "ModelLabJobRow",
     "ModelLabJobSpec",
     "ModelLabJobTransition",
+    "ModelLabJobTransitioned",
 ]

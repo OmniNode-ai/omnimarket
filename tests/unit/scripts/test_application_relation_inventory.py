@@ -423,7 +423,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # the same PR = 96.
     # +1 for OMN-20613's delegation_budget_applied_events, declared and created
     # in the same PR = 97.
-    assert census["source_created_tables"] == 97
+    # +2 for OMN-20604 M2: node-owned lab_job_state and lab_job_transitions,
+    # with their CREATE migration and ownership declarations together = 99.
+    assert census["source_created_tables"] == 99
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -589,7 +591,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-20576's alert_channel_liveness_verdicts = 104.
     # +1 for OMN-20578 (delegation_routing_feedback) = 105.
     # +1 for OMN-20613 (delegation_budget_applied_events) = 106.
-    assert census["source_declared_tables"] == 106
+    # +2 for OMN-20604 M2: both lab-job read models land with their CREATE = 108.
+    assert census["source_declared_tables"] == 108
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

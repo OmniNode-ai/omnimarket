@@ -20,6 +20,13 @@ requirements:
         statement: "AC4: the lane-liveness wire models are defined once in omnimarket.models.liveness and the compute node re-exports them, so one definition serves every importer -- falsifier: uv run pytest tests/unit/test_liveness_shared_models.py -q in omnimarket fails when a model is defined twice or is missing from the shared package"
       - id: "AC5"
         statement: "AC5: the lab job submit command catches a broker ACL refusal, prints the refusal to stderr, and exits 69 with no traceback and nothing published -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_submit_effect/test_lab_job_submit_cli.py -k bus_publish_refused_exits_69 -q in omnimarket fails at the merge base, where the test does not exist"
+  - id: "req-lab-job-projection"
+    statement: "node_projection_lab_job is a pure fold plus an in-process writer: the writer stores the newest state row per job and every transition once, ordered by the CAS-assigned seq."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: the lab job projection writer refuses an older seq, an equal seq and a redelivered transition, so a replay writes nothing -- falsifier: uv run pytest tests/test_lab_job_projection.py -k 'older_transition or redelivered or equal_seq' -q in omnimarket fails at the merge base, where the node does not exist"
+      - id: "AC8"
+        statement: "AC8: only the writer is routed and it declares in-process dispatch, while the pure fold writes no rows -- falsifier: uv run pytest tests/test_golden_chain_projection_lab_job.py -k 'trap or routes_only_the_writer' -q in omnimarket fails at the merge base, where the node does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3 hosted probe. The reducer tests pass at the head and fail at the merge base, where the reducer does not exist."
@@ -69,3 +76,25 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_lab_job_submit_effect/test_lab_job_submit_cli.py -k bus_publish_refused_exits_69 -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20604-ac7-projection-ordering-guard"
+    description: "AC7 hosted probe. An older seq, an equal seq and a redelivered transition are refused by the writer's statements. The test file exists only at the head, so the check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_job_projection.py -k 'older_transition or redelivered or equal_seq' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20604-ac8-projection-golden-chain"
+    description: "AC8 hosted probe. Only the writer is routed and dispatched in process; the pure fold writes nothing. The test file exists only at the head, so the check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_lab_job.py -k 'trap or routes_only_the_writer' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20604-projection-deploy-probe"
+    description: "Deploy probe. The deployed runtime imports node_projection_lab_job's writer and it declares in-process dispatch, so the runtime dispatches it once per lab-job-transitioned event. It fails on a runtime that does not carry the node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.nodes.node_projection_lab_job.handlers.handler_lab_job_writer import LabJobProjectionWriter as W; assert W.onex_runtime_inprocess_dispatch is True'"
