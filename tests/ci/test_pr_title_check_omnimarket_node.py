@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -82,7 +81,13 @@ def test_job_keeps_context_triggers_and_runner_routing() -> None:
 def test_job_runs_the_published_node_without_checkout() -> None:
     steps = _job()["steps"]
     assert len(steps) == 2
-    assert re.fullmatch(r"astral-sh/setup-uv@[0-9a-f]{40}", steps[0]["uses"])
+    bootstrap = steps[0]
+    assert all("uses" not in step for step in steps)
+    assert bootstrap["env"]["UV_VERSION"] == "0.12.10"
+    assert "python3 -m venv" in bootstrap["run"]
+    assert "uv==${UV_VERSION}" in bootstrap["run"]
+    assert "${GITHUB_PATH}" in bootstrap["run"]
+    assert "set -euo pipefail" in bootstrap["run"]
     assert all("checkout" not in step.get("uses", "") for step in steps)
     env = steps[1]["env"]
     assert env["OMNIMARKET_VERSION"] == RELEASE
@@ -159,34 +164,76 @@ def release_python(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return python
 
 
-@pytest.mark.parametrize(
-    ("title", "author", "expected"),
-    [
-        pytest.param("fix(OMN-21001): title check", "human", 0, id="omn-title"),
-        pytest.param("fix title check", "human", 1, id="bare-title"),
-        pytest.param("fix title check", "dependabot[bot]", 0, id="bot-suffix"),
-        pytest.param("chore(deps): upgrade", "human", 0, id="chore-deps"),
-        pytest.param("build(deps): upgrade", "human", 0, id="build-deps"),
-        pytest.param("bump a library", "human", 0, id="bump"),
-        pytest.param("chore: release package", "human", 0, id="chore-release"),
-        pytest.param("chore(release): package", "human", 0, id="chore-release-scope"),
-        pytest.param("release: package", "human", 0, id="release"),
-        pytest.param("CHORE(DEPS): upgrade", "human", 0, id="upper-chore-deps"),
-        pytest.param("BUILD(DEPS): upgrade", "human", 0, id="upper-build-deps"),
-        pytest.param("BUMP a library", "human", 0, id="upper-bump"),
-        pytest.param("CHORE: RELEASE package", "human", 0, id="upper-chore-release"),
-        pytest.param("CHORE(RELEASE): package", "human", 0, id="upper-release-scope"),
-        pytest.param("RELEASE: package", "human", 0, id="upper-release"),
-        pytest.param("fix omn-21001", "human", 1, id="lowercase-ticket"),
-        pytest.param("fix OMN-x", "human", 1, id="nonnumeric-ticket"),
-        pytest.param(" chore(deps): upgrade", "human", 1, id="leading-space"),
-        pytest.param("fix title check", "human[bot]suffix", 1, id="bot-not-suffix"),
-        pytest.param("fix title check", "robot[BOT]", 1, id="bot-case-sensitive"),
-        pytest.param("", "dependabot[bot]", 1, id="empty-before-exemption"),
-    ],
-)
+TITLE_CASES = [
+    pytest.param("fix(OMN-21001): title check", "human", 0, id="omn-title"),
+    pytest.param("fix title check", "human", 1, id="bare-title"),
+    pytest.param("fix title check", "dependabot[bot]", 0, id="bot-suffix"),
+    pytest.param("chore(deps): upgrade", "human", 0, id="chore-deps"),
+    pytest.param("build(deps): upgrade", "human", 0, id="build-deps"),
+    pytest.param("bump a library", "human", 0, id="bump"),
+    pytest.param("chore: release package", "human", 0, id="chore-release"),
+    pytest.param("chore(release): package", "human", 0, id="chore-release-scope"),
+    pytest.param("release: package", "human", 0, id="release"),
+    pytest.param("CHORE(DEPS): upgrade", "human", 0, id="upper-chore-deps"),
+    pytest.param("BUILD(DEPS): upgrade", "human", 0, id="upper-build-deps"),
+    pytest.param("BUMP a library", "human", 0, id="upper-bump"),
+    pytest.param("CHORE: RELEASE package", "human", 0, id="upper-chore-release"),
+    pytest.param("CHORE(RELEASE): package", "human", 0, id="upper-release-scope"),
+    pytest.param("RELEASE: package", "human", 0, id="upper-release"),
+    pytest.param("fix omn-21001", "human", 1, id="lowercase-ticket"),
+    pytest.param("fix OMN-x", "human", 1, id="nonnumeric-ticket"),
+    pytest.param(" chore(deps): upgrade", "human", 1, id="leading-space"),
+    pytest.param("fix title check", "human[bot]suffix", 1, id="bot-not-suffix"),
+    pytest.param("fix title check", "robot[BOT]", 1, id="bot-case-sensitive"),
+    pytest.param("", "dependabot[bot]", 1, id="empty-before-exemption"),
+]
+
+
+@pytest.fixture(scope="module")
+def release_verdicts(release_python: Path) -> dict[tuple[str, str], tuple[int, str]]:
+    """Exercise the installed CLI entry point for every case in one interpreter."""
+    payloads = [
+        {"title": str(case.values[0]), "author": str(case.values[1])}
+        for case in TITLE_CASES
+    ]
+    script = """
+import contextlib
+import io
+import json
+import sys
+from omnimarket.nodes.node_pr_title_check_compute.__main__ import main
+
+payloads = json.load(sys.stdin)
+verdicts = []
+for payload in payloads:
+    sys.stdin = io.StringIO(json.dumps(payload))
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = main()
+    verdicts.append([exit_code, output.getvalue()])
+print(json.dumps(verdicts))
+"""
+    result = subprocess.run(
+        [str(release_python), "-I", "-c", script],
+        input=json.dumps(payloads),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    verdicts = json.loads(result.stdout)
+    return {
+        (payload["title"], payload["author"]): (verdict[0], verdict[1])
+        for payload, verdict in zip(payloads, verdicts, strict=True)
+    }
+
+
+@pytest.mark.parametrize(("title", "author", "expected"), TITLE_CASES)
 def test_installed_node_matches_old_bash(
-    release_python: Path, title: str, author: str, expected: int
+    release_verdicts: dict[tuple[str, str], tuple[int, str]],
+    title: str,
+    author: str,
+    expected: int,
 ) -> None:
     old = subprocess.run(
         ["bash", "-c", OLD_BASH],
@@ -195,12 +242,6 @@ def test_installed_node_matches_old_bash(
         text=True,
         timeout=10,
     )
-    new = subprocess.run(
-        [str(release_python), "-I", "-m", NODE_MODULE],
-        input=json.dumps({"title": title, "author": author}),
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    exit_code, output = release_verdicts[(title, author)]
     assert old.returncode == expected, old.stderr
-    assert new.returncode == old.returncode, new.stdout + new.stderr
+    assert exit_code == old.returncode, output

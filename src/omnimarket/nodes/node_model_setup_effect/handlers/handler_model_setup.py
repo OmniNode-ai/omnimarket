@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Report and test the models delegation can use (OMN-20817).
 
-A developer can use any combination of Gemini, OpenRouter, OpenAI and Ollama;
+A developer can use any combination of Gemini, OpenRouter, OpenAI, Anthropic
+and Ollama;
 delegation chooses among the ones set up. This effect answers two questions for
 ``onex models`` and for onboarding, which calls it once per chosen model:
 
