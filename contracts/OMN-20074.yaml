@@ -63,6 +63,13 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: every non-xfail code_generation integration case in tests/delegation_golden/corpus.yaml that expects terminal completed names a backticked function signature in its prompt, and the old I9 prompt is flagged by the same rule -- falsifier: uv run pytest tests/delegation_golden/test_code_case_names_its_artifact.py -q -p no:randomly fails at the merge base
+  - id: "req-topic-hook-from-core"
+    statement: |-
+      omnimarket's no-hardcoded-topics pre-commit hook comes from omnibase_core, which exports it under the same hook id, instead of from onex_change_control, with the hook's exclude and settings unchanged.
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC8: .pre-commit-config.yaml declares no-hardcoded-topics once, in an omnibase_core block pinned to a full commit sha, with its exclude (773 characters, sha256 7782a602) and settings unchanged and no onex_change_control block -- falsifier: uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -88,6 +95,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Every published code case that must complete names its artifact; the old I9 prompt is flagged and I3's is admitted."
     command: "uv run pytest tests/delegation_golden/test_code_case_names_its_artifact.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The topic hook is one omnibase_core block at a full sha with its exclude and settings unchanged and no onex_change_control block."
+    command: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -157,3 +167,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
+  - id: "dod-omn20074-topic-hook-from-core"
+    description: "The no-hardcoded-topics hook is sourced from omnibase_core with its exclude unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]

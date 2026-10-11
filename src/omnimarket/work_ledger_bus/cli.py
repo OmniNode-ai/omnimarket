@@ -46,6 +46,9 @@ from omnimarket.models.pr_handoff import (
 from omnimarket.models.work_ledger_append.model_work_ledger_append import (
     ModelWorkLedgerPrincipalRecords,
 )
+from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_serve import (
+    ledger_host_capture,
+)
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
     HandlerWorkLedgerAppendEffect,
@@ -97,6 +100,16 @@ def work_ledger_group(ctx: click.Context) -> None:
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Operator Ed25519 private key in PEM form; signs mirrored lab terminals.",
 )
+@click.option(
+    "--operator-capture/--no-operator-capture",
+    envvar="ONEX_WORK_LEDGER_OPERATOR_CAPTURE",
+    default=False,
+    show_default=True,
+    help=(
+        "Also record the operator's decisions and asks, taken from the content-capture "
+        "topic, as rows on this ledger (OMN-20905)."
+    ),
+)
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -108,6 +121,7 @@ def serve_command(
     principal_records: Path | None,
     operator_principal: str | None,
     signing_key_file: Path | None,
+    operator_capture: bool,
 ) -> None:
     """Serve commands using the local append command on the ledger host."""
     try:
@@ -164,8 +178,9 @@ def serve_command(
             err=True,
         )
         sys.exit(75)
+    append_runner = LocalLedgerAppendCommand(argv)
     handler = HandlerWorkLedgerAppendEffect(
-        LocalLedgerAppendCommand(argv),
+        append_runner,
         LocalLedgerFile(ledger),
         host_name,
         public_keys=public_keys,
@@ -191,9 +206,26 @@ def serve_command(
                 mirror_signing_key=mirror_key,
             )
             await host.start()
+            # OMN-20905 (RULING 2026-10-10T22:40:43Z): the operator capture runs beside the
+            # append host, off the same bus, through the same append runner.
+            capture = (
+                ledger_host_capture(
+                    opened,
+                    ledger=ledger,
+                    append_runner=append_runner,
+                    host_name=host_name,
+                    bus_lane=bus_lane,
+                )
+                if operator_capture
+                else None
+            )
+            if capture is not None:
+                await capture.start()
             try:
                 await stop.wait()
             finally:
+                if capture is not None:
+                    await capture.stop()
                 await host.stop()
 
     try:

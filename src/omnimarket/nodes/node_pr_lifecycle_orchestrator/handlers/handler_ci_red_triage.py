@@ -6,6 +6,8 @@ Acting is a contract flag per red class (``ci_red_triage.act``). A runner-class
 owner reruns the failed Actions runs of its head once, through
 node_pr_landing_github_effect's ``rerun_runs``; every other class starts the
 existing scoped sweep. A class whose flag is false only records its decision.
+A flag may be a ``${env.VAR:default}`` overlay reference (OMN-20867), so a
+lane's private overlay sets whether that lane acts.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from typing import Protocol, TypeVar
 
 import yaml
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
     EnumPrLandingGithubMode,
@@ -83,12 +86,14 @@ OWNER_ACTIONS = {
 # the controller's reviewer-slot rule.
 RERUN_LANDING_CLASSES = frozenset({"runner_saturation", "cancelled_producer"})
 _ACTIONS_RUN = "/actions/runs/"
+_FLAG_WORDS = {"true": True, "false": False}
 
 
 def ci_red_act_flags(block: object) -> dict[EnumCiRedClass, bool]:
     """The contract's per-class act flags; an unknown class or a non-bool is refused.
 
-    A class the block does not name does not act.
+    A class the block does not name does not act. A string flag is an overlay
+    reference: it expands to exactly ``true`` or ``false``, or is refused.
     """
     if not isinstance(block, Mapping):
         raise ValueError("ci_red_triage.act must map each red class to true or false")
@@ -97,6 +102,13 @@ def ci_red_act_flags(block: object) -> dict[EnumCiRedClass, bool]:
     for name, value in block.items():
         if name not in known:
             raise ValueError(f"ci_red_triage.act names unknown red class {name!r}")
+        if isinstance(value, str):
+            word = expand_contract_env_refs(value)
+            if word not in _FLAG_WORDS:
+                raise ValueError(
+                    f"ci_red_triage.act.{name} must be true or false, not {word!r}"
+                )
+            value = _FLAG_WORDS[word]
         if not isinstance(value, bool):
             raise ValueError(f"ci_red_triage.act.{name} must be true or false")
         flags[known[name]] = value
