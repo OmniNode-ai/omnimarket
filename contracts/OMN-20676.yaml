@@ -130,3 +130,10 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn20676-deploy-probe"
+    description: "Deploy probe. The merge-sweep orchestrator contract the runtime loads at the checked-out commit carries the event_bus block this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^event_bus:'"
+        cwd: "${OMNI_HOME}/omnimarket"
