@@ -48,3 +48,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_closeout_completion.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20675-deploy-probe"
+    description: "Deploy probe. The closeout sweep node contract the runtime loads at the checked-out commit declares the completion and ground_state kinds this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without them, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_closeout_sweep_compute/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'decide_ticket, completion, ground_state]'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
