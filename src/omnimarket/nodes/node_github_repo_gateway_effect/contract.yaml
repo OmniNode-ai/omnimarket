@@ -7,7 +7,7 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
@@ -15,10 +15,51 @@ lifecycle: experimental
 description: >
   EFFECT (read-only): typed GitHub repo status reader. Selects one read
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
-  review_gate, merge_commit_sha, ticket_ref) and returns a small typed object
-  so callers replace raw `gh pr checks/view --json` in verify loops. The GitHub
-  token is resolved at the effect boundary from the contract-declared
-  api_key_ref via the canonical secret-store resolver.
+  review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
+  job_log_tail, artifacts, pr_text, releases) and returns a small typed object
+  so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
+  log reads, `gh run download` and `gh release list`. Every operation is one
+  ModelGithubGatewayRequest on
+  onex.cmd.omnimarket.github-repo-gateway-read-requested.v1 answered by one
+  ModelGithubGatewayResponse on
+  onex.evt.omnimarket.github-repo-gateway-read-completed.v1, whose result is
+  discriminated by `operation`. List reads page inside the node up to the
+  request's limit (at most 300) and say when they were cut; job_log_tail keeps
+  at most 64 KiB of the log's end; artifacts fetches one archive only when it
+  is at most max_bytes (at most 512 KiB) and otherwise refuses with a typed
+  reason. The GitHub token is resolved at the effect boundary from the
+  contract-declared api_key_ref via the canonical secret-store resolver.
+
+# OMN-20912: the operation table slice 2 (`onex scm`) and slice 3 (the gh shim
+# coverage table) read. Names are stable; the gh verb each one replaces is on
+# the right.
+operations:
+  - name: pr_status
+    description: "Request ModelGithubGatewayRequest, result ModelPrStatusResult; replaces gh pr view --json mergeStateStatus."
+  - name: ci_checks
+    description: "Request ModelGithubGatewayRequest, result ModelCiChecksResult; replaces gh pr checks."
+  - name: open_prs_list
+    description: "Request ModelGithubGatewayRequest, result ModelOpenPrsResult; replaces gh pr list."
+  - name: branch_protection
+    description: "Request ModelGithubGatewayRequest, result ModelBranchProtectionResult; replaces gh api branches/<b>/protection."
+  - name: review_gate
+    description: "Request ModelGithubGatewayRequest, result ModelReviewGateResult; replaces gh pr view --json reviewDecision."
+  - name: merge_commit_sha
+    description: "Request ModelGithubGatewayRequest, result ModelMergeCommitShaResult; replaces gh pr view --json mergeCommit."
+  - name: ticket_ref
+    description: "Request ModelGithubGatewayRequest, result ModelTicketRefResult; replaces gh pr view --json headRefName."
+  - name: workflow_runs
+    description: "Request ModelGithubGatewayRequest, result ModelWorkflowRunsResult; replaces gh run list."
+  - name: run_jobs
+    description: "Request ModelGithubGatewayRequest, result ModelRunJobsResult; replaces gh run view."
+  - name: job_log_tail
+    description: "Request ModelGithubGatewayRequest, result ModelJobLogTailResult; replaces gh run view --log / actions/jobs/<id>/logs."
+  - name: artifacts
+    description: "Request ModelGithubGatewayRequest, result ModelArtifactsResult; replaces gh run download."
+  - name: pr_text
+    description: "Request ModelGithubGatewayRequest, result ModelPrTextResult; replaces gh pr view --comments."
+  - name: releases
+    description: "Request ModelGithubGatewayRequest, result ModelReleasesResult; replaces gh release list."
 
 input_model:
   name: ModelGithubGatewayRequest

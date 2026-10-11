@@ -732,6 +732,8 @@ event_bus:
   publish_topics:
     # Companion commands (op derive, regenerate, verify) to the producer.
     - onex.cmd.omnimarket.occ-autobind.v1
+    # OMN-20750: conflict requests (block_reason conflict) to the fix effect.
+    - onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
     - onex.cmd.omnimarket.pr-landing-github-requested.v1
     - onex.evt.omnimarket.pr-landing-transitioned.v1
     - onex.evt.omnimarket.pr-landing-agent-needed.v1
@@ -756,6 +758,9 @@ published_events:
   - event_type: "PrLifecycleFixCommand"
     topic: onex.cmd.omnimarket.occ-autobind.v1
     description: "A companion command (op derive, regenerate or verify) to the change-control producer."
+  - event_type: "PrLandingConflictCommand"
+    topic: onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
+    description: "One conflict request per (PR, head, base head) for a PR GitHub reports armed and dirty; dry_run with update_branch (OMN-20750)."
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
@@ -834,3 +839,4 @@ metadata:
     - "OMN-19822"
     - "OMN-19824"
     - "OMN-20866"
+    - "OMN-20750"
