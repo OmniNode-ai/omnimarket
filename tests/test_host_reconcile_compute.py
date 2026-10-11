@@ -189,7 +189,7 @@ def test_movement(
                 live_dir="/live", source_dir="/source", checked=3, drifted=()
             ),
             "ALREADY_AT_TARGET",
-            "3 installed guard script(s) in /live are byte-identical to /source",
+            "3 canonical-clone guard item(s) read back ok in /live (tracked source /source)",
         ),
     ],
 )
@@ -259,7 +259,7 @@ def test_premise(surface: str, premise: bool) -> None:
         (
             "canonical-guard",
             False,
-            "bash /scripts/install-canonical-clone-git-hooks.sh (readback), then bash /scripts/install-canonical-clone-git-hooks.sh --apply <the clones the readback lists as ok>, then rerun",
+            'OMNI_HOME=/workspace uv run --project "$OMNIBASE_INTERNAL_HOME" onex-canonical-clone-install (readback), then OMNI_HOME=/workspace uv run --project "$OMNIBASE_INTERNAL_HOME" onex-canonical-clone-install --apply <the clones the readback lists as ok>, then rerun',
         ),
         ("other", False, "rerun"),
     ],

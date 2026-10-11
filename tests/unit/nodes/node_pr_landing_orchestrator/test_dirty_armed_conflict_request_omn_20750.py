@@ -61,6 +61,7 @@ from tests.unit.nodes.node_pr_landing_orchestrator._builders import (
     FixedClassifier,
     answer,
     only_request,
+    passing_gate_facts,
     requests_in,
 )
 
@@ -91,6 +92,7 @@ def _handler(
         arm_gate=HandlerPrArmGate(),
         classifier=classifier if classifier is not None else FixedClassifier(),
         store=InMemoryPrLandingRowStore(),
+        gate_facts=passing_gate_facts(),
     )
 
 

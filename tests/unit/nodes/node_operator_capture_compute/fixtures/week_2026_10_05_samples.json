@@ -1,0 +1,58 @@
+[
+ {
+  "id": "m4-scope",
+  "text": "There should be no cloud work in M4. All cloud work needs to be in M4.5. This has already been discussed and decided upon weeks ago. We should set the beta date for as soon as possible.",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"There should be no cloud work in M4. All cloud work needs to be in M4.5.\",\n      \"subject\": \"cloud work milestone allocation\",\n      \"confidence\": 0.95\n    },\n    {\n      \"kind\": \"decision\",\n      \"quote\": \"This has already been discussed and decided upon weeks ago.\",\n      \"subject\": \"cloud work decision history\",\n      \"confidence\": 0.9\n    },\n    {\n      \"kind\": \"ask\",\n      \"quote\": \"We should set the beta date for as soon as possible.\",\n      \"subject\": \"beta date scheduling\",\n      \"confidence\": 0.9\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ },
+ {
+  "id": "park-default",
+  "text": "Yes, I agree. The system in general asks me the same thing multiple times. Yes let's go with that.",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"decision\",\n      \"quote\": \"Yes let's go with that.\",\n      \"subject\": \"agreement to proceed\",\n      \"confidence\": 0.95\n    },\n    {\n      \"kind\": \"chat\",\n      \"quote\": \"The system in general asks me the same thing multiple times.\",\n      \"subject\": \"system redundancy complaint\",\n      \"confidence\": 0.9\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ },
+ {
+  "id": "access-mode",
+  "text": "Yes, I am fine with all of these. I only want push notifications if there's something that needs my attention. Also, when I get home, most of my work will be not using a remote setup so any process should transfer or be able to be toggled based on how I am accessing the system. What do you think about that?",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"decision\",\n      \"quote\": \"Yes, I am fine with all of these.\",\n      \"subject\": \"approval of previous proposals\",\n      \"confidence\": 0.95\n    },\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"I only want push notifications if there's something that needs my attention.\",\n      \"subject\": \"notification filtering rules\",\n      \"confidence\": 0.95\n    },\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"any process should transfer or be able to be toggled based on how I am accessing the system\",\n      \"subject\": \"process toggling by access mode\",\n      \"confidence\": 0.9\n    },\n    {\n      \"kind\": \"ask\",\n      \"quote\": \"What do you think about that?\",\n      \"subject\": \"feedback on system design\",\n      \"confidence\": 0.9\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ },
+ {
+  "id": "bare-ids",
+  "text": "For the no bare ticket numbers, that is something that I want when I'm in the front of the computer or when I'm remote. You often give me just ticket numbers and I don't know what the hell they mean, and I always have to ask you for clarification. So it would be great if there was a way to fix that process permanently.",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"For the no bare ticket numbers, that is something that I want when I'm in the front of the computer or when I'm remote.\",\n      \"subject\": \"no bare ticket numbers\",\n      \"confidence\": 0.95\n    },\n    {\n      \"kind\": \"ask\",\n      \"quote\": \"So it would be great if there was a way to fix that process permanently.\",\n      \"subject\": \"fix ticket number process\",\n      \"confidence\": 0.9\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ },
+ {
+  "id": "capture-ruling",
+  "text": "Yeah, I totally get that with the repeated stuff. The problem is you're supposed to be writing everything to the ledger so we don't forget everything. I shouldn't have to remember everything. Everything that we're building is so I can externalize my processes so I can say it once and it gets remembered. If that's not happening, it's a problem of the process.",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"you're supposed to be writing everything to the ledger so we don't forget everything\",\n      \"subject\": \"ledger writing requirement\",\n      \"confidence\": 0.95\n    },\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"I shouldn't have to remember everything\",\n      \"subject\": \"memory externalization goal\",\n      \"confidence\": 0.9\n    },\n    {\n      \"kind\": \"preference\",\n      \"quote\": \"Everything that we're building is so I can externalize my processes so I can say it once and it gets remembered\",\n      \"subject\": \"process externalization intent\",\n      \"confidence\": 0.95\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ },
+ {
+  "id": "skills-question",
+  "text": "What does the session not get our skills?",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"status_question\",\n      \"quote\": \"What does the session not get our skills?\",\n      \"subject\": \"session skills access\",\n      \"confidence\": 0.95\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ },
+ {
+  "id": "thanks",
+  "text": "Thanks, that looks good.",
+  "delegated_model": "Qwen3.8-27B",
+  "delegated_response": "{\n  \"items\": [\n    {\n      \"kind\": \"chat\",\n      \"quote\": \"Thanks, that looks good.\",\n      \"subject\": \"acknowledgement\",\n      \"confidence\": 1.0\n    }\n  ]\n}",
+  "recorded_at": "2026-10-10T18:20:00Z",
+  "recorded_with": "onex delegate --task-type summarization --bus kafka --lane dev --locus deployed-lane"
+ }
+]

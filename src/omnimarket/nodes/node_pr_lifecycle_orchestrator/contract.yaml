@@ -55,12 +55,14 @@ handler_routing:
 # claims: decisions and owners are durable claims, read back (read-only) from the
 # ledger rows node_pr_lifecycle_state_reducer projects from ci-red-triage-decided,
 # so a runtime restart forgets neither. With the DSN unset every start is withheld.
+# Each act flag is an overlay reference whose inline default is the shipped
+# value, so a lane's private overlay sets whether that lane acts (OMN-20867).
 ci_red_triage:
   act:
-    runner: true
-    pr_own: false
-    shared_cause: false
-    dev_head: false
+    runner: "${env.ONEX_CI_RED_TRIAGE_ACT_RUNNER:true}"
+    pr_own: "${env.ONEX_CI_RED_TRIAGE_ACT_PR_OWN:false}"
+    shared_cause: "${env.ONEX_CI_RED_TRIAGE_ACT_SHARED_CAUSE:false}"
+    dev_head: "${env.ONEX_CI_RED_TRIAGE_ACT_DEV_HEAD:false}"
   claims:
     table: pr_lifecycle_ledger_entries
     dsn_env: OMNIDASH_ANALYTICS_DB_URL

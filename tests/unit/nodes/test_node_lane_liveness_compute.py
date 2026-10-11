@@ -498,8 +498,15 @@ def test_the_reader_never_groups_or_filters_on_a_session_key() -> None:
     """
     from pathlib import Path
 
+    # The gatherer moved with the reader half (OMN-20604); the script imports it.
     source = (
-        Path(__file__).resolve().parents[3] / "scripts" / "lane_liveness_reader.py"
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_lab_job_check_effect"
+        / "handlers"
+        / "lane_evidence.py"
     ).read_text()
     statements = source[source.index("async def gather") :]
     for forbidden in ("session_id", "correlation_id", "run_id", "entity_id"):

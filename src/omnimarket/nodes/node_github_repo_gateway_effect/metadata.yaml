@@ -1,6 +1,6 @@
 name: node_github_repo_gateway_effect
-version: "1.0.0"
-description: "Typed GitHub repo status reader — one small typed object per read operation (EFFECT, read-only)"
+version: "1.1.0"
+description: "Typed GitHub repo reader — PR status, Actions runs, jobs, log tails, artifacts, PR text and releases; one small typed object per read operation (EFFECT, read-only)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
