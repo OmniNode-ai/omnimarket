@@ -52,4 +52,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^_KAFKA_BOUNDARIES_YAML = ('"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
