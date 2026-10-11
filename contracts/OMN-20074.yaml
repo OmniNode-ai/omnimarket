@@ -49,6 +49,13 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: dod-omniclaude-pr-2656-runnerip-occ-independence-tests does not cover OmniNode-ai/omnibase_core#1942, and dod-omnibase-core-pr-1938-cosmetic-lint-tests, dod-omnibase_core-pr-1938 and dod-OmniNode-ai-omnibase_core-pr-1938-ci cover #1938 and not #19380 -- falsifier: uv run pytest tests/unit/test_occ_contention_omn_15247.py -q -p no:randomly -k hand_authored_id_for fails at the merge base
+  - id: "req-caller-lane-fixture-schema"
+    statement: |-
+      The caller-lane PostgreSQL proof provisions its disposable schema without the omninode_internal namespace, so it retargets migration 0051's audit relation to that schema, as the backfill proof does, while the product migration and its namespace prerequisite stay unchanged.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the caller-lane PostgreSQL proof runs migration 0051 inside its disposable schema and its three tests pass without an omninode_internal schema -- falsifier: uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly fails with InvalidSchemaNameError before a writer assertion
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -68,6 +75,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A suffixed hand-authored evidence id covers its own PR under either slug and no other PR."
     command: "uv run pytest tests/unit/test_occ_contention_omn_15247.py -q -p no:randomly -k hand_authored_id_for"
+  - kind: "tests"
+    description: "The caller-lane PostgreSQL proof runs against a disposable schema that lacks omninode_internal."
+    command: "uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -121,3 +131,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_occ_contention_omn_15247.py -q -p no:randomly -k hand_authored_id_for"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn20074-caller-lane-fixture-schema"
+    description: "The caller-lane PostgreSQL proof passes with migration 0051's audit relation retargeted to its disposable schema."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
