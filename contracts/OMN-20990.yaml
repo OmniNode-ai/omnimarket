@@ -49,11 +49,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2", "AC3"]
   - id: "dod-omn20990-deploy-probe-catalogue-row"
-    description: "Deploy probe. The catalogue at the checked-out commit declares the byok-anthropic backend; the probe reads the catalogue from GitHub at that commit and exits nonzero on a tree that does not declare it, so it fails at the merge base."
+    description: "The repo-owned catalogue tests exercise Anthropic being offered as a routable customer-only byok-anthropic backend with no house rung. Against the merge-base catalogue, the same head tests fail because Anthropic is not offered."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'backend_id: byok-anthropic'"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17353_provider_catalogue.py -k 'test_anthropic_is_offered or test_the_anthropic_row_mirrors_no_house_rung' -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20990-ac4-invalid-key-refused"

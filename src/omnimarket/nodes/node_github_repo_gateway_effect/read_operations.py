@@ -30,6 +30,7 @@ from omnimarket.github_landing.github_landing_requests import (
     job_log_request,
     next_page_request,
     pull_request_request,
+    pull_requests_request,
     releases_request,
     run_artifacts_request,
     run_jobs_request,
@@ -55,6 +56,8 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelOpenPrsResult,
     ModelOpenPrSummary,
     ModelPrComment,
+    ModelPrHead,
+    ModelPrHeadsResult,
     ModelPrStatusResult,
     ModelPrTextResult,
     ModelRelease,
@@ -560,6 +563,61 @@ def read_releases(
     )
 
 
+def _pr_head(item: dict[str, object]) -> ModelPrHead | None:
+    """One REST pull-request item as a ModelPrHead; None when it has no head commit."""
+    head = item.get("head")
+    head_oid = _nested_str(head, "sha")
+    number = item.get("number")
+    if not isinstance(number, int) or len(head_oid) != 40:
+        return None
+    merged_at = item.get("merged_at")
+    merged = isinstance(merged_at, str) and bool(merged_at)
+    merge_sha = item.get("merge_commit_sha")
+    state: Literal["MERGED", "OPEN", "CLOSED"]
+    if merged:
+        state = "MERGED"
+    elif item.get("state") == "open":
+        state = "OPEN"
+    else:
+        state = "CLOSED"
+    return ModelPrHead(
+        number=number,
+        state=state,
+        head_oid=head_oid,
+        head_ref=_nested_str(head, "ref") or None,
+        base_ref=_nested_str(item.get("base"), "ref") or None,
+        # An unmerged PR's merge_commit_sha is GitHub's test merge, not a merge.
+        merge_commit_sha=merge_sha if merged and isinstance(merge_sha, str) else None,
+        merged_at=merged_at if merged and isinstance(merged_at, str) else None,
+    )
+
+
+def read_pr_heads(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelPrHeadsResult:
+    """Every PR's head commit and merge outcome, newest first (OMN-20977).
+
+    Reads pull requests in every state up to the request's limit, then keeps
+    those matching ``branch`` and ``head_sha`` when either is given.
+    """
+    raw, total, cut = _collect(
+        transport,
+        pull_requests_request(
+            request.repo, state="all", per_page=min(request.limit, LIST_PAGE_SIZE)
+        ),
+        item_key="value",
+        limit=request.limit,
+    )
+    prs = [pr for pr in (_pr_head(item) for item in raw) if pr is not None]
+    if request.branch is not None:
+        prs = [pr for pr in prs if pr.head_ref == request.branch]
+    if request.head_sha is not None:
+        prs = [pr for pr in prs if pr.head_oid == request.head_sha]
+    return ModelPrHeadsResult(
+        repo=request.repo, prs=prs, total_count=total, truncated=cut
+    )
+
+
 def _require(value: int | None, name: str) -> int:
     if value is None:  # defensive; the request validator already enforces this
         raise ValueError(f"this operation requires {name}.")
@@ -573,6 +631,7 @@ __all__: list[str] = [
     "read_job_log_tail",
     "read_merge_commit_sha",
     "read_open_prs_list",
+    "read_pr_heads",
     "read_pr_status",
     "read_pr_text",
     "read_releases",
