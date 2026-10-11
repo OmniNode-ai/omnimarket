@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_orchestrator
+version: 0.1.0
+description: Orchestrator - a lab-fill fire becomes one headroom plan request built from
+  the pool hosts' newest capacity readings on the bus; replayed fires emit nothing.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_fill_orchestrator: omnimarket.nodes.node_lab_fill_orchestrator
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- orchestrator
+- lab
+- lab-fill
+pack: operator_tooling
+display_name: Lab Fill Orchestrator
+node_role: orchestrator

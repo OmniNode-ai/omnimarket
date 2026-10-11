@@ -5,5 +5,11 @@
 from .handler_merge_sweep_brief import HandlerMergeSweepBrief
 from .handler_merge_sweep_plan import HandlerMergeSweepPlan
 from .handler_merge_sweep_retry import HandlerMergeSweepRetry
+from .handler_merge_sweep_scheduled_fire import HandlerMergeSweepScheduledFire
 
-__all__ = ["HandlerMergeSweepBrief", "HandlerMergeSweepPlan", "HandlerMergeSweepRetry"]
+__all__ = [
+    "HandlerMergeSweepBrief",
+    "HandlerMergeSweepPlan",
+    "HandlerMergeSweepRetry",
+    "HandlerMergeSweepScheduledFire",
+]

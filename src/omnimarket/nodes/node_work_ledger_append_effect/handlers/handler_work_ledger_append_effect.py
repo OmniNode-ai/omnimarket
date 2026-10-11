@@ -8,6 +8,7 @@ import re
 import socket
 import time
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from typing import Literal
 
 from cryptography.exceptions import InvalidSignature
@@ -17,6 +18,7 @@ from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
+    ModelWorkLedgerTerminalRefused,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerAppendRunner,
@@ -245,6 +247,54 @@ class HandlerWorkLedgerAppendEffect:
             else EnumWorkLedgerAppendStatus.ERROR
         )
         return receipt(status, result.exit_code, tail)
+
+
+def terminal_refused(
+    request: ModelWorkLedgerAppendRequest,
+    receipt: ModelWorkLedgerAppendReceipt,
+    refused_at: datetime,
+) -> ModelWorkLedgerTerminalRefused | None:
+    """The TERMINAL_REFUSED event for a refused request that carries TERMINAL rows.
+
+    A refused TERMINAL leaves the CLAIM it closes open on the ledger; the event
+    names the lanes, tickets and PRs of those rows so the refusal is loud.
+    """
+    if receipt.status is not EnumWorkLedgerAppendStatus.REFUSED:
+        return None
+    terminals = 0
+    lanes: list[str] = []
+    tickets: list[str] = []
+    prs: list[str] = []
+    for line in request.rows.splitlines():
+        match = _ROW_START.match(line)
+        if match is None or match[1].strip() != "TERMINAL":
+            continue
+        terminals += 1
+        for field in (field.strip() for field in line.split("|")[2:]):
+            name, _, value = field.partition("=")
+            if not value:
+                continue
+            if name == "lane":
+                lanes.append(value)
+            elif name == "ticket":
+                tickets.append(value)
+            elif name == "pr":
+                prs.extend(pr.strip() for pr in value.split(",") if pr.strip())
+    if not terminals:
+        return None
+    return ModelWorkLedgerTerminalRefused(
+        request_id=request.request_id,
+        requested_by_lane=request.requested_by_lane,
+        requesting_host=request.requesting_host,
+        ledger_host=receipt.ledger_host,
+        principal=request.principal,
+        exit_code=receipt.exit_code,
+        reason=receipt.message,
+        terminal_lanes=tuple(dict.fromkeys(lanes)),
+        tickets=tuple(dict.fromkeys(tickets)),
+        prs=tuple(dict.fromkeys(prs)),
+        refused_at=refused_at,
+    )
 
 
 def _request_lines(text: str, cell: str) -> list[int]:

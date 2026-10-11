@@ -1,0 +1,795 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Recorded verdicts of onex_change_control's
+# ``contract_compliance_check._superseded_dod_ids`` for every case of
+# ``parity_corpus.yaml`` and every contract of the exhaustive domain that
+# ``test_omn_15390_contract_entry_supersession.py`` iterates (``_parity_domain``).
+# node_dod_verify's supersession resolution is compared against these records on
+# every run, so the differential needs no live onex_change_control checkout.
+#
+# OCC sha: 6adc28168d023d027bf9c1172f262ac03c9d9055
+#
+# Generating command. Run it from the root of an omnimarket checkout, with OCC
+# set to a read-only checkout of onex_change_control at the sha above. Each
+# command line carries a "#| " prefix; strip it to run. The script keeps this
+# header, rewrites everything under the marker below, and gives the same bytes
+# every time.
+#
+#| OCC_SHA="$(git -C "$OCC" rev-parse HEAD)" PYTHONPATH="$OCC/src" uv run --frozen python - <<'PY'
+#| import importlib.util, inspect, json, os, pathlib
+#| from onex_change_control.scripts.contract_compliance_check import _superseded_dod_ids as occ
+#| assert inspect.getsourcefile(occ).startswith(os.environ["PYTHONPATH"])
+#| src = "tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py"
+#| spec = importlib.util.spec_from_file_location("t", src)
+#| t = importlib.util.module_from_spec(spec)
+#| spec.loader.exec_module(t)
+#| assert os.environ["OCC_SHA"] == t._OCC_SHA
+#| fx = pathlib.Path("tests/fixtures/dod_supersession/occ_recorded_verdicts.yaml")
+#| marker = "# ---- recorded verdicts below ----\n"
+#| head = fx.read_text().split(marker)[0] + marker
+#| def row(dod_evidence, **key):
+#|     return "  - " + json.dumps({**key, "items": t._occ_view(dod_evidence), "superseded": sorted(occ(dod_evidence))}, sort_keys=True) + "\n"
+#| corpus, domain = t._corpus_cases(), t._parity_domain()
+#| body = f"occ_sha: {t._OCC_SHA}\ncorpus_cases: {len(corpus)}\ndomain_contracts: {len(domain)}\ncorpus:\n"
+#| body += "".join(row(c["dod_evidence"], name=c["name"]) for c in corpus) + "domain:\n"
+#| body += "".join(row(c) for c in domain)
+#| fx.write_text(head + body)
+#| PY
+#
+# ---- recorded verdicts below ----
+occ_sha: 6adc28168d023d027bf9c1172f262ac03c9d9055
+corpus_cases: 11
+domain_contracts: 739
+corpus:
+  - {"items": [{"id": "dod-a"}, {"id": "dod-b"}], "name": "no_markers", "superseded": []}
+  - {"items": [{"id": "dod-a"}, {"evidence_artifact": "supersedes_dod_evidence:dod-a", "id": "dod-b"}], "name": "single_backward_supersession", "superseded": ["dod-a"]}
+  - {"items": [{"id": "dod-a"}, {"evidence_artifact": "supersedes_dod_evidence:dod-a", "id": "dod-b"}, {"evidence_artifact": "supersedes_dod_evidence:dod-b", "id": "dod-c"}], "name": "chained_supersession", "superseded": ["dod-a", "dod-b"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-b", "id": "dod-a"}, {"id": "dod-b"}], "name": "forward_reference_is_not_a_supersession", "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-a", "id": "dod-a"}], "name": "self_reference_is_rejected", "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-b", "id": "dod-a"}, {"evidence_artifact": "supersedes_dod_evidence:dod-a", "id": "dod-b"}], "name": "two_item_cycle_terminates", "superseded": ["dod-a"]}
+  - {"items": [{"id": "dod-a"}, {"evidence_artifact": "supersedes_dod_evidence:dod-typo", "id": "dod-b"}], "name": "dangling_reference_is_rejected", "superseded": []}
+  - {"items": [{"id": "dod-a"}, {"evidence_artifact": "supersedes_dod_evidence:   ", "id": "dod-b"}], "name": "empty_marker_payload_is_not_a_marker", "superseded": []}
+  - {"items": [{"id": "dod-a"}, {"evidence_artifact": "https://github.com/OmniNode-ai/omnimarket/pull/1949", "id": "dod-b"}], "name": "unrelated_evidence_artifact_is_ignored", "superseded": []}
+  - {"items": [{"id": "dod-a"}, {"evidence_artifact": 42, "id": "dod-b"}], "name": "non_string_evidence_artifact_is_ignored", "superseded": []}
+  - {"items": [{"id": "dod-a"}, {"id": "dod-b"}, {"evidence_artifact": "supersedes_dod_evidence:dod-a", "id": "dod-c"}, {"evidence_artifact": "supersedes_dod_evidence:dod-b", "id": "dod-d"}], "name": "one_item_supersedes_one_other_only", "superseded": ["dod-a", "dod-b"]}
+domain:
+  - {"items": [{"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-2"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-2"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-2", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-2"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {}], "superseded": []}
+  - {"items": [{}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": ""}], "superseded": []}
+  - {"items": [{"id": ""}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": ""}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": ""}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": ""}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": ""}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": ""}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": ""}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:", "id": ""}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:", "id": ""}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": 7}], "superseded": []}
+  - {"items": [{"id": 7}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": 7}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": 7}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": 7}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": 7}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": 7}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": 7}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:", "id": 7}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:", "id": 7}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": null}], "superseded": []}
+  - {"items": [{"id": null}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": null}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": null}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": null}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": null}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": null}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": null}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:", "id": null}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:", "id": null}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0", "dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-0"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-0"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-0"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-0", "id": "dod-1"}], "superseded": []}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-1", "id": "dod-1"}], "superseded": ["dod-1"]}
+  - {"items": [{"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}, {"evidence_artifact": "supersedes_dod_evidence:dod-absent", "id": "dod-1"}], "superseded": []}

@@ -117,18 +117,22 @@ def _states(emitted: list[BaseModel]) -> list[EnumPrLandingState]:
 
 
 async def test_real_watcher_records_prompt_a_read_through_the_contract_route() -> None:
-    """Each dev-lane record of the canary prompts one live PR read; others none."""
+    """Each dev-lane record of a prompted repository starts one live PR read; others none."""
     model = _route_model()
     records = _records()
     handler = _handler(EnumHeadCheckVerdict.GREEN)
-    for repo, pr in (("omnimarket", 3538), ("omnimarket", 3593)):
+    for repo, pr in (
+        ("omnimarket", 3538),
+        ("omnimarket", 3593),
+        ("omnibase_infra", 4801),
+    ):
         value = records[(repo, pr)]
         read = only_request(await handler.handle(model.model_validate(value)))
         assert read.operation is EnumPrLandingGithubOperation.READ_PR_STATE
         assert read.mode is EnumPrLandingGithubMode.ENFORCE
-        assert read.repository == "OmniNode-ai/omnimarket"
+        assert read.repository == f"OmniNode-ai/{repo}"
         assert read.pr_number == pr
-    other = records[("omnibase_infra", 4801)]
+    other = records[("omniclaude", 2637)]
     assert await handler.handle(model.model_validate(other)) == []
 
 

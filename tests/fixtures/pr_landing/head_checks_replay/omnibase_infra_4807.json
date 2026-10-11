@@ -1,0 +1,1673 @@
+{
+  "repository": "OmniNode-ai/omnibase_infra",
+  "pr_number": 4807,
+  "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+  "base_ref": "dev",
+  "merge_state_status": "CLEAN",
+  "label": "green: the one required context (CI Summary) passed; GitHub merge state CLEAN",
+  "provenance": "Built 2026-10-10 from the PR watcher state (tick 2026-10-10T15:47:19Z; the head's check-run read at 2026-10-10T15:23:16Z, merge state read at 2026-10-10T15:47:19Z): one copy per check name as the watcher keeps it, with its check-run id, status and conclusion; no run ids or suites (the watcher keeps none). required_contexts read 2026-10-10 about 15:45Z from the dev branch's classic protection (CI Summary) and rules (merge_queue only, no required status checks) (OMN-20866). 1 recorded non-required copies whose names the public-repo hygiene gate refuses in this public repository are left out; each passed or was skipped.",
+  "required_contexts": [
+    "CI Summary"
+  ],
+  "check_runs_body": {
+    "total_count": 138,
+    "check_runs": [
+      {
+        "id": 114193102599,
+        "name": "AI-Slop Pattern Check (strict, PR diff)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193095871,
+        "name": "Analyze (actions)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193095659,
+        "name": "Analyze (javascript-typescript)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193095789,
+        "name": "Analyze (python)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145626,
+        "name": "Application Database Domain Enforcement (OMN-15361)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102368,
+        "name": "Arch Invariants (OMN-3343)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102504,
+        "name": "Bus ACL Boundary (OMN-19928)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102345,
+        "name": "CI Evidence Policy (OMN-18247)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099839,
+        "name": "CI Live Contact (OMN-18648)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100592,
+        "name": "CI Naming Convention",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102535,
+        "name": "CI Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114195194239,
+        "name": "CI Tests Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114195287536,
+        "name": "CI cascade reason-graph (report-only)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102565,
+        "name": "Canonical File Shape (OMN-20304)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101938,
+        "name": "Canonical Handler-Shape Gate (OMN-20298)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099474,
+        "name": "Canonical Inference Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099542,
+        "name": "Check architecture handshake",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193218157,
+        "name": "CodeQL",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102308,
+        "name": "Compose Required-Env Coverage (OMN-5439)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102230,
+        "name": "Contract Compliance",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102410,
+        "name": "Contract Path Pre-Flight",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102339,
+        "name": "Contract Sync Gate (Wave C) [OMN-8915]",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102346,
+        "name": "Cross-Repo Migration Conflicts",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102588,
+        "name": "Customer Path Boundary (OMN-18012)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145629,
+        "name": "Demo Loop Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099890,
+        "name": "Dep Provenance Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102313,
+        "name": "Dep Provenance Lineage Gate (OMN-15604)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102679,
+        "name": "Deploy Agent Tests (OMN-15378) / deploy-agent-tests",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114194310363,
+        "name": "Detect Changes",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099835,
+        "name": "Direct Model Call Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193146254,
+        "name": "Docs-Only Marker (OMN-16661)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099714,
+        "name": "Duplication Sweep",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145664,
+        "name": "Effect-Assertion Gate (RT-5)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099485,
+        "name": "Enable Auto-Merge",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102416,
+        "name": "Enforce validator-requirements.yaml (OMN-13291)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102516,
+        "name": "Event Chain Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102314,
+        "name": "Exposed Identifier Gate (OMN-17320)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102431,
+        "name": "Fingerprint Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100426,
+        "name": "Git env scrub gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100102,
+        "name": "Governed helper primitive gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100633,
+        "name": "Handler Contract Compliance",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193332509,
+        "name": "Hostile Review Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193332466,
+        "name": "Hostile Review Thread Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099743,
+        "name": "Hostile Reviewer (adversarial gate)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102142,
+        "name": "Infra Node Handler Ownership",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145608,
+        "name": "Integration Silent-Skip Guard (OMN-14172)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099974,
+        "name": "Integration Test Coverage",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099910,
+        "name": "Integration Test Removal Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145607,
+        "name": "Kafka Boundary Compat (OMN-3256)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145551,
+        "name": "Kafka Schema Handshake (OMN-3411)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102363,
+        "name": "Lab Probe Windows (OMN-19412)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102262,
+        "name": "Laptop profile paths changed (OMN-19498)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193190101,
+        "name": "Lint",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102298,
+        "name": "Lockfile CVE Scan (OMN-16228)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102329,
+        "name": "Lockfile Registry Allowlist (OMN-16516)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102391,
+        "name": "Migration Freeze Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145649,
+        "name": "Migration Integration Test",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102252,
+        "name": "No Plugin Daemon Classes Gate (OMN-20298)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099444,
+        "name": "No bare compose teardown",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102451,
+        "name": "Node Boundary Imports (OMN-20703)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102550,
+        "name": "Node Migration Declaration Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102673,
+        "name": "Noncanonical Class Allowlist One-way (OMN-19677) / anti-growth-baseline",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102089,
+        "name": "ONEX Validators",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193317000,
+        "name": "Omni Standards Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100652,
+        "name": "PEP 604 Type Union Check (UP007)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102455,
+        "name": "Pin Reachability (OMN-15538)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102334,
+        "name": "Plugin ENV->Service Completeness (OMN-4313)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099409,
+        "name": "Precommit Parity Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099506,
+        "name": "Publish PR Webhook Event",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102517,
+        "name": "Reconcilers prove movement by readback (OMN-17307)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099819,
+        "name": "Runner Disk Preflight",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102065,
+        "name": "Runner Route (OMN-18031) / route",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193147348,
+        "name": "Runtime Boot Laptop Profile (catalog local)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114195209078,
+        "name": "Runtime Boot Smoke (compose)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102362,
+        "name": "Runtime Profiles / validate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102738,
+        "name": "Sanitized Legacy RDS Fixture Proof / PostgreSQL 16 Fresh + Legacy Fixture",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100110,
+        "name": "Seed Provenance Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193145643,
+        "name": "Service-Backed Integration Suites (OMN-18781)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102041,
+        "name": "Shape-Gate Independence (OMN-20298)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102648,
+        "name": "Skip Count Baseline One-way (OMN-19677) / anti-growth-baseline",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114195208145,
+        "name": "Skip Count Ratchet (OMN-18776)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099549,
+        "name": "Stale TODO Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102491,
+        "name": "Subscribe Wiring Health",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114195194215,
+        "name": "Test-Failure Ratchet Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114194455124,
+        "name": "Tests (Split 1/2)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114194455123,
+        "name": "Tests (Split 2/2)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102370,
+        "name": "Topic Drift Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102434,
+        "name": "Topic Enum Drift Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102610,
+        "name": "Topic Naming Baseline One-way (OMN-19677) / anti-growth-baseline",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102316,
+        "name": "Topic Naming Lint",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102551,
+        "name": "Trivyignore Expiry Check (OMN-16229)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100678,
+        "name": "Type Safety Validation",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099948,
+        "name": "URL Authority Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102652,
+        "name": "Validator Requirements Baseline One-way (OMN-19677) / anti-growth-baseline",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102188,
+        "name": "Version Pin Compliance",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102515,
+        "name": "Writer-Migration Coupling Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100989,
+        "name": "advisory-job-gate / advisory-job-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101361,
+        "name": "call / validate-docs",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101013,
+        "name": "call-reject-skip-token / scan / reject-skip-gate-token",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099858,
+        "name": "check-env-reads-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099781,
+        "name": "consumer-kwarg-parity",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100018,
+        "name": "context-field-presence",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100180,
+        "name": "contract-validation",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100769,
+        "name": "delegation-health-check / Delegation Health Check",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102541,
+        "name": "delegation-seam-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101109,
+        "name": "deploy-gate / deploy-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099588,
+        "name": "dispatcher-route-coverage",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100035,
+        "name": "exposure-reader-coverage",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101127,
+        "name": "imperative-contract-guard / Imperative Contract Guard",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101146,
+        "name": "kb-doc-gate / kb-doc-gate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100319,
+        "name": "lint (shadow)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099742,
+        "name": "main-target-guard",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102644,
+        "name": "merge-hold-gate / evaluate",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102514,
+        "name": "no-noncanonical-lifecycle-classes",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102667,
+        "name": "node-migration-sync / deployed-migration-tree-sync-logic",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102689,
+        "name": "node-migration-sync / node-migration-sync",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099720,
+        "name": "non-dev-base-guard",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099880,
+        "name": "pinned-wheel-skew",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100904,
+        "name": "pr-title / check-title",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100888,
+        "name": "public-repo-hygiene / public-repo-hygiene",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100369,
+        "name": "pypi-pin-resolvability",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193383272,
+        "name": "reason-graph",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099443,
+        "name": "receipt-honesty",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100024,
+        "name": "release-identity",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102094,
+        "name": "repo-evidence / dod-verify",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102279,
+        "name": "repo-evidence / verify",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101082,
+        "name": "required-check-skip-guard / check-skip-vectors",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101158,
+        "name": "runner-label-exists / runner-label-exists",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102637,
+        "name": "runner-routing-audit / Runner Routing Audit",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099879,
+        "name": "shell-hygiene",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099964,
+        "name": "sibling-lock-pins",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099644,
+        "name": "skill-node-mapping-sync",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100050,
+        "name": "terminal-cost-completeness",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100327,
+        "name": "tests+coverage (shadow)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193100183,
+        "name": "typecheck (shadow)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193101017,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "skipped",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193099475,
+        "name": "wheel-content-parity",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      },
+      {
+        "id": 114193102281,
+        "name": "zone-filter / Zone Filter (docs-only check)",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "3ffb756e983593c67a1a416397b4a97e94a6f573",
+        "details_url": null,
+        "app": {
+          "slug": "github-actions"
+        },
+        "check_suite": null
+      }
+    ]
+  }
+}
