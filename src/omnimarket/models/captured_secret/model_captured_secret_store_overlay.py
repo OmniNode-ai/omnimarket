@@ -22,16 +22,18 @@ CAPTURED_SECRET_STORE_BLOCK = "captured_secret_store"
 
 
 class ModelCapturedSecretStoreOverlay(BaseModel):
-    """Store addressing for the captured namespace, plus the READER identity.
+    """Store addressing for the captured namespace and the two identities.
 
-    The writer's identity keys (``writer_client_id``, ``writer_client_secret_ref``,
-    ``reference_key_ref``) are in the same block and ignored here
-    (``extra="ignore"``): a reader authenticates as itself, never as the writer.
+    The WRITER (the content-capture producer) may only create secrets in the
+    namespace; the READER (a consumer) may only read them. Each side uses only
+    its own keys: a reader never authenticates as the writer, and the reverse.
+    Every ``*_ref`` names an entry in ``credentials.json``, never a value.
+    Unknown keys are ignored so the block can grow without breaking a reader.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    infisical_addr: str = Field(min_length=1)
+    infisical_addr: str = Field(min_length=1, pattern=r"^https?://")
     project_id: uuid.UUID
     environment_slug: str = Field(min_length=1)
     secret_path: str = Field(min_length=1, pattern=r"^/")
@@ -39,6 +41,14 @@ class ModelCapturedSecretStoreOverlay(BaseModel):
     reader_client_id: str | None = Field(default=None, min_length=1)
     #: The key the reader's client secret is filed under in credentials.json.
     reader_client_secret_ref: str | None = Field(default=None, min_length=1)
+    #: The writer's machine-identity client id. Not a secret.
+    writer_client_id: str | None = Field(default=None, min_length=1)
+    #: The key the writer's client secret is filed under in credentials.json.
+    writer_client_secret_ref: str | None = Field(default=None, min_length=1)
+    #: The key the per-deployment reference key is filed under. The reference
+    #: digest is HMAC-SHA256 of a value under it, so equal values deduplicate
+    #: and the bus never carries an unsalted hash of a low-entropy secret.
+    reference_key_ref: str | None = Field(default=None, min_length=1)
 
 
 def load_captured_secret_store_overlay(

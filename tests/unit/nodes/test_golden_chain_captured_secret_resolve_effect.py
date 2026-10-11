@@ -15,6 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.captured_secret.model_captured_secret_store_overlay import (
+    ModelCapturedSecretStoreOverlay,
+    load_captured_secret_store_overlay,
+)
 from omnimarket.nodes.node_captured_secret_resolve_effect.handlers import (
     handler_captured_secret_resolve as handler_module,
 )
@@ -32,10 +36,6 @@ from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_
 from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
     EnumCapturedSecretResolveOutcome,
     ModelCapturedSecretResolveResult,
-)
-from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_store_overlay import (
-    ModelCapturedSecretStoreOverlay,
-    load_captured_secret_store_overlay,
 )
 from omnimarket.nodes.node_event_emit_effect.redaction import load_contract
 
@@ -190,7 +190,7 @@ def _onex_home(tmp_path: Path, *, reader: bool = True, mode: int = 0o600) -> Pat
 
 
 @pytest.mark.unit
-def test_overlay_reads_addressing_and_ignores_the_writer_identity(
+def test_overlay_reads_addressing_and_both_identities_by_reference(
     tmp_path: Path,
 ) -> None:
     import yaml
@@ -201,9 +201,9 @@ def test_overlay_reads_addressing_and_ignores_the_writer_identity(
     )
     assert loaded.secret_path == "/captured"
     assert loaded.reader_client_id == "reader-id"
-    dumped = loaded.model_dump()
-    assert "writer_client_id" not in dumped
-    assert "reference_key_ref" not in dumped
+    # The block carries both identities as names and references only.
+    assert loaded.writer_client_id == "writer-id"
+    assert loaded.reference_key_ref == "captured-reference-key"
 
 
 @pytest.mark.unit
