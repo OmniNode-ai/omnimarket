@@ -21,19 +21,19 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: replaying a journal with three runs between two polls emits three run events and none on a re-read -- falsifier: `uv run pytest tests -q -k observer_journal_every_run_idempotent`
+          AC1: replaying a journal with three runs between two polls emits three run events and none on a re-read -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_journal_every_run_idempotent`
       - id: "AC2"
         statement: |-
-          AC2: a latest-only launchd entry whose run count rose by three reports `unseen_runs=2` -- falsifier: `uv run pytest tests -q -k observer_latest_only_unseen_runs`
+          AC2: a latest-only launchd entry whose run count rose by three reports `unseen_runs=2` -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_latest_only_unseen_runs`
       - id: "AC4"
         statement: |-
-          AC4: with the broker unreachable, events are journaled and later flushed in order -- falsifier: `uv run pytest tests -q -k observer_journal_flush_order`
+          AC4: with the broker unreachable, events are journaled and later flushed in order -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_journal_flush_order`
       - id: "AC5"
         statement: |-
-          AC5: a running unit of ours with no entry is reported UNDECLARED -- falsifier: `uv run pytest tests -q -k observer_reports_undeclared`
+          AC5: a running unit of ours with no entry is reported UNDECLARED -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_reports_undeclared`
       - id: "AC6"
         statement: |-
-          AC6, cron half: a cron start with no completion inside its runtime bound reports OVERRUN -- falsifier: `uv run pytest tests -q -k observer_cron_completion_and_consumer_backlog`
+          AC6, cron half: a cron start with no completion inside its runtime bound reports OVERRUN -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_cron_completion_and_consumer_backlog`
 evidence_requirements:
   - kind: tests
     description: "AC1, AC2, AC4, AC5 and the cron half of AC6: the observer's focused tests pass"
@@ -48,7 +48,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests -q -k observer_journal_every_run_idempotent"
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_journal_every_run_idempotent"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: dod-observer-latest-only-unseen-runs
@@ -56,7 +56,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests -q -k observer_latest_only_unseen_runs"
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_latest_only_unseen_runs"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: dod-observer-journal-flush-order
@@ -64,7 +64,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests -q -k observer_journal_flush_order"
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_journal_flush_order"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: dod-observer-reports-undeclared
@@ -72,7 +72,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests -q -k observer_reports_undeclared"
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_reports_undeclared"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: dod-observer-cron-overrun
@@ -80,6 +80,13 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests -q -k observer_cron_completion_and_consumer_backlog"
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_cron_completion_and_consumer_backlog"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: dod-observer-deploy-source
+    description: "Deploy source probe: the observer handler at the checked-out commit defines HandlerAutomationRunObserver. The source is absent at the merge base; the lab runtime dispatch readback exercises the handler separately."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_run_observer_effect/handlers/handler_automation_run_observer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^class HandlerAutomationRunObserver:'"
+        cwd: "${OMNI_HOME}/omnimarket"

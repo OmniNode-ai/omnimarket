@@ -148,3 +148,49 @@ def test_error_chain_unreadable_overlay_is_refused_not_read_as_empty(
                 now=datetime(2026, 10, 10, 12, 0, tzinfo=UTC),
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_observer_runtime_dispatch_terminal_readback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Raw bus commands reach the shipped handler and terminalize on re-read."""
+    from omnimarket.nodes.node_automation_run_observer_effect.handlers import (
+        handler_automation_run_observer,
+    )
+    from tests.chains.test_event_chain_gate import ChainCase, _run_chain
+    from tests.test_automation_run_observer_effect import (
+        T0,
+        FakeSink,
+        receipt,
+        receipts_overlay,
+    )
+
+    overlay, receipts = receipts_overlay(tmp_path)
+    receipts.write_text(receipt(0), encoding="utf-8")
+    sink = FakeSink()
+    monkeypatch.setattr(
+        handler_automation_run_observer, "KafkaObserverEventSink", lambda: sink
+    )
+    case = ChainCase(
+        chain_id="automation-run-observer",
+        node_dir=NODE,
+        entry_topic=COMMAND_TOPIC,
+        terminal_topic="onex.evt.omnimarket.automation-run-observer-polled.v1",
+        terminal_type_name="ModelAutomationRunObserverResult",
+        wire_payload={
+            "host": "host-a",
+            "overlay_path": overlay,
+            "state_dir": str(tmp_path / "state"),
+            "now": T0.isoformat(),
+        },
+    )
+    for expected_runs in (1, 0):
+        run = await _run_chain(case)
+        assert run.prepared.quarantine_reason is None
+        assert run.quarantine_messages == []
+        assert len(run.terminal_messages) == 1
+        terminal = json.loads(run.terminal_messages[0])
+        assert terminal["payload"]["runs_emitted"] == expected_runs
+        assert terminal["payload"]["journal_backlog"] == 0
+    assert len(sink.of("onex.evt.omnimarket.automation-run-observed.v1")) == 1
