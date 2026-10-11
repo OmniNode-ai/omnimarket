@@ -3312,7 +3312,11 @@ class EvidenceCollector:
                     evidence_id="contract",
                     description=f"Failed to parse contract: {path}",
                     status=EnumEvidenceCheckStatus.FAILED,
-                    message=self.contract_load_error or f"YAML parse error in {path}",
+                    message=(
+                        f"YAML parse error in {path}: {self.contract_load_error}"
+                        if self.contract_load_error
+                        else f"YAML parse error in {path}"
+                    ),
                 )
             ]
 
@@ -4645,7 +4649,7 @@ class EvidenceCollector:
             )
         except Exception as exc:
             logger.error("Failed to parse %s: %s", path, exc)
-            self.contract_load_error = str(exc)
+            self.contract_load_error = f"YAML parse error in {path}: {exc}"
             return None
 
     def _check_evidence_item(

@@ -5186,6 +5186,7 @@
       "partitioning": [],
       "producer": "node_projection_lab_proof_receipts",
       "readers": [
+        "node_pr_landing_orchestrator",
         "node_projection_lab_proof_receipts",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8435,6 +8436,7 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_branch_claim_check_effect",
+        "node_pr_landing_orchestrator",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect"
       ],
@@ -8492,7 +8494,9 @@
       "owner_declaration": "node_projection_work_ledger",
       "partitioning": [],
       "producer": "node_projection_work_ledger",
-      "readers": [],
+      "readers": [
+        "node_pr_landing_orchestrator"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_work_ledger",
