@@ -44,6 +44,7 @@ class HandlerLabFillScheduledFire:
         return scheduled_fire(
             self._cfg,
             now=request.now,
+            scheduled_at=request.scheduled_at,
             tick_interval_ms=request.tick_interval_ms,
             tick_id=request.tick_id,
             scheduler_id=request.scheduler_id,

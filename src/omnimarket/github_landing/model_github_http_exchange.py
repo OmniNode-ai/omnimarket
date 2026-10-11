@@ -88,3 +88,22 @@ class ModelGithubHttpResponse(BaseModel):
         if value is None or not value.strip().isdigit():
             return None
         return int(value.strip())
+
+
+class ModelGithubBytesResponse(BaseModel):
+    """One GitHub response read as bytes under a size cap (OMN-20912).
+
+    For the endpoints whose body is not JSON: a job's log (text) and an
+    artifact's archive (zip). ``keep="head"`` stops reading past ``limit`` and
+    sets ``over_limit``; ``keep="tail"`` reads the whole stream and keeps only
+    its last ``limit`` bytes, with ``total_bytes`` the full length read.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: int = Field(ge=100, le=599)
+    headers: dict[str, str]
+    content: bytes
+    total_bytes: int = Field(ge=0)
+    over_limit: bool
+    keep: Literal["head", "tail"]
