@@ -35,6 +35,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
     ModelJobLogTailResult,
+    ModelPrHeadsResult,
     ModelPrTextResult,
     ModelReleasesResult,
     ModelRunJobsResult,
@@ -72,6 +73,7 @@ SCM_READ_RESULT_MODELS: dict[EnumGithubGatewayOperation, type[BaseModel]] = {
     EnumGithubGatewayOperation.ARTIFACTS: ModelArtifactsResult,
     EnumGithubGatewayOperation.PR_TEXT: ModelPrTextResult,
     EnumGithubGatewayOperation.RELEASES: ModelReleasesResult,
+    EnumGithubGatewayOperation.PR_HEADS: ModelPrHeadsResult,
 }
 
 
@@ -441,6 +443,85 @@ def test_releases_reads_releases_and_tags() -> None:
     assert [r.tag_name for r in result.releases] == ["v0.4.310", "v0.4.309"]
     assert result.tags[0].sha == HEAD
     assert (result.releases_truncated, result.tags_truncated) == (False, False)
+
+
+# --- pr_heads (OMN-20977) ---------------------------------------------------------
+
+_MERGED_HEAD = "1" * 40
+_MERGE_SHA = "2" * 40
+_CLOSED_HEAD = "3" * 40
+
+
+def _pull(
+    number: int,
+    *,
+    head: str,
+    ref: str,
+    state: str,
+    merged_at: str | None = None,
+) -> dict[str, object]:
+    return {
+        **pull_request(number, body=""),
+        "state": state,
+        "head": {"ref": ref, "sha": head},
+        "merged_at": merged_at,
+        # GitHub fills this for an unmerged PR too (its test merge).
+        "merge_commit_sha": _MERGE_SHA if merged_at else "9" * 40,
+    }
+
+
+def _pr_heads_exchange(limit: int) -> JsonExchange:
+    return JsonExchange(
+        get(f"{_BASE}/pulls?state=all&per_page={limit}"),
+        json_response(
+            [
+                _pull(12, head=HEAD, ref="jonah/omn-1-open", state="open"),
+                _pull(
+                    11,
+                    head=_MERGED_HEAD,
+                    ref="jonah/omn-1-merged",
+                    state="closed",
+                    merged_at="2026-10-10T12:00:00Z",
+                ),
+                _pull(10, head=_CLOSED_HEAD, ref="jonah/omn-1-dropped", state="closed"),
+            ]
+        ),
+    )
+
+
+def test_pr_heads_names_each_pr_head_and_merge_outcome() -> None:
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.PR_HEADS, limit=50), [_pr_heads_exchange(50)]
+    )
+    assert isinstance(result, ModelPrHeadsResult)
+    by_number = {pr.number: pr for pr in result.prs}
+    assert [pr.number for pr in result.prs] == [12, 11, 10]
+    assert by_number[12].state == "OPEN"
+    assert by_number[11].state == "MERGED"
+    assert by_number[11].head_oid == _MERGED_HEAD
+    assert by_number[11].merge_commit_sha == _MERGE_SHA
+    assert by_number[11].merged_at == "2026-10-10T12:00:00Z"
+    assert by_number[10].state == "CLOSED"
+    # an unmerged PR's test-merge sha is never reported as a merge commit
+    assert by_number[10].merge_commit_sha is None
+    assert by_number[12].merge_commit_sha is None
+
+
+def test_pr_heads_narrows_to_a_branch_or_a_head() -> None:
+    by_branch, _ = _run(
+        _req(
+            EnumGithubGatewayOperation.PR_HEADS, limit=50, branch="jonah/omn-1-merged"
+        ),
+        [_pr_heads_exchange(50)],
+    )
+    assert isinstance(by_branch, ModelPrHeadsResult)
+    assert [pr.number for pr in by_branch.prs] == [11]
+    by_head, _ = _run(
+        _req(EnumGithubGatewayOperation.PR_HEADS, limit=50, head_sha=_CLOSED_HEAD),
+        [_pr_heads_exchange(50)],
+    )
+    assert isinstance(by_head, ModelPrHeadsResult)
+    assert [pr.number for pr in by_head.prs] == [10]
 
 
 # --- protocol A for the new operations, and the wire round trip ------------------

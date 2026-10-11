@@ -23,8 +23,8 @@
   name: Reject skip-gate bypass tokens in staged files (operating rule 10)
   description: >
     Blocks any [skip-<letter>... bypass token in a staged markdown, yaml, yml or
-    txt file, or committed .onex_state/evidence text, unless the same file carries
-    "# skip-token-allowed: <receipt-id>". Free-text justification does not pass.
+    txt file, or committed .onex_state/evidence text. There is no escape hatch: no
+    comment or receipt id rescues a token (OMN-20074).
     Reads the staged blob, not the working tree.
   language: script
   entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
@@ -36,8 +36,8 @@
 - id: reject-skip-token-commit-msg
   name: Reject skip-gate bypass tokens in commit messages (operating rule 10)
   description: >
-    Blocks any [skip-<letter>... bypass token in the commit message unless the
-    message carries "# skip-token-allowed: <receipt-id>". A distinct code path
+    Blocks any [skip-<letter>... bypass token in the commit message, with no
+    escape hatch. A distinct code path
     from the staged-content scan: pre-commit passes the message file path.
   language: script
   entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh --commit-msg
