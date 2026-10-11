@@ -18,10 +18,12 @@ whatever OCC said, because every negative control must be rejected by the new
 path even when OCC accepted it; its admission fails as
 ``accepted_negative_control``.
 
-OMN-20917: a PR whose diff is only dependency pins and lock files, refused by
+OMN-20917: a PR whose product side is only dependency pins and lock files, refused by
 the new path's must-fail control (its bound test also passes at the merge
 base) while OCC admitted, is the expected difference ``dependency_repin``; the
-same refusal on a PR that also changes anything else stays unclassified.
+same refusal on a PR that also changes other product paths stays unclassified.
+Its own contract and test side are the evidence the gate needs and do not
+disqualify it.
 
 Classification is pure; only the two loader helpers read supplied files.
 """
@@ -91,15 +93,27 @@ DEPENDENCY_REPIN_PACKAGE_LOCK_BASENAMES: Final[frozenset[str]] = frozenset(
     {"package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"}
 )
 
+# OMN-20917: receipt-gate.yml TEST_SIDE, overlaid on the merge base.
+TEST_SIDE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^tests?/|/tests?/|(^|/)conftest\.py$|(^|/)test_[^/]*\.py$|_test\.py$"
+)
+
+
+def is_test_side(path: str) -> bool:
+    return TEST_SIDE_PATTERN.search(path) is not None
+
 
 def classify_dependency_repin(
     changed_paths: Sequence[str],
     *,
+    tickets: Sequence[str] = (),
     pyproject_head: str | None,
     pyproject_base: str | None,
 ) -> tuple[bool, str]:
-    """Pure: is every changed path a dependency pin or a lock file? ``(verdict, why)``.
+    """OMN-20917: is every product path a dependency pin or a lock file?
 
+    Drop tests and cited contracts, the evidence overlaid on the merge base.
+    A contract the title does not cite stays product side.
     pyproject.toml and uv.lock are judged by ``classify_dependency_pin_only``
     (only version and dependency-pin keys may differ); a package lock file
     may change freely. Any other path, an empty diff or an unreadable
@@ -107,9 +121,15 @@ def classify_dependency_repin(
     """
     if not changed_paths:
         return False, "no changed files observed"
+    cited = {f"contracts/{ticket}.yaml" for ticket in tickets}
+    product_paths = [
+        path for path in changed_paths if not is_test_side(path) and path not in cited
+    ]
+    if not product_paths:
+        return False, "only the evidence side changed"
     python_paths = [
         path
-        for path in changed_paths
+        for path in product_paths
         if path.rsplit("/", 1)[-1] not in DEPENDENCY_REPIN_PACKAGE_LOCK_BASENAMES
     ]
     if not python_paths:

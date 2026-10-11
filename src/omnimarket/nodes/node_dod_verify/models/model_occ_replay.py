@@ -55,9 +55,10 @@ class ModelOccReplayRecord(BaseModel):
     head_sha: str
     merged_at: str = ""
     tickets: tuple[str, ...] = ()
-    # The OCC check run (conclusion and annotation messages), None when the
-    # head carries no such run (pre-OCC, or a skipped workflow).
+    # None with occ_unreadable False means the head carries no OCC run.
     occ_check_run: dict[str, object] | None = None
+    # OMN-20917: the head facts or its OCC check run could not be read.
+    occ_unreadable: bool = False
     # None when the new path could not be replayed at this head.
     new_verdict: ModelNewPathVerdict | None = None
     negative_control: bool = False
@@ -96,10 +97,12 @@ class ModelOccReplaySummary(BaseModel):
     compared: int
     not_compared: int
     target_met: bool
-    # Rows that fail the replay: unclassified_difference, and the forbidden
-    # accepted_negative_control and old_behavioral_refusal.
+    # Rows that fail the replay: unclassified_difference, the forbidden
+    # accepted_negative_control and old_behavioral_refusal, and unknown.
     unclassified: int
     forbidden: int
+    # OMN-20917: rows whose OCC verdict was unavailable; they fail the replay.
+    unknown: int
     passed: bool
     by_outcome: dict[str, int]
     # A compared row's reason code; ``agree`` for an agreeing row.

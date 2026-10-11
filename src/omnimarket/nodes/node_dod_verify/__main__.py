@@ -23,7 +23,7 @@ OCC retirement S7 (OMN-20917):
     first, until ``--count`` of them compare OCC's recorded verdict with the new
     path's. Live, HandlerOccReplay gathers each PR's record; ``--rows-file``
     re-classifies recorded rows without reading anything. Prints the report
-    JSON; exits 1 on an unclassified or forbidden row, 2 when the window held
+    JSON; exits 1 on an unclassified, forbidden or unknown row, 2 when the window held
     fewer compared rows than ``--count``, else 0.
 
 Receipt persistence (OMN-10046, OMN-12403):
@@ -432,7 +432,7 @@ def _occ_replay_main(argv: list[str]) -> None:
         sys.stderr.write(
             f"::error::replay of {summary.repository}: compared={summary.compared} "
             f"of {summary.target}, unclassified={summary.unclassified}, "
-            f"forbidden={summary.forbidden}\n"
+            f"forbidden={summary.forbidden}, unknown={summary.unknown}\n"
         )
     sys.exit(code)
 

@@ -8,11 +8,13 @@ PRs through both evidence paths. ``HandlerOccReplay`` gathers one
 ``ModelOccReplayRecord`` per merged PR; this module classifies the records with
 the S5 rules and decides the replay's verdict:
 
-* a PR whose head has no OCC run (pre-OCC, a skipped workflow) or whose OCC
-  verdict could not be read is ``not_compared``: it is reported, never counted,
-  and the window widens past it until ``count`` compared rows exist;
+* a PR whose head has no OCC run (pre-OCC, a skipped workflow) is
+  ``not_compared``: reported, never counted, and the window widens past it;
+* an unavailable OCC verdict is ``unknown``: reported, never counted, and
+  fails the replay (exit 1); the window widens to ``count`` compared rows;
 * the replay fails (exit 1) on any ``unclassified_difference`` row and any
   forbidden row (``accepted_negative_control``, ``old_behavioral_refusal``);
+  an accepted negative control is forbidden whatever OCC's side reads;
 * a window that ran out before ``count`` compared rows passes no bar (exit 2).
 
 ``must_fail_control_line`` and its helpers port the decision the receipt
@@ -30,14 +32,22 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Final
 
+from omnimarket.enums.enum_occ_verdict_difference_reason import (
+    EnumOccVerdictDifferenceReason,
+)
 from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
     ModelOccReplayRecord,
     ModelOccReplayReport,
     ModelOccReplayRow,
     ModelOccReplaySummary,
 )
+from omnimarket.nodes.node_dod_verify.models.model_occ_verdict_difference import (
+    OccDifferenceOutcome,
+)
 from omnimarket.nodes.node_dod_verify.services.occ_verdict_difference import (
+    TEST_SIDE_PATTERN,
     classify,
+    is_test_side,
     parse_occ_verdict,
 )
 from omnimarket.occ_content_probe import (
@@ -47,10 +57,6 @@ from omnimarket.occ_content_probe import (
     is_release_artifact_only_diff,
 )
 
-# receipt-gate.yml TEST_SIDE: the paths overlaid on the merge base.
-TEST_SIDE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^tests?/|/tests?/|(^|/)conftest\.py$|(^|/)test_[^/]*\.py$|_test\.py$"
-)
 TICKET_PATTERN: Final[re.Pattern[str]] = re.compile(r"OMN-[0-9]+")
 
 # receipt-gate.yml "Detect dependency-bot author": exempt unconditionally.
@@ -79,18 +85,16 @@ CONTRACT_HOME_REPOSITORIES: Final[tuple[str, ...]] = (
 )
 # Outcomes that fail the replay.
 FAILING_OUTCOMES: Final[frozenset[str]] = frozenset(
-    {"unclassified_difference", "forbidden_difference"}
+    {"unclassified_difference", "forbidden_difference", "unknown"}
 )
+# OMN-20917: reported rows that widen the compared window.
+NOT_COUNTED_OUTCOMES: Final[frozenset[str]] = frozenset({"not_compared", "unknown"})
 NEGATIVE_CONTROL_LABEL: Final[str] = "dod-negative-control"
 
 
 def tickets_from_title(title: str) -> tuple[str, ...]:
     """The receipt gate's cited tickets: every OMN-<n> in the title, sorted unique."""
     return tuple(sorted(set(TICKET_PATTERN.findall(title))))
-
-
-def is_test_side(path: str) -> bool:
-    return TEST_SIDE_PATTERN.search(path) is not None
 
 
 def is_test_only_diff(paths: Sequence[str], tickets: Sequence[str]) -> bool:
@@ -318,41 +322,45 @@ def classify_writer_app_exemption(
     return False, f"{reason}; dependency-pin-only: {pin_reason}"
 
 
-def _row(record: ModelOccReplayRecord) -> ModelOccReplayRow:
+def replay_row(record: ModelOccReplayRecord) -> ModelOccReplayRow:
+    """OMN-20917: classify one row, failing closed on an unavailable OCC verdict."""
     old = parse_occ_verdict(record.occ_check_run)
     new = record.new_verdict
-    if old.admitted is None or new is None:
-        # No OCC verdict on this head, or the new path could not be replayed:
-        # reported, never counted.
-        return ModelOccReplayRow(
-            pr=record.pr,
-            head_sha=record.head_sha,
-            merged_at=record.merged_at,
-            tickets=record.tickets,
-            occ_admitted=old.admitted,
-            occ_conclusion=old.conclusion,
-            occ_reason=old.reason,
-            new_admitted=new.admitted if new is not None else None,
-            new_reason=new.reason if new is not None else None,
-            outcome="not_compared",
-            reason_code=None,
-            passed=False,
-            note=record.note,
-        )
-    result = classify(old, new, negative_control=record.negative_control)
+    result = (
+        classify(old, new, negative_control=record.negative_control)
+        if new is not None
+        else None
+    )
+    outcome: OccDifferenceOutcome
+    reason_code: EnumOccVerdictDifferenceReason | None = None
+    passed = False
+    if result is not None and (
+        old.admitted is not None
+        or result.reason_code
+        == EnumOccVerdictDifferenceReason.ACCEPTED_NEGATIVE_CONTROL
+    ):
+        outcome = result.outcome
+        reason_code = result.reason_code
+        passed = result.passed
+    elif old.admitted is not None or (
+        record.occ_check_run is None and not record.occ_unreadable
+    ):
+        outcome = "not_compared"
+    else:
+        outcome = "unknown"
     return ModelOccReplayRow(
         pr=record.pr,
         head_sha=record.head_sha,
         merged_at=record.merged_at,
         tickets=record.tickets,
-        occ_admitted=result.old_admitted,
+        occ_admitted=old.admitted,
         occ_conclusion=old.conclusion,
-        occ_reason=result.old_reason,
-        new_admitted=result.new_admitted,
-        new_reason=result.new_reason,
-        outcome=result.outcome,
-        reason_code=result.reason_code,
-        passed=result.passed,
+        occ_reason=old.reason,
+        new_admitted=new.admitted if new is not None else None,
+        new_reason=new.reason if new is not None else None,
+        outcome=outcome,
+        reason_code=reason_code,
+        passed=passed,
         note=record.note,
     )
 
@@ -366,11 +374,11 @@ def replay_records(
     for record in records:
         if compared >= count:
             break
-        row = _row(record)
+        row = replay_row(record)
         rows.append(row)
-        if row.outcome != "not_compared":
+        if row.outcome not in NOT_COUNTED_OUTCOMES:
             compared += 1
-    compared_rows = [row for row in rows if row.outcome != "not_compared"]
+    compared_rows = [row for row in rows if row.outcome not in NOT_COUNTED_OUTCOMES]
     by_outcome = Counter(row.outcome for row in compared_rows)
     by_reason = Counter(
         row.reason_code.value
@@ -380,16 +388,18 @@ def replay_records(
     )
     unclassified = by_outcome.get("unclassified_difference", 0)
     forbidden = by_outcome.get("forbidden_difference", 0)
+    unknown = sum(row.outcome == "unknown" for row in rows)
     summary = ModelOccReplaySummary(
         repository=repository,
         target=count,
         examined=len(rows),
         compared=compared,
-        not_compared=len(rows) - compared,
+        not_compared=sum(row.outcome == "not_compared" for row in rows),
         target_met=compared >= count,
         unclassified=unclassified,
         forbidden=forbidden,
-        passed=unclassified == 0 and forbidden == 0,
+        unknown=unknown,
+        passed=unclassified == 0 and forbidden == 0 and unknown == 0,
         by_outcome=dict(sorted(by_outcome.items())),
         by_reason_code=dict(sorted(by_reason.items())),
         window_newest_pr=rows[0].pr if rows else None,
@@ -451,7 +461,9 @@ __all__ = [
     "CONTRACT_HOME_REPOSITORIES",
     "DEPENDENCY_BOT_AUTHORS",
     "NEGATIVE_CONTROL_LABEL",
+    "NOT_COUNTED_OUTCOMES",
     "OCC_WRITER_AUTHORS",
+    "TEST_SIDE_PATTERN",
     "carried_evidence_ids",
     "classify_writer_app_exemption",
     "is_test_only_diff",
@@ -460,5 +472,6 @@ __all__ = [
     "render_replay_table",
     "replay_exit_code",
     "replay_records",
+    "replay_row",
     "tickets_from_title",
 ]

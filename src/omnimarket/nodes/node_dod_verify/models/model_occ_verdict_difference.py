@@ -17,6 +17,7 @@ type OccDifferenceOutcome = Literal[
     "forbidden_difference",
     "unclassified_difference",
     "not_compared",
+    "unknown",  # OMN-20917: S7 replay only; S5 classify never returns it.
 ]
 
 

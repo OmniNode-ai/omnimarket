@@ -7,8 +7,9 @@ For each merged PR of a repository, newest first, this handler gathers one
 
 * the merged PRs come from the repository's canonical clone under
   ``$OMNI_HOME`` (the squash commits on the default branch whose subject ends
-  ``(#<n>)``), and each PR's head, author, labels and title from
-  ``HandlerDodEvidenceGithubEffect`` (the PR watcher's records first);
+  ``(#<n>)``), and each PR's head, GitHub login, labels and title from
+  ``HandlerDodEvidenceGithubEffect`` (the PR watcher's records first); exemptions
+  read that GitHub login, never the squash commit's git author name;
 * OCC's recorded verdict is the newest run of ``occ_context`` on that head,
   read through the same effect handler, annotations included;
 * the new path's verdict is the receipt gate's own sequence, replayed in a
@@ -68,6 +69,7 @@ from omnimarket.nodes.node_dod_verify.services.occ_replay import (
     CONTRACT_HOME_REPOSITORIES,
     DEPENDENCY_BOT_AUTHORS,
     NEGATIVE_CONTROL_LABEL,
+    NOT_COUNTED_OUTCOMES,
     OCC_WRITER_AUTHORS,
     carried_evidence_ids,
     classify_writer_app_exemption,
@@ -75,6 +77,7 @@ from omnimarket.nodes.node_dod_verify.services.occ_replay import (
     is_test_side,
     must_fail_control_line,
     replay_records,
+    replay_row,
     tickets_from_title,
 )
 from omnimarket.nodes.node_dod_verify.services.occ_verdict_difference import (
@@ -94,7 +97,6 @@ class _MergedPr:
     number: int
     merge_sha: str
     parent: str
-    author: str
     merged_at: str
     title: str
 
@@ -171,10 +173,7 @@ class HandlerOccReplay:
                 break
             record = self._record(request, clone, mirror, work, pr)
             records.append(record)
-            if (
-                parse_occ_verdict(record.occ_check_run).admitted is not None
-                and record.new_verdict is not None
-            ):
+            if replay_row(record).outcome not in NOT_COUNTED_OUTCOMES:
                 compared += 1
             logger.info(
                 "replay %s#%d head=%s occ=%s new=%s compared=%d/%d: %s",
@@ -196,17 +195,17 @@ class HandlerOccReplay:
             clone,
             "log",
             "--first-parent",
-            "--format=%H%x09%P%x09%an%x09%cI%x09%s",
+            "--format=%H%x09%P%x09%cI%x09%s",
             f"refs/remotes/origin/{branch}",
         )
         if rc != 0:
             raise RuntimeError(f"cannot read origin/{branch} in {clone}")
         merged: list[_MergedPr] = []
         for line in out.splitlines():
-            cols = line.split("\t", 4)
-            if len(cols) != 5:
+            cols = line.split("\t", 3)
+            if len(cols) != 4:
                 continue
-            match = _SQUASH_SUBJECT.match(cols[4].rstrip())
+            match = _SQUASH_SUBJECT.match(cols[3].rstrip())
             if match is None:
                 continue
             merged.append(
@@ -214,8 +213,7 @@ class HandlerOccReplay:
                     number=int(match.group("n")),
                     merge_sha=cols[0],
                     parent=cols[1].split()[0] if cols[1] else "",
-                    author=cols[2],
-                    merged_at=cols[3],
+                    merged_at=cols[2],
                     title=match.group("title"),
                 )
             )
@@ -256,6 +254,7 @@ class HandlerOccReplay:
                 merged_at=pr.merged_at,
                 tickets=tickets,
                 head_sha="",
+                occ_unreadable=True,
                 note=f"head sha unreadable: {facts_event.detail}",
             )
         occ_event = self._lookup(
@@ -267,7 +266,7 @@ class HandlerOccReplay:
                 check_name=request.occ_context,
             )
         )
-        occ = occ_event.check_run
+        occ = occ_event.check_run if occ_event.resolved else None
         negative_control = NEGATIVE_CONTROL_LABEL in facts.labels
         if not occ_event.resolved:
             note = f"OCC verdict unreadable ({occ_event.detail})"
@@ -276,26 +275,23 @@ class HandlerOccReplay:
         elif parse_occ_verdict(occ).admitted is None:
             note = f"OCC conclusion {occ.get('conclusion')} ({occ_event.detail})"
         else:
+            note = f"OCC read from {occ_event.detail}"
+        new = None
+        # OMN-20917: only a head with no OCC run skips the new path;
+        # negative controls always replay it.
+        if not (occ_event.resolved and occ is None) or negative_control:
             new, how = self._new_path(
                 request, clone, mirror, work, pr, facts.head_sha, facts.author, tickets
             )
-            return ModelOccReplayRecord(
-                pr=pr.number,
-                merged_at=pr.merged_at,
-                tickets=tickets,
-                head_sha=facts.head_sha,
-                occ_check_run=occ,
-                new_verdict=new,
-                negative_control=negative_control,
-                note=f"{how}; OCC read from {occ_event.detail}",
-            )
-        # Not compared: the new path is not run without an OCC verdict.
+            note = f"{how}; {note}"
         return ModelOccReplayRecord(
             pr=pr.number,
             merged_at=pr.merged_at,
             tickets=tickets,
             head_sha=facts.head_sha,
-            occ_check_run=occ if occ_event.resolved else None,
+            occ_check_run=occ,
+            occ_unreadable=not occ_event.resolved,
+            new_verdict=new,
             negative_control=negative_control,
             note=note,
         )
@@ -313,8 +309,8 @@ class HandlerOccReplay:
         author: str,
         tickets: tuple[str, ...],
     ) -> tuple[ModelNewPathVerdict | None, str]:
-        login = author or pr.author
-        if login in DEPENDENCY_BOT_AUTHORS or pr.author in DEPENDENCY_BOT_AUTHORS:
+        login = author
+        if login in DEPENDENCY_BOT_AUTHORS:
             return ModelNewPathVerdict(admitted=True), f"exempt: dependency bot {login}"
         # The canonical clone holds a merged PR's head; the replay never
         # fetches from GitHub (lanes read the canonical clones).
@@ -330,7 +326,7 @@ class HandlerOccReplay:
         paths = [path for path in out.split("\0") if path]
         if rc != 0:
             return None, "new path not replayed: changed paths unreadable"
-        if login in OCC_WRITER_AUTHORS or pr.author in OCC_WRITER_AUTHORS:
+        if login in OCC_WRITER_AUTHORS:
             wanted = sorted({*paths, "CHANGELOG.md", "pyproject.toml"})
             contents = {
                 path: (_show(mirror, head, path), _show(mirror, merge_base, path))
@@ -356,6 +352,7 @@ class HandlerOccReplay:
             manifest = manifests[0] if len(manifests) == 1 else ""
             repin, repin_why = classify_dependency_repin(
                 paths,
+                tickets=tickets,
                 pyproject_head=_show(mirror, head, manifest) if manifest else None,
                 pyproject_base=_show(mirror, merge_base, manifest)
                 if manifest
