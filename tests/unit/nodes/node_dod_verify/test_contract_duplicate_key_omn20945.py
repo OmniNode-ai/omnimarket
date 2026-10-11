@@ -15,10 +15,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from omnibase_core.errors.error_duplicate_yaml_mapping_key import (
-    DuplicateYamlMappingKeyError,
-)
-from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 
 from omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator import (
     _check_receipt_exists,
@@ -89,10 +85,12 @@ class TestContractDuplicateKey:
 
     def test_clean_contract_is_unchanged(self, tmp_path: Path) -> None:
         path = _write(tmp_path, _CLEAN)
-        results = EvidenceCollector().collect("OMN-20945", contract_path=str(path))
+        collector = EvidenceCollector()
+        results = collector.collect("OMN-20945", contract_path=str(path))
 
         assert [r.evidence_id for r in results] == ["dod-001"]
         assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert collector.contract_load_error is None
 
     def test_sweep_receipt_exists_refuses_duplicate_key(self, tmp_path: Path) -> None:
         clean = _check_receipt_exists("OMN-20945", _write(tmp_path, _CLEAN))
@@ -107,17 +105,16 @@ class TestContractDuplicateKey:
 
 @pytest.mark.unit
 def test_scan_positive_control_names_the_planted_duplicate(tmp_path: Path) -> None:
-    """The AC3 scan loop names a planted duplicate and passes a clean sibling."""
+    """The AC3 scan loop, through the collector's loader, names only the planted duplicate."""
     (tmp_path / "OMN-1.yaml").write_text(_CLEAN, encoding="utf-8")
     (tmp_path / "OMN-2.yaml").write_text(_DUPLICATED, encoding="utf-8")
 
-    found = []
+    named = []
     for contract in sorted(tmp_path.glob("*.yaml")):
-        try:
-            load_yaml_mapping_no_duplicates(
-                contract.read_text(encoding="utf-8"), source=contract.name
-            )
-        except DuplicateYamlMappingKeyError as error:
-            found.append((error.source, error.line, error.key))
+        collector = EvidenceCollector()
+        if collector._load_yaml(contract) is None:
+            named.append((contract.name, collector.contract_load_error))
 
-    assert found == [("OMN-2.yaml", 7, "command")]
+    assert [name for name, _ in named] == ["OMN-2.yaml"]
+    assert ":7:" in str(named[0][1])
+    assert "'command'" in str(named[0][1])
