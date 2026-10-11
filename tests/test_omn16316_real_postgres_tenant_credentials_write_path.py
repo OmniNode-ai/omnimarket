@@ -880,3 +880,57 @@ class TestRealPostgresFingerprintAndSetAt:
             assert row["revoked_at"] is not None
             assert row["fingerprint"] == _FINGERPRINT
             assert row["set_at"] == datetime(2026, 10, 7, 7, 0, tzinfo=UTC)
+
+
+# --- OMN-20991: expires_at on real Postgres ---
+#
+# Failure modes, each with a test below:
+#   E1  expires_at arrives as ISO text on the bus and the column is TIMESTAMPTZ:
+#       an unconverted string would fail the asyncpg bind (the OMN-15905 class),
+#       and migration 0006 must have created the column;
+#   E2  a re-delivery without the field erases a stored expiry date.
+
+_EXPIRES_AT_TEXT = "2027-01-01T00:00:00+00:00"
+
+
+@pytest.mark.integration
+class TestRealPostgresExpiresAt:
+    async def test_e1_registered_stores_a_typed_expiry(self) -> None:
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            ref = f"cred_omninode_anthropic_{uuid4().hex}"
+            ok = await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, expires_at=_EXPIRES_AT_TEXT),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT expires_at FROM tenant_inference_credentials "
+                "WHERE api_key_ref = $1",
+                ref,
+            )
+            assert row is not None
+            assert row["expires_at"] == datetime(2027, 1, 1, tzinfo=UTC)
+
+    async def test_e2_a_redelivery_without_it_keeps_the_stored_expiry(
+        self,
+    ) -> None:
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            ref = f"cred_omninode_anthropic_{uuid4().hex}"
+            await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, expires_at=_EXPIRES_AT_TEXT),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            await runner.project_event(
+                TOPIC_REGISTERED,
+                _local_registered(ref, expires_at=None),
+                _meta(ref, TOPIC_REGISTERED),
+            )
+            row = await admin_conn.fetchrow(
+                "SELECT expires_at FROM tenant_inference_credentials "
+                "WHERE api_key_ref = $1",
+                ref,
+            )
+            assert row is not None
+            assert row["expires_at"] == datetime(2027, 1, 1, tzinfo=UTC)

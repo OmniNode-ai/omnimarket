@@ -80,6 +80,8 @@ def test_registers_the_value_and_publishes_only_the_reference(
         "provider": "glm",
         "plan": "general_api",
         "tenant": _TENANT,
+        # OMN-20991: no --expires, so nothing can alert before the key lapses.
+        "expiry_warning": "EXPIRY_ABSENT",
     }
     assert asyncio.run(store.get_secret(ref)) == _VALUE
     assert _VALUE not in result.output
@@ -103,6 +105,7 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "name",
         "plan",
         "model_option",
+        "expires",
     }
     assert all(not getattr(parameter, "envvar", None) for parameter in command.params)
 
@@ -238,3 +241,64 @@ def test_detection_only_plan_is_refused_before_storing(
     assert _VALUE not in result.output
     assert asyncio.run(store.list_keys()) == []
     assert bus.events == []
+
+
+# ---------------------------------------------------------------------------
+# OMN-20991: --expires records the key's expiry and flags a non-January-1 date.
+# ---------------------------------------------------------------------------
+
+
+def _register_with_expiry(expires: str) -> Any:
+    return CliRunner().invoke(
+        cli_secret.secret_group,
+        [
+            "register-tenant-key",
+            "glm",
+            "--tenant",
+            _TENANT,
+            "--plan",
+            "general_api",
+            "--expires",
+            expires,
+        ],
+        input=f"{_VALUE}\n",
+    )
+
+
+def test_register_tenant_key_expires_january_1_prints_no_warning(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+) -> None:
+    _store, bus = intake
+    result = _register_with_expiry("2099-01-01")
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert output["expires_at"] == "2099-01-01T00:00:00Z"
+    assert "expiry_warning" not in output
+    assert _VALUE not in result.output
+    payload = json.loads(bus.events[0][0])["payload"]
+    assert payload["expires_at"].startswith("2099-01-01T00:00:00")
+
+
+def test_register_tenant_key_expires_other_date_warns_and_still_stores(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+) -> None:
+    store, _bus = intake
+    result = _register_with_expiry("2099-03-15")
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert output["expiry_warning"] == "EXPIRY_NOT_JANUARY_1"
+    assert asyncio.run(store.get_secret(output["api_key_ref"])) == _VALUE
+    assert _VALUE not in result.output
+
+
+@pytest.mark.parametrize("bad", ["2099-13-01", "January 1", "2001-01-01"])
+def test_register_tenant_key_expires_refuses_a_bad_or_past_date_and_stores_nothing(
+    intake: tuple[LocalByokCredentialStore, FakeBus], bad: str
+) -> None:
+    store, bus = intake
+    result = _register_with_expiry(bad)
+    assert result.exit_code != 0
+    assert "nothing was stored" in result.output
+    assert _VALUE not in result.output
+    assert bus.events == []
+    assert asyncio.run(store.list_keys()) == []

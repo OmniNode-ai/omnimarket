@@ -152,6 +152,8 @@ projection_api:
     # 0005: a locally set key's fingerprint prefix (8 hex of sha256) and set time.
     - "fingerprint"
     - "set_at"
+    # 0006 (OMN-20991): the key's expiry date, for routing and the pool alert.
+    - "expires_at"
   order_by: "created_at DESC"
   freshness_column: "created_at"
   limit: 200
