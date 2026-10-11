@@ -196,8 +196,11 @@ async def _provisioned(pg: _Postgres) -> AsyncIterator[tuple[asyncpg.Connection,
         await admin.execute(f"SET search_path TO {schema}, public")
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
             await admin.execute(
-                migration.read_text(encoding="utf-8").replace(
-                    "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
+                migration.read_text(encoding="utf-8")
+                .replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+                .replace(
+                    "omninode_internal.delegation_events_outcome_backfill_omn20276",
+                    f"{schema}.delegation_events_outcome_backfill_omn20276",
                 )
             )
         yield admin, schema

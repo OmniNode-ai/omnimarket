@@ -42,6 +42,27 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: .github/workflows/deploy-gate.yml checks out the pull request head's contracts/ and hands that directory to the pinned omniclaude deploy-gate action, and no step reads onex_change_control -- falsifier: uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q fails at the merge base
+  - id: "req-companion-suffixed-evidence-ids"
+    statement: |-
+      companion_may_cover_pr reads a hand-authored change-control evidence id that carries a descriptive suffix after the PR number, under the owner-repo slug or the bare repo name, compared case- and underscore/hyphen-insensitively, so such an id no longer reads as unreadable coverage that defers every PR on the ticket.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: dod-omniclaude-pr-2656-runnerip-occ-independence-tests does not cover OmniNode-ai/omnibase_core#1942, and dod-omnibase-core-pr-1938-cosmetic-lint-tests, dod-omnibase_core-pr-1938 and dod-OmniNode-ai-omnibase_core-pr-1938-ci cover #1938 and not #19380 -- falsifier: uv run pytest tests/unit/test_occ_contention_omn_15247.py -q -p no:randomly -k hand_authored_id_for fails at the merge base
+  - id: "req-caller-lane-fixture-schema"
+    statement: |-
+      The caller-lane PostgreSQL proof provisions its disposable schema without the omninode_internal namespace, so it retargets migration 0051's audit relation to that schema, as the backfill proof does, while the product migration and its namespace prerequisite stay unchanged.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the caller-lane PostgreSQL proof runs migration 0051 inside its disposable schema and its three tests pass without an omninode_internal schema -- falsifier: uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly fails with InvalidSchemaNameError before a writer assertion
+  - id: "req-nightly-i9-names-its-artifact"
+    statement: |-
+      The delegation regression nightly's I9 case publishes a code_generation task that names one function, so whether it completes no longer depends on whether the model wraps its answer in prose that the code_generation floor (final_artifact_only) refuses; a published code case that must complete names its artifact.
+    acceptance:
+      - id: "AC8"
+        statement: |-
+          AC8: every non-xfail code_generation integration case in tests/delegation_golden/corpus.yaml that expects terminal completed names a backticked function signature in its prompt, and the old I9 prompt is flagged by the same rule -- falsifier: uv run pytest tests/delegation_golden/test_code_case_names_its_artifact.py -q -p no:randomly fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The #1907 shape names the expected difference through the loader, classifier, and CLI while unruled cases and present head verdicts retain their behavior."
@@ -58,6 +79,15 @@ evidence_requirements:
   - kind: "tests"
     description: "The deploy gate reads the pull request head's repo contracts and no change control tree."
     command: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
+  - kind: "tests"
+    description: "A suffixed hand-authored evidence id covers its own PR under either slug and no other PR."
+    command: "uv run pytest tests/unit/test_occ_contention_omn_15247.py -q -p no:randomly -k hand_authored_id_for"
+  - kind: "tests"
+    description: "The caller-lane PostgreSQL proof runs against a disposable schema that lacks omninode_internal."
+    command: "uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Every published code case that must complete names its artifact; the old I9 prompt is flagged and I3's is admitted."
+    command: "uv run pytest tests/delegation_golden/test_code_case_names_its_artifact.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -103,3 +133,27 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20074-companion-suffixed-evidence-ids"
+    description: "A suffixed hand-authored evidence id covers its own PR under either slug and no other PR."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_occ_contention_omn_15247.py -q -p no:randomly -k hand_authored_id_for"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20074-nightly-i9-names-its-artifact"
+    description: "Every published code case that must complete names its artifact, and the old I9 prompt is flagged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/delegation_golden/test_code_case_names_its_artifact.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20074-caller-lane-fixture-schema"
+    description: "The caller-lane PostgreSQL proof passes with migration 0051's audit relation retargeted to its disposable schema."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19860_caller_lane_projection_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
