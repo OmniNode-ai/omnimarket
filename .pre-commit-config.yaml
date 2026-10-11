@@ -1543,6 +1543,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20865: SYNC with the ci.yml landing decision scenario step.
+      - id: landing-decision-scenarios
+        name: Landing decision scenarios (OMN-20865)
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q --no-cov
+        files: ^(src/omnimarket/nodes/node_pr_landing_decision_compute/|tests/unit/nodes/node_pr_landing_decision_compute/|tests/fixtures/pr_landing_decision/|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
       # pyproject.toml entry point for the three deregistered legacy arm
       # surfaces, drops a legacy handler's fail-closed env-flag hard-gate, or

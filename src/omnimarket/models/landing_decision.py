@@ -22,6 +22,8 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
     ModelLandingFacts,
+    ModelLandingSharedCheckVerdict,
+    ModelLandingUpdateNoNewCommits,
 )
 
 __all__ = [
@@ -31,4 +33,6 @@ __all__ = [
     "ModelLandingCauseRelease",
     "ModelLandingDecision",
     "ModelLandingFacts",
+    "ModelLandingSharedCheckVerdict",
+    "ModelLandingUpdateNoNewCommits",
 ]

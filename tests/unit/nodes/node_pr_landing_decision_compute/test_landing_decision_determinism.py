@@ -46,6 +46,8 @@ def _reversed(facts: ModelLandingFacts) -> ModelLandingFacts:
             "results": tuple(reversed(facts.results)),
             "rebuild_acks": tuple(reversed(facts.rebuild_acks)),
             "producer_failures": tuple(reversed(facts.producer_failures)),
+            "update_no_new_commits": tuple(reversed(facts.update_no_new_commits)),
+            "shared_check_verdicts": tuple(reversed(facts.shared_check_verdicts)),
             "state": state.model_copy(
                 update={
                     "leases": tuple(reversed(state.leases)),

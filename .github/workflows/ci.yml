@@ -305,6 +305,9 @@ jobs:
         run: uv run ruff check src/ tests/ benchmarks/
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
+      # OMN-20865: SYNC with the landing-decision-scenarios pre-commit hook.
+      - name: Landing decision scenarios
+        run: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q --no-cov
       # OMN-18963: SYNC with the ci-summary-event-scope pre-commit hook.
       # This strict lint job already gates CI Summary, including docs-only PRs.
       - name: CI Summary external producer trigger parity
