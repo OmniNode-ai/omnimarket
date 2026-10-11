@@ -3312,7 +3312,11 @@ class EvidenceCollector:
                     evidence_id="contract",
                     description=f"Failed to parse contract: {path}",
                     status=EnumEvidenceCheckStatus.FAILED,
-                    message=self.contract_load_error or f"YAML parse error in {path}",
+                    message=(
+                        f"YAML parse error in {path}: {self.contract_load_error}"
+                        if self.contract_load_error
+                        else f"YAML parse error in {path}"
+                    ),
                 )
             ]
 
