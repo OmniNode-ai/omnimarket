@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20802"
+title: "Automation liveness projection code: fold, writer, migration and exposure"
+summary: "node_projection_automation_liveness keeps one row per declared process and host, an append-only run history and the alarm episodes with their delivery and recording receipts, from the automation-liveness events of the seam. It is a pure fold plus a runtime-facing writer that subclasses the projection runner base, with a node-owned migration and three bus-backed exposures a typed read serves from the local SQLite store."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-fold"
+    statement: "A pure fold turns each event of the seam into the rows it changes, and a declared process that never emitted is a row."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: folding the fixture stream yields the expected row per process, including a declared process that never emitted -- falsifier: uv run pytest tests -q -k automation_liveness_fold"
+  - id: "req-writer"
+    statement: "The writer persists the fold, and a restart loses nothing."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the writer persists the fold and a restart loses nothing -- falsifier: uv run pytest tests -q -k automation_liveness_writer_restart"
+  - id: "req-exposure"
+    statement: "The exposures answer a typed read through the projection read node against the local SQLite store."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the exposure answers a typed read through node_projection_read_effect against the local SQLite store -- falsifier: uv run pytest tests -q -k automation_liveness_exposure_read"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the fixture stream folds into the expected row per declared process."
+    command: "uv run pytest tests/test_automation_liveness_fold.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: the writer's rows are read back from the store file, and a writer built on the same file loses none of them."
+    command: "uv run pytest tests/test_automation_liveness_writer_restart.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: the typed read serves the writer's rows from the local SQLite store."
+    command: "uv run pytest tests/test_automation_liveness_exposure_read.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20802-ac1-fold"
+    description: "AC1: the fold yields the expected row per process, a silent declared process included."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_automation_liveness_fold.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20802-ac2-writer-restart"
+    description: "AC2: the writer persists the fold and a restart loses nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_automation_liveness_writer_restart.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20802-ac3-exposure-read"
+    description: "AC3: the exposure answers a typed read against the local SQLite store."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_automation_liveness_exposure_read.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
