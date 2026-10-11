@@ -16,7 +16,7 @@ requirements:
     statement: "No workflow file names a review voter endpoint, port, model flag or endpoint variable."
     acceptance:
       - id: "AC3"
-        statement: "AC3: a ratchet over every reviewer workflow finds no voter endpoint, port, model flag or endpoint variable, and finds all five lines of a known-bad fixture -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or retired_endpoint'"
+        statement: "AC3: a ratchet over every reviewer workflow finds no voter endpoint, port, model flag or endpoint variable, and finds all five lines of a known-bad fixture -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or llm_endpoint_variable'"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -39,6 +39,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or retired_endpoint'"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or llm_endpoint_variable'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]

@@ -16,14 +16,14 @@ requirements:
           AC1 (superseded by OMN-20910, RULING 2026-10-10T18:17:37Z): the second voter is no longer a job-level URL; the workflow reads every voter from the review voters overlay and names no voter endpoint, and the CIDR allowlist stays job-level -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q
   - id: "req-reviewer-pin-and-key"
     statement: |-
-      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at 33a29cdfba6f14be6f94c3c77a05e29f345c692b (the dev tip carrying the failed-vote parse fix and the registry key rename), name the second voter at every roster site, and resolve its URL from a repository variable.
+      The hostile-review job in .github/workflows/hostile-reviewer.yml must clone omniintelligence at a full 40-hex sha that carries the failed-vote parse fix and the review voters overlay reader (OMN-20910), and read every voter, at every roster site, from the review voters overlay.
     acceptance:
       - id: "AC2"
         statement: |-
           AC2 (superseded by OMN-20910): no registry key or endpoint variable is named at the preflight, retry-budget or review sites; all three read the review voters overlay -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q
   - id: "req-shadow-review-runner"
     statement: |-
-      node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (a private planning repository never; GLM on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
+      node_shadow_review_effect runs one tick of the pre-registered shadow reviewer experiment on a lab host: it reviews only in-scope PRs (a private planning repository never; a cloud model on public PRs only), drops a diff with a secret pattern before any call, and writes results to the experiment store without posting or blocking.
     acceptance:
       - id: "AC3"
         statement: |-
@@ -46,7 +46,7 @@ evidence_requirements:
     description: "The shadow-review node tests pass at the head."
     command: "env -u PYTHONPATH uv run pytest tests/nodes/node_shadow_review_effect -q"
   - kind: "tests"
-    description: "The workflow clones omniintelligence at 30f37eca at the head."
+    description: "The workflow clones omniintelligence at a full 40-hex sha and reads every voter from the overlay at the head."
     command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
 emergency_bypass:
   enabled: false
@@ -90,7 +90,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or retired_endpoint'"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'ratchet or names_a_voter or llm_endpoint_variable'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20422-ac2-roster-url-from-variable"

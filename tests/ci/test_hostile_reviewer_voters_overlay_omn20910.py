@@ -37,9 +37,6 @@ _VOTER_ENDPOINT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"--model[\s=]"),
     re.compile(r"\bREVIEW_MODEL_KEYS\b"),
 )
-# The endpoint variables the overlay replaced; no workflow may name them at all.
-_RETIRED_ENDPOINT_VARS = ("LLM_EXAMPLE_VOTER_B_URL", "LLM_EXAMPLE_VOTER_A_URL")
-
 # Positive control: the lines this repository's workflow carried before the
 # overlay. The ratchet must find every one of them.
 _KNOWN_BAD = """\
@@ -101,10 +98,18 @@ def test_no_reviewer_workflow_names_a_voter_endpoint(path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("name", _RETIRED_ENDPOINT_VARS)
-def test_no_workflow_reads_a_retired_endpoint_variable(name: str) -> None:
-    for path in sorted(_WORKFLOWS.glob("*.y*ml")):
-        assert name not in path.read_text(encoding="utf-8"), path.name
+def test_no_workflow_reads_any_llm_endpoint_variable() -> None:
+    """Every ``LLM_*_URL`` endpoint variable is retired, named or not.
+
+    A generic pattern, so it holds for variables nobody remembers to list.
+    """
+    pattern = re.compile(r"\bLLM_[A-Z0-9_]+_URL\b")
+    offenders = [
+        path.name
+        for path in sorted(_WORKFLOWS.glob("*.y*ml"))
+        if pattern.search(path.read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
 
 
 def test_review_reads_the_overlay() -> None:
