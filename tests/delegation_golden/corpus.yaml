@@ -364,9 +364,21 @@ cases:
   - id: I9
     layer: integration
     task_type: code_generation
-    prompt: "(cross-cutting) every completed row has non-empty model_name + tokens_input>0 + tokens_output>0"
+    prompt: "Write a Python function `is_even(n)` that returns True when the integer n is even and False otherwise."
     # Falsifies: a completed delegation row reaches the projection without its
     # telemetry (the OMN-13535 empty-terminal-data regression).
+    #
+    # The prompt names one function, like I3's. It used to describe the
+    # invariant ("(cross-cutting) every completed row has non-empty model_name +
+    # tokens_input>0 + tokens_output>0"), which asks for no artifact in
+    # particular, so the model often answered with prose instead of, or around,
+    # the code. The code_generation floor refuses that (final_artifact_only),
+    # the case climbed, failed the cloud rungs too and terminalised `failed`:
+    # 8 of 17 runs on the nightly's proof lane, 2026-10-03 to 2026-10-11, on
+    # both local backends. Run 38122289336 is one of them. The case
+    # decided its own verdict by how it asked, and the invariant it exists to
+    # check never came into it. test_code_case_names_its_artifact.py holds the
+    # rule.
     #
     # The criterion here was the PROSE SENTENCE "applies to every completed
     # integration row in this run", which is a description of the invariant and

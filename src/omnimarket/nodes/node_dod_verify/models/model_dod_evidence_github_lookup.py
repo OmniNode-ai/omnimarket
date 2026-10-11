@@ -46,6 +46,22 @@ class EnumDodEvidenceGithubOperation(StrEnum):
     READ_REPO_CONTRACT = "read_repo_contract"
     #: OMN-20886: the ``repo-evidence / dod-verify`` check runs on ``commit_sha``.
     READ_REPO_EVIDENCE_CHECK_RUNS = "read_repo_evidence_check_runs"
+    #: OMN-20917: a PR's head sha, author, labels and title.
+    FETCH_PR_HEAD_FACTS = "fetch_pr_head_facts"
+    #: OMN-20917: the newest run of one named check on a PR's exact head,
+    #: with its annotation messages (the S7 replay's recorded OCC verdict).
+    FETCH_HEAD_CHECK_RUN = "fetch_head_check_run"
+
+
+class ModelPrHeadFacts(BaseModel):
+    """A PR's head sha, author login, labels and title (OMN-20917)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    head_sha: str
+    author: str = ""
+    labels: tuple[str, ...] = ()
+    title: str = ""
 
 
 class ModelDodEvidenceGithubLookupCommand(BaseModel):
@@ -78,6 +94,12 @@ class ModelDodEvidenceGithubLookupCommand(BaseModel):
             "Required for READ_REPO_CONTRACT (with repo and ticket_id) and "
             "READ_REPO_EVIDENCE_CHECK_RUNS (with repo)."
         ),
+    )
+    head_sha: str | None = Field(
+        default=None, description="Required for FETCH_HEAD_CHECK_RUN."
+    )
+    check_name: str | None = Field(
+        default=None, description="Required for FETCH_HEAD_CHECK_RUN."
     )
 
 
@@ -152,6 +174,14 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
     # check runs are unreadable.
     check_runs: tuple[ModelRepoEvidenceCheckRun, ...] = Field(default=())
 
+    # FETCH_PR_HEAD_FACTS (OMN-20917). None when unread; ``resolved`` is False.
+    pr_head_facts: ModelPrHeadFacts | None = Field(default=None)
+
+    # FETCH_HEAD_CHECK_RUN (OMN-20917): ``{"conclusion", "annotations":
+    # [{"message"}], "id"}``. None with ``resolved`` True when the head carries
+    # no run of that name; None with ``resolved`` False when unreadable.
+    check_run: dict[str, object] | None = Field(default=None)
+
     # LOOKUP_PR_FOR_TICKET / LOOKUP_REPO_FOR_TICKET failure classification
     # (OMN-15382). Set only when ``text_value`` is empty; ``None`` on success
     # or for other operations. ``*_LOOKUP_AMBIGUOUS`` means more than one
@@ -171,4 +201,5 @@ __all__ = [
     "EnumDodEvidenceGithubOperation",
     "ModelDodEvidenceGithubLookupCommand",
     "ModelDodEvidenceGithubLookupResultEvent",
+    "ModelPrHeadFacts",
 ]

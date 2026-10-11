@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20917"
+title: "OCC retirement S7: replay a repository's last 30 merged PRs through both evidence paths, with dependency re-pins as an expected difference"
+summary: "node_dod_verify gains an occ-difference replay mode: for a repository's merged PRs, newest first, it reads OCC's recorded check run on each head and the new path's verdict for the PR's own contract at that head, classifies each pair with the S5 rules, reports a PR with no OCC run as not_compared, and exits 1 on any unclassified or forbidden row. A pin-only PR refused by the must-fail control while OCC admitted classifies as the expected difference dependency_repin."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-occ-replay-mode"
+    statement: "The node_dod_verify CLI replays a repository's merged PRs through both evidence paths and refuses an unclassified or forbidden row."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The node_dod_verify CLI has a replay mode that takes a repository and N and returns one classified row per merged PR, refusing (exit 1) when any row is unclassified_difference, accepted_negative_control or old_behavioral_refusal -- falsifier: uv run pytest tests/test_dod_verify_occ_difference.py -k replay in omnimarket, with a fixture set containing one unclassified row that must exit 1"
+  - id: "req-dependency-repin-expected"
+    statement: "A dependency re-pin refused by the must-fail control while OCC admitted is the expected difference dependency_repin."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: A PR whose diff touches only dependency pins and lock files, where the new path refuses on the must-fail control and OCC admits, classifies as expected_difference with reason dependency_repin; the same refusal on a PR that also changes source still classifies as unclassified_difference -- falsifier: uv run pytest tests/test_dod_verify_occ_difference.py -k dependency_repin in omnimarket, both cases"
+  - id: "req-replay-workflow-read-only"
+    statement: "A workflow_dispatch-only, read-only Actions job runs the replay for one repository and fails closed."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: .github/workflows/occ-s7-replay.yml triggers only on workflow_dispatch with a required repository choice of the seven remaining repositories, holds permissions contents: read with the default token and no secret, and has no cron, no pull_request trigger and no continue-on-error -- falsifier: uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -k 'dispatch_only or seven_target or default_token or forbidden_change' in omnimarket, where adding a cron, a pull_request trigger, a write permission, a secret, continue-on-error or dropping a repository from the choice must turn the check red"
+      - id: "AC4"
+        statement: "AC4: The job replays with --count 30 --record-to rows.json --table-to table.md, writes table.md to the job summary and uploads rows.json and table.md as an artifact on every run, and a non-zero replay exit is a red run -- falsifier: uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -k 'thirty_pr_window or summary_and_artifact or job_command' in omnimarket, where the job's own command line run against recorded rows holding an OCC/new-path disagreement must exit 1 and against agreeing rows exit 0"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the replay mode classifies recorded rows and exits 1 on an unclassified or forbidden row."
+    command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k replay"
+  - kind: "tests"
+    description: "AC2: a pin-only control refusal is dependency_repin; with a source change it stays unclassified."
+    command: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k dependency_repin"
+  - kind: "tests"
+    description: "AC3: the workflow is dispatch-only, read-only and fail-closed, and each forbidden change is caught."
+    command: "uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -p no:randomly -k 'dispatch_only or seven_target or default_token or forbidden_change'"
+  - kind: "tests"
+    description: "AC4: the job's command line replays 30, records both files, publishes them on every run, and exits 1 on a disagreement."
+    command: "uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -p no:randomly -k 'thirty_pr_window or summary_and_artifact or job_command'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20917-ac1-replay"
+    description: "AC1: the replay mode classifies recorded rows and exits 1 on an unclassified or forbidden row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k replay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20917-ac2-dependency-repin"
+    description: "AC2: a pin-only control refusal is dependency_repin; with a source change it stays unclassified."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -p no:randomly -k dependency_repin"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20917-ac3-workflow-read-only"
+    description: "AC3: the workflow is dispatch-only, read-only and fail-closed, and each forbidden change is caught."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -p no:randomly -k 'dispatch_only or seven_target or default_token or forbidden_change'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20917-ac4-workflow-replay"
+    description: "AC4: the job's command line replays 30, records both files, publishes them on every run, and exits 1 on a disagreement."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_occ_s7_replay_workflow_omn20917.py -q -p no:randomly -k 'thirty_pr_window or summary_and_artifact or job_command'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20917-deploy-probe"
+    description: "Deploy probe. The replay handler at the checked-out commit carries the class this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerOccReplay'"
+        cwd: "${OMNI_HOME}/omnimarket"

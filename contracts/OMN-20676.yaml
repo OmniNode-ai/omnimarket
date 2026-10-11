@@ -44,6 +44,11 @@ requirements:
         statement: "AC7: the starts, waits, runner commands, briefs, lane receipts and deferred count of a sweep run by one request to the orchestrator equal the real merge_sweep.js run with scripted runner exit codes on the recorded cases, and its plan equals the old plan -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_merge_sweep_orchestrator_parity.py -q fails on a broken brief or a retry that never waits"
       - id: "AC8"
         statement: "AC8: the orchestrator contract declares its topics and a wiring plan naming only operations the sibling nodes declare, the entry point is package-form, the metadata passes the schema test, and a stale or missing watcher state is refused with no lane started -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q"
+  - id: "req-merge-sweep-bus-entry"
+    statement: "A caller requests a whole merge sweep over the bus: the orchestrator contract declares its command and terminal topics in event_bus, and the local runtime publishes the request on the command topic and reads the result from the completed topic."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: a sweep requested on the orchestrator's declared command topic through the canonical local runtime completes with the handler's plan, and a sweep whose watcher state is missing answers ok false with no lane started -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q fails with the node's handler file removed"
 evidence_requirements:
   - kind: "tests"
     description: "Focused tests of the merge-sweep plan node."
@@ -117,3 +122,18 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn20676-ac9-bus-entry"
+    description: "AC9 sweep requested over the bus through the local runtime."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn20676-deploy-probe"
+    description: "Deploy probe. The merge-sweep orchestrator contract the runtime loads at the checked-out commit carries the event_bus block this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^event_bus:'"
+        cwd: "${OMNI_HOME}/omnimarket"
