@@ -27,8 +27,10 @@ Where it runs
 
 What it never does
 ------------------
-It never logs, stores or returns the key. The key travels only as the bearer
-header of one GET to the catalogue's ``models_url``, posted verbatim. Results
+It never logs, stores or returns the key. The key travels only in the auth
+header the row declares (``models_auth``: a bearer header, or Anthropic's
+``x-api-key``, OMN-20990) of one GET to the catalogue's ``models_url``, posted
+verbatim. Results
 carry statuses, ids and the provider's own message with credential shapes
 scrubbed.
 """
@@ -151,6 +153,22 @@ def _model_ids(body: Any) -> tuple[str, ...]:
     return tuple(ids)
 
 
+def models_request_headers(
+    backend: ModelByokProviderBackend, secret: str
+) -> dict[str, str]:
+    """The headers of one list-models read for ``backend`` with ``secret``.
+
+    OMN-20990. The row's non-secret ``models_headers``, plus the key in the one
+    header its ``models_auth`` names. The key is in no other header.
+    """
+    headers = dict(backend.models_headers)
+    if backend.models_auth == "x_api_key":
+        headers["x-api-key"] = secret
+    else:
+        headers["Authorization"] = f"Bearer {secret}"
+    return headers
+
+
 def discover_byok_model_sync(
     backend: ModelByokProviderBackend,
     api_key: str | SecretStr,
@@ -178,7 +196,7 @@ def discover_byok_model_sync(
         response = fetch(
             url=backend.models_url,
             timeout_seconds=DISCOVERY_TIMEOUT_SECONDS,
-            extra_headers={"Authorization": f"Bearer {secret}"},
+            extra_headers=models_request_headers(backend, secret),
         )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
@@ -315,4 +333,5 @@ __all__: list[str] = [
     "discover_byok_model_sync",
     "get_models_json",
     "model_not_chosen_message",
+    "models_request_headers",
 ]
