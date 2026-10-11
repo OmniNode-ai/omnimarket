@@ -598,6 +598,39 @@ def test_overlay_a_malformed_value_fails_at_contract_load(
         contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())
 
 
+@pytest.mark.parametrize("red_class", list(EnumCiRedClass))
+def test_overlay_a_set_but_empty_value_names_the_class_it_refuses(
+    monkeypatch: pytest.MonkeyPatch, red_class: EnumCiRedClass
+) -> None:
+    _unbind(monkeypatch)
+    monkeypatch.setenv(ACT_ENV[red_class], "")
+    with pytest.raises(
+        ValueError,
+        match=rf"ci_red_triage\.act\.{red_class.value} must be true or false, not ''",
+    ):
+        contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())
+
+
+@pytest.mark.parametrize("red_class", list(EnumCiRedClass))
+def test_overlay_each_env_name_flips_only_its_own_class(
+    monkeypatch: pytest.MonkeyPatch, red_class: EnumCiRedClass
+) -> None:
+    _unbind(monkeypatch)
+    expected = {cls: cls is EnumCiRedClass.RUNNER for cls in EnumCiRedClass}
+    flipped = red_class is not EnumCiRedClass.RUNNER
+    monkeypatch.setenv(ACT_ENV[red_class], "true" if flipped else "false")
+    expected[red_class] = flipped
+    assert contract_handler(TIMED_OUT, InmemoryDatabaseAdapter())._act == expected
+
+
+@pytest.mark.parametrize("value", [1, 0, 1.0, None, ["true"]])
+def test_a_flag_that_is_neither_a_bool_nor_a_reference_is_refused(
+    value: object,
+) -> None:
+    with pytest.raises(ValueError, match=r"ci_red_triage\.act\.runner must be true"):
+        ci_red_act_flags({"runner": value})
+
+
 def test_overlay_refs_expand_and_an_unbound_ref_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

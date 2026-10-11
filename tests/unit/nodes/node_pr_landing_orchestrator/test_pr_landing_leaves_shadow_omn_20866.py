@@ -617,3 +617,24 @@ def test_overlay_refs_expand_in_a_block_and_an_unbound_ref_fails(
     assert config.github_mode_for(OTHER) is EnumPrLandingGithubMode.ENFORCE
     with pytest.raises(PrLandingContractConfigError, match="github_mode is ''"):
         config_from_block({"github_mode": "${env.ONEX_TEST_UNBOUND_MODE}"})
+
+
+def test_overlay_mode_binds_only_the_canary_and_leaves_the_arm_gate_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(MODE_ENV, "dry_run")
+    monkeypatch.delenv(ARM_ENV, raising=False)
+    config = load_contract_config()
+    assert config.github_mode_for(CANARY) is EnumPrLandingGithubMode.DRY_RUN
+    assert config.github_mode_for(OTHER) is EnumPrLandingGithubMode.DRY_RUN
+    assert config.arm_policy.action_mode is EnumArmActionMode.ENFORCE
+
+
+def test_overlay_arm_mode_binds_only_the_arm_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(MODE_ENV, raising=False)
+    monkeypatch.setenv(ARM_ENV, "report_only")
+    config = load_contract_config()
+    assert config.github_mode_for(CANARY) is EnumPrLandingGithubMode.ENFORCE
+    assert config.arm_policy.action_mode is EnumArmActionMode.REPORT_ONLY

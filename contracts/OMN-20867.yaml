@@ -34,7 +34,15 @@ requirements:
         statement: 'AC5: node_merge_sweep_plan_compute routes platform.runtime-tick with interval/offset merge-sweep 300/0 seconds, one scheduled fire per interval and none on ticks inside it -- falsifier: uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly'
       - id: "AC6"
         statement: 'AC6: real contract discovery and wire_from_manifest on MessageDispatchEngine and EventBusInmemory publish the merge-sweep scheduled fire on the terminal topic, no host env or process in the route -- falsifier: uv run pytest tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py -q -p no:randomly'
+  - id: "req-lane-act-overlay"
+    statement: "A lane's private overlay sets whether that lane acts on pull requests and CI reds, and a malformed overlay value is refused at contract load"
+    acceptance:
+      - id: "AC7"
+        statement: 'AC7: the omnimarket landing mode, the arm gate action_mode and the four ci_red_triage.act flags are overlay references whose unset default is the shipped value; a lane bound to dry_run and report_only sends reads only, arms nothing and reruns nothing, and a set-but-empty or malformed value fails at contract load instead of falling back -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_leaves_shadow_omn_20866.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py -q -p no:randomly -k overlay'
 evidence_requirements:
+  - kind: "tests"
+    description: "Lane act overlay: landing mode and arm gate action_mode, and the four ci_red_triage.act flags, unset, bound acting, bound non-acting, set-but-empty and malformed."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_leaves_shadow_omn_20866.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py -q -p no:randomly"
   - kind: "tests"
     description: "Headroom plan, fan-out readback, golden-chain and contract publish parity gate tests."
     command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_headroom_plan.py tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py tests/gates/test_contract_publish_parity.py -q"
@@ -137,4 +145,34 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_plan_compute/handlers/handler_merge_sweep_scheduled_fire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerMergeSweepScheduledFire'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-lane-act-overlay-landing"
+    description: "AC7, landing slice: the omnimarket landing mode and the arm gate action_mode come from overlay references. Unset or bound acting, a ready canary PR is armed with an enforce arm; bound dry_run and report_only, only reads are sent; a set-but-empty or malformed value fails at contract load. The overlay tests are added by this pull request and fail on the merge base, where the contract carries literal values."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_leaves_shadow_omn_20866.py -q -p no:randomly -k overlay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20867-lane-act-overlay-triage"
+    description: "AC7, red-triage slice: each of the four ci_red_triage.act flags comes from its own overlay reference. Unset, only the runner class acts; bound false, a runner red is recorded and nothing is rerun; each env name flips only its own class; a set-but-empty or malformed value, and a flag that is neither a bool nor a reference, fail at contract load. The overlay tests are added by this pull request and fail on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py -q -p no:randomly -k overlay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20867-lane-act-overlay-landing-deploy-probe"
+    description: "Deploy probe. The landing orchestrator contract at the checked-out commit carries the overlay reference for the arm gate action_mode that this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it, with the lane's env names unbound, is the same enforce arm as before: a ready omnimarket PR is armed by the landing orchestrator."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'env.ONEX_PR_LANDING_ARM_ACTION_MODE:enforce'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20867-lane-act-overlay-triage-deploy-probe"
+    description: "Deploy probe. The lifecycle orchestrator contract at the checked-out commit carries the overlay reference for the runner act flag that this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it, with the lane's env names unbound, is the action_applied field of onex.evt.omnimarket.ci-red-triage-decided.v1 records for class runner, true as before."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'env.ONEX_CI_RED_TRIAGE_ACT_RUNNER:true'"
         cwd: "${OMNI_HOME}/omnimarket"
