@@ -38,7 +38,6 @@ from pathlib import Path
 from typing import Any, Final, cast
 from uuid import UUID
 
-import yaml
 from omnibase_core.enums.ticket.enum_dod_check_type import EnumDodCheckType
 from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
     EnumDodEvidenceExecutionScope,
@@ -47,6 +46,7 @@ from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
+from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
@@ -2383,6 +2383,10 @@ class EvidenceCollector:
         self.acceptance_summary: ModelDodAcceptanceSummary | None = None
         # OMN-20696: subject of the contract loaded for the current verdict.
         self.contract_subject: ModelDodContractSubject | None = None
+        # OMN-20945: why the last ``_load_yaml`` returned None (file, line, key
+        # for a duplicate mapping key); read when reporting a contract that
+        # failed to parse.
+        self.contract_load_error: str | None = None
 
     @property
     def occ_governance_ref(self) -> str:
@@ -3263,6 +3267,7 @@ class EvidenceCollector:
         """
         self.acceptance_summary = None
         self.contract_subject = None
+        self.contract_load_error = None
         raw: dict[str, Any] | None
         if inline_items is not None:
             self.contract_subject = inline_goal_subject()
@@ -3307,7 +3312,7 @@ class EvidenceCollector:
                     evidence_id="contract",
                     description=f"Failed to parse contract: {path}",
                     status=EnumEvidenceCheckStatus.FAILED,
-                    message=f"YAML parse error in {path}",
+                    message=self.contract_load_error or f"YAML parse error in {path}",
                 )
             ]
 
@@ -4625,16 +4630,22 @@ class EvidenceCollector:
         return None
 
     def _load_yaml(self, path: Path) -> dict[str, Any] | None:
-        """Load and return YAML content, or None on error."""
+        """Load and return YAML content, or None on error.
+
+        OMN-20945: parsed with the strict omnibase_core loader, so a duplicate
+        mapping key is an error rather than a silent last-key-wins. The error
+        text (file, line, key) is kept on ``contract_load_error`` for the
+        caller that reports the failure.
+        """
         try:
             content = path.read_text(encoding="utf-8")
-            raw = yaml.safe_load(content)
-            if not isinstance(raw, dict):
-                logger.error("Contract %s root is not a mapping", path)
-                return None
-            return raw
+            return cast(
+                "dict[str, Any]",
+                load_yaml_mapping_no_duplicates(content, source=str(path)),
+            )
         except Exception as exc:
             logger.error("Failed to parse %s: %s", path, exc)
+            self.contract_load_error = str(exc)
             return None
 
     def _check_evidence_item(
