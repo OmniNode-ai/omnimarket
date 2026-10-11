@@ -1543,6 +1543,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: class3-installed-copy-drift
+        name: Class 3 installed-copy drift node regression (OMN-20865)
+        language: system
+        entry: uv run --frozen pytest tests/test_host_reconcile_class3_import_drift.py -q -p no:randomly
+        files: ^(src/omnimarket/models/model_host_reconcile\.py|src/omnimarket/nodes/node_host_reconcile_compute/.*|tests/test_host_reconcile_class3_import_drift\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
       # pyproject.toml entry point for the three deregistered legacy arm
       # surfaces, drops a legacy handler's fail-closed env-flag hard-gate, or

@@ -4,14 +4,18 @@
 name: host_reconcile_compute
 contract_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
 node_type: compute
 node_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
-description: Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+description: >
+  Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+  Installed component revision facts yield a typed IMPORT_DRIFT refusal on the
+  host-reconcile-evaluated event when the installed revision differs from the expected
+  repo revision. A stale installed copy blocks the dispatch floor without doing I/O.
 input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileEvaluateRequest
 output_model: omnimarket.models.model_host_reconcile.ModelHostReconcileDecisions
 handler:
@@ -50,8 +54,13 @@ inputs:
   facts:
     type: list[object]
     required: true
-    description: Observed host surfaces in recording order.
+    description: >
+      Observed host surfaces in recording order, including installed_revision facts
+      with component_name, installed_revision and expected_revision.
 outputs:
   surfaces:
     type: list[object]
-    description: Content verdicts in recording order.
+    description: >
+      Content verdicts in recording order. A stale installed component carries
+      import_drift with outcome IMPORT_DRIFT, component_name, installed_revision
+      and expected_revision on the declared host-reconcile-evaluated event.
