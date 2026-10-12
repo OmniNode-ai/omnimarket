@@ -66,7 +66,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k s23_green_armed_owned_behind"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k s23_green_armed_owned_behind"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20865-ac4-no-new-commits-retry"
@@ -74,7 +74,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k 's24_update_422_no_new_commits_retry or test_c5_no_new_commits_feedback_must_match_the_attempt'"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k 's24_update_422_no_new_commits_retry or test_c5_no_new_commits_feedback_must_match_the_attempt'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20865-ac5-shared-verdict-rerun"
@@ -82,13 +82,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k 's25_shared_red_changed_verdict or test_c5_shared_verdict_must_be_current_and_match_the_failed_check'"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k 's25_shared_red_changed_verdict or test_c5_shared_verdict_must_be_current_and_match_the_failed_check'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC5"]
-  - id: "dod-omn20865-ac5-verdict-model-deploy-probe"
-    description: "AC5 deploy probe: the facts model module GitHub serves at the checked-out commit declares the shared-check verdict class this change adds. The test is inside jq, which reads all of its input, so grep -q cannot close the pipe early; it prints false and fails at the merge base, where the class does not exist."
-    source: "manual"
-    checks:
+      # Keep the head content probe with the behavioral test that binds AC5.
+      # jq consumes the content before grep, avoiding an early-close SIGPIPE.
       - check_type: "command"
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_decision_compute/models/model_landing_facts.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | contains("class ModelLandingSharedCheckVerdict")' | grep -qx true
