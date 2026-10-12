@@ -130,9 +130,8 @@ def _state(
 
 
 def _emit_for(payload: BaseModel) -> tuple[str, BaseModel]:
-    output = HandlerHybridCodegenOrchestrator().handle(payload)
-    assert len(output) == 1
-    model = output[0]
+    model = HandlerHybridCodegenOrchestrator().handle(payload)
+    assert isinstance(model, BaseModel)
     return _resolve_topic(model), model
 
 
