@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -43,6 +46,204 @@ def _write_contract(
 @pytest.mark.unit
 class TestEvidenceCollector:
     """Unit tests for EvidenceCollector."""
+
+    @pytest.mark.parametrize("no_checkout", [False, True])
+    @pytest.mark.parametrize("check_type", ["command", "test_passes"])
+    def test_sibling_cwd_missing_checkout_refused(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        no_checkout: bool,
+        check_type: str,
+    ) -> None:
+        """Absent and no-checkout siblings are setup refusals, never failures."""
+        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
+            EnumEvidenceUnverifiableCause,
+        )
+
+        home = tmp_path / "registry"
+        contracts = home / "omniintelligence" / "contracts"
+        contracts.mkdir(parents=True)
+        if no_checkout:
+            source = tmp_path / "source"
+            source.mkdir()
+            subprocess.run(
+                ["git", "init", str(source)],
+                check=True,
+                capture_output=True,
+                env=scrub_git_location_env(os.environ),
+            )
+            (source / "tracked.txt").write_text("checkout required\n")
+            subprocess.run(
+                ["git", "-C", str(source), "add", "."],
+                check=True,
+                env=scrub_git_location_env(os.environ),
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(source),
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.test",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                check=True,
+                capture_output=True,
+                env=scrub_git_location_env(os.environ),
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--no-checkout",
+                    str(source),
+                    str(home / "omnibase_core"),
+                ],
+                check=True,
+                capture_output=True,
+                env=scrub_git_location_env(os.environ),
+            )
+        monkeypatch.setenv("OMNI_HOME", str(home))
+        contract = _write_contract(
+            contracts,
+            dod_evidence=[
+                {
+                    "id": "sibling",
+                    "description": "Sibling check",
+                    "checks": [
+                        {
+                            "check_type": check_type,
+                            "check_value": "true",
+                            "cwd": "${OMNI_HOME}/omnibase_core",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect("OMN-TEST", contract_path=str(contract))
+        assert results[0].status == EnumEvidenceCheckStatus.SKIPPED
+        assert (
+            results[0].unverifiable_cause
+            == EnumEvidenceUnverifiableCause.SIBLING_CHECKOUT_MISSING
+        )
+        assert "sibling checkout is missing" in (results[0].message or "")
+        assert "omnibase_core" in (results[0].message or "")
+
+    @pytest.mark.parametrize(
+        "pin_kind", ["source", "action", "checkout", "conflicting", "default"]
+    )
+    def test_sibling_cwd_replay_checkout_revision(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        pin_kind: str,
+    ) -> None:
+        """Replay uses the head's code pin, otherwise history at merge time."""
+        from omnimarket.nodes.node_dod_verify.handlers import (
+            handler_occ_replay as replay,
+        )
+
+        source = tmp_path / "canonical" / "omnibase_core"
+        source.mkdir(parents=True)
+
+        def git(*args: str) -> str:
+            return subprocess.run(
+                ["git", "-C", str(source), *args],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=scrub_git_location_env(os.environ),
+            ).stdout.strip()
+
+        git("init")
+        (source / "tracked.txt").write_text("at merge\n")
+        git("add", ".")
+        for stamp, content in [
+            ("2020-01-01T00:00:00Z", "at merge\n"),
+            ("2020-01-03T00:00:00Z", "later\n"),
+        ]:
+            (source / "tracked.txt").write_text(content)
+            git("add", ".")
+            monkeypatch.setenv("GIT_AUTHOR_DATE", stamp)
+            monkeypatch.setenv("GIT_COMMITTER_DATE", stamp)
+            git(
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "commit",
+                "-m",
+                content.strip(),
+            )
+        earlier, later = git("rev-parse", "HEAD~1"), git("rev-parse", "HEAD")
+        branch = git("branch", "--show-current")
+        git("update-ref", f"refs/remotes/origin/{branch}", later)
+        git("symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{branch}")
+        monkeypatch.setattr(replay, "canonical_clone", lambda _repo: source)
+        home = tmp_path / "trees" / "head"
+        tree = home / "omniintelligence"
+        contracts = tree / "contracts"
+        contracts.mkdir(parents=True)
+        contract = _write_contract(
+            contracts,
+            dod_evidence=[
+                {
+                    "id": "sibling",
+                    "description": "Sibling check",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "true",
+                            "cwd": "${OMNI_HOME}/omnibase_core",
+                        }
+                    ],
+                }
+            ],
+        )
+        if pin_kind == "source":
+            (tree / "pyproject.toml").write_text(
+                '[tool.uv.sources]\nomnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", '
+                f'rev = "{later}" }}\n'
+            )
+        elif pin_kind in {"action", "checkout", "conflicting"}:
+            workflows = tree / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            if pin_kind == "checkout":
+                (workflows / "ci.yml").write_text(
+                    "jobs:\n  check:\n    steps:\n      - uses: actions/checkout@v4\n"
+                    f"        with:\n          repository: OmniNode-ai/omnibase_core\n          ref: {later}\n"
+                )
+            else:
+                (workflows / "ci.yml").write_text(
+                    f"jobs:\n  check:\n    steps:\n      - uses: OmniNode-ai/omnibase_core/.github/actions/check@{later}\n"
+                )
+            if pin_kind == "conflicting":
+                (workflows / "other.yml").write_text(
+                    f"jobs:\n  check:\n    steps:\n      - uses: OmniNode-ai/omnibase_core/.github/actions/check@{earlier}\n"
+                )
+                with pytest.raises(RuntimeError, match="conflicting code pins"):
+                    replay.HandlerOccReplay._prepare_sibling_checkouts(
+                        "OmniNode-ai", tree, home, [contract], "2020-01-02T00:00:00Z"
+                    )
+                assert not (home / "omnibase_core").exists()
+                return
+        replay.HandlerOccReplay._prepare_sibling_checkouts(
+            "OmniNode-ai", tree, home, [contract], "2020-01-02T00:00:00Z"
+        )
+        sibling = home / "omnibase_core"
+        rc, actual = replay._git(sibling, "rev-parse", "HEAD")
+        assert rc == 0
+        assert actual.strip() == (earlier if pin_kind == "default" else later)
+        assert (sibling / "tracked.txt").is_file()
+        assert (sibling / "tracked.txt").stat().st_mode & 0o222 == 0
+        assert sibling.stat().st_mode & 0o222 == 0
+        replay.HandlerOccReplay._restore_sibling_permissions(home, tree.name)
 
     def test_explicit_contract_path(self, tmp_path: Path) -> None:
         """Collector loads contract from explicit path."""

@@ -85,7 +85,8 @@ jobs:
             "https://github.com/OmniNode-ai/${REPOSITORY}.git" "$OMNI_HOME/$REPOSITORY"
           for home in omnibase_core omnibase_infra omniclaude omnimarket omnidash onex_change_control; do
             if [ "$home" != "$REPOSITORY" ]; then
-              git clone --quiet --no-checkout --depth 1 \
+              # OMN-21013: sibling working trees need pinned commits and history at merge time.
+              git clone --quiet --no-checkout \
                 "https://github.com/OmniNode-ai/${home}.git" "$OMNI_HOME/$home"
             fi
           done
