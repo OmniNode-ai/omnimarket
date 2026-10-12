@@ -15,8 +15,8 @@ requirements:
   - id: "req-omn20967-key-budget-decision"
     statement: "The per-key budget decision is a definition-B compute whose allowance and reserve come from its contract: a key at its reserve floor is not chosen, fill-first picks the lowest-index key that can afford the call's worst case, a cycle rollover resets the spend, and the Sonnet prices come from the pricing manifest. The gateway criterion (a 503 when no key qualifies) is proven over the gateway handler in the change that wires this compute into it, not here."
     acceptance:
-      - id: "AC-budget-compute"
-        statement: "AC-budget-compute: the budget compute chooses no key when every key is at its reserve floor, chooses the lowest-index key that keeps its reserve after the call's worst case, resets a key's spend at its cycle rollover, and prices claude-sonnet-5-5 from the pricing manifest -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py"
+      - id: "AC2"
+        statement: "AC2: the budget compute chooses no key when every key is at its reserve floor, chooses the lowest-index key that keeps its reserve after the call's worst case, resets a key's spend at its cycle rollover, and prices claude-sonnet-5-5 from the pricing manifest -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py"
 evidence_requirements:
   - kind: tests
     description: The workflow scan over the real tree, three seeded placements that fail it and a clean workflow that passes it.
@@ -44,4 +44,4 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-budget-compute"]
+    binds_ac: ["AC2"]
