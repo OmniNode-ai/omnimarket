@@ -5,8 +5,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -244,6 +246,158 @@ class TestEvidenceCollector:
         assert (sibling / "tracked.txt").stat().st_mode & 0o222 == 0
         assert sibling.stat().st_mode & 0o222 == 0
         replay.HandlerOccReplay._restore_sibling_permissions(home, tree.name)
+
+    def test_sibling_cwd_replay_hosted_verifier(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Replay provisions a sibling; disabling that input refuses the head."""
+        from omnimarket.nodes.node_dod_verify.handlers import (
+            handler_occ_replay as replay,
+        )
+        from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
+            ModelOccReplayRequest,
+        )
+
+        def git(repo: Path, *args: str) -> str:
+            return subprocess.run(
+                ["git", "-C", str(repo), *args],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=scrub_git_location_env(os.environ),
+            ).stdout.strip()
+
+        def commit(repo: Path) -> str:
+            git(repo, "add", ".")
+            git(
+                repo,
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.test",
+                "commit",
+                "-m",
+                "fixture",
+            )
+            return git(repo, "rev-parse", "HEAD")
+
+        # Local object sources are outside the replay environment. Its head
+        # and control homes start with only the PR's own repository present.
+        sibling_source = tmp_path / "objects" / "omnibase_core"
+        sibling_source.mkdir(parents=True)
+        git(sibling_source, "init")
+        (sibling_source / "tracked.txt").write_text("at merge\n")
+        sibling_sha = commit(sibling_source)
+        own = tmp_path / "objects" / "omnimarket"
+        own.mkdir()
+        git(own, "init")
+        (own / "README.md").write_text("fixture\n")
+        base = commit(own)
+        contracts = own / "contracts"
+        contracts.mkdir()
+        contract = _write_contract(
+            contracts,
+            dod_evidence=[
+                {
+                    "id": "sibling",
+                    "description": "Pinned sibling and changed product file",
+                    "binds_ac": ["AC1"],
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "grep -qx 'at merge' tracked.txt && test -f ../omnimarket/product.txt",
+                            "cwd": "${OMNI_HOME}/omnibase_core",
+                        }
+                    ],
+                }
+            ],
+        )
+        data = yaml.safe_load(contract.read_text())
+        data["requirements"] = [
+            {
+                "id": "req-sibling",
+                "statement": "Replay provisions the pinned sibling.",
+                "acceptance": [
+                    {
+                        "id": "AC1",
+                        "statement": "AC1: The pinned sibling and product file are present -- falsifier: the sibling check fails without either file",
+                    }
+                ],
+            }
+        ]
+        contract.write_text(yaml.safe_dump(data))
+        (own / "pyproject.toml").write_text(
+            '[tool.uv.sources]\nomnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", '
+            f'rev = "{sibling_sha}" }}\n'
+        )
+        (own / "product.txt").write_text("changed product\n")
+        tests = own / "tests"
+        tests.mkdir()
+        (tests / "test_product.py").write_text("# test-side overlay fixture\n")
+        head = commit(own)
+        monkeypatch.setattr(
+            replay, "canonical_clone", lambda _repository: sibling_source
+        )
+        monkeypatch.setenv("PYTHONPATH", str(Path(replay.__file__).parents[4]))
+        pr = replay._MergedPr(
+            number=1,
+            merge_sha=head,
+            parent=base,
+            merged_at="2026-10-12T00:00:00Z",
+            title="fixture",
+        )
+        prepared: list[str] = []
+        prepare = replay.HandlerOccReplay._prepare_sibling_checkouts
+
+        def provision(
+            owner: str, tree: Path, home: Path, paths: list[Path], merged_at: str
+        ) -> None:
+            assert sorted(path.name for path in home.iterdir()) == ["omnimarket"]
+            prepare(owner, tree, home, paths, merged_at)
+            sibling = home / "omnibase_core"
+            assert git(sibling, "rev-parse", "HEAD") == sibling_sha
+            prepared.append(home.name)
+
+        monkeypatch.setattr(
+            replay.HandlerOccReplay,
+            "_prepare_sibling_checkouts",
+            staticmethod(provision),
+        )
+        request = ModelOccReplayRequest(
+            repository="OmniNode-ai/omnimarket",
+            work_dir=tmp_path / "replay",
+            verifier_python=Path(sys.executable),
+            verifier_timeout_s=20,
+        )
+        handler = replay.HandlerOccReplay()
+        verdict, note = handler._new_path(
+            request, own, own, request.work_dir, pr, head, "fixture", ("OMN-TEST",)
+        )
+        assert verdict is not None, note
+        assert verdict.admitted, note
+        assert prepared == ["head", "base"]
+        dod = request.work_dir / "dod" / "1"
+        head_result = json.loads((dod / "head-OMN-TEST.json").read_text())
+        base_result = json.loads((dod / "base-OMN-TEST.json").read_text())
+        assert head_result["status"] == "verified"
+        assert base_result["status"] == "failed"
+        assert base_result["checks"][0]["status"] == "failed"
+
+        monkeypatch.setattr(
+            replay.HandlerOccReplay,
+            "_prepare_sibling_checkouts",
+            staticmethod(lambda *_args: None),
+        )
+        verdict, note = handler._new_path(
+            request, own, own, request.work_dir, pr, head, "fixture", ("OMN-TEST",)
+        )
+        assert verdict is not None, note
+        assert not verdict.admitted, note
+        refused = json.loads((dod / "head-OMN-TEST.json").read_text())
+        assert refused["status"] != "verified"
+        assert refused["checks"][0]["status"] == "skipped"
+        assert refused["checks"][0]["unverifiable_cause"] == "sibling_checkout_missing"
 
     def test_explicit_contract_path(self, tmp_path: Path) -> None:
         """Collector loads contract from explicit path."""
