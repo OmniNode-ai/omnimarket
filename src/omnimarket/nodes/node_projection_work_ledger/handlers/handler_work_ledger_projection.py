@@ -78,11 +78,15 @@ from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 ROWS_TABLE = "omninode_internal.work_ledger_rows"
 STATE_TABLE = "omninode_internal.work_ledger_state"
 
+# A row first projected by an older emitter or the emit backfill gains its seq
+# when the sequenced event arrives. A stored seq is immutable, never overwritten.
 _INSERT_ROW = f"""
     INSERT INTO {ROWS_TABLE}
-        (row_id, ledger_id, row_ts, row_type, row_lane, tickets, raw_row, source, projected_at)
-    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
-    ON CONFLICT (row_id) DO NOTHING
+        (row_id, ledger_id, row_ts, row_type, row_lane, tickets, raw_row, source,
+         projected_at, ledger_seq)
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+    ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq
+    WHERE {ROWS_TABLE}.ledger_seq IS NULL AND EXCLUDED.ledger_seq IS NOT NULL
 """
 
 _ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
@@ -303,6 +307,7 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
                 row.raw_row,
                 row.source,
                 now,
+                row.ledger_seq,
             )
             for op in result.ops:
                 sql, args = _op_args(op, now)

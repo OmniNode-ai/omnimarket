@@ -239,3 +239,40 @@ class TestOrchestratorNeverReturnsResult:
         assert hasattr(result, "commands")
         assert hasattr(result, "tick_outcome")
         assert hasattr(result, "correlation_id")
+
+
+@pytest.mark.unit
+class TestOrchestratorAcceptsEvaluatedWirePayload:
+    """The ``session-phase-evaluated`` event is one evaluation, not a batch."""
+
+    def test_bare_evaluation_validates_as_a_one_evaluation_tick(self) -> None:
+        correlation_id = uuid4()
+        wire = {
+            "session_id": "sess-wire",
+            "correlation_id": str(correlation_id),
+            "phase_name": "merge",
+            "action": "no_action",
+            "reason": "within budget",
+            "next_phase": None,
+            "budget_elapsed_pct": 8,
+            "elapsed_seconds": 300.0,
+        }
+        envelope = ModelSessionPhaseOrchestratorInput.model_validate(wire)
+        assert len(envelope.evaluations) == 1
+        assert envelope.evaluations[0].budget_elapsed_pct == 8
+
+    def test_batch_shape_still_validates(self) -> None:
+        evaluation = _make_evaluation()
+        envelope = ModelSessionPhaseOrchestratorInput.model_validate(
+            {"evaluations": [evaluation.model_dump(mode="json")]}
+        )
+        assert envelope.evaluations[0].session_id == evaluation.session_id
+
+    def test_tick_completed_carries_the_session_id(self) -> None:
+        result = HandlerSessionPhaseOrchestrator().handle(
+            ModelSessionPhaseOrchestratorInput(evaluations=(_make_evaluation(),))
+        )
+        tick = result.commands[-1]
+        assert tick.topic == _TOPIC_TICK_COMPLETED
+        assert tick.payload["session_ids"] == ["sess-2026-05-18-test"]
+        assert result.session_ids == ("sess-2026-05-18-test",)

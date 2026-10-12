@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -43,6 +44,7 @@ from tests.integration._wave7_bus import drive_round_trip
 
 _START_TOPIC = "onex.cmd.omnimarket.session-phase-evaluate.v1"
 _RESULT_TOPIC = "onex.evt.omnimarket.session-phase-evaluated.v1"
+_CORRELATION_ID = UUID("00000000-0000-4000-8000-000000000021")
 
 
 def _request(
@@ -54,6 +56,8 @@ def _request(
     halt_threshold_pct: int = 100,
 ) -> ModelPhaseEvaluationRequest:
     return ModelPhaseEvaluationRequest(
+        session_id="sess-evaluator-test",
+        correlation_id=_CORRELATION_ID,
         phase_name=phase_name,
         max_duration_minutes=max_duration_minutes,
         elapsed_minutes=elapsed_minutes,

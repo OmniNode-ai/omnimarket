@@ -137,6 +137,10 @@ from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_check,
     classify_item_checks,
 )
+from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
+    contract_structure_failure,
+    missing_contract_message,
+)
 from omnimarket.nodes.node_dod_verify.services.contract_subject import (
     inline_goal_subject,
     resolve_contract_subject,
@@ -3594,7 +3598,7 @@ class EvidenceCollector:
                         evidence_id="contract",
                         description=f"Contract file not found: {contract_path}",
                         status=EnumEvidenceCheckStatus.FAILED,
-                        message=f"File does not exist: {contract_path}",
+                        message=missing_contract_message(ticket_id),
                     )
                 ]
             self.contract_subject = resolve_contract_subject(path)
@@ -3630,42 +3634,14 @@ class EvidenceCollector:
                 )
             ]
 
-        # Validate contract belongs to the requested ticket
-        contract_ticket_id = raw.get("ticket_id")
-        if contract_ticket_id != ticket_id:
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"Contract ticket mismatch: {path}",
-                    status=EnumEvidenceCheckStatus.FAILED,
-                    message=(
-                        f"Expected ticket_id {ticket_id!r}, "
-                        f"found {contract_ticket_id!r}."
-                    ),
-                )
-            ]
-
-        if inline_items is None:
+        # Keep the loaded contract for durable-gate diagnostics even when its
+        # evidence is empty or malformed, as before the shared prerequisite.
+        if inline_items is None and raw.get("ticket_id") == ticket_id:
             self._last_contract = raw
-        dod_items = raw.get("dod_evidence", [])
-        if not isinstance(dod_items, list):
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"Invalid dod_evidence structure in contract: {path}",
-                    status=EnumEvidenceCheckStatus.FAILED,
-                    message="dod_evidence must be a list of mappings.",
-                )
-            ]
-        if not dod_items:
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"No dod_evidence entries in contract: {path}",
-                    status=EnumEvidenceCheckStatus.SKIPPED,
-                    message="Contract has empty or missing dod_evidence[] section.",
-                )
-            ]
+        failure = contract_structure_failure(ticket_id, raw, path)
+        if failure is not None:
+            return [failure]
+        dod_items = raw["dod_evidence"]
 
         # OMN-20153: the author's own accepted falsifiers become evidence items
         # here, before audiences are validated and before anything executes, so

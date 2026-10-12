@@ -168,6 +168,11 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "omnibase_infra#4175 (OMN-19802); ancestry to da329b6a8 verified "
         "2026-09-26 via `git merge-base --is-ancestor`"
     ),
+    "cb5c0cfd724905aec46d336dea84e8347cce9e20": (
+        "omnibase_infra#4900 (OMN-20934); `git merge-base --is-ancestor "
+        "da329b6a8 cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
+        "verified 2026-10-12"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -229,6 +234,11 @@ _PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
         "omnibase_infra#4175 (OMN-19802); ancestry to 19c6c33c6 verified "
         "2026-09-26 via `git merge-base --is-ancestor`"
     ),
+    "cb5c0cfd724905aec46d336dea84e8347cce9e20": (
+        "omnibase_infra#4900 (OMN-20934); `git merge-base --is-ancestor "
+        "19c6c33c6 cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
+        "verified 2026-10-12"
+    ),
 }
 
 # The omnibase_infra commit that stopped measuring the sibling-revision guard's
@@ -272,6 +282,11 @@ _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR: Final[dict[str, str]] = {
     "04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc": (
         "omnibase_infra#4175 (OMN-19802); acceptance anchor 73f370c8b carried, "
         "verified 2026-09-26 via `git merge-base --is-ancestor`"
+    ),
+    "cb5c0cfd724905aec46d336dea84e8347cce9e20": (
+        "omnibase_infra#4900 (OMN-20934); `git merge-base --is-ancestor "
+        "73f370c8b cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
+        "verified 2026-10-12"
     ),
 }
 

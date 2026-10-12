@@ -313,9 +313,8 @@ class _RealFactory:
     async def _on_orchestrator(self, message: object) -> None:
         env = _decode(message)
         request = _TOPIC_TO_INPUT_MODEL[str(env.event_type)].model_validate(env.payload)
-        for emitted in self.orchestrator.handle(request):
-            topic = _resolve_emit_topic(emitted)
-            await self._publish(emitted, topic, env.correlation_id)
+        emitted = self.orchestrator.handle(request)
+        await self._publish(emitted, _resolve_emit_topic(emitted), env.correlation_id)
 
     async def _on_llm(self, message: object) -> None:
         env = _decode(message)

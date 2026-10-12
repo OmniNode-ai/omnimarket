@@ -40,6 +40,15 @@ from ..models import (
 from ..protocols import ProtocolMergeSweepStages
 from .handler_merge_sweep_stages_local import LocalMergeSweepStages
 
+_READ_FIELDS = ("state_path", "ledger_path", "floors_path")
+_DISPATCH_FIELDS = ("lane", "parent", "ticket", "model", "runner_script", "brief_dir")
+
+
+def unset_fields(request: ModelMergeSweepRunRequest) -> list[str]:
+    """The settings this request needs and left empty: the reads always, the lane start when dispatching."""
+    needed = _READ_FIELDS + (_DISPATCH_FIELDS if request.dispatch else ())
+    return [name for name in needed if not str(getattr(request, name)).strip()]
+
 
 def supplemented(
     facts: ModelMergeSweepReadRequest, supplement: ModelMergeSweepSupplement | None
@@ -85,6 +94,14 @@ class HandlerMergeSweepRun:
         self._sleep = sleep if sleep is not None else time.sleep
 
     def handle(self, request: ModelMergeSweepRunRequest) -> ModelMergeSweepRunResult:
+        unset = unset_fields(request)
+        if unset:
+            return ModelMergeSweepRunResult(
+                ok=False,
+                why=f"request not configured: {', '.join(unset)} are empty"
+                if len(unset) > 1
+                else f"request not configured: {unset[0]} is empty",
+            )
         loaded = self._stages.load_facts(
             ModelMergeSweepLoadRequest(
                 state_path=request.state_path,

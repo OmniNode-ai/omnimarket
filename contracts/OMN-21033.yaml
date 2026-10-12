@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-21033
+title: pr-watch-start reaches a terminal on the runtime and reads checks over GitHub REST
+summary: The pr-watch orchestrator handler takes ModelPrWatchOrchestratorRequest only, so the runtime unwraps the command envelope before the handler validates it. The gh CLI checks client is replaced by a GitHub REST read client that only issues GET requests, and a poll schedule allows at most one read per interval.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-pr-watch-runtime-boot
+    statement: A pr-watch-start command dispatched through the runtime reaches exactly one terminal, the checks read goes over GitHub REST, and no read happens inside the poll interval.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a pr-watch-start command wired from the real contract reaches one completed terminal for a green PR and one failed terminal for a red PR -- falsifier: uv run pytest tests/test_pr_watch_runtime_boot.py fails with 5 validation errors for ModelPrWatchOrchestratorRequest on the parent commit'
+      - id: AC2
+        statement: 'AC2: the checks client reads the PR head, every page of check runs and the commit statuses over GitHub REST with GET only, and refuses required_only with a typed failure -- falsifier: uv run pytest tests/test_pr_watch_rest_checks_client.py'
+      - id: AC3
+        statement: 'AC3: the watch reads at most once per poll interval and a deadline inside the interval ends the watch without another read -- falsifier: uv run pytest tests/test_pr_watch_interval.py'
+evidence_requirements:
+  - kind: tests
+    description: Runtime boot through the real contract, the REST checks client and the poll interval.
+    command: uv run pytest tests/test_pr_watch_runtime_boot.py tests/test_pr_watch_rest_checks_client.py tests/test_pr_watch_interval.py tests/test_golden_chain_pr_watch_orchestrator.py -q -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21033-ac1-runtime-boot
+    description: A pr-watch-start wired from the real contract reaches one green terminal on completed and one red terminal on failed.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_pr_watch_runtime_boot.py -q -m "not kafka"
+    binds_ac:
+      - AC1
+  - id: dod-omn21033-ac2-rest-checks-client
+    description: The REST checks client maps check runs and statuses, reads every page, only issues GET requests and refuses required_only.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_pr_watch_rest_checks_client.py tests/test_golden_chain_pr_watch_orchestrator.py -q -m "not kafka"
+    binds_ac:
+      - AC2
+  - id: dod-omn21033-ac3-poll-interval
+    description: The poll schedule refuses a read inside the interval and a deadline inside the interval ends the watch without another read.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_pr_watch_interval.py -q -m "not kafka"
+    binds_ac:
+      - AC3
+  - id: dod-omn21033-deploy-probe
+    description: 'Deploy probe: the pr-watch handler read from GitHub at the checked-out commit contains the REST checks client added by this PR. A head without that class fails the probe.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_watch_orchestrator/handlers/handler_pr_watch_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerPrChecksGithubRest'

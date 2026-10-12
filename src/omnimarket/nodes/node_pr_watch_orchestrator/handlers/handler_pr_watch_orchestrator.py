@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import logging
-import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -13,6 +11,9 @@ from typing import Any, Protocol, cast
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
+from omnimarket.github_api import GitHubApiError, rest_json
+from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_watch_orchestrator.models.model_pr_check_status import (
     EnumPrCheckBucket,
     ModelPrCheckStatus,
@@ -29,7 +30,8 @@ from omnimarket.nodes.node_pr_watch_orchestrator.models.model_pr_watch_orchestra
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
-_GH_JSON_FIELDS = "name,state,bucket,workflow,link,startedAt,completedAt"
+_SECRET_NAME = "GITHUB_TOKEN"
+_PAGE_SIZE = 100
 _PENDING_BUCKETS = frozenset({EnumPrCheckBucket.PENDING, EnumPrCheckBucket.UNKNOWN})
 _GREEN_BUCKETS = frozenset({EnumPrCheckBucket.PASS, EnumPrCheckBucket.SKIPPING})
 _RED_BUCKETS = frozenset({EnumPrCheckBucket.FAIL, EnumPrCheckBucket.CANCEL})
@@ -37,6 +39,36 @@ _RED_BUCKETS = frozenset({EnumPrCheckBucket.FAIL, EnumPrCheckBucket.CANCEL})
 
 class PrChecksClientError(RuntimeError):
     """Raised when the gh checks effect boundary cannot return a valid snapshot."""
+
+
+class PrWatchPollRefusedError(RuntimeError):
+    """Raised when a read of the PR is attempted inside the poll interval."""
+
+
+class PrWatchPollSchedule:
+    """At most one read per interval: the floor on the spacing of two reads."""
+
+    def __init__(self, interval_seconds: float) -> None:
+        self._interval = interval_seconds
+        self._last_poll: float | None = None
+
+    @property
+    def next_due(self) -> float:
+        """When the next read may happen (``-inf`` before the first)."""
+        if self._last_poll is None:
+            return float("-inf")
+        return self._last_poll + self._interval
+
+    def wait_needed(self, now: float) -> float:
+        return max(self.next_due - now, 0.0)
+
+    def claim(self, now: float) -> None:
+        wait = self.wait_needed(now)
+        if wait > 0:
+            raise PrWatchPollRefusedError(
+                f"poll refused: {wait:g} s of the {self._interval:g} s interval remain"
+            )
+        self._last_poll = now
 
 
 class ProtocolPrChecksClient(Protocol):
@@ -47,53 +79,68 @@ class ProtocolPrChecksClient(Protocol):
     ) -> tuple[ModelPrCheckStatus, ...]: ...
 
 
-class GitHubCliPrChecksClient:
-    """Read PR checks through the GitHub CLI."""
+class HandlerPrChecksGithubRest:
+    """Read PR checks over the GitHub REST API through the shared GitHub helper.
+
+    The deployed effects runtime carries a gh whose ``pr checks`` has no
+    ``--json`` flag, so the read does not go through the CLI. Three endpoints
+    answer it: the PR (for its head sha), the head's check runs (paged) and its
+    commit statuses. Every call is a GET.
+    """
+
+    def __init__(
+        self,
+        rest_get: Callable[[str, str], dict[str, Any]] | None = None,
+        token_source: Callable[[], str] | None = None,
+    ) -> None:
+        self._rest_get = rest_get or _rest_get
+        self._token_source = token_source or _resolve_github_token
 
     def fetch_checks(
         self, request: ModelPrWatchOrchestratorRequest
     ) -> tuple[ModelPrCheckStatus, ...]:
-        command = [
-            "gh",
-            "pr",
-            "checks",
-            str(request.pr_number),
-            "--repo",
-            request.repo,
-            "--json",
-            _GH_JSON_FIELDS,
-        ]
         if request.required_only:
-            command.append("--required")
-
-        try:
-            completed = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=30,
+            raise PrChecksClientError(
+                "required_only is not served: the REST read cannot tell which "
+                "checks the base branch requires"
             )
-        except FileNotFoundError as exc:
-            raise PrChecksClientError("gh CLI is not available") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise PrChecksClientError("gh pr checks command timed out") from exc
-
-        stdout = completed.stdout.strip()
-        if completed.returncode not in {0, 8}:
-            stderr = completed.stderr.strip()
-            detail = stderr or stdout or f"exit code {completed.returncode}"
-            raise PrChecksClientError(f"gh pr checks failed: {detail}")
-        if not stdout:
-            raise PrChecksClientError("gh pr checks returned no JSON output")
-
+        token = self._token_source()
         try:
-            raw = json.loads(stdout)
-        except json.JSONDecodeError as exc:
-            raise PrChecksClientError("gh pr checks returned invalid JSON") from exc
-        if not isinstance(raw, list):
-            raise PrChecksClientError("gh pr checks JSON must be a list")
-        return tuple(_parse_check(row) for row in raw)
+            pull = self._rest_get(
+                f"/repos/{request.repo}/pulls/{request.pr_number}", token
+            )
+            head = pull.get("head")
+            sha = str(head.get("sha") or "") if isinstance(head, dict) else ""
+            if not sha:
+                raise PrChecksClientError("PR response carried no head sha")
+            runs = self._check_runs(request.repo, sha, token)
+            status = self._rest_get(
+                f"/repos/{request.repo}/commits/{sha}/status", token
+            )
+        except GitHubApiError as exc:
+            code = f" (HTTP {exc.status_code})" if exc.status_code else ""
+            raise PrChecksClientError(f"GitHub read failed{code}: {exc}") from exc
+        statuses = status.get("statuses")
+        return tuple(_parse_check_run(row) for row in runs) + tuple(
+            _parse_commit_status(row)
+            for row in (statuses if isinstance(statuses, list) else [])
+        )
+
+    def _check_runs(self, repo: str, sha: str, token: str) -> list[object]:
+        runs: list[object] = []
+        page = 1
+        while True:
+            body = self._rest_get(
+                f"/repos/{repo}/commits/{sha}/check-runs?per_page={_PAGE_SIZE}&page={page}",
+                token,
+            )
+            batch = body.get("check_runs")
+            if not isinstance(batch, list):
+                raise PrChecksClientError("check-runs response must carry a list")
+            runs.extend(batch)
+            if not batch or len(runs) >= int(body.get("total_count") or 0):
+                return runs
+            page += 1
 
 
 class HandlerPrWatchOrchestrator:
@@ -107,7 +154,7 @@ class HandlerPrWatchOrchestrator:
         sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self._event_bus = event_bus
-        self._checks_client = checks_client or GitHubCliPrChecksClient()
+        self._checks_client = checks_client or HandlerPrChecksGithubRest()
         self._monotonic = monotonic or time.monotonic
         self._sleep = sleep or asyncio.sleep
         self._contract = _load_contract()
@@ -119,11 +166,8 @@ class HandlerPrWatchOrchestrator:
         )
 
     async def handle(
-        self, request: ModelPrWatchOrchestratorRequest | dict[str, object]
+        self, request: ModelPrWatchOrchestratorRequest
     ) -> ModelPrWatchOrchestratorResult:
-        if isinstance(request, dict):
-            request = ModelPrWatchOrchestratorRequest.model_validate(request)
-
         result = await self._watch(request)
         await self._publish_result(result)
         return result
@@ -141,13 +185,21 @@ class HandlerPrWatchOrchestrator:
 
         started = self._monotonic()
         deadline = started + timeout_seconds
+        schedule = PrWatchPollSchedule(request.poll_interval_seconds)
         attempts = 0
         last_checks: tuple[ModelPrCheckStatus, ...] = ()
 
         while True:
+            wait = schedule.wait_needed(self._monotonic())
+            while wait > 0:
+                await self._sleep(wait)
+                wait = schedule.wait_needed(self._monotonic())
+            schedule.claim(self._monotonic())
             attempts += 1
             try:
-                last_checks = self._checks_client.fetch_checks(request)
+                last_checks = await asyncio.to_thread(
+                    self._checks_client.fetch_checks, request
+                )
             except PrChecksClientError as exc:
                 return self._result(
                     request,
@@ -186,7 +238,11 @@ class HandlerPrWatchOrchestrator:
                 )
 
             now = self._monotonic()
-            if now >= deadline:
+            if now >= deadline or schedule.next_due > deadline:
+                # No further read fits before the deadline without landing
+                # inside the interval, so the watch ends at the deadline.
+                if deadline > now:
+                    await self._sleep(deadline - now)
                 pending = _check_names(last_checks, _PENDING_BUCKETS)
                 return self._result(
                     request,
@@ -200,9 +256,6 @@ class HandlerPrWatchOrchestrator:
                     error_message="PR checks timed out with pending checks: "
                     + ", ".join(pending),
                 )
-
-            sleep_for = min(request.poll_interval_seconds, max(deadline - now, 0.0))
-            await self._sleep(sleep_for)
 
     def _result(
         self,
@@ -269,21 +322,75 @@ class HandlerPrWatchOrchestrator:
             )
 
 
-def _parse_check(row: object) -> ModelPrCheckStatus:
+_RUN_CONCLUSION_BUCKETS: dict[str, EnumPrCheckBucket] = {
+    "success": EnumPrCheckBucket.PASS,
+    "skipped": EnumPrCheckBucket.SKIPPING,
+    "neutral": EnumPrCheckBucket.SKIPPING,
+    "failure": EnumPrCheckBucket.FAIL,
+    "timed_out": EnumPrCheckBucket.FAIL,
+    "action_required": EnumPrCheckBucket.FAIL,
+    "startup_failure": EnumPrCheckBucket.FAIL,
+    "stale": EnumPrCheckBucket.FAIL,
+    "cancelled": EnumPrCheckBucket.CANCEL,
+}
+_RUN_PENDING_STATUSES = frozenset(
+    {"queued", "in_progress", "waiting", "pending", "requested"}
+)
+_STATUS_STATE_BUCKETS: dict[str, EnumPrCheckBucket] = {
+    "success": EnumPrCheckBucket.PASS,
+    "pending": EnumPrCheckBucket.PENDING,
+    "failure": EnumPrCheckBucket.FAIL,
+    "error": EnumPrCheckBucket.FAIL,
+}
+
+
+def _parse_check_run(row: object) -> ModelPrCheckStatus:
     if not isinstance(row, dict):
-        raise PrChecksClientError("gh pr checks entries must be objects")
-    bucket = str(row.get("bucket") or "unknown").lower()
-    if bucket not in {item.value for item in EnumPrCheckBucket}:
-        bucket = EnumPrCheckBucket.UNKNOWN.value
+        raise PrChecksClientError("check-run entries must be objects")
+    status = str(row.get("status") or "").lower()
+    conclusion = str(row.get("conclusion") or "").lower()
+    if status in _RUN_PENDING_STATUSES:
+        bucket = EnumPrCheckBucket.PENDING
+    elif status == "completed":
+        bucket = _RUN_CONCLUSION_BUCKETS.get(conclusion, EnumPrCheckBucket.UNKNOWN)
+    else:
+        bucket = EnumPrCheckBucket.UNKNOWN
+    app = row.get("app")
     return ModelPrCheckStatus(
-        name=str(row.get("name") or row.get("workflow") or "unnamed-check"),
-        state=str(row.get("state") or ""),
-        bucket=EnumPrCheckBucket(bucket),
-        workflow=str(row.get("workflow") or ""),
-        link=str(row.get("link") or ""),
-        started_at=str(row.get("startedAt") or ""),
-        completed_at=str(row.get("completedAt") or ""),
+        name=str(row.get("name") or "unnamed-check"),
+        state=conclusion or status,
+        bucket=bucket,
+        workflow=str(app.get("slug") or "") if isinstance(app, dict) else "",
+        link=str(row.get("html_url") or ""),
+        started_at=str(row.get("started_at") or ""),
+        completed_at=str(row.get("completed_at") or ""),
     )
+
+
+def _parse_commit_status(row: object) -> ModelPrCheckStatus:
+    if not isinstance(row, dict):
+        raise PrChecksClientError("commit-status entries must be objects")
+    state = str(row.get("state") or "").lower()
+    return ModelPrCheckStatus(
+        name=str(row.get("context") or "unnamed-status"),
+        state=state,
+        bucket=_STATUS_STATE_BUCKETS.get(state, EnumPrCheckBucket.UNKNOWN),
+        link=str(row.get("target_url") or ""),
+        started_at=str(row.get("created_at") or ""),
+        completed_at=str(row.get("updated_at") or "") if state != "pending" else "",
+    )
+
+
+def _rest_get(path: str, token: str) -> dict[str, Any]:
+    return rest_json("GET", path, token=token)
+
+
+def _resolve_github_token() -> str:
+    ref = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
+    secret = resolve_api_key_loop_safe(ref, env_var_fallback=ref)
+    if secret is None:
+        raise PrChecksClientError(f"{ref} is not set in the secret store")
+    return secret.get_secret_value()
 
 
 def _classify_checks(
@@ -332,8 +439,10 @@ def _topic_containing(contract: dict[str, Any], fragment: str) -> str:
 
 
 __all__ = [
-    "GitHubCliPrChecksClient",
+    "HandlerPrChecksGithubRest",
     "HandlerPrWatchOrchestrator",
     "PrChecksClientError",
+    "PrWatchPollRefusedError",
+    "PrWatchPollSchedule",
     "ProtocolPrChecksClient",
 ]

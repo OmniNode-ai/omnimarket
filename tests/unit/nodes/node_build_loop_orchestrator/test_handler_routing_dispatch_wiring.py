@@ -131,7 +131,10 @@ def test_real_handler_entry_owns_the_start_topic_via_live_auto_wiring() -> None:
     assert contract.event_bus is not None
 
     entries = list(contract.handler_routing.handlers)
-    assert {h.operation for h in entries} == {"build_loop_orchestrator"}
+    assert {h.operation for h in entries} == {
+        "build_loop_orchestrator",
+        "overseer_verification_fact",
+    }
 
     # Drive the REAL assignment function once per entry and union the result. Under
     # OMN-18013 each entry owns exactly its own topic, so the union is the proof the
