@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-21055
+title: adversarial pipeline orchestrator declares its gate-failed terminal and carries a gate verdict status
+summary: The node contract declares runtime_dispatch.terminal_events with the completed topic as success and
+  the gate-failed topic as failure. ModelAdversarialPipelineResult carries a status derived from gate_passed,
+  and a contradicting status is refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-gate-failed-terminal
+  statement: A below-gate result is published on the gate-failed topic and a passing result on the completed topic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: contract.yaml declares the gate-failed topic as the one failure terminal and the completed
+      topic as the success terminal -- falsifier: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py
+      fails at the merge base'
+  - id: AC2
+    statement: 'AC2: the result status follows gate_passed and a contradicting status is refused -- falsifier:
+      the same test file fails at the merge base'
+evidence_requirements:
+- kind: tests
+  description: Contract result applier over the real contract and handler result.
+  command: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py -q -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21055-ac1-terminals
+  description: The contract declares both terminals and the applier publishes one terminal per outcome.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py -q -n 0 -k 'gate_failed or completed_terminal'
+  binds_ac:
+  - AC1
+- id: dod-omn21055-ac2-status
+  description: Result status follows the gate and cannot contradict it.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py -q -n 0 -k status_follows_the_gate
+  binds_ac:
+  - AC2
+- id: dod-omn21055-deploy-probe
+  description: Deploy probe at the checked-out commit - the node contract declares the gate-failed failure terminal.
+    A head without it fails the probe.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: "grep -c '^    failure: onex.evt.omnimarket.adversarial-pipeline-gate-failed.v1' src/omnimarket/nodes/node_adversarial_pipeline_orchestrator/contract.yaml"
