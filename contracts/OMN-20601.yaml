@@ -14,6 +14,8 @@ requirements:
         statement: "AC1: a publisher in the node package builds exactly one command on the topic read from the node contract and rejects an invalid command without publishing -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q"
       - id: "AC2"
         statement: "AC2: the node contract declares a top-level runtime_profiles of effects -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q -k runtime_profile"
+      - id: "AC4"
+        statement: "AC4: the ci.yml lint job and a local pre-commit hook house-routing-overlay-publisher each run the publisher test -- falsifier: uv run pytest tests/ci/test_house_overlay_publisher_wiring_omn20601.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2 hosted probe. The publisher tests pass at the head and fail at the merge base, where the publisher module does not exist."
@@ -31,3 +33,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20601-ac4-publisher-test-wired"
+    description: "AC4 hosted probe. The wiring tests pass at the head and fail at the merge base, where neither the lint job nor a pre-commit hook names the publisher test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_house_overlay_publisher_wiring_omn20601.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
