@@ -381,6 +381,18 @@ def test_ticket_unavailable_refuses_a_contract_that_would_otherwise_verify(
     assert unreadable.status is not EnumDodVerifyStatus.VERIFIED
 
 
+def test_a_historical_replay_reads_no_ticket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The OCC replay re-verifies a merged head: today's criteria are not read."""
+    monkeypatch.setenv("DOD_VERIFY_HISTORICAL_REPLAY", "1")
+    state, reader = _verify(tmp_path, monkeypatch, [None])
+    assert reader.reads == 0
+    assert state.criteria_revision is None
+    assert state.unresolved_cause is not EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE
+    assert state.status is EnumDodVerifyStatus.VERIFIED
+
+
 def test_mid_verification_edit_refuses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

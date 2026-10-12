@@ -545,6 +545,14 @@ _REF_LOCK_ERROR_MARKER = "cannot lock ref"
 # pretending the tree was current.
 _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
 
+# OMN-20858: set by the OCC replay (``handler_occ_replay``) on the verifier it
+# runs against an already-merged head. The live ticket's criteria today are not
+# the criteria that head merged against, and the replay compares a head verdict
+# with a control verdict that would read the same ticket, so the criteria-drift
+# check is not measured on that run (``criteria_check`` stays None) rather than
+# refusing every replayed contract that records criteria. Named and logged.
+_HISTORICAL_REPLAY_ENV = "DOD_VERIFY_HISTORICAL_REPLAY"
+
 # OMN-18117: path to the pin file whoever materialised this run's product
 # clones wrote — see ``ModelProductClonePinSet``. Unset (the local operator
 # path, and any caller that materialises nothing) leaves the OMN-16846
@@ -4808,6 +4816,18 @@ class EvidenceCollector:
         records criteria to compare it with."""
         pins = extract_criteria_pins(contract, dod_items)
         if pins is None:
+            return
+        if os.environ.get(_HISTORICAL_REPLAY_ENV, "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            logger.warning(
+                "%s set: %s is a replay of a merged head, so its live ticket "
+                "criteria are not read or compared",
+                _HISTORICAL_REPLAY_ENV,
+                ticket_id,
+            )
             return
         self._criteria_pins = pins
         self._criteria_read_before = self._criteria_reader().read(ticket_id)
