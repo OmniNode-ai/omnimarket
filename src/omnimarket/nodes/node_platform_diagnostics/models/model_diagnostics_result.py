@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,6 +47,10 @@ class ModelDiagnosticsResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    correlation_id: UUID | None = Field(
+        default=None,
+        description="Request's run id, echoed so a caller can correlate the verdict.",
+    )
     overall_status: EnumReadinessStatus = EnumReadinessStatus.PASS
     dimensions: list[ModelDiagnosticDimensionResult] = Field(default_factory=list)
     run_duration_seconds: float = 0.0
