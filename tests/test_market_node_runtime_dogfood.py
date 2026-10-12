@@ -7,13 +7,16 @@ from __future__ import annotations
 import dataclasses
 import tomllib
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from scripts.audit.market_node_runtime_dogfood import (
     _NODES_DIR,
     _PYPROJECT,
+    _local_invocation_check,
     build_report,
 )
 
@@ -444,3 +447,90 @@ def test_market_node_runtime_dogfood_audits_former_non_addressable_nodes() -> No
         routable[node_name]["command_topic"].startswith("onex.cmd.")
         for node_name in command_addressable_nodes
     )
+
+
+class _LocalRequest(BaseModel):
+    pass
+
+
+class _LocalResult(BaseModel):
+    passed: bool = True
+
+
+class _LocalHandler:
+    def handle(self, request: _LocalRequest) -> _LocalResult:
+        return _LocalResult()
+
+
+def _local_contract() -> dict[str, object]:
+    return {
+        "metadata": {"transport_type": "local"},
+        "runtime_dispatch": {"external_trigger": "CLI in the target worktree"},
+        "descriptor": {"runtime_profiles": []},
+        "event_bus": {"subscribe_topics": [], "publish_topics": []},
+        "handler": {
+            "module": __name__,
+            "class": "_LocalHandler",
+            "input_model": f"{__name__}._LocalRequest",
+            "output_model": f"{__name__}._LocalResult",
+        },
+    }
+
+
+def test_local_invocation_requires_a_resolvable_typed_handler() -> None:
+    assert _local_invocation_check(_local_contract()) == (True, "")
+    broken = _local_contract()
+    broken["handler"]["class"] = "MissingHandler"
+    claimed, error = _local_invocation_check(broken)
+    assert claimed
+    assert error
+    broken = _local_contract()
+    broken["handler"]["input_model"] = f"{__name__}._LocalResult"
+    claimed, error = _local_invocation_check(broken)
+    assert claimed
+    assert "declared request/result" in error
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("runtime_dispatch", {}),
+        ("event_bus", {"subscribe_topics": ["unexpected"], "publish_topics": []}),
+        ("descriptor", {"runtime_profiles": ["dev"]}),
+    ],
+)
+def test_local_transport_does_not_excuse_a_malformed_invocation(
+    key: str, value: object
+) -> None:
+    contract = _local_contract()
+    contract[key] = value
+    claimed, error = _local_invocation_check(contract)
+    assert claimed
+    assert error
+
+
+def test_inventory_accounts_for_local_invocation_and_refuses_broken_handler(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from scripts.audit import market_node_runtime_dogfood as audit
+
+    node = "node_local_example_effect"
+    directory = tmp_path / node
+    directory.mkdir()
+    contract = _local_contract()
+    path = directory / "contract.yaml"
+    path.write_text(yaml.safe_dump(contract))
+    monkeypatch.setattr(audit, "_NODES_DIR", tmp_path)
+    monkeypatch.setattr(audit, "_load_entry_points", lambda: [node])
+    report = audit.build_report()
+    assert report["summary"]["local_invokable"] == 1
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["skipped"] == 0
+    assert report["local_invokable"] == [{"command_name": node, "node_name": node}]
+    contract["handler"]["class"] = "MissingHandler"
+    path.write_text(yaml.safe_dump(contract))
+    report = audit.build_report()
+    assert report["summary"]["local_invokable"] == 0
+    assert report["summary"]["failed"] == 1
+    assert report["summary"]["failure_buckets"] == {"invalid_local_invocation": 1}
