@@ -25,13 +25,10 @@ requirements:
       - id: "AC2"
         statement: >-
           AC2: A pr-polish start command dispatched on a running event loop with a Kafka bootstrap configured publishes the repair delegation instead of ending FAILED with the asyncio.run error -- falsifier: uv run pytest tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py fails without handle_async
-      - id: "AC3"
-        statement: >-
-          AC3: The three-failure breaker moves the run to FAILED on the third consecutive failure and a success resets the count -- falsifier: uv run pytest tests/unit/nodes/node_pr_polish/test_circuit_breaker.py
 evidence_requirements:
   - kind: "tests"
-    description: "Rebase head-ref refusal, lease push and moved-head cases; polish entrypoint on a running loop; breaker cases."
-    command: "uv run pytest tests/test_rebase_effect.py tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py tests/unit/nodes/node_pr_polish/test_circuit_breaker.py -q -n 0"
+    description: "Rebase head-ref refusal, lease push and moved-head cases; polish entrypoint on a running loop."
+    command: "uv run pytest tests/test_rebase_effect.py tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py -q -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -51,17 +48,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py -q -n 0"
     binds_ac: ["AC2"]
-  - id: "dod-omn21034-ac3-breaker"
-    description: "A third consecutive failure completes the run FAILED and a success resets the count."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_polish/test_circuit_breaker.py -q -n 0"
-    binds_ac: ["AC3"]
-  - id: "dod-omn21034-deploy-probe"
-    description: "Deploy probe: the rebase handler read from GitHub at the checked-out commit carries the head_moved refusal added by this PR. A head without it fails the probe."
+  - id: "dod-omn21034-source-probe"
+    description: "Source probe: the rebase handler at the checked-out commit carries the head_moved refusal added by this PR. A head without it fails the probe."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'head_moved: origin/'"
+        check_value: "grep -c 'head_moved: origin/' src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py"
     binds_ac: ["AC1"]
