@@ -170,6 +170,13 @@ requirements:
       - id: "AC28"
         statement: |-
           AC28: a Claude-limited or Claude-auth-expired Codex-allowed host with free Codex slots yields a MISSING lab-headroom line naming the Codex slot count and a FIX to dispatch Codex lanes, a host limited for both engines or not Codex-allowed still says no dispatch, and a host with Claude headroom keeps its line -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_codex_headroom_throughput_tick_decision_compute.py -q fails at the merge base
+  - id: "req-deploy-probe-command-only"
+    statement: |-
+      The AC28 deploy probe evidence item stays a command-only probe that binds no criterion, and AC28 keeps its Codex headroom pytest on its own evidence item, so the deploy probe binding test on dev passes.
+    acceptance:
+      - id: "AC29"
+        statement: |-
+          AC29: dod-omn17427-ac28-tick-codex-headroom-deploy-probe carries exactly one check, the command that reads ModelCodexHeadroom from the model file GitHub serves at HEAD, binds no acceptance criterion, and dod-omn17427-ac28-tick-codex-headroom still binds AC28 with the Codex headroom pytest -- falsifier: uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn20864.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -249,6 +256,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A retry on the customer route cancelled at its budget keeps the earlier 429 rung on the terminal."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q -k retry_on_the_customer_route"
+  - kind: "tests"
+    description: "The AC28 deploy probe is its one command check and binds no criterion; AC28 keeps the Codex headroom pytest."
+    command: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn20864.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -466,3 +476,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/models/model_throughput_tick_decision.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class ModelCodexHeadroom(BaseModel):'"
+  - id: "dod-omn17427-ac29-deploy-probe-command-only"
+    description: "The AC28 deploy probe is its one command check and binds no criterion; AC28 keeps the Codex headroom pytest on its own item."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn20864.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]

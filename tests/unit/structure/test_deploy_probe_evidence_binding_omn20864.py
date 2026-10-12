@@ -35,3 +35,22 @@ def test_deploy_probe_keeps_ac28_bound_to_codex_headroom_tests() -> None:
         == "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_codex_headroom_throughput_tick_decision_compute.py -q"
         for check in headroom["checks"]
     ), "AC28 must retain the Codex headroom test evidence"
+
+
+def test_deploy_probe_is_its_one_codex_headroom_command() -> None:
+    contract = yaml.safe_load(
+        (REPO_ROOT / "contracts" / "OMN-17427.yaml").read_text(encoding="utf-8")
+    )
+    evidence = {item["id"]: item for item in contract["dod_evidence"]}
+    probe = evidence["dod-omn17427-ac28-tick-codex-headroom-deploy-probe"]
+
+    assert len(probe["checks"]) == 1, (
+        "the deploy probe carries only its command check; the Codex headroom pytest belongs to dod-omn17427-ac28-tick-codex-headroom"
+    )
+    (check,) = probe["checks"]
+    assert check["check_type"] == "command"
+    assert (
+        "model_throughput_tick_decision.py?ref=$(git rev-parse HEAD)"
+        in check["check_value"]
+    )
+    assert "^class ModelCodexHeadroom(BaseModel):" in check["check_value"]
