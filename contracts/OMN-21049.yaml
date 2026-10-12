@@ -35,5 +35,3 @@ dod_evidence:
       - check_type: command
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_phase_evaluator/handlers/handler_session_phase_evaluator.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("session_id") and contains("correlation_id"))' | grep -qx true
-    binds_ac:
-      - AC1
