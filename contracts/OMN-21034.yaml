@@ -54,4 +54,3 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -c 'head_moved: origin/' src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py"
-    binds_ac: ["AC1"]
