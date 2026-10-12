@@ -14,6 +14,8 @@ requirements:
         statement: "AC1: a pure compute node subscribed to onex.evt.omnimarket.delegate-skill-completed.v1 publishes exactly one request on onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1 for a completed payload and none for a payload that is not complete -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_wiring.py -q in omnimarket"
       - id: "AC3"
         statement: "AC3: the judge request node decodes the delegate-skill-completed payloads as published, including the publish-time keys actual_score, required_bar, causation_id, emitted_at, schema_version and entity_id, instead of refusing them -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q in omnimarket"
+      - id: "AC4"
+        statement: "AC4: a judge request whose every item is a liveness probe renders no batches and reports the probe ids as excluded with status passed, instead of raising and dead-lettering the request -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute/test_render.py tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q -k 'probe_only_corpus or liveness_probe_terminal' in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The wiring test proves one request for a completed payload and none for an incomplete one. It passes at the head and fails at the merge base, where the node does not exist."
@@ -39,3 +41,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20572-ac4-probe-only-render"
+    description: "AC4 hosted probe. A probe-only render and a recorded liveness-probe terminal driven through the request and judge nodes both come back with no batches and the probe id excluded. Both tests pass at the head and fail at the merge base, where render_batches raises 'every item is a probe: nothing to judge'."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute/test_render.py tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q -k 'probe_only_corpus or liveness_probe_terminal'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
