@@ -7,15 +7,17 @@ node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
 description: >
   OMN-20474. The pure rule-7a fold half of the judged acceptance projection.
-  Judged verdicts go in, one cell per tenant, model, tier, task type, kind and
-  rubric version comes out, with n, accepts, accept rate, the Wilson 95
+  Judged verdicts go in, one cell per tenant, model, tier, task type, kind,
+  rubric version and origin (live, or eval with its eval run id) comes out, with n, accepts, accept rate, the Wilson 95
   percent interval, mean quality, first and last call time and the count of
   judge runs. The verdict standing for a call is the latest from a calibrated
   judge run, ties going to the greater judge run id, so arrival order and
   redelivery change nothing. A verdict from a run with agreement under 0.75 or
   kappa under 0.60 is refused and counted. A cell under 15 verdicts has no
   row. Edit-loop turns fold under their own kind, and a kind other than task
-  or edit_loop_turn never enters a cell. The window is the 30 days before the
+  or edit_loop_turn never enters a cell. An eval verdict and a live verdict
+  never pool, and two eval runs never pool: origin and eval_run_id are part of
+  the verdict key and the cell key (OMN-20968). The window is the 30 days before the
   cell's newest call time, never the wall clock. terminal_ok is not an input.
   No I/O: the writer, tables and bus wiring are a separate change that calls
   this fold in process.

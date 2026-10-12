@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20968"
+title: "judged-acceptance verdicts carry origin (live or eval) and the fold never pools them"
+summary: >-
+  ModelDelegationAcceptanceJudgedEvent gains a required closed origin (live or eval) and an
+  eval_run_id that is required when origin is eval and refused when origin is live. event_id is
+  unchanged: it stays the uuid5 of judge_run_id and correlation_id. The judged-acceptance fold keys
+  its cells and its per-call verdict on origin and eval_run_id as well as tenant, task type, kind,
+  tier, model and rubric version, so an eval verdict and a live verdict for the same cell never
+  pool, and an eval cell carries its eval_run_id. The event schema never maps a payload with no
+  origin to live; the replay request alone maps a committed pre-amendment run to live, explicitly,
+  by its origin default, and replaying an eval run names origin eval and its eval_run_id. No
+  routing, overlay or rendered delegation contract changes.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "omnimarket.models.delegation_acceptance_judge.model_delegation_acceptance_judged_event.ModelDelegationAcceptanceJudgedEvent"
+  - "omnimarket.models.delegation_acceptance_judge.model_acceptance_replay_request.ModelAcceptanceReplayRequest"
+  - "omnimarket.nodes.node_projection_delegation_judged_acceptance.models.model_judged_acceptance_fold.ModelJudgedAcceptanceCell"
+requirements:
+  - id: "req-origin-field"
+    statement: "A judged verdict says whether it is a live verdict or an eval verdict, and an eval verdict names its eval run."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the event schema requires origin (live or eval, closed), refuses an eval verdict with no eval_run_id and a live verdict with one, and keeps event_id the uuid5 of judge_run_id and correlation_id"
+  - id: "req-replay-origin"
+    statement: "A committed live run replays byte-identically, and the origin of a pre-amendment run is decided in one documented place."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: replay of the committed sample run builds events whose fields other than origin and eval_run_id are byte-identical to the pre-amendment replay, with origin live; replay of an eval run names origin eval and eval_run_id; a payload with no origin is refused by the event schema"
+  - id: "req-fold-origin"
+    statement: "The fold never pools an eval cell with a live cell."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: for the same tenant, task type, kind, tier, model and rubric version, live verdicts and eval verdicts fold into separate cells, two eval runs fold into separate cells, and an eval cell carries its eval_run_id"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: origin and eval_run_id on the event schema."
+    command: "uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q -n 0 -k origin"
+  - kind: "tests"
+    description: "AC2: committed run replay is unchanged apart from the origin fields."
+    command: "uv run pytest tests/nodes/node_delegation_acceptance_judged_replay_compute/test_replay.py -q -n 0 -k origin"
+  - kind: "tests"
+    description: "AC3: the fold keeps live and eval cells apart."
+    command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -q -n 0 -k origin"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20968-ac1-event-origin"
+    description: "AC1: eval without eval_run_id and live with one are refused, event_id is unchanged by origin."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_judged_acceptance_event_schema.py -q -n 0 -k origin"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20968-ac2-replay-origin"
+    description: "AC2: the committed sample run replays to the pre-amendment bytes apart from origin and eval_run_id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judged_replay_compute/test_replay.py -q -n 0 -k origin"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20968-ac3-fold-origin"
+    description: "AC3: live and eval verdicts for the same cell fold into separate cells."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -q -n 0 -k origin"
+    binds_ac: ["AC3"]
