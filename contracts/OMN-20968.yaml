@@ -17,9 +17,7 @@ summary: >-
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "omnimarket.models.delegation_acceptance_judge.model_delegation_acceptance_judged_event.ModelDelegationAcceptanceJudgedEvent"
-  - "omnimarket.models.delegation_acceptance_judge.model_acceptance_replay_request.ModelAcceptanceReplayRequest"
-  - "omnimarket.nodes.node_projection_delegation_judged_acceptance.models.model_judged_acceptance_fold.ModelJudgedAcceptanceCell"
+  - events
 requirements:
   - id: "req-origin-field"
     statement: "A judged verdict says whether it is a live verdict or an eval verdict, and an eval verdict names its eval run."
