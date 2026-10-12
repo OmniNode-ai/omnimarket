@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21044"
+title: "ADR canary orchestrator is owned by the dev-lane effects runtime and refuses the paid default grader"
+summary: >-
+  The ADR canary orchestrator declares the effects runtime profile, auto-wires
+  with the kernel bus registered, carries an optional grader model key through
+  the grading request, and refuses a run that would reach only an external
+  provider before any command is published.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dev-lane-ownership"
+    statement: "A dev-lane runtime owns the orchestrator and it wires with zero failures."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_adr_canary_orchestrator declares runtime_profiles canary and effects, and wires from the real contract manifest with the bus registered -- falsifier: the dev-lane wiring test fails if the effects profile is removed"
+  - id: "req-grader-key"
+    statement: "The request names a grader key that reaches the grader node."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: grader_model_key travels from the command payload to the grader, which uses it over its configured key -- falsifier: the orchestrator and grader tests fail if the key is dropped"
+  - id: "req-external-refusal"
+    statement: "A run that would reach only an external provider is refused before ingestion."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: with allow_external_providers false the orchestrator returns a refusal with no scorecard_path and publishes nothing -- falsifier: the refusal tests fail if the paid default grader key is accepted"
+evidence_requirements:
+  - kind: "tests"
+    description: "Dev-lane wiring, grader key plumbing and external refusal."
+    command: "uv run pytest tests/unit/contracts/test_adr_canary_orchestrator_dev_lane_wiring.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21044-ac1-dev-lane-wiring"
+    description: "The real contract is owned by a dev-lane runtime and wires with zero failures."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_adr_canary_orchestrator_dev_lane_wiring.py -q -n 0"
+      - check_type: "command"
+        check_value: "grep -c 'effects' src/omnimarket/nodes/node_adr_canary_orchestrator/contract.yaml"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21044-ac2-grader-key"
+    description: "The orchestrator and canary chain tests pass with the grader key plumbed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_adr_canary_orchestrator/tests -q -n 0 -m 'not kafka'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21044-ac3-external-refusal"
+    description: "The roundtrip and golden chain tests pass, including the external provider refusal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_adr_canary_orchestrator_publisher_roundtrip.py tests/test_golden_chain_adr_canary_real_bus_chain.py -q -n 0 -m 'not kafka'"
+    binds_ac: ["AC3"]
