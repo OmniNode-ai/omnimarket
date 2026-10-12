@@ -28,3 +28,11 @@ dod_evidence:
         check_value: uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py -q
     binds_ac:
       - AC1
+  - id: dod-omn21037-deploy-probe-endpoint-url
+    description: Deploy probe for the orchestrator handler change. It reads the handler from GitHub at the evaluated checkout's commit and requires the infra effect request to carry the complete chat-completions endpoint_url. It does not claim the runtime has been rolled. It fails on the merge-base handler, which passed only base_url.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF ''endpoint_url=_chat_completions_url(model.endpoint_url)'''
+    binds_ac:
+      - AC1
