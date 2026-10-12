@@ -170,6 +170,16 @@ requirements:
       - id: "AC28"
         statement: |-
           AC28: a Claude-limited or Claude-auth-expired Codex-allowed host with free Codex slots yields a MISSING lab-headroom line naming the Codex slot count and a FIX to dispatch Codex lanes, a host limited for both engines or not Codex-allowed still says no dispatch, and a host with Claude headroom keeps its line -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_codex_headroom_throughput_tick_decision_compute.py -q fails at the merge base
+  - id: "req-infra-03871-discovery-compatibility"
+    statement: |-
+      The dependency floor and lock include omnibase_infra 0.38.71's vendored migrations, and architecture discovery supplies the invoke command required by that release's workspace validation API before any agent invocation.
+    acceptance:
+      - id: "AC29"
+        statement: |-
+          AC29: both omnibase-infra dependency floors exclude 0.38.70 and admit 0.38.71, and uv.lock selects at least 0.38.71 -- falsifier: the focused release-floor test fails on the earlier pin.
+      - id: "AC30"
+        statement: |-
+          AC30: discovery sends its invoke command with the requested workspace, correlation, model, timeout and prompt to workspace validation, and a rejected verdict stops agent invocation -- falsifier: the focused validation test fails when invoke_command is absent.
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -469,3 +479,19 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/models/model_throughput_tick_decision.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class ModelCodexHeadroom(BaseModel):'"
+  - id: "dod-omn17427-ac29-infra-03871-release-floor"
+    description: "Both dependency floors and the lock require the release carrying the vendored node migrations."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q -k test_infra_release_floor_and_lock_include_vendored_migrations"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
+  - id: "dod-omn17427-ac30-discovery-invoke-command"
+    description: "Workspace validation carries the invoke command before agent execution and a rejected verdict stops invocation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q -k test_workspace_validation_carries_invoke_command_before_agent_runs"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
