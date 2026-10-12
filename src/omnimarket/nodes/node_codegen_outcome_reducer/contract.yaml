@@ -80,6 +80,20 @@ handler_routing:
         name: HandlerCodegenOutcomeReducer
         module: omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outcome_reducer
 
+# The three outcomes this reducer returns are EVENTS to publish, not reducer
+# projections. The runtime classifies a reducer's bare model return as a
+# projection unless the contract declares the model class here (published_events,
+# class -> topic), and a projection is never published: without this map every
+# verdict joined and then vanished, and the orchestrator waited on an outcome
+# topic that stayed empty.
+published_events:
+  - event_type: CodegenValidationOutcome
+    topic: onex.evt.omnimarket.codegen-validation-outcome.v1
+  - event_type: CodegenTypecheckOutcome
+    topic: onex.evt.omnimarket.codegen-typecheck-outcome.v1
+  - event_type: CodegenSerializeOutcome
+    topic: onex.evt.omnimarket.codegen-serialize-outcome.v1
+
 descriptor:
   node_archetype: reducer
   # `impure`, deliberately NOT `pure`: this reducer retains cross-event state in

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.antipattern import ModelAntipatternValidationContext
+
 
 class ModelAntipatternMatchConfig(BaseModel):
     """Configuration for violation classification."""
@@ -37,6 +39,14 @@ class ModelAntipatternClassifyRequest(BaseModel):
     matches: tuple[ModelAntipatternMatch, ...] = Field(default_factory=tuple)
     config: ModelAntipatternMatchConfig = Field(
         default_factory=ModelAntipatternMatchConfig
+    )
+    correlation_id: str = Field(
+        default="",
+        description="Echoed on the result so a bus requester can pair the answer.",
+    )
+    validation_context: ModelAntipatternValidationContext | None = Field(
+        default=None,
+        description="Set by the validator orchestrator; echoed unchanged on the result.",
     )
 
 

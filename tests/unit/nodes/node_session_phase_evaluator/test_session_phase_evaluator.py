@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 
 from omnimarket.nodes.node_session_phase_evaluator.handlers.handler_session_phase_evaluator import (
     HandlerSessionPhaseEvaluator,
     ModelPhaseEvaluationRequest,
 )
+
+_CORRELATION_ID = UUID("00000000-0000-4000-8000-000000000021")
 
 
 def _req(
@@ -19,6 +23,8 @@ def _req(
     halt_threshold_pct: int = 100,
 ) -> ModelPhaseEvaluationRequest:
     return ModelPhaseEvaluationRequest(
+        session_id="sess-evaluator-test",
+        correlation_id=_CORRELATION_ID,
         phase_name=phase_name,
         max_duration_minutes=max_duration_minutes,
         elapsed_minutes=elapsed_minutes,
@@ -170,3 +176,11 @@ class TestPhaseEvaluatorHaltRequired:
         # 59/60 = 98% < 100%
         result = _handler.handle(_req(elapsed_minutes=59.0, halt_threshold_pct=100))
         assert result.action != "halt_required"
+
+
+def test_evaluation_carries_session_identity_for_the_orchestrator() -> None:
+    result = _handler.handle(_req(elapsed_minutes=6.0))
+    assert result.session_id == "sess-evaluator-test"
+    assert result.correlation_id == _CORRELATION_ID
+    assert result.phase_name == "planning"
+    assert result.elapsed_seconds == 360.0

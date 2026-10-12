@@ -1,0 +1,36 @@
+schema_version: 1.0.0
+ticket_id: OMN-21037
+title: A/B compare resolves lab models, sends the complete endpoint URL and refuses undeclared models
+summary: The ab-compare orchestrator sends the infra effect the complete chat-completions endpoint_url, resolves the registry lab models, and lists a requested model id that the registry does not declare in models_refused instead of dropping it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-lab-models-and-refusal
+    statement: A requested model id absent from the registry is refused and gets no inference request, and registry lab models are sent with a complete endpoint URL.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the orchestrator refuses undeclared models and sends endpoint_url -- falsifier: tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py fails when the handler drops an undeclared id silently or omits endpoint_url (uv run pytest on that file)'
+evidence_requirements:
+  - kind: tests
+    description: Ten tests covering lab model resolution, endpoint_url, refusal and status derivation.
+    command: uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21037-ac1-lab-models-refusal
+    description: Lab models resolve, the complete endpoint_url is sent and an undeclared model id is refused.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_ab_compare_orchestrator/test_lab_models_and_refusal.py -q
+    binds_ac:
+      - AC1
+  - id: dod-omn21037-deploy-probe-endpoint-url
+    description: Deploy probe for the orchestrator handler change. It reads the handler from GitHub at the evaluated checkout's commit and requires the infra effect request to carry the complete chat-completions endpoint_url. It does not claim the runtime has been rolled. It fails on the merge-base handler, which passed only base_url.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF ''endpoint_url=_chat_completions_url(model.endpoint_url)'''

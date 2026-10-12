@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.antipattern import ModelAntipatternValidationContext
+
 
 class ModelAntipatternViolation(BaseModel):
     """A classified violation with blocking status and deterministic explanation."""
@@ -26,6 +28,8 @@ class ModelAntipatternClassifyResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     violations: tuple[ModelAntipatternViolation, ...] = Field(default_factory=tuple)
+    correlation_id: str = ""
+    validation_context: ModelAntipatternValidationContext | None = None
 
     @property
     def has_blocking_violation(self) -> bool:
