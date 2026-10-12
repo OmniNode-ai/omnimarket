@@ -146,6 +146,22 @@ def test_clean_gap_report_is_published_on_the_completed_topic() -> None:
     assert dumped["readiness_state"] == "READY"
 
 
+def test_completed_topic_is_declared_for_the_plain_result_class() -> None:
+    """The completed topic is mapped by class, not reached through terminal_event.
+
+    A non-blocked decision returns the plain ``ModelDeploymentReadinessResult``;
+    the contract names that class for the completed topic and the blocked class
+    for the blocked topic, so neither result falls through to ``terminal_event``.
+    """
+    routes = {
+        entry["event_type"]: entry["topic"]
+        for entry in _contract().get("published_events", [])
+    }
+
+    assert routes.get("DeploymentReadinessResult") == COMPLETED
+    assert routes.get("ReadinessGateBlocked") == BLOCKED
+
+
 def test_degraded_gap_report_is_published_on_the_completed_topic() -> None:
     gap = _gap_report(gap_classifications={"synthetic-ref-1": "STALE"})
 
