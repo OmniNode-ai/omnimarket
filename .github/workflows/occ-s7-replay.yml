@@ -154,7 +154,7 @@ jobs:
             --work-dir "$RUNNER_TEMP/replay-work" \
             --record-to replay-out/rows.json --table-to replay-out/table.md
 
-      - name: Publish the replay table to the job summary
+      - name: Publish the replay table to the job log and summary
         if: always()
         env:
           REPOSITORY: ${{ inputs.repository }}
@@ -170,6 +170,11 @@ jobs:
               echo "(no table: the replay did not finish; see the step logs)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s replay-out/table.md ]; then
+            cat replay-out/table.md
+          else
+            echo "(no table: the replay did not finish; see the step logs)"
+          fi
 
       - name: Upload rows.json and table.md
         if: always()

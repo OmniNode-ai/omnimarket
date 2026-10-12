@@ -1,0 +1,45 @@
+id: s25_shared_red_changed_verdict
+scenario: S25
+tla_modeled: false
+ledger_rows:
+  - 'docs/tracking/ROLLING_WORK_LEDGER.md:66431 FRICTION 2026-10-11T13:00:33Z'
+claim: >-
+  Class (d): a shared check whose external verdict turns green after its fix
+  lands gets one rerun per member head and verdict, even if the head spent
+  its ordinary rerun. The same verdict never earns another rerun.
+world:
+  policy:
+    max_workers: 0
+  prs:
+    - pr: acme/app#3748
+      ci: red
+      red_class: cascade
+      red_checks: [delegation-health-check]
+    - pr: acme/app#3740
+      ci: red
+      red_class: cascade
+      red_checks: [delegation-health-check]
+ticks:
+  - expect:
+      actions: ['rerun acme/app#3748', 'rerun acme/app#3740']
+  - events:
+      - ci: {pr: 'acme/app#3748', result: red, red_class: cascade, red_checks: [delegation-health-check]}
+      - ci: {pr: 'acme/app#3740', result: red, red_class: cascade, red_checks: [delegation-health-check]}
+      - shared_verdict: {repo: acme/app, check: delegation-health-check, verdict_id: nightly-1, green: false}
+    expect:
+      actions: []
+  - events:
+      - shared_verdict: {repo: acme/app, check: delegation-health-check, verdict_id: nightly-2, green: true}
+    expect:
+      actions: ['rerun acme/app#3748', 'rerun acme/app#3740']
+  - events:
+      - ci: {pr: 'acme/app#3748', result: red, red_class: cascade, red_checks: [delegation-health-check]}
+      - ci: {pr: 'acme/app#3740', result: red, red_class: cascade, red_checks: [delegation-health-check]}
+    expect:
+      actions: []
+  - events:
+      - shared_verdict: {repo: acme/app, check: delegation-health-check, verdict_id: nightly-3, green: true}
+    expect:
+      actions: ['rerun acme/app#3748', 'rerun acme/app#3740']
+end:
+  dispatches: {}

@@ -38,6 +38,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -175,18 +176,25 @@ class HandlerOccReplay:
                 break
             record = self._record(request, clone, mirror, work, pr)
             records.append(record)
-            if replay_row(record).outcome not in NOT_COUNTED_OUTCOMES:
+            row = replay_row(record)
+            if row.outcome not in NOT_COUNTED_OUTCOMES:
                 compared += 1
-            logger.info(
-                "replay %s#%d head=%s occ=%s new=%s compared=%d/%d: %s",
-                request.repository,
-                pr.number,
-                record.head_sha[:12],
-                (record.occ_check_run or {}).get("conclusion"),
-                record.new_verdict.model_dump() if record.new_verdict else None,
-                compared,
-                request.count,
-                record.note,
+            sys.stderr.write(
+                f"replay {request.repository}#{row.pr} head={row.head_sha} "
+                f"occ={row.occ_conclusion} new={row.new_admitted} outcome={row.outcome} "
+                f"new_reason={row.new_reason} note={row.note}\n"
+            )
+            sys.stderr.flush()
+        if compared < request.count:
+            stop_reason = (
+                "max_examined reached"
+                if len(merged) >= request.max_examined
+                else "merged list exhausted"
+            )
+            sys.stderr.write(
+                f"replay {request.repository}: examined={len(records)} "
+                f"compared={compared}/{request.count} stop={stop_reason} "
+                f"max_examined={request.max_examined}\n"
             )
         return records
 
