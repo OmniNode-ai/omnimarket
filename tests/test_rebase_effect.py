@@ -378,6 +378,9 @@ async def test_real_git_rebase_advances_only_the_pr_head_branch(tmp_path: Path) 
         {
             "ONEX_REBASE_SOURCE_CLONE_ROOT": str(clones),
             "ONEX_REBASE_WORKTREE_ROOT": str(tmp_path / "worktrees"),
+            # The suite isolates git from global config; the rebase commits.
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.test",
         },
     ):
         evt = await HandlerRebaseEffect().handle(
