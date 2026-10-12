@@ -4,7 +4,8 @@
 
 The node must refuse exactly what the vendored ``reject-deploy-gate-skip-token.sh`` refuses (Rule 10):
 every ``[skip-<letter>`` token in staged PR-body-like files, committed session evidence, a commit
-message or a PR body, unless the same text carries ``# skip-token-allowed: <receipt-id>``.
+message or a PR body. There is no escape hatch (OMN-20074): a ``# skip-token-allowed:
+<receipt-id>`` comment never rescues a token.
 """
 
 from __future__ import annotations
@@ -70,12 +71,12 @@ STAGED_CASES: list[tuple[str, str, str, bool]] = [
     ("receipt-gate token", "x.yaml", "[skip-receipt-gate: docs only]\n", True),
     ("any other skip token", "x.yml", "[skip-anything: some reason]\n", True),
     ("upper case token", "x.txt", "[Skip-Deploy-Gate: reason here]\n", True),
-    ("token with allowlist receipt", "a.md", TOKEN + "\n" + ALLOW + "\n", False),
+    ("token with a receipt-id comment", "a.md", TOKEN + "\n" + ALLOW + "\n", True),
     (
-        "allowlist receipt in upper case",
+        "receipt-id comment in upper case",
         "a.md",
         TOKEN + "\n# SKIP-TOKEN-ALLOWED: RCPT-1\n",
-        False,
+        True,
     ),
     ("allowlist without a token", "a.md", "Body\n" + ALLOW + "\n", False),
     (
@@ -91,10 +92,10 @@ STAGED_CASES: list[tuple[str, str, str, bool]] = [
         True,
     ),
     (
-        "allowlist spaced after the hash",
+        "receipt-id comment spaced after the hash",
         "a.md",
         TOKEN + "\n#   skip-token-allowed:   RCPT-1\n",
-        False,
+        True,
     ),
     (
         "allowlist missing its hash",
@@ -118,10 +119,10 @@ STAGED_CASES: list[tuple[str, str, str, bool]] = [
     ("evidence bin is out of scope", ".onex_state/evidence/s.bin", TOKEN + "\n", False),
     ("json outside evidence is out of scope", "other/s.json", TOKEN + "\n", False),
     (
-        "evidence json with allowlist receipt",
+        "evidence json with a receipt-id comment",
         ".onex_state/evidence/s.json",
         TOKEN + "\n" + ALLOW + "\n",
-        False,
+        True,
     ),
     ("token on the last line without newline", "a.md", "x\n" + TOKEN, True),
     ("token mid line", "a.md", "see " + TOKEN + " for details\n", True),
@@ -144,7 +145,7 @@ def test_commit_message_is_scanned_whatever_its_name() -> None:
         EnumSkipTokenVerdict.BLOCK
     )
     assert _scan(_message("fix: thing\n\n" + TOKEN + "\n" + ALLOW + "\n")).verdict is (
-        EnumSkipTokenVerdict.PASS
+        EnumSkipTokenVerdict.BLOCK
     )
     assert _scan(_message("fix: clean\n")).verdict is EnumSkipTokenVerdict.PASS
 
@@ -152,11 +153,11 @@ def test_commit_message_is_scanned_whatever_its_name() -> None:
 @pytest.mark.unit
 def test_pr_body_is_scanned() -> None:
     assert _scan(_body(TOKEN)).verdict is EnumSkipTokenVerdict.BLOCK
-    assert _scan(_body(TOKEN + "\n" + ALLOW)).verdict is EnumSkipTokenVerdict.PASS
+    assert _scan(_body(TOKEN + "\n" + ALLOW)).verdict is EnumSkipTokenVerdict.BLOCK
 
 
 @pytest.mark.unit
-def test_findings_name_each_blocked_path_and_each_allowed_path() -> None:
+def test_findings_name_each_blocked_path_with_or_without_a_receipt_comment() -> None:
     result = _scan(
         _staged("a.md", TOKEN),
         _staged("b.md", TOKEN + "\n" + ALLOW),
@@ -164,10 +165,7 @@ def test_findings_name_each_blocked_path_and_each_allowed_path() -> None:
         _staged("d.py", TOKEN),
     )
     assert result.verdict is EnumSkipTokenVerdict.BLOCK
-    assert [(f.path, f.allowed) for f in result.findings] == [
-        ("a.md", False),
-        ("b.md", True),
-    ]
+    assert [f.path for f in result.findings] == ["a.md", "b.md"]
     assert result.scanned == 3
     assert result.out_of_scope == ("d.py",)
 

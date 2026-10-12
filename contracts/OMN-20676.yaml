@@ -44,7 +44,20 @@ requirements:
         statement: "AC7: the starts, waits, runner commands, briefs, lane receipts and deferred count of a sweep run by one request to the orchestrator equal the real merge_sweep.js run with scripted runner exit codes on the recorded cases, and its plan equals the old plan -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_merge_sweep_orchestrator_parity.py -q fails on a broken brief or a retry that never waits"
       - id: "AC8"
         statement: "AC8: the orchestrator contract declares its topics and a wiring plan naming only operations the sibling nodes declare, the entry point is package-form, the metadata passes the schema test, and a stale or missing watcher state is refused with no lane started -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q"
+  - id: "req-merge-sweep-bus-entry"
+    statement: "A caller requests a whole merge sweep over the bus: the orchestrator contract declares its command and terminal topics in event_bus, and the local runtime publishes the request on the command topic and reads the result from the completed topic."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: a sweep requested on the orchestrator's declared command topic through the canonical local runtime completes with the handler's plan, and a sweep whose watcher state is missing answers ok false with no lane started -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q fails with the node's handler file removed"
+  - id: "req-merge-sweep-scheduled-request"
+    statement: "A scheduled window of the merge sweep becomes the orchestrator's typed run request on the bus: the pure node node_merge_sweep_request_compute turns one scheduled fire into one request, the runtime publishes it on the orchestrator's command topic, and the orchestrator answers on its completed topic."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: two scheduled windows through the three packaged contracts on the canonical in-memory bus produce exactly two requests on the orchestrator's command topic and two correlated completions, a window whose watcher state is missing completes ok false with no lane started, and the request handler returns nothing for a fire of another workflow and reads no deployment configuration while handling -- falsifier: uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q -k 'scheduled_ticks_request_and_complete or scheduled_request_uses_only_supplied_template' fails with the request node's handler file removed"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC10: the scheduled window is requested over the bus and completed by the orchestrator, and the request handler is pure."
+    command: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q -p no:randomly -k 'scheduled_ticks_request_and_complete or scheduled_request_uses_only_supplied_template'"
   - kind: "tests"
     description: "Focused tests of the merge-sweep plan node."
     command: "uv run pytest tests/nodes/node_merge_sweep_plan_compute tests/nodes/node_merge_sweep_reading_compute tests/nodes/node_merge_sweep_effect tests/test_merge_sweep_plan_registration.py tests/test_merge_sweep_nodes_registration.py -q"
@@ -117,3 +130,41 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn20676-ac9-bus-entry"
+    description: "AC9 sweep requested over the bus through the local runtime."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py tests/nodes/node_merge_sweep_orchestrator/test_golden_chain_merge_sweep_orchestrator.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn20676-deploy-probe"
+    description: "Deploy probe. The merge-sweep orchestrator contract the runtime loads at the checked-out commit carries the event_bus block this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^event_bus:'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20676-ac10-scheduled-bus-cycle"
+    description: "AC10: two scheduled windows are requested on the orchestrator's command topic and completed by the real sweep handler, and a window with no watcher state completes ok false with no lane started. The request node's contract and handler do not exist at the merge base, so this fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q -p no:randomly -k scheduled_ticks_request_and_complete"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn20676-ac10-scheduled-request-handler"
+    description: "AC10: the request handler returns nothing for a fire of another workflow, returns the same request for the same fire, and reads no deployment configuration while handling. The handler module does not exist at the merge base, so this fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q -p no:randomly -k scheduled_request_uses_only_supplied_template"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn20676-ac10-deploy-probe"
+    description: "Deploy probe. The scheduled request handler at the checked-out commit carries the class this change adds; the probe reads the file from GitHub at that commit, strips the line breaks of the contents API's base64 and tests the symbol inside jq so the pipe is read to its end, and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_request_compute/handlers/handler_merge_sweep_scheduled_request.py?ref=$(git rev-parse HEAD)\" --jq '.content | split(\"\\n\") | join(\"\") | @base64d | contains(\"class HandlerMergeSweepScheduledRequest\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"

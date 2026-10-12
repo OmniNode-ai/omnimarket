@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingBriefClass,
     EnumLandingEngine,
+    EnumLandingExternalBlockerKind,
     EnumLandingOutcome,
     EnumLandingOutcomeReason,
     EnumLandingRebuildStatus,
@@ -75,6 +76,16 @@ class ModelLandingLease(BaseModel):
     stuck: bool = False
 
 
+class ModelLandingVerdictRerun(BaseModel):
+    """A rerun spent on this member head for this external check verdict."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    check: str = Field(..., min_length=1)
+    verdict_id: str = Field(..., min_length=1)
+
+
 class ModelLandingPrRecord(BaseModel):
     """Everything the controller remembers about one PR between ticks."""
 
@@ -108,6 +119,10 @@ class ModelLandingPrRecord(BaseModel):
     update_heads: tuple[str, ...] = Field(
         default=(), description="Heads the controller already updated from the base."
     )
+    update_no_new_commits_at: datetime | None = Field(
+        default=None, description="Latest no-new-commits response already retried."
+    )
+    verdict_reruns: tuple[ModelLandingVerdictRerun, ...] = ()
     stale_refreshes: int = Field(
         default=0,
         ge=0,
@@ -164,13 +179,34 @@ class ModelLandingCausePair(BaseModel):
     members: int = Field(default=0, ge=0, description="PRs sharing the pair.")
 
 
+class ModelLandingCauseAttempt(BaseModel):
+    """One spent attempt of a cause: who ran it and how it ended.
+
+    The default ladder hands these to the diagnosis brief and to the ticket
+    filed when the ladder is spent.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    engine: EnumLandingEngine
+    outcome: EnumLandingOutcome
+    reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
+    blocker_kind: EnumLandingExternalBlockerKind | None = None
+    blocker_ref: str | None = None
+
+
 class ModelLandingCauseRecord(BaseModel):
     """Everything the controller remembers about one shared cause between ticks.
 
     Upserted by cause key. ``attempts`` and ``spawn_failures`` count within one
-    park episode; a park ends at ``parked_until`` or on a RELEASE row naming
-    the cause, and the next episode starts from zero. ``escalated`` is the
-    dedupe key of the one operator escalation of the current park.
+    park episode. A cause parked after its attempts are spent (the default
+    ladder) ends its park when its repo's base head differs from
+    ``parked_base_head``, or on a RELEASE row naming the cause; with no base
+    head read at the park it ends at ``parked_until`` instead. A cause parked on
+    a blocker only the operator can clear (``operator_need``) ends on the
+    RELEASE row alone. The next episode starts from zero. ``escalated`` is the
+    dedupe key of the one operator escalation of the current park, ``ticketed``
+    of the one ticket filed for the cause.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -191,9 +227,32 @@ class ModelLandingCauseRecord(BaseModel):
     rerun_heads: tuple[ModelLandingMemberRef, ...] = Field(
         default=(), description="Member heads already rerun for this cause."
     )
-    parked_until: datetime | None = None
+    parked_until: datetime | None = Field(
+        default=None,
+        description=(
+            "Set while parked: the park's start plus cause_park_hours. It names "
+            "the park episode; the park does not lapse by the clock unless no "
+            "base head was read when it began."
+        ),
+    )
+    parked_base_head: str | None = Field(
+        default=None,
+        pattern=SHA_PATTERN,
+        description="The repo's base head when the cause parked; None if unread.",
+    )
     escalated: str | None = Field(
         default=None, description="<cause key>@<parked_until> of the last escalation."
+    )
+    ticketed: str | None = Field(
+        default=None,
+        description="<cause key>@<parked_until> of the one ticket filed; kept across base-head retries.",
+    )
+    operator_need: EnumLandingExternalBlockerKind | None = Field(
+        default=None,
+        description="A decision, approval or credential blocker a worker returned.",
+    )
+    history: tuple[ModelLandingCauseAttempt, ...] = Field(
+        default=(), description="The attempts spent, oldest first, bounded."
     )
 
 
@@ -225,6 +284,7 @@ __all__: list[str] = [
     "SHA_PATTERN",
     "SIGNATURE_PATTERN",
     "SUBJECT_PATTERN",
+    "ModelLandingCauseAttempt",
     "ModelLandingCausePair",
     "ModelLandingCauseRecord",
     "ModelLandingControllerState",
@@ -234,4 +294,5 @@ __all__: list[str] = [
     "ModelLandingPrRecord",
     "ModelLandingRebuildRecord",
     "ModelLandingUncovered",
+    "ModelLandingVerdictRerun",
 ]

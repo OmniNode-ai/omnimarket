@@ -1,0 +1,33 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19998"
+title: "omnimarket dev binds every repo contract criterion to repo pytest evidence again"
+summary: "omnimarket#3783 added dod-omnimarket-pr-3775-deploy-probe to contracts/OMN-20074.yaml with binds_ac AC10, but the item's only check is a gh api deploy probe. tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion requires every binds_ac item to carry uv run pytest evidence naming a repo test file, so that test fails on dev 6b43215db and turns Tests (Split 14/20) red on every pull request whose shard carries it. The deploy probe stays as deploy evidence without binds_ac, as the merged deploy probes in contracts/OMN-20676.yaml and others do, and AC10 stays bound by dod-omnimarket-pr-3775-rejection to its rejection test file."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-repo-contracts-bind-pytest-evidence"
+    statement: "Every repo-owned contracts/OMN-*.yaml on dev binds each acceptance criterion only through dod_evidence items that name an existing repo pytest file, so the repo evidence test passes on dev."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: contracts/OMN-20074.yaml's dod-omnimarket-pr-3775-deploy-probe carries no binds_ac, AC10 stays bound by dod-omnimarket-pr-3775-rejection, and test_every_repo_contract_binds_every_criterion passes -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion fails at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "Every repo contract binds each criterion to repo pytest evidence."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19998-repo-contracts-bind-pytest-evidence"
+    description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-20074.yaml binds AC10 to a command-only deploy probe."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

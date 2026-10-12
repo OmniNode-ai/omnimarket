@@ -24,8 +24,10 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import ValidationError
 
 from scripts.cost_event_publisher import (
+    BOOTSTRAP_SERVERS_ENV,
     TOPIC,
     CostEventPublisher,
+    bootstrap_servers_from_env,
     build_envelope_bytes,
     compute_idempotency_key,
     compute_source_file_sha256,
@@ -616,3 +618,26 @@ class TestPollOnce:
             count = await publisher.poll_once()
 
         assert count == 1
+
+
+class TestBootstrapServersFromEnv:
+    """OMN-20935: the broker is a deployment fact the script no longer defaults."""
+
+    def test_the_configured_servers_are_returned_stripped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(BOOTSTRAP_SERVERS_ENV, " broker.example.test:9092 ")
+        assert bootstrap_servers_from_env() == "broker.example.test:9092"
+
+    @pytest.mark.parametrize("value", [None, "", "   "])
+    def test_unset_or_empty_refuses_naming_the_variable(
+        self, monkeypatch: pytest.MonkeyPatch, value: str | None
+    ) -> None:
+        if value is None:
+            monkeypatch.delenv(BOOTSTRAP_SERVERS_ENV, raising=False)
+        else:
+            monkeypatch.setenv(BOOTSTRAP_SERVERS_ENV, value)
+        with pytest.raises(SystemExit) as excinfo:
+            bootstrap_servers_from_env()
+        assert BOOTSTRAP_SERVERS_ENV in str(excinfo.value)
+        assert "not configured" in str(excinfo.value)

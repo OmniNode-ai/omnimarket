@@ -19,6 +19,11 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "AC4: A model the manifest does not carry stays unpriced on every switched surface -- falsifier: uv run pytest on a planted unknown id returns a non-null cost from omnimarket's cost surface or from the omniclaude hook"
+  - id: "req-ac1"
+    statement: "omnimarket installs an omnibase_infra release that carries omnibase_infra#4631."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: omnimarket installs an omnibase_infra release that carries omnibase_infra#4631, and the three tests named above pass with expectations taken from the manifest -- falsifier: omnimarket's uv.lock resolves omnibase-infra to a version without #4631, or uv run pytest on any of the three named tests fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC2: cost_pricing.yaml carries no cloud price, a cloud row with its own price is refused, and every cloud row prices at the manifest's rate."
@@ -29,6 +34,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The three tests that pinned the retired Opus rate take their expectations from the manifest."
     command: 'uv run pytest tests/test_actual_cost_recompute_omn13355.py tests/test_savings_estimates_from_source_omn12494.py -q -p no:randomly'
+  - kind: "tests"
+    description: "AC1: uv.lock resolves omnibase-infra to 0.38.70 or later, and the installed manifest carries the published claude-opus-4-6 rate."
+    command: 'uv run pytest tests/unit/cost/test_infra_pin_carries_published_rates_omn20833.py -q -p no:randomly'
 emergency_bypass:
   enabled: false
   justification: ""
@@ -57,3 +65,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/test_actual_cost_recompute_omn13355.py tests/test_savings_estimates_from_source_omn12494.py -q -p no:randomly'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20833-ac1-infra-pin"
+    description: "AC1: uv.lock resolves omnibase-infra to 0.38.70 or later, and the installed manifest carries the published claude-opus-4-6 rate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/cost/test_infra_pin_carries_published_rates_omn20833.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

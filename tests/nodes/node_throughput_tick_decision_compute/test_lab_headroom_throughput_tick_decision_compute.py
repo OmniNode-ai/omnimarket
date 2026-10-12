@@ -53,6 +53,8 @@ def _receipt(**overrides: Any) -> dict[str, Any]:
         "host": "h201",
         "status": "running",
         "pid_alive": True,
+        "claim_host": "h201",
+        "claim_run_id": "rlane-fix-a-1",
         "readings": [READING],
         **overrides,
     }

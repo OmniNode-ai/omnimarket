@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import resolve_swarm_endpoint_registry_path
 from omnimarket.nodes.node_swarm_registry_compute.models.enums import (
     EnumEndpointStatus,
     EnumSwarmCapability,
@@ -126,7 +127,11 @@ class HandlerSwarmRegistry:
     """Select endpoints for subtasks. Pure compute: no I/O, no side effects."""
 
     def __init__(self, registry_path: Path | None = None) -> None:
-        path = registry_path if registry_path is not None else _DEFAULT_REGISTRY_PATH
+        path = (
+            registry_path
+            if registry_path is not None
+            else resolve_swarm_endpoint_registry_path(_DEFAULT_REGISTRY_PATH)
+        )
         self._endpoints, self._registry_hash = _load_registry(path)
 
     def handle(

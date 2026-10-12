@@ -13,6 +13,10 @@ The shared-cause inputs (each red check's failure annotation, when a gate
 began, the fixer HOLD rows, the floor alarm's breach set, the CLAIMs that name
 a cause, RELEASE rows naming a parked cause) are all optional with empty
 defaults, so a snapshot without them decides exactly as before.
+
+Typed no-new-commits update responses and external shared-check verdicts are
+also optional effect observations. Without them the node cannot infer either
+class from an arbitrary refusal, a base push or a PR head alone.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingCi,
     EnumLandingEngine,
     EnumLandingExternalBlockerKind,
+    EnumLandingGateReason,
     EnumLandingMergeState,
     EnumLandingPrState,
     EnumLandingPushMode,
@@ -82,6 +87,36 @@ class ModelLandingRerunRun(BaseModel):
     run_id: int = Field(..., ge=1)
     head_sha: str = Field(..., pattern=SHA_PATTERN)
     created_at: datetime
+
+
+class ModelLandingUpdateNoNewCommits(BaseModel):
+    """Effect readback of update-branch's transient 422 no-new-commits response.
+
+    Other 422 responses (conflict, moved head, invalid request) are not this
+    fact. The collector supplies the attempted head and response time.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    at: datetime
+
+
+class ModelLandingSharedCheckVerdict(BaseModel):
+    """An external verdict a shared check reads, already observed by an effect.
+
+    ``verdict_id`` identifies the verdict run and attempt, not the PR head or
+    the base SHA. A base push alone is not evidence that the check is fixed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    check: str = Field(..., min_length=1)
+    verdict_id: str = Field(..., min_length=1)
+    green: bool
+    at: datetime
 
 
 class ModelLandingPrFacts(BaseModel):
@@ -145,11 +180,23 @@ class ModelLandingPrFacts(BaseModel):
         default=None,
         description="When the current gate suspension began on this head.",
     )
+    gate_reasons: tuple[EnumLandingGateReason, ...] = Field(
+        default=(),
+        description=(
+            "Which gates the gate suspension stands for. A gate suspension with "
+            "none is refused, and so are reasons with no gate suspension."
+        ),
+    )
 
     @model_validator(mode="after")
     def _red_needs_class(self) -> ModelLandingPrFacts:
         if self.ci is EnumLandingCi.RED and self.red_class is None:
             raise ValueError("a red head needs its red_class")
+        gated = EnumLandingSuspension.GATE in self.suspensions
+        if gated and not self.gate_reasons:
+            raise ValueError("a gate suspension needs at least one named gate_reason")
+        if self.gate_reasons and not gated:
+            raise ValueError("gate_reasons without a gate suspension")
         if not set(self.open_parents) <= set(self.parents):
             raise ValueError("open_parents must be a subset of parents")
         return self
@@ -284,6 +331,15 @@ class ModelLandingRepoChecks(BaseModel):
     checks: tuple[str, ...] = ()
 
 
+class ModelLandingRepoHead(BaseModel):
+    """One repo's base branch head sha."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+
+
 class ModelLandingRebuildAck(BaseModel):
     """The producer accepted a delivery of key K (written after delivery)."""
 
@@ -319,6 +375,19 @@ class ModelLandingPolicy(BaseModel):
         default=2,
         ge=1,
         description="Update-branch refreshes per PR for stale cancelled copies.",
+    )
+    update_retry_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="Backoff after an update-branch 422 no-new-commits response.",
+    )
+    stale_gate_seconds: int = Field(
+        default=600,
+        ge=0,
+        description=(
+            "A gate whose premise is a red head, on a green, CLEAN head, holds "
+            "nothing once older than this (two 300 s controller ticks)."
+        ),
     )
     engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(
@@ -369,6 +438,13 @@ class ModelLandingPolicy(BaseModel):
     )
     cause_lease_seconds: int = Field(default=5400, ge=1)
     cause_park_hours: int = Field(default=12, ge=1)
+    cause_diagnosis_engine: EnumLandingEngine = Field(
+        default=EnumLandingEngine.CLAUDE_OPUS,
+        description=(
+            "The engine of the one attempt after the budget is spent, with a "
+            "diagnosis brief, before the cause parks."
+        ),
+    )
     cause_engine_ladder: tuple[EnumLandingEngine, ...] = Field(
         default=(EnumLandingEngine.CLAUDE_OPUS, EnumLandingEngine.CLAUDE_OPUS),
         min_length=1,
@@ -389,6 +465,8 @@ class ModelLandingFacts(BaseModel):
         default_factory=ModelLandingControllerState
     )
     prs: tuple[ModelLandingPrFacts, ...] = ()
+    update_no_new_commits: tuple[ModelLandingUpdateNoNewCommits, ...] = ()
+    shared_check_verdicts: tuple[ModelLandingSharedCheckVerdict, ...] = ()
     companions: tuple[ModelLandingCompanionFacts, ...] = ()
     probes: tuple[ModelLandingWorkerProbe, ...] = ()
     results: tuple[ModelLandingWorkerResult, ...] = ()
@@ -429,6 +507,14 @@ class ModelLandingFacts(BaseModel):
     )
     base_red_checks: tuple[ModelLandingRepoChecks, ...] = Field(
         default=(), description="Checks red on each repo's base head."
+    )
+    base_heads: tuple[ModelLandingRepoHead, ...] = Field(
+        default=(),
+        description=(
+            "Each repo's base branch head sha, as read this tick. A parked cause "
+            "is retried when its repo's head differs from the one it parked on; "
+            "a repo missing here is unread, never moved."
+        ),
     )
 
     @model_validator(mode="after")
@@ -472,7 +558,10 @@ __all__: list[str] = [
     "ModelLandingRebuildAck",
     "ModelLandingRefUpdate",
     "ModelLandingRepoChecks",
+    "ModelLandingRepoHead",
     "ModelLandingRerunRun",
+    "ModelLandingSharedCheckVerdict",
+    "ModelLandingUpdateNoNewCommits",
     "ModelLandingWorkerProbe",
     "ModelLandingWorkerResult",
 ]

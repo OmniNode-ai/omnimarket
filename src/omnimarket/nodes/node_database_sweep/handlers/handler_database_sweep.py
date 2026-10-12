@@ -18,6 +18,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.node_overlay_reader import resolve_setting
+
 # Injectable probe seam (OMN-13676). The database sweep collects every signal it
 # classifies by shelling ``psql`` against live projection databases. To make the
 # pure classification logic deterministically testable without a live DB — and
@@ -158,7 +160,7 @@ def _run(
 # Connection target (OMN-13717)
 # ---------------------------------------------------------------------------
 # database_sweep previously shelled bare ``psql -d <db>``, which connects to the
-# local unix socket. On the .201 runtime lanes there is no local Postgres, so
+# local unix socket. On a remote runtime lane there is no local Postgres, so
 # every probe failed with ``connection to server on socket "/tmp/.s.PGSQL.5432"
 # failed`` and the sweep discovered 0 tables and left every migration bucket at 0
 # — even though node_data_flow_sweep reached the same projection tables. The fix
@@ -167,11 +169,14 @@ def _run(
 # container, user, and ssh-user are env-overridable so the DSN is overlay-driven,
 # never a hardcoded local socket.
 
-# OMN-14526: this defaulted to the runtime host's raw private LAN address, which is
-# NOT routable off-network — so every off-LAN run failed to reach any database and
-# (pre-fix) silently reported tables_empty=0. The Tailscale MagicDNS name resolves
-# both on-LAN and remotely, so the sweep works from anywhere. Still env-overridable.
-_DEFAULT_RUNTIME_HOST = "omninode-pc.tail75df5e.ts.net"  # onex-allow-internal-ip OMN-16156 reason="env-overridable runtime-host default, already documented above (OMN-14526)"
+# OMN-20935: the runtime host is a deployment fact, supplied by whoever runs the
+# sweep (an environment variable or the node overlay), never by this package.
+_NODE_NAME = "node_database_sweep"
+_OVERLAY_FIELDS = frozenset({"runtime_host"})
+_RUNTIME_HOST_ENV_VARS = (
+    "ONEX_DATABASE_SWEEP_RUNTIME_HOST",
+    "ONEX_DATA_FLOW_RUNTIME_HOST",
+)
 _DEFAULT_PG_CONTAINER = "omnibase-infra-postgres"
 _DEFAULT_PG_USER = "postgres"
 _DEFAULT_SSH_USER = "jonah"
@@ -180,15 +185,16 @@ _DEFAULT_SSH_USER = "jonah"
 def _resolve_pg_runtime_host() -> str:
     """Resolve the runtime host the projection Postgres lives on.
 
-    Env-overridable (``ONEX_DATABASE_SWEEP_RUNTIME_HOST`` then the shared
-    ``ONEX_DATA_FLOW_RUNTIME_HOST`` so this sweep agrees with
-    node_data_flow_sweep), defaulting to the canonical .201 runtime host. An
-    empty value selects the local docker lane (psql via local ``docker exec``).
+    ``ONEX_DATABASE_SWEEP_RUNTIME_HOST`` then the shared
+    ``ONEX_DATA_FLOW_RUNTIME_HOST`` (so this sweep agrees with
+    node_data_flow_sweep) win, then the node overlay's ``runtime_host``. An empty
+    variable selects the local docker lane (psql via local ``docker exec``). With
+    none of them set the sweep refuses, naming how to supply the host.
     """
-    for var in ("ONEX_DATABASE_SWEEP_RUNTIME_HOST", "ONEX_DATA_FLOW_RUNTIME_HOST"):
+    for var in _RUNTIME_HOST_ENV_VARS:
         if var in os.environ:
             return os.environ[var].strip()
-    return _DEFAULT_RUNTIME_HOST
+    return resolve_setting(_NODE_NAME, "runtime_host", fields=_OVERLAY_FIELDS)
 
 
 def _build_psql_argv(query: str, database: str) -> list[str]:

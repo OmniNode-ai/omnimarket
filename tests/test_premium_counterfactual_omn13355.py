@@ -16,6 +16,7 @@ from decimal import Decimal
 
 import pytest
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -44,10 +45,13 @@ class TestBuildPremiumCounterfactual:
         )
         assert cf is not None
         # Provenance fields are non-null and pinned to the manifest baseline.
+        # OMN-20833: the expected values are read from the pricing manifest.
+        entry = ModelPricingTable.from_yaml().get_entry("claude-opus-4-6")
+        assert entry is not None
         assert cf.model == "claude-opus-4-6"
-        assert cf.price_in_per_1k == Decimal("0.015")
-        assert cf.price_out_per_1k == Decimal("0.075")
-        assert cf.as_of == "2026-02-01"
+        assert cf.price_in_per_1k == Decimal(str(entry.input_cost_per_1k))
+        assert cf.price_out_per_1k == Decimal(str(entry.output_cost_per_1k))
+        assert cf.as_of == str(entry.effective_date)
         assert cf.tokens_in == 1000
         assert cf.tokens_out == 500
         assert cf.pricing_source == "pricing_manifest"
@@ -65,7 +69,7 @@ class TestBuildPremiumCounterfactual:
             + cf.price_out_per_1k * Decimal(cf.tokens_out)
         ) / Decimal("1000")
         assert recomputed == cf.counterfactual_cost_usd
-        assert cf.counterfactual_cost_usd == Decimal("0.0525")
+        assert cf.counterfactual_cost_usd > 0
 
     def test_unknown_premium_model_yields_none(self) -> None:
         cf = build_premium_counterfactual(
@@ -94,7 +98,7 @@ class TestProjectionPersistsCounterfactual:
             delegated_to="local-qwen",
             quality_gate_passed=True,
             cost_usd=0.0,
-            cost_savings_usd=0.0525,
+            cost_savings_usd=float(cf.counterfactual_cost_usd),
             premium_counterfactual=cf,
         )
         result = HANDLER.project(event, db)
@@ -106,7 +110,7 @@ class TestProjectionPersistsCounterfactual:
         # Round-trips back to the typed model with full provenance.
         roundtrip = ModelPremiumCounterfactual.model_validate(stored)
         assert roundtrip.model == "claude-opus-4-6"
-        assert roundtrip.as_of == "2026-02-01"
+        assert roundtrip.as_of == cf.as_of
         # Saving is auditable: counterfactual - actual == recorded saving.
         saving = roundtrip.counterfactual_cost_usd - Decimal(str(rows[0]["cost_usd"]))
         assert saving == Decimal(str(rows[0]["cost_savings_usd"]))

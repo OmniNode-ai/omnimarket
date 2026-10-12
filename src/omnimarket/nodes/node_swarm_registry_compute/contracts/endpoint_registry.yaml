@@ -1,33 +1,27 @@
+# Neutral default swarm endpoint registry (OMN-20935).
+#
+# The endpoints a deployment serves its models from are deployment facts, supplied
+# by whoever runs the system, not by this package. With no overlay this registry
+# declares no endpoint, so selection reports every subtask unroutable and the
+# endpoint-health and fleet-discovery nodes find nothing to probe.
+#
+# To supply a registry, either name a file in OMNIMARKET_SWARM_ENDPOINT_REGISTRY or
+# put it at <root>/node_swarm_registry_compute/overlay.yaml under a root listed in
+# ONEX_SKILL_OVERLAY_ROOTS. The file has this shape; the address is from the
+# documentation range (RFC 5737):
+#
+#   registry_schema_version: "1.0.0"
+#   endpoints:
+#     - id: "example-endpoint"
+#       base_url: "http://192.0.2.10:8000/v1"
+#       model_id: "example-model"
+#       endpoint_ref: "LLM_EXAMPLE_URL"
+#       provider: "vllm"
+#       capabilities: [code_generation, reasoning]
+#       context_window: 131072
+#       context_window_source: "probe"
+#       cost_basis: "local"
+#       health_check_path: "/health"
+#       declared_by: "operator"
 registry_schema_version: "1.0.0"
-endpoints:
-  # OMN-16492: id kept as the stable registry key; model_id/provider/context
-  # reflect the live endpoint. OMN-16999 re-probe 2026-09-05: GET /v1/models ->
-  # http=200, {"id": "Qwen3.6-35B-A3B", "owned_by": "vllm", "max_model_len":
-  # 131072}. This supersedes the OMN-16419 readback of 2026-08-23 ({"id":
-  # "qwen3.8", "owned_by": "sglang", "max_model_len": 122880}) — the endpoint was
-  # redeployed SGLang -> vLLM, hence `provider: vllm` below. Carries the
-  # reasoning/math capabilities of the retired .201:8001 entry (GPU1 llama.cpp
-  # decommissioned, connection refused — OMN-16442): this :8000 endpoint is the
-  # local one now serving those task classes.
-  - id: "qwen3.6-35b-a3b"
-    base_url: "http://192.168.86.201:8000/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "Qwen3.8-27B"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact served model ID"
-    endpoint_ref: "LLM_LOCAL_PRIMARY_URL"
-    provider: "vllm"
-    capabilities: [code_generation, structured_output, refactoring, analysis, reasoning, math, general]
-    context_window: 131072
-    context_window_source: "probe"
-    cost_basis: "local"
-    health_check_path: "/health"
-    declared_by: "operator"
-  - id: "text-embedding-gte"
-    base_url: "http://192.168.86.201:8002/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "text-embedding-gte"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact vLLM-served model ID"
-    endpoint_ref: "LLM_LOCAL_EMBEDDINGS_URL"
-    provider: "vllm"
-    capabilities: [embeddings]
-    context_window: 8192
-    context_window_source: "probe"
-    cost_basis: "local"
-    health_check_path: "/health"
-    declared_by: "operator"
+endpoints: []

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_duplication_sweep.handlers import handler_duplication_sweep
 from omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep import (
     DuplicationSweepRequest,
     NodeDuplicationSweep,
@@ -53,6 +54,12 @@ def _topics_py(topic: str) -> str:
     return f'FOO_TOPIC = "{topic}"\n'
 
 
+# OMN-20949: D2 reads the manifest shipped beside the node, not an
+# onex_change_control checkout. A case plants its manifest at this path under the
+# synthetic workspace and the test points the node's manifest constant at it.
+_PLANTED_MANIFEST = "planted/kafka_boundaries.yaml"
+
+
 def _boundaries_yaml(topic: str, producer: str) -> str:
     return f'topics:\n  - topic_name: "{topic}"\n    producer_repo: "{producer}"\n'
 
@@ -61,9 +68,8 @@ def _build_d2_clean(home: Path) -> None:
     topic = "onex.evt.demo.thing.v1"
     _mk(home / "omniclaude/src/omniclaude/hooks/topics.py", _topics_py(topic))
     _mk(
-        home
-        / "onex_change_control/src/onex_change_control/boundaries/kafka_boundaries.yaml",
-        _boundaries_yaml(topic, "omniclaude"),  # same producer → no conflict
+        home / _PLANTED_MANIFEST,
+        _boundaries_yaml(topic, "omniclaude"),  # same producer -> no conflict
     )
 
 
@@ -71,9 +77,8 @@ def _build_d2_conflict(home: Path) -> None:
     topic = "onex.evt.demo.thing.v1"
     _mk(home / "omniclaude/src/omniclaude/hooks/topics.py", _topics_py(topic))
     _mk(
-        home
-        / "onex_change_control/src/onex_change_control/boundaries/kafka_boundaries.yaml",
-        _boundaries_yaml(topic, "omnibase_infra"),  # different producer → conflict
+        home / _PLANTED_MANIFEST,
+        _boundaries_yaml(topic, "omnibase_infra"),  # different producer -> conflict
     )
 
 
@@ -132,6 +137,7 @@ CASES = [
 )
 def test_duplication_sweep_multiparam(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     builder: Callable[[Path], None],
     checks: list[str],
     check_id: str,
@@ -141,6 +147,12 @@ def test_duplication_sweep_multiparam(
     home = tmp_path / "omni_home"
     home.mkdir()
     builder(home)
+    if (home / _PLANTED_MANIFEST).is_file():
+        monkeypatch.setattr(
+            handler_duplication_sweep,
+            "_KAFKA_BOUNDARIES_YAML",
+            home / _PLANTED_MANIFEST,
+        )
 
     result = NodeDuplicationSweep().handle(
         DuplicationSweepRequest(omni_home=str(home), checks=checks)

@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20912"
 title: "Every GitHub operation a lane uses has a typed node operation"
-summary: "node_github_repo_gateway_effect gains the Actions, PR-text and release reads (workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases); a write effect performs the PR authoring writes with quota-floor, expected-head, idempotency and claim guards; ProtocolSourceControl gets one adapter on the same transport. This contract binds AC1, the six reads, and AC2, the write effect; the ProtocolSourceControl adapter (AC3) and the live bus readback (AC4) are not part of this change and are not declared or bound here."
+summary: "node_github_repo_gateway_effect gains the Actions, PR-text and release reads (workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases); a write effect performs the PR authoring writes with quota-floor, expected-head, idempotency and claim guards; ProtocolSourceControl gets one adapter on the same transport. AC4 is read live on the lab dev lane's bus after a publish per operation and is not bound here."
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -18,6 +18,9 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: a write effect performs pr_create, pr_edit, pr_ready, pr_close, pr_comment and workflow_dispatch with a quota floor, and refuses pr_close without a claim held in node_pr_claim_registry_effect -- falsifier: uv run pytest on the write effect handler tests with a recorded fake transport, including the refused close
+      - id: "AC3"
+        statement: |-
+          AC3: ProtocolSourceControl from omnibase_spi has one adapter in omnimarket built on the same transport -- falsifier: uv run pytest of a protocol conformance test for the adapter
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the six new gateway reads replay on a recorded fake transport, page inside the node, honour their byte and item caps, and refuse an over-cap artifact with a typed reason."
@@ -25,6 +28,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: node_github_repo_write_effect performs pr_create, pr_edit, pr_ready, pr_close, pr_comment and workflow_dispatch on a recorded fake transport; pr_close without the lane's claim in node_pr_claim_registry_effect and a call under the quota floor are refused with typed reasons before any mutation."
     command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: HandlerSourceControlGithub conforms to omnibase_spi ProtocolSourceControl and ProtocolCodeRepository, serves the reads and create_pr on the shared transport, and raises SourceControlOperationNotSupportedError for the merge and ref operations it does not serve."
+    command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -59,4 +65,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'failure: onex.evt.omnimarket.github-repo-write-failed.v1' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20912-ac3-source-control-adapter"
+    description: "AC3: the omnibase_spi ProtocolSourceControl adapter on the shared transport passes its protocol conformance test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20912-ac3-adapter-deploy-probe"
+    description: "AC3 deploy probe: the adapter module GitHub serves at the checked-out commit declares HandlerSourceControlGithub."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/handlers/handler_source_control_github.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep '^class HandlerSourceControlGithub:' > /dev/null"
         cwd: "${OMNI_HOME}/omnimarket"

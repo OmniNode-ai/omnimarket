@@ -20,6 +20,11 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_ru
     refusal_reason,
     same_actor,
 )
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion_rules import (
+    completion_rows,
+    ground_state,
+    read_receipts,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
     chunk_list,
     comment_signature,
@@ -851,6 +856,42 @@ def judge_ticket(
     )
 
 
+def complete_run(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """The rows that complete one closer run, FRICTION first on the third zero-flip run."""
+    assert request.clock_utc is not None
+    assert request.ledger_rows is not None
+    assert request.run_summary is not None
+    rows, length, reason = completion_rows(
+        read_receipts(request.ledger_rows),
+        request.run_summary,
+        request.clock_utc,
+        request.report_ref,
+    )
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.COMPLETION,
+        completion_rows=rows,
+        zero_flip_streak=length,
+        top_deferral_reason=reason,
+    )
+
+
+def closer_health(
+    *, request: ModelDodCloseoutDecisionRequest
+) -> ModelDodCloseoutDecisionResult:
+    """The closer's row on the morning report, from its completed-run receipts."""
+    assert request.ledger_rows is not None
+    health, row, length, reason = ground_state(read_receipts(request.ledger_rows))
+    return ModelDodCloseoutDecisionResult(
+        kind=EnumCloseoutDecisionKind.GROUND_STATE,
+        health=health,
+        ground_state_row=row,
+        zero_flip_streak=length,
+        top_deferral_reason=reason,
+    )
+
+
 class HandlerDodCloseoutSweep:
     """Pure decisions of the DoD closeout sweep. No reads, no clock, no writes."""
 
@@ -892,6 +933,10 @@ class HandlerDodCloseoutSweep:
             return rotate_candidates(request=request)
         if kind is EnumCloseoutDecisionKind.DECIDE_TICKET:
             return judge_ticket(request=request)
+        if kind is EnumCloseoutDecisionKind.COMPLETION:
+            return complete_run(request=request)
+        if kind is EnumCloseoutDecisionKind.GROUND_STATE:
+            return closer_health(request=request)
         assert request.project_id is not None
         assert request.tickets is not None
         return plan_scope(
