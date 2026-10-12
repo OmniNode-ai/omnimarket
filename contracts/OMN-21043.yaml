@@ -38,3 +38,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -c 'HandlerAntipatternClassifiedEmit' src/omnimarket/nodes/node_semantic_antipattern_validator_orchestrator/contract.yaml"
+  - id: "dod-omn21043-deploy-probe-classified-emit"
+    description: "Deploy smoke on the effects runtime after the deploy agent rolls this change: import the classified-emit handler and the validated event model from the running container and assert the handler exposes its handle entry point. The command exits nonzero when the deployed image predates this change, including the merge-base image. It reads deployed code, not this contract or a receipt. Hosted CI has no effects runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime-effects} python -c 'from omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_classified_emit import HandlerAntipatternClassifiedEmit; from omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_validated_event import ModelAntipatternValidatedEvent; assert callable(HandlerAntipatternClassifiedEmit.handle)'"
+        cwd: "${OMNI_HOME}/omnimarket"
