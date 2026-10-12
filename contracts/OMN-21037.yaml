@@ -34,5 +34,3 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF ''endpoint_url=_chat_completions_url(model.endpoint_url)'''
-    binds_ac:
-      - AC1
