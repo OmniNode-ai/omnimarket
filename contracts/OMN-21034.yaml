@@ -54,3 +54,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -c 'head_moved: origin/' src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py"
+  - id: "dod-omn21034-deploy-probe-handler-import"
+    description: "Deploy smoke on the effects runtime after the deploy agent rolls this change: import the pr-polish handler and the rebase handler from the running container, assert that HandlerPrPolish.handle_async is a coroutine function and that the rebase handler source carries the head_moved refusal. The command exits nonzero on an image without this change, including the dev image deployed on lab host h202 at dispatch. It reads deployed code, not this contract or a receipt. Hosted CI has no effects runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime-effects} python -c 'import inspect; from omnimarket.nodes.node_pr_polish.handlers.handler_pr_polish import HandlerPrPolish; from omnimarket.nodes.node_rebase_effect.handlers import handler_rebase; assert inspect.iscoroutinefunction(HandlerPrPolish.handle_async); assert \"head_moved: origin/\" in inspect.getsource(handler_rebase)'"
+        cwd: "${OMNI_HOME}/omnimarket"
