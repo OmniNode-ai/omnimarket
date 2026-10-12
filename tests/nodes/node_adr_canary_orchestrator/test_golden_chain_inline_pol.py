@@ -159,6 +159,7 @@ class _FakeGrading:
         extraction: ModelAdrExtractionSummary,
         source_summary: str,
         correlation_id: str,
+        grader_model_key: str,
     ) -> ModelAdrGradingScores:
         assert source_summary, "source_summary must be non-empty"
         assert ground_truth_adr, "ground_truth_adr must be non-empty"
@@ -324,6 +325,7 @@ async def test_inline_pol_pipeline_completes_through_draft_gen(tmp_path: Path) -
             manifest_path=str(manifest_path),
             output_dir=str(output_dir),
             workspace_root=str(tmp_path),
+            grader_model_key="qwen3-coder",
         )
     )
 
@@ -373,6 +375,7 @@ async def test_grading_mock_accepts_source_summary_kwarg(tmp_path: Path) -> None
         extraction=extraction,
         source_summary="PostgreSQL was chosen for reliability.",
         correlation_id="test-corr-001",
+        grader_model_key="qwen3-coder",
     )
 
     assert scores.success is True
@@ -406,6 +409,7 @@ async def test_inline_pol_scorecard_written(tmp_path: Path) -> None:
             manifest_path=str(manifest_path),
             output_dir=str(output_dir),
             workspace_root=str(tmp_path),
+            grader_model_key="qwen3-coder",
         )
     )
 
