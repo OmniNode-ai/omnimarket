@@ -9,6 +9,7 @@ import contextlib
 import fcntl
 import json
 import logging
+import re
 import shlex
 import signal
 import sys
@@ -27,6 +28,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
 from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
     LabRunBusError,
+    bound_lane_principal,
     open_lab_run_bus,
 )
 from omnimarket.events.topics import (
@@ -43,9 +45,6 @@ from omnimarket.models.pr_handoff import (
     ModelPrHandoffHandedOff,
     ModelPrHandoffRequested,
 )
-from omnimarket.models.work_ledger_append.model_work_ledger_append import (
-    ModelWorkLedgerPrincipalRecords,
-)
 from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_serve import (
     ledger_host_capture,
 )
@@ -61,7 +60,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 from omnimarket.work_ledger_bus.bus import (
     WorkLedgerAppendCaller,
     WorkLedgerAppendHost,
-    load_work_ledger_signing_key,
+    load_work_ledger_append_topics,
 )
 
 
@@ -70,6 +69,17 @@ from omnimarket.work_ledger_bus.bus import (
 def work_ledger_group(ctx: click.Context) -> None:
     """Append exact lab-host rows to the ledger host over the declared bus."""
     ctx.ensure_object(dict)
+
+
+def _writer_principals(
+    ctx: click.Context, param: click.Parameter, values: tuple[str, ...]
+) -> tuple[str, ...]:
+    return tuple(
+        principal
+        for value in values
+        for principal in re.split(r"[,\s]+", value)
+        if principal
+    )
 
 
 @work_ledger_group.command("serve")
@@ -84,21 +94,16 @@ def work_ledger_group(ctx: click.Context) -> None:
     help="Shell-quoted argv prefix, including the ledger path.",
 )
 @click.option(
-    "--principal-records",
-    envvar="ONEX_WORK_LEDGER_PRINCIPAL_RECORDS",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Trusted issuer-owned JSON containing principal -> base64 Ed25519 public key records.",
+    "--writer-principal",
+    multiple=True,
+    envvar="ONEX_WORK_LEDGER_WRITER_PRINCIPALS",
+    callback=_writer_principals,
+    help="Broker writer principal whose topic this host serves; may be repeated.",
 )
 @click.option(
     "--operator-principal",
     envvar="ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL",
-    help="Operator identity in the issuer records, supplied by the ledger host.",
-)
-@click.option(
-    "--signing-key-file",
-    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Operator Ed25519 private key in PEM form; signs mirrored lab terminals.",
+    help="Broker principal allowed to write operator rows and attributed to mirrored terminals.",
 )
 @click.option(
     "--operator-capture/--no-operator-capture",
@@ -118,9 +123,8 @@ def serve_command(
     host_name: str,
     ledger: Path,
     append_command: str,
-    principal_records: Path | None,
+    writer_principal: tuple[str, ...],
     operator_principal: str | None,
-    signing_key_file: Path | None,
     operator_capture: bool,
 ) -> None:
     """Serve commands using the local append command on the ledger host."""
@@ -130,34 +134,18 @@ def serve_command(
         raise click.UsageError(f"--append-command: {exc}") from exc
     if not argv:
         raise click.UsageError("--append-command must not be empty")
-    if principal_records is None or operator_principal is None:
+    if not writer_principal:
         raise click.UsageError(
-            "serve requires --principal-records and --operator-principal "
-            "(ONEX_WORK_LEDGER_PRINCIPAL_RECORDS, ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL)"
+            "serve requires at least one --writer-principal (ONEX_WORK_LEDGER_WRITER_PRINCIPALS)"
         )
+    topics = load_work_ledger_append_topics()
     try:
-        records = ModelWorkLedgerPrincipalRecords.model_validate_json(
-            principal_records.read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError) as exc:
-        raise click.ClickException(
-            "cannot read valid issuer principal records"
-        ) from exc
-    public_keys = records.verification_keys()
-    if operator_principal not in public_keys:
-        raise click.UsageError(
-            "--operator-principal must have an issuer public key record"
-        )
-    mirror_key = None
-    if signing_key_file is not None:
-        try:
-            mirror_key = load_work_ledger_signing_key(signing_key_file)
-        except (OSError, ValueError, TypeError) as exc:
-            raise click.ClickException("cannot read an Ed25519 signing key") from exc
-        if mirror_key.public_key() != public_keys[operator_principal]:
-            raise click.UsageError(
-                "--signing-key-file does not match the operator principal's public key"
-            )
+        for principal in writer_principal:
+            topics.writer_command_topic(principal)
+        if operator_principal is not None:
+            topics.writer_command_topic(operator_principal)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
@@ -183,7 +171,7 @@ def serve_command(
         append_runner,
         LocalLedgerFile(ledger),
         host_name,
-        public_keys=public_keys,
+        writer_principals=writer_principal,
         operator_principal=operator_principal,
     )
 
@@ -202,8 +190,8 @@ def serve_command(
             host = WorkLedgerAppendHost(
                 opened,
                 handler,
-                mirror_principal=operator_principal if mirror_key else None,
-                mirror_signing_key=mirror_key,
+                writer_principals=writer_principal,
+                operator_principal=operator_principal,
             )
             await host.start()
             # OMN-20905 (RULING 2026-10-10T22:40:43Z): the operator capture runs beside the
@@ -249,13 +237,7 @@ def serve_command(
     default=60.0,
     show_default=True,
 )
-@click.option("--principal", envvar="ONEX_WORK_LEDGER_PRINCIPAL")
-@click.option(
-    "--signing-key-file",
-    envvar="ONEX_WORK_LEDGER_SIGNING_KEY_FILE",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Issuer-provisioned Ed25519 private key in PEM form; never sent over the bus.",
-)
+@click.option("--principal", help="Writer principal for the in-memory bus only.")
 def append_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -267,18 +249,19 @@ def append_command(
     rows_file: str,
     timeout_s: float,
     principal: str | None,
-    signing_key_file: Path | None,
 ) -> None:
     """Send exact rows, print one JSON receipt and exit with the outcome."""
-    if principal is None or signing_key_file is None:
+    if bus == "kafka" and principal is not None:
         raise click.UsageError(
-            "append requires --principal and --signing-key-file "
-            "(ONEX_WORK_LEDGER_PRINCIPAL, ONEX_WORK_LEDGER_SIGNING_KEY_FILE)"
+            "the broker login is the writer identity; --principal is for the in-memory bus only"
         )
-    try:
-        key = load_work_ledger_signing_key(signing_key_file)
-    except (OSError, ValueError, TypeError) as exc:
-        raise click.ClickException("cannot read an Ed25519 signing key") from exc
+    if bus == "inmemory" and principal is None:
+        raise click.UsageError("append with the in-memory bus requires --principal")
+    if principal is not None:
+        try:
+            load_work_ledger_append_topics().writer_command_topic(principal)
+        except ValueError as exc:
+            raise click.UsageError(str(exc)) from exc
     try:
         with click.open_file(rows_file, "r", encoding="utf-8") as source:
             rows = source.read()
@@ -288,7 +271,7 @@ def append_command(
             requested_by_lane=lane,
             requesting_host=host,
             requested_at=datetime.now(UTC),
-        ).signed(principal, key)
+        )
     except (OSError, ValidationError) as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -299,7 +282,12 @@ def append_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            caller = WorkLedgerAppendCaller(opened)
+            caller = WorkLedgerAppendCaller(
+                opened,
+                principal=principal
+                if principal is not None
+                else bound_lane_principal(),
+            )
             try:
                 receipt = await caller.append(request, timeout_s=timeout_s)
             except TimeoutError:
@@ -316,6 +304,8 @@ def append_command(
 
     try:
         code = asyncio.run(main())
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
     except LabRunBusError as exc:
         click.echo(f"bus: {exc}", err=True)
         code = 69

@@ -13,18 +13,15 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
+import re
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from functools import partial
 from importlib import resources
-from pathlib import Path
 from typing import Protocol
 
 import yaml
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProjectionNotMaterializedError
@@ -81,14 +78,6 @@ def load_work_ledger_delegation_topics() -> tuple[str, ...]:
     return tuple(contract["runtime_dispatch"]["subscribe_topics"])
 
 
-def load_work_ledger_signing_key(path: Path) -> Ed25519PrivateKey:
-    """Read an issuer-provisioned key locally; only signatures go on the bus."""
-    key = serialization.load_pem_private_key(path.read_bytes(), password=None)
-    if not isinstance(key, Ed25519PrivateKey):
-        raise ValueError("signing key must be Ed25519")
-    return key
-
-
 class ModelWorkLedgerAppendTopics(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -96,6 +85,13 @@ class ModelWorkLedgerAppendTopics(BaseModel):
     success: str
     failure: str
     terminal_refused: str
+    writer_command_topic_template: str
+    writer_principal_pattern: str
+
+    def writer_command_topic(self, principal: str) -> str:
+        if re.fullmatch(self.writer_principal_pattern, principal) is None:
+            raise ValueError(f"invalid writer principal {principal!r}")
+        return self.writer_command_topic_template.format(principal=principal)
 
 
 class ModelWorkLedgerAppendCommandFailure(BaseModel):
@@ -112,7 +108,10 @@ class ProtocolLedgerAppendHandler(Protocol):
     def host_name(self) -> str: ...
 
     def handle(
-        self, request: ModelWorkLedgerAppendRequest
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        *,
+        writer_principal: str | None = None,
     ) -> ModelWorkLedgerAppendReceipt: ...
 
 
@@ -128,6 +127,10 @@ def load_work_ledger_append_topics() -> ModelWorkLedgerAppendTopics:
         entry["event_type"]: entry["topic"] for entry in contract["published_events"]
     }
     return ModelWorkLedgerAppendTopics(
+        writer_command_topic_template=contract["writer_topics"][
+            "command_topic_template"
+        ],
+        writer_principal_pattern=contract["writer_topics"]["principal_pattern"],
         command=dispatch["command_topic"],
         success=dispatch["terminal_events"]["success"],
         failure=dispatch["terminal_events"]["failure"],
@@ -143,22 +146,24 @@ class WorkLedgerAppendHost:
         bus: ProtocolLabRunBus,
         handler: ProtocolLedgerAppendHandler,
         *,
+        writer_principals: Iterable[str],
+        operator_principal: str | None = None,
         topics: ModelWorkLedgerAppendTopics | None = None,
-        mirror_principal: str | None = None,
-        mirror_signing_key: Ed25519PrivateKey | None = None,
     ) -> None:
-        if (mirror_principal is None) != (mirror_signing_key is None):
-            raise ValueError("mirror principal and signing key are set together")
         self._bus = bus
         self._handler = handler
-        self._mirror_principal = mirror_principal
-        self._mirror_signing_key = mirror_signing_key
+        self._operator_principal = operator_principal
         self._topics = topics or load_work_ledger_append_topics()
+        self._writer_principals = frozenset(writer_principals)
+        for principal in self._writer_principals:
+            self._topics.writer_command_topic(principal)
         self._mirror = HandlerWorkLedgerBusMirror()
         self._delegation_topics = load_work_ledger_delegation_topics()
         self._delegation_mirror = HandlerWorkLedgerDelegationMirror()
         self._queue: asyncio.Queue[
-            tuple[ProtocolBusMessage, bool, str | None, asyncio.Future[None]]
+            tuple[
+                ProtocolBusMessage, bool, str | None, str | None, asyncio.Future[None]
+            ]
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
@@ -180,14 +185,26 @@ class WorkLedgerAppendHost:
             await _subscribe(
                 self._bus,
                 self._topics.command,
-                self._enqueue,
+                partial(self._enqueue, writer_principal=None),
                 derive_service_group_id(WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE),
                 "earliest",
             )
         )
-        if self._mirror_signing_key is None:
+        for principal in sorted(self._writer_principals):
+            self._unsubscribes.append(
+                await _subscribe(
+                    self._bus,
+                    self._topics.writer_command_topic(principal),
+                    partial(self._enqueue, writer_principal=principal),
+                    derive_service_group_id(
+                        WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE
+                    ),
+                    "earliest",
+                )
+            )
+        if self._operator_principal is None:
             logger.warning(
-                "work-ledger host: no signing identity, terminals not mirrored"
+                "work-ledger host: no operator principal, terminals not mirrored"
             )
             return
         group = derive_service_group_id(WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE)
@@ -228,39 +245,60 @@ class WorkLedgerAppendHost:
     async def drain(self) -> None:
         await self._queue.join()
 
-    async def _enqueue(self, message: ProtocolBusMessage) -> None:
+    async def _enqueue(
+        self, message: ProtocolBusMessage, *, writer_principal: str | None
+    ) -> None:
         # Handled inside the subscription callback, not handed to a queue: the bus
         # client advances the group's position when the callback returns, so a
         # command must be appended and answered first. Committing earlier is the
         # model's commit_first control, where a crash loses the command
         # (omnibase_internal tla/ledger_bus_append).
-        await self._submit(message, mirror=False)
+        await self._submit(message, mirror=False, writer_principal=writer_principal)
 
     async def _enqueue_mirror(self, message: ProtocolBusMessage) -> None:
-        await self._submit(message, mirror=True)
+        await self._submit(
+            message, mirror=True, writer_principal=self._operator_principal
+        )
 
     async def _enqueue_delegation(
         self, message: ProtocolBusMessage, *, delegation_topic: str
     ) -> None:
-        await self._submit(message, mirror=True, delegation_topic=delegation_topic)
+        await self._submit(
+            message,
+            mirror=True,
+            delegation_topic=delegation_topic,
+            writer_principal=self._operator_principal,
+        )
 
     async def _submit(
         self,
         message: ProtocolBusMessage,
         *,
         mirror: bool,
+        writer_principal: str | None,
         delegation_topic: str | None = None,
     ) -> None:
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        self._queue.put_nowait((message, mirror, delegation_topic, done))
+        self._queue.put_nowait(
+            (message, mirror, delegation_topic, writer_principal, done)
+        )
         await done
 
     async def _worker(self) -> None:
         while True:
-            message, mirror, delegation_topic, done = await self._queue.get()
+            (
+                message,
+                mirror,
+                delegation_topic,
+                writer_principal,
+                done,
+            ) = await self._queue.get()
             try:
                 await self._process(
-                    message, mirror=mirror, delegation_topic=delegation_topic
+                    message,
+                    mirror=mirror,
+                    delegation_topic=delegation_topic,
+                    writer_principal=writer_principal,
                 )
             except Exception as exc:  # fallback-ok: callback fails for redelivery; worker serves the next request
                 logger.exception("work-ledger host: command processing failed")
@@ -287,6 +325,7 @@ class WorkLedgerAppendHost:
         self,
         message: ProtocolBusMessage,
         *,
+        writer_principal: str | None,
         mirror: bool = False,
         delegation_topic: str | None = None,
     ) -> None:
@@ -322,25 +361,25 @@ class WorkLedgerAppendHost:
                     }
                 )
                 request = self._mirror.handle(mapped)
-                # The serve process signs as its own operator identity; the
-                # append handler verifies it like any other request (OMN-20282).
-                if (
-                    self._mirror_principal is not None
-                    and self._mirror_signing_key is not None
-                ):
-                    request = request.signed(
-                        self._mirror_principal, self._mirror_signing_key
-                    )
             else:
-                request = ModelWorkLedgerAppendRequest.model_validate(
-                    raw.get("payload", raw)
-                )
+                payload = raw.get("payload", raw)
+                if writer_principal is None and isinstance(payload, dict):
+                    # Legacy attribution fields are discarded only to answer a
+                    # parsed command with an unattributed refusal.
+                    payload = {
+                        key: value
+                        for key, value in payload.items()
+                        if key not in {"principal", "signature"}
+                    }
+                request = ModelWorkLedgerAppendRequest.model_validate(payload)
         except ValidationError as exc:
             await self._publish_failure(
                 command_id, "", f"not a ledger append request: {exc}"
             )
             return
-        await self._append_and_publish(request, command_id, mirror=mirror)
+        await self._append_and_publish(
+            request, command_id, mirror=mirror, writer_principal=writer_principal
+        )
 
     async def _process_delegation(
         self, message: ProtocolBusMessage, topic: str
@@ -372,9 +411,9 @@ class WorkLedgerAppendHost:
                 command_id, "", f"invalid delegation terminal: {exc}"
             )
             return
-        if self._mirror_principal is not None and self._mirror_signing_key is not None:
-            request = request.signed(self._mirror_principal, self._mirror_signing_key)
-        await self._append_and_publish(request, command_id, mirror=True)
+        await self._append_and_publish(
+            request, command_id, mirror=True, writer_principal=self._operator_principal
+        )
 
     async def _append_and_publish(
         self,
@@ -382,9 +421,12 @@ class WorkLedgerAppendHost:
         command_id: uuid.UUID | None,
         *,
         mirror: bool,
+        writer_principal: str | None,
     ) -> None:
         try:
-            receipt = await asyncio.to_thread(self._handler.handle, request)
+            receipt = await asyncio.to_thread(
+                self._handler.handle, request, writer_principal=writer_principal
+            )
         except (
             Exception
         ) as exc:  # fallback-ok: a handler crash is answered on the failure terminal
@@ -492,13 +534,11 @@ class WorkLedgerAppendCaller:
         bus: ProtocolLabRunBus,
         *,
         topics: ModelWorkLedgerAppendTopics | None = None,
-        principal: str | None = None,
-        signing_key: Ed25519PrivateKey | None = None,
+        principal: str,
     ) -> None:
         self._bus = bus
         self._topics = topics or load_work_ledger_append_topics()
-        self._principal = principal
-        self._signing_key = signing_key
+        self._command_topic = self._topics.writer_command_topic(principal)
         self._group = (
             f"{derive_service_group_id('work_ledger_append_client', service=GROUP_SERVICE)}"
             f".{uuid.uuid4().hex[:12]}"
@@ -507,21 +547,6 @@ class WorkLedgerAppendCaller:
             uuid.UUID, asyncio.Future[tuple[str, dict[str, object]]]
         ] = {}
         self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
-
-    @classmethod
-    def from_signing_environment(cls, bus: ProtocolLabRunBus) -> WorkLedgerAppendCaller:
-        """Wire existing node callers to the same signing identity as the CLI."""
-        principal = os.environ.get("ONEX_WORK_LEDGER_PRINCIPAL")
-        path = os.environ.get("ONEX_WORK_LEDGER_SIGNING_KEY_FILE")
-        if not principal or not path:
-            raise ValueError(
-                "set ONEX_WORK_LEDGER_PRINCIPAL and ONEX_WORK_LEDGER_SIGNING_KEY_FILE"
-            )
-        try:
-            key = load_work_ledger_signing_key(Path(path))
-        except (OSError, ValueError, TypeError) as exc:
-            raise ValueError("cannot read an Ed25519 signing key") from exc
-        return cls(bus, principal=principal, signing_key=key)
 
     @property
     def topics(self) -> ModelWorkLedgerAppendTopics:
@@ -560,15 +585,11 @@ class WorkLedgerAppendCaller:
     async def append(
         self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float = 60.0
     ) -> ModelWorkLedgerAppendReceipt:
-        if self._signing_key is not None:
-            if self._principal is None:
-                raise ValueError("a signing key requires its issuer principal")
-            request = request.signed(self._principal, self._signing_key)
         await self.start()
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=request.model_dump(mode="json"),
             correlation_id=request.request_id,
-            event_type=event_type_for(self._topics.command),
+            event_type=event_type_for(self._command_topic),
         )
         future: asyncio.Future[tuple[str, dict[str, object]]] = (
             asyncio.get_running_loop().create_future()
@@ -576,7 +597,7 @@ class WorkLedgerAppendCaller:
         self._pending[envelope.envelope_id] = future
         try:
             await self._bus.publish(
-                self._topics.command,
+                self._command_topic,
                 request.ledger_id.encode("utf-8"),
                 _bytes(envelope),
             )
