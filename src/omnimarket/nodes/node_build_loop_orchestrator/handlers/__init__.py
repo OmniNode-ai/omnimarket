@@ -22,6 +22,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.assemble_live import
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     HandlerBuildLoopOrchestrator,
 )
+from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_overseer_verification_fact import (
+    HandlerOverseerVerificationFact,
+)
 
 __all__: list[str] = [
     "AdapterLinearFill",
@@ -29,6 +32,7 @@ __all__: list[str] = [
     "AdapterLlmDispatch",
     "EnumModelTier",
     "HandlerBuildLoopOrchestrator",
+    "HandlerOverseerVerificationFact",
     "ModelEndpointConfig",
     "assemble_live_orchestrator",
     "build_endpoint_configs",
