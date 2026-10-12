@@ -58,3 +58,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_adr_canary_orchestrator_publisher_roundtrip.py tests/test_golden_chain_adr_canary_real_bus_chain.py -q -n 0 -m 'not kafka'"
     binds_ac: ["AC3"]
+  - id: "dod-omn21044-deploy-probe-effects-ownership"
+    description: "Deploy smoke on the effects runtime after the deploy agent rolls this change: import the new external-provider helper from the running container and read the packaged orchestrator contract, asserting its runtime_profiles include effects. The command exits nonzero when the deployed image predates this change, including the merge-base image. It reads deployed code, not this contract or a receipt. Hosted CI has no effects runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime-effects} python -c 'import yaml, importlib.resources as r; from omnimarket.inference.bridge_config_loader import is_local_endpoint_model_key; c = yaml.safe_load(r.files(\"omnimarket.nodes.node_adr_canary_orchestrator\").joinpath(\"contract.yaml\").read_text()); assert \"effects\" in c[\"runtime_profiles\"]'"
+        cwd: "${OMNI_HOME}/omnimarket"
