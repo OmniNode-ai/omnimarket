@@ -30,6 +30,12 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5 (AC-M8, blocked PRs not retried): given a PR whose last landing outcome is blocked on a cause class the lane cannot fix (required-approval, base-red, held, external-owner) and no new head or cause change since, the selection compute returns SKIP_BLOCKED_UNFIXABLE with the cause and no dispatch; a new head sha or a cleared cause makes it eligible again
+  - id: "req-local-runtime-inventory-checks"
+    statement: "The runtime inventory validates declared local invocation separately from bus routes, while the repo-first gate shape check constrains its gate and model identities."
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: a declared local CLI invocation with a resolvable typed handler is counted separately from bus routes; missing handlers, mismatched models, nonempty bus topics, missing triggers and deployed runtime profiles fail. The repo-first shape test retains gate and model identity assertions without freezing unrelated verifier services.
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -90,3 +96,11 @@ dod_evidence:
         check_value: 'uv run pytest tests/nodes/node_lab_fill_plan_compute/test_pr_land_runtime_readback.py -q -s -p no:randomly'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2", "AC4"]
+  - id: "dod-omn20864-local-runtime-inventory-checks"
+    description: "PR #3829: local invocation classification and malformed-invocation controls, plus the repo-first gate and model identity checks. The head tests fail against the merge base's audit, which lacks local invocation validation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_market_node_runtime_dogfood.py tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -p no:randomly -k "local_invocation or local_transport or repo_first_lives_in_the_gate_modules"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
