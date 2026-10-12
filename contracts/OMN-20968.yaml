@@ -70,3 +70,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -q -n 0 -k origin"
     binds_ac: ["AC3"]
+  - id: "dod-omn20968-deploy-replay-origin"
+    description: "Deploy probe: at the commit the check runs against, the replay handler of node_delegation_acceptance_judged_replay_compute copies origin and eval_run_id from the request onto each judged event, read from the repository over the GitHub content API, so the check goes red on any commit whose replay drops either field."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_acceptance_judged_replay_compute/handlers/handler_delegation_acceptance_judged_replay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^ +(origin=request\\.origin|eval_run_id=request\\.eval_run_id),$' | grep -qx 2"
+        cwd: "${OMNI_HOME}/omnimarket"
