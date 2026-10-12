@@ -617,6 +617,8 @@ _NODE_FILES = frozenset(
         # OMN-20858: the typed Linear read of the live ticket's criteria.
         "handlers/handler_dod_ticket_criteria_linear_effect.py",
         "handlers/handler_dod_verify.py",
+        # OMN-20917: the S7 replay's handler, models and pure rules.
+        "handlers/handler_occ_replay.py",
         "handlers/handler_runtime_sha_verify.py",
         "models/__init__.py",
         "models/model_ac_binding_retirement.py",
@@ -632,6 +634,7 @@ _NODE_FILES = frozenset(
         "models/model_dod_verify_start_command.py",
         "models/model_dod_verify_state.py",
         "models/model_durable_evidence_gate.py",
+        "models/model_occ_replay.py",
         "models/model_occ_verdict_difference.py",
         "services/__init__.py",
         "services/ac_binding_retirements.py",
@@ -642,6 +645,7 @@ _NODE_FILES = frozenset(
         "services/criteria_drift.py",
         "services/durable_evidence_gate.py",
         "services/evidence_collector.py",
+        "services/occ_replay.py",
         "services/occ_verdict_difference.py",
         "services/receipt_bound_evidence.py",
         "services/released_evidence.py",

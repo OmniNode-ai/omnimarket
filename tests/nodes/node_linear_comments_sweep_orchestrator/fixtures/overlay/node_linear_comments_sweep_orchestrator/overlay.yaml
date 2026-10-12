@@ -1,0 +1,6 @@
+# Public test overlay of node_linear_comments_sweep_orchestrator: synthetic briefs, paths and rules.
+briefs: briefs.md
+values:
+  report_dir: drafts
+  metrics_path: metrics/linear-comments.jsonl
+  rules: READ-ONLY on the tracker; write only the named local files.

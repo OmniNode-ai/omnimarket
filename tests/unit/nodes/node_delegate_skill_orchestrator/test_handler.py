@@ -641,16 +641,26 @@ async def test_handler_uses_cumulative_counterfactual_tokens() -> None:
         )
     )
 
+    # OMN-20833: the Opus cost is the pricing manifest's, priced on the
+    # cumulative 2_000 / 1_000 tokens, not a pinned rate.
+    opus_cost = estimate_baseline_cost_usd(
+        prompt_tokens=2_000,
+        completion_tokens=1_000,
+        baseline_model="claude-opus-4-6",
+    )
+    assert opus_cost is not None
     assert response.metrics.cost_usd == pytest.approx(0.003)
-    assert response.metrics.cost_savings_usd == pytest.approx(0.102)
+    assert response.metrics.cost_savings_usd == pytest.approx(
+        round(max(opus_cost - 0.003, 0.0), 6)
+    )
     assert response.metrics.frontier_costs_usd["claude-opus-4-6"] == (
-        pytest.approx(0.105)
+        pytest.approx(opus_cost)
     )
     counterfactual = response.metrics.premium_counterfactual
     assert counterfactual is not None
     assert counterfactual.tokens_in == 2_000
     assert counterfactual.tokens_out == 1_000
-    assert float(counterfactual.counterfactual_cost_usd) == pytest.approx(0.105)
+    assert float(counterfactual.counterfactual_cost_usd) == pytest.approx(opus_cost)
 
 
 @pytest.mark.unit
@@ -675,8 +685,17 @@ async def test_handler_preserves_current_infra_max_attempt_cost_invariant() -> N
         )
     )
 
+    # OMN-20833: the counterfactual is the pricing manifest's Opus rate.
+    opus_cost = estimate_baseline_cost_usd(
+        prompt_tokens=1_000,
+        completion_tokens=500,
+        baseline_model="claude-opus-4-6",
+    )
+    assert opus_cost is not None
     assert response.metrics.cost_usd == pytest.approx(0.003)
-    assert response.metrics.cost_savings_usd == pytest.approx(0.0495)
+    assert response.metrics.cost_savings_usd == pytest.approx(
+        round(max(opus_cost - 0.003, 0.0), 6)
+    )
 
 
 @pytest.mark.unit

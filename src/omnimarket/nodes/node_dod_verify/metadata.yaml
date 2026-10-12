@@ -2,9 +2,11 @@ name: node_dod_verify
 version: "1.0.0"
 # OMN-20072: occ-difference is a standalone CLI comparison of same-head artifacts.
 # OMN-20858: the criteria check reads the live ticket from Linear (network, LINEAR_API_KEY).
+# OMN-20917: occ-difference replay classifies a repository's merged PRs (S7).
 description: >-
   DoD evidence verification — contract-driven evidence checks and OCC retirement
-  verdict difference classification via the occ-difference CLI mode
+  verdict difference classification via the occ-difference CLI mode, including
+  the occ-difference replay of a repository's last merged PRs
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -12,6 +14,9 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
+  # OMN-20886: with no contract path the node reads the ticket's merged PRs,
+  # contracts and repo-evidence check runs (canonical clones first, then
+  # GitHub) and the ticket's Linear description with LINEAR_API_KEY.
   requires_network: true
   requires_repo: false
   requires_secrets: true
@@ -21,7 +26,7 @@ dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["dod", "evidence", "verification", "contracts", "quality", "occ-difference"]
+tags: ["dod", "evidence", "verification", "contracts", "quality", "occ-difference", "occ-replay"]
 pack: "dod"
 display_name: "DoD Verify"
 node_role: "probe"

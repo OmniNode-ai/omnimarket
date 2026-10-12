@@ -244,7 +244,6 @@ node_self_healing_dispatch_orchestrator onex.evt.omnimarket.self-healing-dispatc
 node_self_healing_dispatch_orchestrator onex.evt.omnimarket.self-healing-dispatch-worker-dispatched.v1
 node_swarm_aggregator_compute onex.evt.omnimarket.swarm-aggregation-completed.v1
 node_swarm_decomposer_compute onex.evt.omnimarket.swarm-decomposition-completed.v1
-node_swarm_endpoint_health_effect onex.evt.omnimarket.swarm-endpoint-health-completed.v1
 node_swarm_supervisor_orchestrator FAILED
 node_swarm_supervisor_orchestrator HALTED
 node_swarm_supervisor_orchestrator IDLE

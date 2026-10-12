@@ -129,6 +129,9 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # comparison failed. UNKNOWN must never read as fresh (the OMN-15454 rule,
     # applied to the product clone instead of the OCC one).
     PRODUCT_CLONE_FRESHNESS_UNKNOWN = "product_clone_freshness_unknown"
+    # A declared sibling cwd has no checkout (including a --no-checkout clone).
+    # The command never ran; provisioning the sibling is the remedy.
+    SIBLING_CHECKOUT_MISSING = "sibling_checkout_missing"
     # OMN-16846 D1. The OMN-15620 venv-purity gate refused the venv at
     # ``pytest_configure`` — before collection, before any test module import.
     # The command exited non-zero having executed NOTHING about the product, so

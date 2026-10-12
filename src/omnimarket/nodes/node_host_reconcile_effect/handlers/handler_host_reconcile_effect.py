@@ -59,6 +59,34 @@ from .adapter_holder import (
 )
 
 
+def _parse_guard_readback(stdout: str) -> tuple[str, str, int, tuple[str, ...]]:
+    live_dir, source_dir, checked = "", "", 0
+    drifted = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if line.startswith("live hooks dir: "):
+            live_dir = line.removeprefix("live hooks dir: ")
+        elif line.startswith("tracked source: "):
+            source_dir = line.removeprefix("tracked source: ")
+        else:
+            cells = line.split(maxsplit=1)
+            if not cells or cells[0] not in {
+                "ok",
+                "MISSING",
+                "DRIFTED",
+                "UNSET",
+                "OTHER",
+                "SKIP",
+            }:
+                continue
+            if cells[0] == "SKIP":
+                continue
+            checked += 1
+            if cells[0] != "ok":
+                drifted.append(line)
+    return live_dir, source_dir, checked, tuple(drifted)
+
+
 class HandlerHostReconcileEffect:
     """Host-local effects; every request owns independent run state."""
 
@@ -746,30 +774,38 @@ class _ReconcilePass:
                         points_to_wrapper=is_symlink and resolved == wrapper_resolved,
                     )
                 )
-        src, live = self.scripts / "git-hooks", self.root / "scripts/git-hooks"
-        if not src.is_dir() or not live.is_dir():
+        if not self.request.guard_delegate:
             return
-        checked, drifted = 0, []
-        for name in (
-            "canonical_clone_guard.sh",
-            "canonical_clone_paths.sh",
-            "canonical_clone_ref_guard.sh",
-        ):
-            source, target = src / name, live / name
-            if not source.is_file():
-                continue
-            checked += 1
-            if not target.is_file() or target.read_bytes() != source.read_bytes():
-                drifted.append(name)
-        if checked:
+        delegate = Path(self.request.guard_delegate)
+        if not delegate.is_file():
             self.facts.append(
-                ModelGuardFact(
-                    live_dir=str(live),
-                    source_dir=str(src),
-                    checked=checked,
-                    drifted=tuple(drifted),
+                ModelSurfaceIndeterminateFact(
+                    surface="canonical-guard",
+                    detail=f"guard delegate {delegate} is not a file",
                 )
             )
+            return
+        args = [str(delegate)]
+        result = self.command(["env", f"OMNI_HOME={self.root}", *args])
+        if result.returncode not in {0, 3}:
+            self.facts.append(
+                ModelSurfaceIndeterminateFact(
+                    surface="canonical-guard",
+                    detail=f"onex-canonical-clone-install readback exited {result.returncode}: {result.stderr.strip()[:200]}",
+                )
+            )
+            return
+        live_dir, source_dir, checked, drifted = _parse_guard_readback(result.stdout)
+        self.facts.append(
+            ModelGuardFact(
+                live_dir=live_dir,
+                source_dir=source_dir,
+                checked=checked,
+                drifted=()
+                if result.returncode == 0
+                else drifted or ("readback reports action pending",),
+            )
+        )
 
     def finish(self, governed: list[str], sp: Path | None) -> Literal[0, 2]:
         decisions = self.evaluate(tuple(self.facts))

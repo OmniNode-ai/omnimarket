@@ -144,7 +144,7 @@ class HandlerHostReconcileCompute:
             )
         return (
             "ALREADY_AT_TARGET",
-            f"{fact.checked} installed guard script(s) in {fact.live_dir} are byte-identical to {fact.source_dir}",
+            f"{fact.checked} canonical-clone guard item(s) read back ok in {fact.live_dir} (tracked source {fact.source_dir})",
         )
 
     @staticmethod
@@ -183,8 +183,8 @@ class HandlerHostReconcileCompute:
             return f"uv tool uninstall omnibase-core, then {rerun}"
         if surface == "canonical-guard":
             return (
-                f"bash {scripts}/install-canonical-clone-git-hooks.sh "
-                f"(readback), then bash {scripts}/install-canonical-clone-git-hooks.sh "
+                f'OMNI_HOME={root} uv run --project "$OMNIBASE_INTERNAL_HOME" onex-canonical-clone-install '
+                f'(readback), then OMNI_HOME={root} uv run --project "$OMNIBASE_INTERNAL_HOME" onex-canonical-clone-install '
                 f"--apply <the clones the readback lists as ok>, then {rerun}"
             )
         return rerun

@@ -29,6 +29,10 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 
+from tests.node_overlay_support import (
+    INTEGRATION_SWEEP_OVERLAY,
+    install_node_overlay,
+)
 from tests.runtime_local_compat import RuntimeLocal
 
 CONTRACT_PATH = (
@@ -40,6 +44,19 @@ _PROBES_SUBPROCESS = (
     "omnimarket.nodes.node_integration_sweep_orchestrator."
     "handlers.surface_probes.subprocess.run"
 )
+
+
+@pytest.fixture(autouse=True)
+def _deployment_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """The sweep's hosts and endpoints are deployment facts the suite supplies (OMN-20935)."""
+    install_node_overlay(
+        monkeypatch,
+        tmp_path_factory.mktemp("overlay_root"),
+        "node_integration_sweep_orchestrator",
+        INTEGRATION_SWEEP_OVERLAY,
+    )
 
 
 def _write_input(tmp_path: Path, payload: dict[str, object]) -> Path:

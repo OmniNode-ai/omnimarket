@@ -119,8 +119,11 @@
 #     `providers` or under `not_offered` (with a reason and the ticket that
 #     owns lifting it), and every row below must be backed by such a rung.
 #     tests/test_omn17353_provider_catalogue.py fails on a rung that is
-#     neither, on a row nothing backs, on any Claude/Anthropic row in either
-#     list, and on any row carrying a secret_ref.
+#     neither, on a row nothing backs, and on any row carrying a secret_ref.
+#   - OMN-20990: `anthropic` is offered as a customer-only surface. Until then
+#     the loader refused any Claude/Anthropic provider id; operator ruling
+#     2026-10-11T15:05:50Z lifted that rule so a customer (and the team, as one
+#     tenant) registers an Anthropic key through the same one-command path.
 #   - OMN-17932: gemini and vertex were the declared not-offered providers.
 #     `glm` was lifted OUT of that list on 2026-09-06 — see the row below.
 #   - OMN-20157: `gemini` is lifted out of not_offered too, `glm` gains a second
@@ -510,11 +513,64 @@ providers:
             per-model, per-organisation RPM/TPM/RPD by usage tier. Not a single
             published number.
 
+  # OMN-20990. A customer's own Anthropic key, offered by operator ruling
+  # 2026-10-11T15:05:50Z, which lifted the rule that the provider list refuses
+  # Anthropic keys. The platform holds no house Anthropic key and has no rung on
+  # it, so this is a customer-only surface (`mirrors_house_rung: false`), like
+  # `openai` above, and the spend is the customer's own (INV-068, INV-098).
+  #
+  # Chat goes to Anthropic's OpenAI SDK compatibility endpoint, which takes the
+  # API key as `Authorization: Bearer <key>` and the shared chat handler's
+  # request shape, max_tokens included (platform.claude.com/docs/en/api/openai-sdk,
+  # read 2026-10-11). The list-models endpoint is Anthropic's own: it takes the
+  # key only in `x-api-key` and requires `anthropic-version`, so this row
+  # declares `models_auth: x_api_key`. It answers `{"data": [{"id": ...}]}`.
+  #
+  # Sampling: current Claude models refuse a temperature other than the default
+  # with HTTP 400, so inference_protocols.v1.yaml gives `claude-*` models a
+  # default temperature of 1.0 (profile anthropic-claude-default-sampling).
+  #
+  # MODEL: the newest `claude-haiku-N-M` the key's own list names (the cheapest
+  # family), then the newest `claude-sonnet-N-M`. A dated snapshot suffix is
+  # accepted because Anthropic lists some models only by their dated id. A
+  # customer who wants another model names it with --model, checked against the
+  # same list.
+  - provider: anthropic
+    plan: api
+    mirrors_house_rung: false
+    backend_id: byok-anthropic
+    endpoint_url: "https://api.anthropic.com/v1/chat/completions"
+    models_url: "https://api.anthropic.com/v1/models"
+    models_auth: x_api_key
+    models_headers:
+      anthropic-version: "2023-06-01"
+    model_preference:
+      - pattern: 'claude-haiku-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
+        tags: [cheapest, haiku]
+      - pattern: 'claude-sonnet-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
+        tags: [sonnet]
+    max_retries: 2
+    timeout_ms: 120000
+    max_tokens: 8192
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        # Anthropic meters per model and per organisation, in requests and
+        # input/output tokens per minute, and the caps depend on the account's
+        # usage tier, so the cap is null rather than a number that is wrong for
+        # most accounts.
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            Anthropic rate limits (platform.claude.com/docs/en/api/rate-limits):
+            per-model RPM, input TPM and output TPM by usage tier. Not a single
+            published number.
+
 # House-keyed platform providers a customer may NOT (yet) bring a key for.
 # Silence is not allowed: a rung the platform ships a house key for is either
 # offered above or declared here with the ticket that owns lifting it.
-# Claude/Anthropic may not appear in this list either — it is never a
-# delegation target, so there is nothing to decline.
 not_offered:
   - provider: vertex
     reason: >-

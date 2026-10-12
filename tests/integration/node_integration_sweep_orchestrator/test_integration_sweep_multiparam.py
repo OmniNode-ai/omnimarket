@@ -35,8 +35,25 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.handlers.handler_integ
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_request import (
     ModelIntegrationSweepOrchestratorRequest,
 )
+from tests.node_overlay_support import (
+    INTEGRATION_SWEEP_OVERLAY,
+    install_node_overlay,
+)
 
 _DEPLOYED_SHA = "abc1234def5678abc1234def5678abc1234def56"
+
+
+@pytest.fixture(autouse=True)
+def _deployment_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """The sweep's hosts and endpoints are deployment facts the suite supplies (OMN-20935)."""
+    install_node_overlay(
+        monkeypatch,
+        tmp_path_factory.mktemp("overlay_root"),
+        "node_integration_sweep_orchestrator",
+        INTEGRATION_SWEEP_OVERLAY,
+    )
 
 
 class _StubShaProbe(HandlerRuntimeShaVerify):

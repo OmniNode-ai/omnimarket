@@ -3,8 +3,9 @@
 
 # Contract Validation Gate
 #
-# Validates ONEX ticket contracts for PRs in omnimarket with the validators
-# from onex_change_control, checked out at the sha pinned in this file.
+# Validates the ticket contract of a PR's branch ticket with the installed
+# omnibase_core ModelTicketContract, at omnimarket's locked core version
+# (OMN-20885; the step body is the same as ci.yml's Contract Compliance Check).
 #
 # The validation is intentionally lenient on missing contracts:
 # - If branch name has no OMN-XXXX ticket ID -> skipped
@@ -35,19 +36,6 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Auth preflight — confirm onex_change_control action is accessible
-        id: auth-preflight
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "Checking visibility of OmniNode-ai/onex_change_control..."
-          if gh api repos/OmniNode-ai/onex_change_control --silent; then
-            echo "::notice::onex_change_control repo is accessible."
-          else
-            echo "::error::Cannot reach OmniNode-ai/onex_change_control. Composite action will not resolve."
-            exit 1
-          fi
-
       - name: Resolve branch name
         id: resolve-branch
         env:
@@ -80,17 +68,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           ref: ${{ github.sha }}
-          persist-credentials: false
-
-      # Validators are read at this SHA; bump it in this repo's own PR to move validator versions.
-      # The OCC composite action is not used because its checkout resolves github.action_ref to v4.
-      - name: Check out pinned contract validators
-        if: steps.resolve-branch.outputs.skip_validation != 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-        with:
-          repository: OmniNode-ai/onex_change_control
-          ref: 802b5f7101f4c49f8b30e8deda3d4c5d024c5710
-          path: .onex_change_control_validators
           persist-credentials: false
 
       - name: Set up uv
@@ -131,20 +108,46 @@ jobs:
             exit 0
           fi
 
-          cd .onex_change_control_validators
           for attempt in 1 2 3; do
-            if uv sync --no-group dev; then
+            if uv sync --locked; then
               break
             fi
             if [[ "$attempt" -eq 3 ]]; then
               echo "validation-status=failed" >> "$GITHUB_OUTPUT"
-              echo "::error::Failed to sync contract validators after 3 attempts."
+              echo "::error::Failed to sync omnimarket dependencies after 3 attempts."
               exit 1
             fi
             sleep "$((10 * attempt))"
           done
 
-          if uv run validate-yaml "../$CONTRACT_PATH"; then
+          if uv run python3 - "$CONTRACT_PATH" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from omnibase_core.models.errors.model_onex_error import ModelOnexError
+          from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
+
+          # Named contracts, or every contracts/OMN-*.yaml when none are named.
+          paths = [Path(arg) for arg in sys.argv[1:]] or sorted(Path("contracts").glob("OMN-*.yaml"))
+          if not paths:
+              print("::error::contracts/ holds no OMN-*.yaml ticket contract")
+              sys.exit(1)
+
+          broken = []
+          for path in paths:
+              try:
+                  ModelTicketContract.from_yaml(path.read_text(encoding="utf-8"))
+              except (OSError, ModelOnexError) as exc:
+                  broken.append((path, " ".join(str(exc).split())))
+
+          for path, reason in broken:
+              print(f"::error file={path.as_posix()}::{path.as_posix()}: {reason}")
+          if broken:
+              print(f"ERROR: {len(broken)} of {len(paths)} ticket contract(s) fail omnibase_core's ModelTicketContract.")
+              sys.exit(1)
+          print(f"OK: {len(paths)} ticket contract(s) pass omnibase_core's ModelTicketContract.")
+          PY
+          then
             echo "validation-status=passed" >> "$GITHUB_OUTPUT"
           else
             echo "validation-status=failed" >> "$GITHUB_OUTPUT"
