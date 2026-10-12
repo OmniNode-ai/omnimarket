@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-21001
+title: 'omnimarket: pr-title check runs the omnimarket node'
+summary: Run the published node_pr_title_check_compute at omnimarket 0.4.310 under the existing required context, with installed-release bash parity tests and a local producer manifest row.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-pr-title-workflow
+  statement: 'AC1: omnimarket''s PR Title Check workflow produces `pr-title / check-title` by running node_pr_title_check_compute from a pinned published omnimarket release, and no workflow line in pr-title-check.yml references onex_change_control -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base workflow.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket''s PR Title Check workflow produces `pr-title / check-title` by running node_pr_title_check_compute from a pinned published omnimarket release, and no workflow line in pr-title-check.yml references onex_change_control -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base workflow.'
+- id: req-pr-title-verdicts
+  statement: 'AC2: the installed release node''s verdicts equal the old reusable''s bash verdicts on a table of titles and authors covering every exempt prefix, the bot rule, a passing OMN title and a failing bare title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails on any case run through the installed node.'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the installed release node''s verdicts equal the old reusable''s bash verdicts on a table of titles and authors covering every exempt prefix, the bot rule, a passing OMN title and a failing bare title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails on any case run through the installed node.'
+- id: req-pr-title-manifest
+  statement: 'AC3: .github/required-checks.yaml names the `pr-title / check-title` row as a local producer for pr-title-check.yml job pr-title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base manifest row.'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: .github/required-checks.yaml names the `pr-title / check-title` row as a local producer for pr-title-check.yml job pr-title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base manifest row.'
+evidence_requirements:
+- kind: tests
+  description: 'AC1: omnimarket''s PR Title Check workflow produces `pr-title / check-title` by running node_pr_title_check_compute from a pinned published omnimarket release, and no workflow line in pr-title-check.yml references onex_change_control -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base workflow.'
+  command: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'workflow or job'
+- kind: tests
+  description: 'AC2: the installed release node''s verdicts equal the old reusable''s bash verdicts on a table of titles and authors covering every exempt prefix, the bot rule, a passing OMN title and a failing bare title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails on any case run through the installed node.'
+  command: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'installed_node'
+- kind: tests
+  description: 'AC3: .github/required-checks.yaml names the `pr-title / check-title` row as a local producer for pr-title-check.yml job pr-title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base manifest row.'
+  command: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'manifest'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-pr-title-workflow
+  description: 'AC1: omnimarket''s PR Title Check workflow produces `pr-title / check-title` by running node_pr_title_check_compute from a pinned published omnimarket release, and no workflow line in pr-title-check.yml references onex_change_control -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base workflow.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'workflow or job'
+  binds_ac:
+  - AC1
+- id: dod-pr-title-verdicts
+  description: 'AC2: the installed release node''s verdicts equal the old reusable''s bash verdicts on a table of titles and authors covering every exempt prefix, the bot rule, a passing OMN title and a failing bare title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails on any case run through the installed node.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'installed_node'
+  binds_ac:
+  - AC2
+- id: dod-pr-title-manifest
+  description: 'AC3: .github/required-checks.yaml names the `pr-title / check-title` row as a local producer for pr-title-check.yml job pr-title -- falsifier: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 fails when parsing the merge-base manifest row.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_pr_title_check_omnimarket_node.py -q -n 0 -k 'manifest'
+  binds_ac:
+  - AC3

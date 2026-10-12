@@ -24,10 +24,17 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: probe then record over the bus returns the pre-conversion tick's window state, checkpoint line, sweep request, completion line, phase, degraded class and fire-result payload for every captured case -- falsifier: tests/nodes/node_hourly_tick_decision_compute/test_golden_chain_hourly_tick_decision_compute.py against tests/fixtures/hourly_tick_parity.json
+  - id: "req-linear-comments-sweep-orchestrator"
+    statement: |-
+      The hourly Linear-comments sweep runs as node_linear_comments_sweep_orchestrator: a contract, a declarative orchestrator node and a definition-B handler whose topics are declared in the contract, with every model call on the delegation request/reply topics and every decision on node_linear_comments_decision_compute's command and terminal topics.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: The sweep's golden chain, error chain, overlay and bus-cycle tests pass, and they fail with the handler file removed -- falsifier: uv run pytest tests/nodes/node_linear_comments_sweep_orchestrator -q -p no:randomly
 evidence_requirements:
   - kind: "tests"
-    description: "Parity, golden-chain and error-chain tests for both decision compute nodes."
-    command: "uv run pytest tests/nodes/node_linear_comments_decision_compute tests/nodes/node_hourly_tick_decision_compute -q -p no:randomly"
+    description: "Parity, golden-chain, error-chain and bus-cycle tests for both decision compute nodes and the sweep orchestrator."
+    command: "uv run pytest tests/nodes/node_linear_comments_decision_compute tests/nodes/node_hourly_tick_decision_compute tests/nodes/node_linear_comments_sweep_orchestrator -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -49,3 +56,22 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_hourly_tick_decision_compute/test_golden_chain_hourly_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20680-linear-comments-sweep"
+    description: "node_linear_comments_sweep_orchestrator runs a whole sweep over the in-memory bus with the real decision node, and its error chain holds every lost item."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_golden_chain_linear_comments_sweep_orchestrator.py tests/nodes/node_linear_comments_sweep_orchestrator/test_error_chain_linear_comments_sweep_orchestrator.py tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20680-deploy-probe"
+    description: "Deploy probe. The sweep orchestrator is discovered from its contract and executes a complete sweep over the in-memory bus through its declared command and terminal topics, using the real decision node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/commits/$(git rev-parse HEAD)\" --jq .sha && uv run pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

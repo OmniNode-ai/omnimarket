@@ -27,10 +27,25 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: A 15-PR fleet of green CLEAN unarmed PRs gives a merge or a named skip for each, and a PR with neither is a coverage gap -- falsifier: test_fleet_fifteen_green_unarmed_each_get_a_merge_or_a_named_skip and test_fleet_a_green_pr_with_no_merge_and_no_skip_is_a_gap failing
+  - id: "req-landing-update-and-rerun-decisions"
+    statement: "The landing decision updates, retries and reruns from typed observations only, never from an arbitrary refusal or a base push."
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: A green PR whose head is armed, solely owned (no live lease, collaborator or open parent) and behind its base is given one strict-base update-branch action, and every other suspension still holds it -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -k s23_green_armed_owned_behind in omnimarket fails at the merge base, where the decision selects no update for that head
+      - id: "AC4"
+        statement: |-
+          AC4: A typed no-new-commits response for the attempted PR and head permits one same-head update retry after update_retry_seconds and no worker during the backoff, and a response for another PR, another head or a future time permits none -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -k 's24_update_422_no_new_commits_retry or test_c5_no_new_commits_feedback_must_match_the_attempt' in omnimarket fails at the merge base, where the facts carry no no-new-commits input
+      - id: "AC5"
+        statement: |-
+          AC5: A green external shared-check verdict permits one rerun per PR head, check and verdict id, even after the ordinary head rerun, and a red, future, other-repository, other-check or superseded verdict permits none -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -k 's25_shared_red_changed_verdict or test_c5_shared_verdict_must_be_current_and_match_the_failed_check' in omnimarket fails at the merge base, where the facts carry no shared-check verdict input
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: the named-gate tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3 to AC5: the S23 to S25 scenario replays and the typed-observation guards."
+    command: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -69,3 +84,33 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py -q -p no:randomly -k 'fleet'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20865-ac3-armed-owned-update"
+    description: "AC3: the S23 replay and its TLA-trace check pass. A green, armed, solely owned head behind its base is given a strict-base update; the scenario fixture is added by this pull request and the decision selects no update for it at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k s23_green_armed_owned_behind"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20865-ac4-no-new-commits-retry"
+    description: "AC4: the S24 replay passes and a no-new-commits response for another PR, another head or a future time permits no update. The typed response model is added by this pull request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k 's24_update_422_no_new_commits_retry or test_c5_no_new_commits_feedback_must_match_the_attempt'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20865-ac5-shared-verdict-rerun"
+    description: "AC5: the S25 replay passes and a red, future, other-repository, other-check or superseded verdict permits no rerun. The typed verdict model is added by this pull request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q -p no:randomly --no-cov -k 's25_shared_red_changed_verdict or test_c5_shared_verdict_must_be_current_and_match_the_failed_check'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      # Keep the head content probe with the behavioral test that binds AC5.
+      # jq consumes the content before grep, avoiding an early-close SIGPIPE.
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_decision_compute/models/model_landing_facts.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | contains("class ModelLandingSharedCheckVerdict")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
