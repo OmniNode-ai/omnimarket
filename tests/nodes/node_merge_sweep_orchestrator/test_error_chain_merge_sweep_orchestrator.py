@@ -95,3 +95,12 @@ def test_a_dry_request_needs_no_runner_settings(tmp_path: Path) -> None:
     assert result.plan is not None
     assert result.outcomes == []
     assert runner.argvs == []
+    dispatching = HandlerMergeSweepRun(stages=RecordingStages(runner)).handle(
+        request.model_copy(update={"dispatch": True})
+    )
+    assert dispatching.ok is False
+    assert (
+        dispatching.why
+        == "request not configured: parent, ticket, model, runner_script, brief_dir are empty"
+    )
+    assert runner.argvs == []

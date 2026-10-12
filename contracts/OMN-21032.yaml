@@ -29,8 +29,9 @@ requirements:
           fails at the merge base, where the request reached the runner
       - id: "AC3"
         statement: >-
-          AC3: A request with dispatch false and empty lane settings still plans and starts nothing -- falsifier:
-          the same test file -k dry_request_needs_no_runner
+          AC3: A request with dispatch false and empty lane settings still plans and starts nothing, while the
+          same request with dispatch true is refused naming the lane settings -- falsifier: the same test file
+          -k dry_request_needs_no_runner fails at the merge base, where the dispatching request is not refused
 evidence_requirements:
   - kind: "tests"
     description: "Unconfigured requests are refused by name; a dry request still plans."
