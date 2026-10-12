@@ -49,3 +49,9 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute/test_render.py tests/nodes/node_delegation_acceptance_judge_request_compute/test_published_terminal.py -q -k 'probe_only_corpus or liveness_probe_terminal'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20572-deploy-probe"
+    description: "Deploy probe: render_batches.py read from GitHub at the checked-out commit returns the excluded probe ids when every item is a probe, and no longer raises 'every item is a probe: nothing to judge'. A head carrying the old raise fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_acceptance_judge_compute/handlers/render_batches.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'return [], probe_ids, [], []'"
