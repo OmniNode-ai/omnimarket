@@ -37,5 +37,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "grep -c 'antipattern-validated' src/omnimarket/nodes/node_semantic_antipattern_validator_orchestrator/contract.yaml"
+        check_value: "grep -c 'HandlerAntipatternClassifiedEmit' src/omnimarket/nodes/node_semantic_antipattern_validator_orchestrator/contract.yaml"
     binds_ac: ["AC1"]
