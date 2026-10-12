@@ -96,4 +96,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_automation_liveness_watchdog_compute = ' | grep -qx 1"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
