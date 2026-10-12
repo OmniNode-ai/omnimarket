@@ -1418,6 +1418,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20601: the house routing-overlay write command has a producer and
+      # the node contract declares its runtime profile. SYNC with the ci.yml
+      # lint step "House routing-overlay publisher (OMN-20601)".
+      - id: house-routing-overlay-publisher
+        name: House routing-overlay publisher (OMN-20601)
+        language: system
+        entry: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q -n 0
+        files: ^(src/omnimarket/nodes/node_house_routing_overlay_effect/|tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20838: dod_verify's read layer reads the canonical clone and the
       # PR watcher's state; the guard fails when it spawns gh for a read a local
       # source holds. SYNC with the ci.yml lint step "dod_verify local reads

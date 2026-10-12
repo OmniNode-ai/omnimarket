@@ -495,6 +495,13 @@ jobs:
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
 
+      # OMN-20601: the house routing-overlay write command has a producer and
+      # the node contract declares its runtime profile. Paired with the
+      # house-routing-overlay-publisher hook. This tests the publisher's own
+      # output; it does not scan omnimarket code for routing tables.
+      - name: House routing-overlay publisher (OMN-20601)
+        run: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q -n 0
+
       # OMN-20838: dod_verify reads PR and commit facts from the canonical
       # clone and the PR watcher's state; this fails when its read layer spawns
       # gh for a read a local source holds. SYNC with pre-commit hook
