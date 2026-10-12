@@ -1,0 +1,45 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21038"
+title: "design-to-plan carries a model-written plan on its completed event"
+summary: >-
+  HandlerDesignToPlan.handle is async. With no plan_path on the start command the
+  brainstorm phase asks a model through the shared inference bridge for a markdown
+  plan, the structure phase checks its task sections, and the plan rides on the
+  completed event and the FSM state as plan_content. A command that names plan_path
+  skips the model call. It publishes no plan-to-tickets-start command.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-plan-content"
+    statement: "A topic-only design-to-plan start produces a plan on the completed event, and failure modes stop short of done."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A start command with no plan_path completes with plan_content that HandlerPlanToTickets parses, a model transport error stops the FSM at idle with plan_content None, and an answer that is not a plan fails the structure phase -- falsifier: uv run pytest tests/test_design_to_plan_plan_generation.py fails if the handler makes no model call or accepts an unstructured answer
+      - id: "AC2"
+        statement: >-
+          AC2: A start command naming plan_path makes no model call, and with no_launch set only the completed topic is published -- falsifier: the plan_path and launch-off tests in tests/test_design_to_plan_plan_generation.py
+evidence_requirements:
+  - kind: "tests"
+    description: "Plan generation, failure modes, plan_path bypass and launch-off publication."
+    command: "uv run pytest tests/test_design_to_plan_plan_generation.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21038-ac1-plan-generation"
+    description: "The five plan generation tests pass against the real inference bridge and a loopback server."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_design_to_plan_plan_generation.py -q -n 0"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn21038-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit carries the async handle that generates the plan. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_design_to_plan/handlers/handler_design_to_plan.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'async def handle'"
