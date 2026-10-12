@@ -28,3 +28,12 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py -q
     binds_ac:
       - AC1
+  - id: dod-omn21039-deploy-probe
+    description: 'Deploy probe: the outcome reducer contract read from GitHub at the checked-out commit declares the published_events map this PR adds. A head without it fails the probe.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_codegen_outcome_reducer/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "^published_events:"'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC1
