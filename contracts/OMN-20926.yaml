@@ -1,0 +1,77 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20926"
+title: "Captured secrets become secret store references, resolved through the store"
+summary: "When the content scrubber finds a secret in captured content, node_captured_secret_store_effect stores it create-only in the secret store and the record carries a secret reference in its place; node_captured_secret_resolve_effect resolves one reference through a read-only store slice as the reader identity. node_event_emit_effect keeps a reference through scrubbing and chunking. The store-then-reference round trip against the dev lane store waits on the writer machine identity and is not claimed here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reference-scrub"
+    statement: "The content scrubber keeps a secret reference through scrubbing, chunking and the size cap, and a credential beside or overlapping a reference is still scrubbed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the secret reference block is declared and fail-closed, a reference survives the fan-out scrub, chunking never cuts a reference, and a credential beside or overlapping a reference is still scrubbed -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_secret_reference_omn20926.py -q -p no:randomly"
+  - id: "req-store-effect"
+    statement: "The store effect writes a detected secret create-only as the writer identity, treats an existing key as the dedupe case, and returns a reference only when the store holds the value."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the same value is written once, a value already in the store is the dedupe case and is not read or updated, a store failure returns no reference and sticks, and a configuration refusal touches no store -- falsifier: uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py -q -p no:randomly"
+  - id: "req-resolve-effect"
+    statement: "The resolve effect resolves one whole reference through a read-only store slice as the reader identity, logs the reference, accessor and outcome without the value, and fails closed."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: a stored value resolves and the log carries no value, a missing value, a store refusal, a malformed reference and a missing accessor each fail closed, and the reader identity is refused when the credentials file is readable -- falsifier: uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_resolve_effect.py -q -p no:randomly"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the reference block, keep-reference scrubbing and chunking."
+    command: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_secret_reference_omn20926.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: the store effect's create-only write, dedupe case and sticky failure."
+    command: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: the resolve effect's read-only resolution and fail-closed refusals."
+    command: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_resolve_effect.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20926-ac1-reference-scrub"
+    description: "AC1: the secret reference block is declared and fail-closed, and scrubbing and chunking never cut a reference."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_secret_reference_omn20926.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20926-ac2-store-effect"
+    description: "AC2: the store effect writes create-only, treats an existing key as dedupe, and returns a reference only when the store holds the value."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20926-ac3-resolve-effect"
+    description: "AC3: the resolve effect resolves one whole reference as the reader identity and fails closed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_resolve_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20926-deploy-probe"
+    description: "The store effect and the resolve effect pass their golden-chain tests at the checked-out commit. The package probe reads each handler from GitHub at that commit and requires its entry class; a commit without either handler fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py tests/unit/nodes/test_golden_chain_captured_secret_resolve_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py?ref=$(git rev-parse HEAD)\" --jq '.content | @base64d | contains(\"class HandlerCapturedSecretStore:\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_captured_secret_resolve_effect/handlers/handler_captured_secret_resolve.py?ref=$(git rev-parse HEAD)\" --jq '.content | @base64d | contains(\"class HandlerCapturedSecretResolve:\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
