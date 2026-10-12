@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -61,16 +62,18 @@ _HEALTH_EVENT = {
 }
 
 _DECOMPOSE_EVENT = {
-    "subtasks": [
-        {
-            "subtask_id": "st-A",
-            "description": "Auth routes",
-            "model_affinity": "",
-            "depends_on": [],
-            "estimated_tokens": 150,
-            "category": "code",
-        },
-    ]
+    "decomposition": {
+        "subtasks": [
+            {
+                "subtask_id": "st-A",
+                "description": "Auth routes",
+                "model_affinity": "",
+                "depends_on": [],
+                "estimated_tokens": 150,
+                "category": "code",
+            },
+        ]
+    }
 }
 
 _SELECT_EVENT = {"assignments": {"st-A": "ep-1"}}
@@ -80,9 +83,9 @@ _FANOUT_SUCCEEDED = {
         {
             "subtask_id": "st-A",
             "endpoint_id": "ep-1",
-            "status": "succeeded",
+            "execution_status": "succeeded",
             "latency_ms": 900,
-            "result_text": "auth done",
+            "response_text": "auth done",
             "failure_reason": "",
             "wave": 0,
             "model_id": "qwen3",
@@ -96,9 +99,9 @@ _FANOUT_ALL_FAILED = {
         {
             "subtask_id": "st-A",
             "endpoint_id": "ep-1",
-            "status": "failed",
+            "execution_status": "failed",
             "latency_ms": 100,
-            "result_text": "",
+            "response_text": "",
             "failure_reason": "connection refused",
             "wave": 0,
             "model_id": "qwen3",
@@ -151,6 +154,39 @@ class TestCommandPayloads:
         assert payload["planner_output"] == "plan text"
         assert payload["planner_model_id"] == "qwen3"
         assert payload["original_task"] == "test task"
+
+    def test_no_reachable_endpoint_fails_the_run_without_a_decompose_command(
+        self,
+        handler: HandlerSwarmDispatchOrchestrator,
+    ) -> None:
+        health_event = {
+            "run_id": "run-999",
+            "endpoint_health": {
+                "ep-1": {"endpoint_status": "unreachable", "error": "HTTP 503"},
+                "ep-2": {"endpoint_status": "auth_failed", "error": "HTTP 401"},
+            },
+        }
+        state, publishes = handler.transition_health_checked(
+            _received_state(), health_event
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.FAILED
+        assert len(publishes) == 1
+        topic, payload = publishes[0]
+        assert "swarm-dispatch-failed" in topic
+        assert payload["run_id"] == "run-999"
+        assert "ep-1=unreachable (HTTP 503)" in payload["error"]
+        assert "ep-2=auth_failed (HTTP 401)" in payload["error"]
+
+    def test_empty_health_event_fails_the_run(
+        self,
+        handler: HandlerSwarmDispatchOrchestrator,
+    ) -> None:
+        state, publishes = handler.transition_health_checked(
+            _received_state(), {"run_id": "run-999", "endpoint_health": {}}
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.FAILED
+        assert [t for t, _ in publishes if "swarm-dispatch-failed" in t]
+        assert not [t for t, _ in publishes if "swarm-decompose" in t]
 
     def test_select_endpoints_command_includes_subtasks_and_health(
         self,
@@ -218,6 +254,19 @@ class TestCommandPayloads:
         topic, payload = publishes[0]
         assert "swarm-aggregate" in topic
         assert payload["mode"] == "concatenation"
+        assert json.loads(payload["dispatches_json"]) == [
+            {
+                "subtask_id": "st-A",
+                "endpoint_id": "ep-1",
+                "model_id": "qwen3",
+                "base_url": "https://endpoint-a.example.invalid",
+                "status": "succeeded",
+                "result": {"response_text": "auth done"},
+                "failure_reason": "",
+                "latency_ms": 900,
+                "wave": 0,
+            }
+        ]
 
 
 class TestTerminalEventEmission:
@@ -241,9 +290,9 @@ class TestTerminalEventEmission:
                 ModelSubtaskDispatch(
                     subtask_id=str(d["subtask_id"]),
                     endpoint_id=str(d["endpoint_id"]),
-                    status=str(d["status"]),
+                    status=str(d["execution_status"]),
                     latency_ms=int(d["latency_ms"]),
-                    result_text=str(d["result_text"]),
+                    result_text=str(d["response_text"]),
                     failure_reason=str(d["failure_reason"]),
                     wave=int(d["wave"]),
                     model_id=str(d["model_id"]),
@@ -499,9 +548,9 @@ class TestCostFieldsInCompletedPayload:
                 {
                     "subtask_id": f"st-{i}",
                     "endpoint_id": f"ep-{i}",
-                    "status": "succeeded",
+                    "execution_status": "succeeded",
                     "latency_ms": subtask_latency_ms,
-                    "result_text": "done",
+                    "response_text": "done",
                     "failure_reason": "",
                     "wave": 0,
                     "model_id": f"model-{i}",

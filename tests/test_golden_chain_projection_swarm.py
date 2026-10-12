@@ -222,7 +222,11 @@ class TestSwarmDispatchFullFSMGoldenChain:
 
         state, _ = orchestrator.transition_decomposed(
             state,
-            {"subtasks": [{"subtask_id": "st-1", "description": "define routes"}]},
+            {
+                "decomposition": {
+                    "subtasks": [{"subtask_id": "st-1", "description": "define routes"}]
+                }
+            },
         )
         assert state.fsm_state == EnumSwarmOrchestratorState.DECOMPOSED
 
@@ -238,7 +242,8 @@ class TestSwarmDispatchFullFSMGoldenChain:
                     {
                         "subtask_id": "st-1",
                         "endpoint_id": "ep-1",
-                        "status": "succeeded",
+                        "execution_status": "succeeded",
+                        "response_text": "routes defined",
                         "latency_ms": 500,
                     }
                 ]
