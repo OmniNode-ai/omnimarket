@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_branch_protection_audit_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Audits branch protection across a fleet of GitHub repositories, the checks of
+  the change-control branch-protection auditor: approving reviews not enforced
+  (review-gated mains require approving and code-owner reviews), the required
+  contexts each branch role carries ("CI Summary" on ordinary branches, empty
+  contexts plus an update-restricting ruleset with a bypass actor on a
+  release-synced main, the "verify / verify" Receipt Gate on main, the "Lane
+  Identity Gate" on dev), enforce_admins, every required check bound to a
+  reporting App, delete_branch_on_merge, a "Merge Queue" ruleset and no bypass
+  actor on an enforced merge-queue ruleset. The fleet and each repository's
+  role come from a deployment overlay (branch_protection_audit_overlay.v1);
+  the shipped default fleet is empty. The fetch handler is the only GitHub
+  access (read-only, token resolved at the effect boundary from the
+  contract-declared api_key_ref); the audit handler is pure over the fetched
+  documents.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: branch_protection_audit
+    handler:
+      name: HandlerBranchProtectionAudit
+      module: omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_audit
+  - operation: branch_protection_fetch
+    handler:
+      name: HandlerBranchProtectionFetch
+      module: omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_fetch
+  - operation: branch_protection_policy_load
+    handler:
+      name: HandlerBranchProtectionPolicyLoad
+      module: omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_policy_load
+handler:
+  module: omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_audit
+  class: HandlerBranchProtectionAudit
+  input_model: omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_protection_audit_request.ModelBranchProtectionAuditRequest
+  output_model: omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_protection_audit_result.ModelBranchProtectionAuditResult
+descriptor:
+  node_archetype: effect
+  purity: effectful  # the fetch handler reads GitHub; nothing is written
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles:
+  - effects
+secrets:
+  GITHUB_TOKEN:
+    description: "Token that can read branch protection, rulesets with their bypass lists, and repository settings of every audited repository."
+    required: true
+inputs:
+  policy:
+    type: ModelBranchProtectionAuditPolicy
+    required: true
+    description: The audited fleet and each repository's role, from the overlay.
+  snapshot:
+    type: ModelBranchProtectionSnapshot
+    required: true
+    description: The fetched GitHub documents keyed by API path.
+  org:
+    type: str
+    required: false
+  branches:
+    type: tuple
+    required: false
+outputs:
+  exit_code:
+    type: int
+  failures:
+    type: int
+  total_checks:
+    type: int
+  findings:
+    type: tuple
+  noncompliant_repos:
+    type: tuple
+  report:
+    type: str
+terminal_event: onex.evt.omnimarket.branch-protection-audited.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.branch-protection-audit-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.branch-protection-audited.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.branch-protection-audit-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.branch-protection-audited.v1

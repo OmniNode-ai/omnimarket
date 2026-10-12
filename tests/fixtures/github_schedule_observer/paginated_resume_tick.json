@@ -1,0 +1,60 @@
+[
+ {
+  "path": "/repos/example-owner/example-repo/actions/runs?event=schedule&created=%3E%3D2026-10-10T03:00:21Z&per_page=100&page=1",
+  "status": 200,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "4900",
+   "x-ratelimit-used": "100",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "total_count": 3,
+   "workflow_runs": [
+    {
+     "id": 1003,
+     "name": "chain-canary.yml",
+     "path": ".github/workflows/chain-canary.yml",
+     "event": "schedule",
+     "status": "completed",
+     "conclusion": "success",
+     "run_attempt": 1,
+     "created_at": "2026-10-10T03:00:21Z",
+     "run_started_at": "2026-10-10T03:00:21Z",
+     "updated_at": "2026-10-10T03:02:10Z",
+     "html_url": "https://github.com/example-owner/example-repo/actions/runs/1003",
+     "head_sha": "0000000000000000000000000000000000000000"
+    },
+    {
+     "id": 1004,
+     "name": "chain-canary.yml",
+     "path": ".github/workflows/chain-canary.yml",
+     "event": "schedule",
+     "status": "completed",
+     "conclusion": "success",
+     "run_attempt": 1,
+     "created_at": "2026-10-10T04:00:15Z",
+     "run_started_at": "2026-10-10T04:00:15Z",
+     "updated_at": "2026-10-10T04:02:00Z",
+     "html_url": "https://github.com/example-owner/example-repo/actions/runs/1004",
+     "head_sha": "0000000000000000000000000000000000000000"
+    },
+    {
+     "id": 1005,
+     "name": "chain-canary.yml",
+     "path": ".github/workflows/chain-canary.yml",
+     "event": "schedule",
+     "status": "completed",
+     "conclusion": "success",
+     "run_attempt": 1,
+     "created_at": "2026-10-10T05:00:30Z",
+     "run_started_at": "2026-10-10T05:00:30Z",
+     "updated_at": "2026-10-10T05:02:30Z",
+     "html_url": "https://github.com/example-owner/example-repo/actions/runs/1005",
+     "head_sha": "0000000000000000000000000000000000000000"
+    }
+   ]
+  }
+ }
+]

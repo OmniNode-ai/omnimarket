@@ -47,6 +47,7 @@ class EnumDelegationConfigSource(StrEnum):
     """
 
     CONTRACT_OVERLAY_ENV = "contract_overlay_env"
+    NODE_OVERLAY = "node_overlay"
     BOOTSTRAP_DEFAULT = "bootstrap_default"
 
 
@@ -83,6 +84,8 @@ class ModelDelegationConfigProvenance(BaseModel):
 def resolve_path_config(
     config_key: str,
     bootstrap_default: Path,
+    *,
+    node_overlay: Path | None = None,
 ) -> tuple[Path, ModelDelegationConfigProvenance]:
     """Resolve a delegation-path config *path* with logged provenance.
 
@@ -98,6 +101,9 @@ def resolve_path_config(
         config_key: The env-var key the contract overlay binds to this path.
         bootstrap_default: The packaged on-disk path used when no override is
             present.
+        node_overlay: The file a deployment's node overlay supplies for this
+            config (OMN-20935), used when no env override is present and in
+            preference to ``bootstrap_default``.
 
     Returns:
         A tuple of the resolved :class:`Path` and the
@@ -109,6 +115,10 @@ def resolve_path_config(
         resolved = Path(raw_override)
         source = EnumDelegationConfigSource.CONTRACT_OVERLAY_ENV
         override_present = True
+    elif node_overlay is not None:
+        resolved = node_overlay
+        source = EnumDelegationConfigSource.NODE_OVERLAY
+        override_present = False
     else:
         resolved = bootstrap_default
         source = EnumDelegationConfigSource.BOOTSTRAP_DEFAULT

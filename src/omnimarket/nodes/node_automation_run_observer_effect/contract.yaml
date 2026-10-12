@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: automation_run_observer_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Host observer for automatic processes that cannot emit. Each poll
+  reads the evidence the automation-liveness overlay names for this host's
+  observer entries (a receipts file, a cron completion log line, launchd run
+  state), journals one run event per run, notes a run left open past its
+  runtime bound as OVERRUN, and reports every unit of ours with no entry as
+  UNDECLARED. Events are written to an on-disk journal before they are sent
+  and sent oldest first, so a broker outage delays events and loses none. The
+  overlay is the only source of deployment facts; the evidence sources plug in
+  through ProtocolRunEvidenceSource.
+input_model: omnimarket.nodes.node_automation_run_observer_effect.models.ModelAutomationRunObserverRequest
+output_model: omnimarket.nodes.node_automation_run_observer_effect.models.ModelAutomationRunObserverResult
+handler:
+  module: omnimarket.nodes.node_automation_run_observer_effect.handlers.handler_automation_run_observer
+  class: HandlerAutomationRunObserver
+  input_model: omnimarket.nodes.node_automation_run_observer_effect.models.ModelAutomationRunObserverRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerAutomationRunObserver
+      module: omnimarket.nodes.node_automation_run_observer_effect.handlers.handler_automation_run_observer
+    event_model:
+      name: ModelAutomationRunObserverRequest
+      module: omnimarket.nodes.node_automation_run_observer_effect.models
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 45000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.automation-run-observer-polled.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.automation-run-observer-poll-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.automation-run-observed.v1
+  - onex.evt.omnimarket.automation-heartbeat.v1
+  - onex.evt.omnimarket.automation-liveness-verdict.v1
+  - onex.evt.omnimarket.automation-run-observer-polled.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-run-observer-poll-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.automation-run-observed.v1
+- onex.evt.omnimarket.automation-heartbeat.v1
+- onex.evt.omnimarket.automation-liveness-verdict.v1
+- onex.evt.omnimarket.automation-run-observer-polled.v1
+metadata:
+  transport_type: kafka

@@ -56,6 +56,13 @@ _SKILL_MAPPING_DEFAULT_PAYLOAD: dict[str, object] = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _runtime_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The lane runtime host is a deployment fact the suite supplies (OMN-20935)."""
+    monkeypatch.setenv("ONEX_DATA_FLOW_RUNTIME_HOST", "runtime.example.test")
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+
+
 @pytest.mark.unit
 class TestDispatchDoesNotCrash:
     def test_default_skill_payload_constructs(self) -> None:

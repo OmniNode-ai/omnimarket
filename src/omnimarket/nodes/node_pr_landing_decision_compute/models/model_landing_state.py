@@ -76,6 +76,16 @@ class ModelLandingLease(BaseModel):
     stuck: bool = False
 
 
+class ModelLandingVerdictRerun(BaseModel):
+    """A rerun spent on this member head for this external check verdict."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    check: str = Field(..., min_length=1)
+    verdict_id: str = Field(..., min_length=1)
+
+
 class ModelLandingPrRecord(BaseModel):
     """Everything the controller remembers about one PR between ticks."""
 
@@ -109,6 +119,10 @@ class ModelLandingPrRecord(BaseModel):
     update_heads: tuple[str, ...] = Field(
         default=(), description="Heads the controller already updated from the base."
     )
+    update_no_new_commits_at: datetime | None = Field(
+        default=None, description="Latest no-new-commits response already retried."
+    )
+    verdict_reruns: tuple[ModelLandingVerdictRerun, ...] = ()
     stale_refreshes: int = Field(
         default=0,
         ge=0,
@@ -280,4 +294,5 @@ __all__: list[str] = [
     "ModelLandingPrRecord",
     "ModelLandingRebuildRecord",
     "ModelLandingUncovered",
+    "ModelLandingVerdictRerun",
 ]

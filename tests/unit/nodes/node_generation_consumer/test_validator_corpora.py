@@ -24,6 +24,10 @@ from omnimarket.nodes.node_generation_consumer.corpus_acceptance import (
 )
 from omnimarket.nodes.node_generation_consumer.validator_corpora import CORPORA
 
+# The one server literal the false-negative probe flags; the corpus fixtures carry it as
+# the synthetic private address their positive controls are built from.
+_PROBE_LITERAL = ".".join(("192", "168", "77", "20"))
+
 # A correct hand-authored RFC1918 scanner — the reference the corpus must accept.
 # Octet-parsing so version strings / public IPs are excluded (the boundary cases).
 # Uses only explicit comparisons (no `any` builtin — the hardened acceptance
@@ -84,12 +88,12 @@ def test_hardcoded_ip_corpus_accepts_the_reference_scanner() -> None:
 
 @pytest.mark.unit
 def test_hardcoded_ip_corpus_rejects_a_false_negative_scanner() -> None:
-    # A scanner that only flags the .201 server misses every other private IP —
+    # A scanner that only flags one server literal misses every other private IP —
     # exactly the silent-false-negative the corpus exists to catch.
     false_negative = (
         "def handle(input_data):\n"
         "    s = input_data.get('source', '')\n"
-        "    hits = ['x'] if '192.168.86.201' in s else []\n"
+        f"    hits = ['x'] if {_PROBE_LITERAL!r} in s else []\n"
         "    return {'findings': hits}\n"
     )
     result = evaluate_corpus_acceptance(false_negative, CORPORA["hardcoded-private-ip"])

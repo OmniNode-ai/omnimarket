@@ -128,7 +128,6 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_reject_skip_token_compute/handlers/handler_reject_skip_token.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^            if findings$'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC10"]
   - id: "dod-omn20074-contract-in-another-repo"
     description: "The #1907 shape prints contract_in_another_repo as an expected OCC difference."
     source: "manual"
