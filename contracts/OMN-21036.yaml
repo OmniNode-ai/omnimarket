@@ -67,5 +67,3 @@ dod_evidence:
       - check_type: command
         check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_autopilot_orchestrator/handlers/handler_autopilot_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class AutopilotRunStore:'
         cwd: ${OMNI_HOME}/omnimarket
-    binds_ac:
-      - AC1
