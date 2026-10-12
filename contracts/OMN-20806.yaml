@@ -89,3 +89,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_compute_contract.py tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_projection_adapter.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20806-deploy-registration"
+    description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers node_automation_liveness_watchdog_compute under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_automation_liveness_watchdog_compute = ' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
