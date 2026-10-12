@@ -68,6 +68,14 @@ def test_a_dev_lane_runtime_owns_the_orchestrator() -> None:
     assert _owned_by_a_dev_lane_runtime(_contract(_ORCHESTRATOR))
 
 
+def test_completed_event_is_the_declared_terminal_event() -> None:
+    """`onex run-node` refuses a node that declares no terminal_event to poll."""
+    contract = _contract(_ORCHESTRATOR)
+    completed = "onex.evt.omnimarket.adr-canary-completed.v1"
+    assert contract["terminal_event"] == completed
+    assert completed in _event_bus(contract)["publish_topics"]
+
+
 def test_the_canary_profile_still_owns_the_orchestrator() -> None:
     assert runtime_profile_owns_contract(_contract(_ORCHESTRATOR), "canary", environ={})
 

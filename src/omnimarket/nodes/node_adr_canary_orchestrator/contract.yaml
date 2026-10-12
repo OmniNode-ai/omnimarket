@@ -22,6 +22,9 @@ runtime_profiles:
   - effects
 input_model: "ModelCanaryCommandPayload"
 output_model: "ModelCanaryReport"
+# `onex run-node` polls this topic for the run's result and refuses a node that
+# declares none.
+terminal_event: "onex.evt.omnimarket.adr-canary-completed.v1"
 handler:
   module: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator
   class: HandlerCanaryOrchestrator
