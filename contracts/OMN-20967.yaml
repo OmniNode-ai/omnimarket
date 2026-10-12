@@ -1,7 +1,8 @@
-schema_version: 1.0.0
-ticket_id: OMN-20967
-title: No Anthropic key value can enter a workflow
-summary: A pytest ratchet reads every file under .github/workflows/, hostile-reviewer.yml included, and fails when one spells the Anthropic key prefix. The positive control assembles its key-shaped string at test time. The ratchet is a pre-commit hook and runs in CI.
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20967"
+title: "Per-key budget of the Claude review voter: a compute node that keeps a 10 USD reserve per key"
+summary: "Operator rulings 2026-10-12T04:56:59Z (Sonnet for the Claude API review voter) and 2026-10-12T04:57:20Z (keep 10 USD per key unspent). node_claude_review_budget_compute is a pure definition-B compute: given each key's cycle anchor and recorded calls and the call about to be made (counted prompt tokens and max_tokens), it prices each key's spend this cycle and the call's worst case from the pricing manifest's claude-sonnet-5-5 row and returns the first key, in the order given, that keeps its reserve after the worst case, or no key and a reason. The 200 USD allowance, the 10 USD reserve, the model, the monthly cycle and the cache multiples are the contract's budget block. The spend record that writes each call's usage is not in this change. AC4 is not bound here: its falsifier is a pytest over the gateway handler, and the gateway (omnimarket#3800) calls the budget in a later change."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,14 +12,22 @@ requirements:
     acceptance:
       - id: AC1
         statement: 'AC1: no Anthropic key value appears in any workflow file under .github/workflows/ -- falsifier: tests/ci/test_anthropic_key_prefix_workflows_omn20967.py scans every workflow including hostile-reviewer.yml and fails when a key-shaped string assembled at test time is planted in an env value, a comment or a run line (uv run pytest on that file)'
+  - id: "req-omn20967-key-budget-decision"
+    statement: "The per-key budget decision is a definition-B compute whose allowance and reserve come from its contract: a key at its reserve floor is not chosen, fill-first picks the lowest-index key that can afford the call's worst case, a cycle rollover resets the spend, and the Sonnet prices come from the pricing manifest. AC4 is not bound here: it is proven over the gateway handler once the gateway calls this compute."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the gateway refuses a call when the chosen key has less than its reserve left and answers 503 when no key qualifies, so the voter falls through to its overflow endpoint -- falsifier: pytest over the gateway handler with a budget fixture at the floor asserts a 503 and no upstream call"
 evidence_requirements:
   - kind: tests
     description: The workflow scan over the real tree, three seeded placements that fail it and a clean workflow that passes it.
     command: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q
+  - kind: "tests"
+    description: "The budget compute: the floor returns no key, fill-first, cycle rollover, Sonnet pricing arithmetic and contract-sourced allowance and reserve."
+    command: "uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py -q"
 emergency_bypass:
   enabled: false
-  justification: ''
-  follow_up_ticket_id: ''
+  justification: ""
+  follow_up_ticket_id: ""
 dod_evidence:
   - id: dod-omn20967-ac1-workflow-key-scan
     description: The real workflow tree is clean and each seeded placement of a key-shaped string fails the scan.
@@ -28,3 +37,11 @@ dod_evidence:
         check_value: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q
     binds_ac:
       - AC1
+  - id: "dod-omn20967-key-budget-compute"
+    description: "The budget compute tests pass at the head; at the merge base the node does not exist and the module fails to import."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: []
