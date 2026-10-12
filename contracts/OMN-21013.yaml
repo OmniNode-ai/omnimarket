@@ -50,7 +50,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -n 0 -k sibling_cwd_replay"
     binds_ac: ["AC2"]
   - id: "dod-omn21013-ac3-cwd"
-    description: "The pre-existing cwd tests pass unchanged."
+    description: "The pre-existing cwd tests pass unchanged; replay setup preserves own-repository root and nested cwd success and failure results, contents and permissions, without provisioning the own tree. The replay setup regression fails at the merge base."
     source: "manual"
     checks:
       - check_type: "test_passes"

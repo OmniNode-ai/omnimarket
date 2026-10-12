@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -1023,6 +1024,75 @@ class TestEvidenceCollectorCwd:
             contract_path=str(tmp_path / "OMN-TEST.yaml"),
         )
         assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    @pytest.mark.parametrize("nested", [False, True])
+    @pytest.mark.parametrize("command", ["pwd", "false"])
+    def test_cwd_own_repository_unchanged_by_replay_setup(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        nested: bool,
+        command: str,
+    ) -> None:
+        """New replay setup preserves own-tree cwd success and failure results."""
+        from omnimarket.nodes.node_dod_verify.handlers import (
+            handler_occ_replay as replay,
+        )
+
+        home = tmp_path / "registry"
+        tree = home / "omnimarket"
+        contracts = tree / "contracts"
+        contracts.mkdir(parents=True)
+        target = tree / "nested" if nested else tree
+        target.mkdir(exist_ok=True)
+        marker = target / "product.txt"
+        marker.write_text("own product\n")
+        original_modes = target.stat().st_mode, marker.stat().st_mode
+        monkeypatch.setenv("OMNI_HOME", str(home))
+        contract = _write_contract(
+            contracts,
+            dod_evidence=[
+                {
+                    "id": "own-cwd",
+                    "description": "Own repository cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": command,
+                            "cwd": "${OMNI_HOME}/omnimarket"
+                            + ("/nested" if nested else ""),
+                        }
+                    ],
+                }
+            ],
+        )
+
+        def unexpected_clone(repository: str) -> None:
+            pytest.fail(f"own repository must not be provisioned: {repository}")
+
+        monkeypatch.setattr(replay, "canonical_clone", unexpected_clone)
+        collector = EvidenceCollector()
+        before = collector.collect("OMN-TEST", contract_path=str(contract))[0]
+        expected = (
+            EnumEvidenceCheckStatus.VERIFIED
+            if command == "pwd"
+            else EnumEvidenceCheckStatus.FAILED
+        )
+        assert before.status == expected
+        replay.HandlerOccReplay._prepare_sibling_checkouts(
+            "OmniNode-ai", tree, home, [contract], "2026-10-12T00:00:00Z"
+        )
+        after = collector.collect("OMN-TEST", contract_path=str(contract))[0]
+        assert after.status == before.status
+        assert after.unverifiable_cause == before.unverifiable_cause
+        assert re.sub(r"\(\d+ms\)", "(elapsed)", after.message or "") == re.sub(
+            r"\(\d+ms\)", "(elapsed)", before.message or ""
+        )
+        if command == "pwd":
+            assert str(target.resolve()) in (after.message or "")
+        assert marker.read_text() == "own product\n"
+        assert (target.stat().st_mode, marker.stat().st_mode) == original_modes
+        assert sorted(path.name for path in home.iterdir()) == [tree.name]
 
     def test_cwd_runs_command_in_specified_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
