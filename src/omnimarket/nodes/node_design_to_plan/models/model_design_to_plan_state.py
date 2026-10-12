@@ -59,6 +59,9 @@ class ModelDesignToPlanState(BaseModel):
     current_phase: EnumDesignToPlanPhase = Field(default=EnumDesignToPlanPhase.IDLE)
     topic: str = Field(default="")
     plan_path: str | None = Field(default=None)
+    plan_content: str | None = Field(
+        default=None, description="Markdown plan produced by the brainstorm phase."
+    )
     dry_run: bool = Field(default=False)
     no_launch: bool = Field(default=False)
     plan_only: bool = Field(default=False)
@@ -88,6 +91,13 @@ class ModelDesignToPlanCompletedEvent(BaseModel):
     correlation_id: UUID = Field(...)
     final_phase: EnumDesignToPlanPhase = Field(...)
     plan_path: str | None = Field(default=None)
+    plan_content: str | None = Field(
+        default=None,
+        description=(
+            "Markdown plan (# title, then ## Task N: sections) that parses into "
+            "the structured plan model; None unless the workflow produced one."
+        ),
+    )
     error_message: str | None = Field(default=None)
 
 
