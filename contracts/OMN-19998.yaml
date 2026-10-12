@@ -25,6 +25,9 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
