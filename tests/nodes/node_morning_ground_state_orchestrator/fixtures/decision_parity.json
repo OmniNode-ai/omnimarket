@@ -71,6 +71,19 @@
     "publish": true,
     "force": false,
     "window": "2026-08-29..2026-08-30",
+    "pr_inventory": {
+     "status": "UNREADABLE",
+     "reason": "ONEX_PR_WATCHER_STATE is not set",
+     "source": "ONEX_PR_WATCHER_STATE",
+     "last_tick": null,
+     "last_full_resync": null,
+     "age_seconds": null,
+     "max_age_seconds": 480,
+     "row_limit": 500,
+     "total_open": null,
+     "omitted": null,
+     "rows": []
+    },
     "precheck": {
      "date": "2026-08-30",
      "clock_utc": "2026-08-30T15:47:00Z",
@@ -2070,6 +2083,19 @@
     "publish": true,
     "force": false,
     "window": "2026-08-29..2026-08-30",
+    "pr_inventory": {
+     "status": "UNREADABLE",
+     "reason": "ONEX_PR_WATCHER_STATE is not set",
+     "source": "ONEX_PR_WATCHER_STATE",
+     "last_tick": null,
+     "last_full_resync": null,
+     "age_seconds": null,
+     "max_age_seconds": 480,
+     "row_limit": 500,
+     "total_open": null,
+     "omitted": null,
+     "rows": []
+    },
     "precheck": {
      "bypassed": "unavailable - fell through to a full run"
     },
@@ -3020,6 +3046,19 @@
     "publish": true,
     "force": true,
     "window": "2026-08-29..2026-08-30",
+    "pr_inventory": {
+     "status": "UNREADABLE",
+     "reason": "ONEX_PR_WATCHER_STATE is not set",
+     "source": "ONEX_PR_WATCHER_STATE",
+     "last_tick": null,
+     "last_full_resync": null,
+     "age_seconds": null,
+     "max_age_seconds": 480,
+     "row_limit": 500,
+     "total_open": null,
+     "omitted": null,
+     "rows": []
+    },
     "precheck": {
      "bypassed": "args.force=true"
     },
@@ -3889,6 +3928,19 @@
     "publish": false,
     "force": false,
     "window": "2026-08-29..2026-08-30",
+    "pr_inventory": {
+     "status": "UNREADABLE",
+     "reason": "ONEX_PR_WATCHER_STATE is not set",
+     "source": "ONEX_PR_WATCHER_STATE",
+     "last_tick": null,
+     "last_full_resync": null,
+     "age_seconds": null,
+     "max_age_seconds": 480,
+     "row_limit": 500,
+     "total_open": null,
+     "omitted": null,
+     "rows": []
+    },
     "precheck": {
      "date": "2026-08-30",
      "clock_utc": "2026-08-30T15:47:00Z",
@@ -4852,6 +4904,19 @@
     "publish": true,
     "force": false,
     "window": "2026-10-01..2026-10-06",
+    "pr_inventory": {
+     "status": "UNREADABLE",
+     "reason": "ONEX_PR_WATCHER_STATE is not set",
+     "source": "ONEX_PR_WATCHER_STATE",
+     "last_tick": null,
+     "last_full_resync": null,
+     "age_seconds": null,
+     "max_age_seconds": 480,
+     "row_limit": 500,
+     "total_open": null,
+     "omitted": null,
+     "rows": []
+    },
     "precheck": {
      "bypassed": "unavailable - fell through to a full run"
     },
@@ -6589,6 +6654,19 @@
     "publish": true,
     "force": false,
     "window": "2026-08-29..2026-08-30",
+    "pr_inventory": {
+     "status": "UNREADABLE",
+     "reason": "ONEX_PR_WATCHER_STATE is not set",
+     "source": "ONEX_PR_WATCHER_STATE",
+     "last_tick": null,
+     "last_full_resync": null,
+     "age_seconds": null,
+     "max_age_seconds": 480,
+     "row_limit": 500,
+     "total_open": null,
+     "omitted": null,
+     "rows": []
+    },
     "precheck": {
      "bypassed": "unavailable - fell through to a full run"
     },

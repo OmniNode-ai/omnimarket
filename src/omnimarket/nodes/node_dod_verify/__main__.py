@@ -10,12 +10,21 @@ Usage:
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --dry-run
     python -m omnimarket.nodes.node_dod_verify --ticket-id OMN-1234 --output-path /abs/path/dod_report.json
     python -m omnimarket.nodes.node_dod_verify occ-difference --dod-dir /path/to/dod --tickets-file /path/to/tickets.txt --occ-check-run /path/to/occ.json [--negative-control]
+    python -m omnimarket.nodes.node_dod_verify occ-difference replay --repository OmniNode-ai/omnibase_spi --count 30 [--rows-file rows.json | --work-dir DIR] [--occ-context NAME] [--record-to rows.json] [--table-to table.md]
 
 OCC retirement S5 (OMN-20072):
     ``occ-difference`` compares same-head receipt-gate and OCC verdict artifacts,
     printing JSON and exiting 0 only when the difference check passes.
     The dod directory may include caller-supplied ``contract-home-<ticket>.txt``
     markers naming where a contract absent from the PR head lives (OMN-20074).
+
+OCC retirement S7 (OMN-20917):
+    ``occ-difference replay`` classifies a repository's last merged PRs, newest
+    first, until ``--count`` of them compare OCC's recorded verdict with the new
+    path's. Live, HandlerOccReplay gathers each PR's record; ``--rows-file``
+    re-classifies recorded rows without reading anything. Prints the report
+    JSON; exits 1 on an unclassified, forbidden or unknown row, 2 when the window held
+    fewer compared rows than ``--count``, else 0.
 
 Receipt persistence (OMN-10046, OMN-12403):
     When ``ONEX_EVIDENCE_ROOT`` is set in the environment, the node writes a
@@ -67,6 +76,16 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelDodVerifyState,
+)
+from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
+    DEFAULT_OCC_CONTEXT,
+    ModelOccReplayRecord,
+    ModelOccReplayRequest,
+)
+from omnimarket.nodes.node_dod_verify.services.occ_replay import (
+    render_replay_table,
+    replay_exit_code,
+    replay_records,
 )
 from omnimarket.nodes.node_dod_verify.services.occ_verdict_difference import (
     classify,
@@ -360,8 +379,69 @@ def _close_attempt(
     )
 
 
+def _occ_replay_main(argv: list[str]) -> None:
+    """Replay a repository's last merged PRs through both paths (OMN-20917)."""
+    parser = argparse.ArgumentParser(
+        prog=f"{sys.argv[0]} occ-difference replay",
+        description="Classify OCC versus new-path verdicts over merged PRs.",
+    )
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--count", type=int, default=30)
+    parser.add_argument("--rows-file", type=Path, default=None)
+    parser.add_argument("--work-dir", type=Path, default=None)
+    parser.add_argument("--occ-context", default=DEFAULT_OCC_CONTEXT)
+    parser.add_argument("--max-examined", type=int, default=200)
+    parser.add_argument("--record-to", type=Path, default=None)
+    parser.add_argument("--table-to", type=Path, default=None)
+    args = parser.parse_args(argv)
+    if args.rows_file is not None:
+        raw = json.loads(args.rows_file.read_text(encoding="utf-8"))
+        records = [ModelOccReplayRecord.model_validate(item) for item in raw]
+    else:
+        if args.work_dir is None:
+            parser.error("--work-dir is required without --rows-file")
+        # Imported here: the live path's git and verifier I/O is never loaded
+        # for a recorded replay.
+        from omnimarket.nodes.node_dod_verify.handlers.handler_occ_replay import (
+            HandlerOccReplay,
+        )
+
+        records = HandlerOccReplay().gather(
+            ModelOccReplayRequest(
+                repository=args.repository,
+                count=args.count,
+                occ_context=args.occ_context,
+                max_examined=args.max_examined,
+                work_dir=args.work_dir,
+                verifier_python=Path(sys.executable),
+            )
+        )
+    if args.record_to is not None:
+        args.record_to.write_text(
+            json.dumps([record.model_dump(mode="json") for record in records], indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+    report = replay_records(records, repository=args.repository, count=args.count)
+    if args.table_to is not None:
+        args.table_to.write_text(render_replay_table(report), encoding="utf-8")
+    sys.stdout.write(report.model_dump_json() + "\n")
+    code = replay_exit_code(report)
+    if code:
+        summary = report.summary
+        sys.stderr.write(
+            f"::error::replay of {summary.repository}: compared={summary.compared} "
+            f"of {summary.target}, unclassified={summary.unclassified}, "
+            f"forbidden={summary.forbidden}, unknown={summary.unknown}\n"
+        )
+    sys.exit(code)
+
+
 def _occ_difference_main() -> None:
     """Compare caller-supplied same-head verdict files (OMN-20072)."""
+    if len(sys.argv) > 2 and sys.argv[2] == "replay":
+        _occ_replay_main(sys.argv[3:])
+        return
     parser = argparse.ArgumentParser(
         prog=f"{sys.argv[0]} occ-difference",
         description="Classify receipt-gate versus OCC verdict differences.",

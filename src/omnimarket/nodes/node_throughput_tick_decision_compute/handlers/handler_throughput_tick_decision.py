@@ -24,6 +24,11 @@ open. Given `pr_land` facts, a free-slot FIX also names the pr-land lanes to dis
 lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule lab-fill selection runs
 (omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
 hold source is UNKNOWN and names no lane.
+
+OMN-20851: a lane the ledger records as dispatched with no placement receipt for more than
+`unplaced_lane_alarm_minutes`, and a cross-host dispatch-venv divergence older than
+`venv_divergence_alarm_minutes`, are ALARM verdicts (typed in `alarms`, exit code 1), a younger one a NOTE;
+a running receipt counts as a running lane only when a CLAIM carrying `host=` and a run id backs it.
 """
 
 from __future__ import annotations
@@ -43,6 +48,7 @@ from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_through
     ModelLabReceipt,
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
+    ModelTickAlarmVerdict,
 )
 
 CELLS = ("causes", "cause_leases", "cause_members", "cause_exhausted", "fixer_hold")
@@ -100,6 +106,17 @@ OPEN_TREND_FIX = (
     "merge-pulse) and dispatch ONE fix lane for that class under RULING 2026-10-09T04:10:56Z "
     "lane=orchestrator-9f8a; the tick dispatches nothing"
 )
+UNPLACED_LANE_FIX = (
+    "the lane has no placement receipt and no CLAIM-backed run: never report it as running; read "
+    "~/.local/state/omni/remote-lanes/<lane>/rlane-*.json for its status, then re-dispatch its brief "
+    "through the remote-lane runner once a lab-headroom line shows a free slot, or tell the operator it "
+    "never ran; the tick dispatches nothing"
+)
+VENV_DIVERGENCE_FIX = (
+    "bring the dispatch venvs back in step: reconcile the lagging host's venv from the dev head, read "
+    "both hosts' venvs again, and until they agree place no lane on either host that needs the diverged "
+    "package set; the tick dispatches nothing"
+)
 PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
@@ -114,6 +131,7 @@ class Report:
     missing: list[str] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
+    alarms: list[ModelTickAlarmVerdict] = field(default_factory=list)
     # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
     floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -125,10 +143,28 @@ class Report:
         self.unknown.append(loop)
         self.lines.append(f"UNKNOWN {loop} | {why} | FIX: {fix}")
 
+    def alarm(
+        self, loop: str, since: str, age_minutes: float, why: str, fix: str
+    ) -> None:
+        """An ALARM is its own verdict class: typed for the caller's evidence file, never also a
+        MISSING or UNKNOWN finding (OMN-20851)."""
+        self.alarms.append(
+            ModelTickAlarmVerdict(
+                loop=loop, since=since, age_minutes=age_minutes, why=why, fix=fix
+            )
+        )
+        self.lines.append(f"ALARM {loop} | {why} | FIX: {fix}")
+
     def note(self, text: str) -> None:
         self.lines.append(f"NOTE {text}")
 
     def status(self, prefix: str, bad: str) -> str:
+        if self.alarms:
+            names = ", ".join(
+                [alarm.loop for alarm in self.alarms] + self.missing + self.unknown
+            )
+            n = len(self.alarms) + len(self.missing) + len(self.unknown)
+            return f"{prefix} ALARM n={n} unknown={len(self.unknown)}: {names}"
         if not self.missing and not self.unknown:
             return f"{prefix} OK checked={','.join(self.checked)}"
         names = ", ".join(self.missing + self.unknown)
@@ -689,7 +725,9 @@ def _receipt_summary(
         if host and not receipt.final and receipt.status in ("preparing", "running"):
             if not receipt.pid_valid:
                 continue
-            if receipt.pid_alive is None or receipt.pid_alive:
+            # A running lane needs a CLAIM carrying `host=` and a run id (OMN-20851).
+            claimed = bool(receipt.claim_host and receipt.claim_run_id)
+            if claimed and (receipt.pid_alive is None or receipt.pid_alive):
                 running[host] = running.get(host, 0) + 1
         for reading in receipt.readings:
             name, _, _ = reading.partition(":")
@@ -922,6 +960,77 @@ def check_open_trend(
         )
 
 
+def _minutes(value: float) -> str:
+    return f"{round(value, 1):g}"
+
+
+def check_unplaced_lanes(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A lane recorded as dispatched with no placement receipt for longer than the bound is an ALARM
+    and is never counted as running; a younger one is a NOTE (OMN-20851)."""
+    rep.checked.append("unplaced-lanes")
+    bound = request.unplaced_lane_alarm_minutes
+    aged: list[tuple[datetime, str, float]] = []
+    for lane in request.dispatched_lanes or []:
+        if lane.placement_receipt:
+            continue
+        at = parse_stamp(lane.dispatched_at)
+        aged.append((at, lane.lane, max(0.0, (now - at).total_seconds() / 60)))
+    for at, name, age in sorted(aged):
+        loop = f"unplaced-lane:{name}"
+        since = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if age > bound:
+            rep.alarm(
+                loop,
+                since,
+                age,
+                f"dispatched {since}, {_minutes(age)} min ago with no placement receipt (> {bound}); "
+                "not counted as running",
+                UNPLACED_LANE_FIX,
+            )
+        else:
+            rep.note(
+                f"{loop} | dispatched {since}, {_minutes(age)} min ago with no placement receipt yet "
+                f"(alarm after {bound})"
+            )
+
+
+def check_venv_divergence(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A cross-host dispatch-venv divergence older than the bound is an ALARM; a younger one is a NOTE
+    (OMN-20851)."""
+    rep.checked.append("venv-divergence")
+    bound = request.venv_divergence_alarm_minutes
+    aged = sorted(
+        (
+            (parse_stamp(d.diverged_since), d.surface, d)
+            for d in request.venv_divergences or []
+        ),
+        key=lambda item: (item[0], item[1]),
+    )
+    for at, _, divergence in aged:
+        age = max(0.0, (now - at).total_seconds() / 60)
+        loop = f"venv-divergence:{divergence.surface}"
+        since = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        hosts = ", ".join(divergence.hosts)
+        detail = f": {divergence.detail}" if divergence.detail else ""
+        if age > bound:
+            rep.alarm(
+                loop,
+                since,
+                age,
+                f"{hosts} have differed since {since} ({_minutes(age)} min, > {bound}){detail}",
+                VENV_DIVERGENCE_FIX,
+            )
+        else:
+            rep.note(
+                f"{loop} | {hosts} have differed since {since} ({_minutes(age)} min, "
+                f"alarm after {bound}){detail}"
+            )
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -954,13 +1063,20 @@ class HandlerThroughputTickDecision:
                 check_dispatches(
                     rep, request.lab_headroom, now, request.dispatch_window_hours
                 )
+        if request.dispatched_lanes is not None:
+            check_unplaced_lanes(rep, request, now)
+        if request.venv_divergences is not None:
+            check_venv_divergence(rep, request, now)
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
             missing=rep.missing,
             unknown=rep.unknown,
             checked=rep.checked,
-            exit_code=0 if not rep.missing and not rep.unknown else 1,
+            alarms=rep.alarms,
+            exit_code=0
+            if not rep.missing and not rep.unknown and not rep.alarms
+            else 1,
             open_count=opened,
             pr_land=pr_land,
         )

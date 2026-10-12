@@ -7,7 +7,7 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
@@ -16,7 +16,7 @@ description: >
   EFFECT (read-only): typed GitHub repo status reader. Selects one read
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
   review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
-  job_log_tail, artifacts, pr_text, releases) and returns a small typed object
+  job_log_tail, artifacts, pr_text, releases, pr_heads) and returns a small typed object
   so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
   log reads, `gh run download` and `gh release list`. Every operation is one
   ModelGithubGatewayRequest on
@@ -60,6 +60,9 @@ operations:
     description: "Request ModelGithubGatewayRequest, result ModelPrTextResult; replaces gh pr view --comments."
   - name: releases
     description: "Request ModelGithubGatewayRequest, result ModelReleasesResult; replaces gh release list."
+  # OMN-20977: the worktree prune tools' merged-PR read.
+  - name: pr_heads
+    description: "Request ModelGithubGatewayRequest, result ModelPrHeadsResult; replaces gh pr list --state merged --json headRefName,headRefOid."
 
 input_model:
   name: ModelGithubGatewayRequest

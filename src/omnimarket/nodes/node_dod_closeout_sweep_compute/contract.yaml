@@ -20,8 +20,13 @@ description: >-
   whether two lanes are one actor, select_candidates picks the tickets a bounded run examines,
   least recently examined first, holds those awaiting a text amendment and cuts the rest into
   chunks, decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
-  comment an open ticket receives. Performs no read, has no clock and writes
-  nothing: the caller reads the ledger, Linear, GitHub and the report file and passes what it saw.
+  comment an open ticket receives. completion reads the closer's completed-run receipts from the
+  ledger rows given (a run key counts once), counts the zero-flip streak and the top deferral
+  reason, and renders the rows that complete the run: a FRICTION row on the third consecutive
+  zero-flip run and every later one, then the TERMINAL that names it. ground_state renders the
+  closer's GREEN, RED or UNKNOWN row for the morning report. Performs no read, has no clock and
+  writes nothing: the caller reads the ledger, Linear, GitHub and the report file and passes what
+  it saw.
 input_model:
   name: ModelDodCloseoutDecisionRequest
   module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
@@ -47,11 +52,11 @@ descriptor:
   idempotent: true
   timeout_ms: 1000
 inputs:
-  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, decide_ticket]}
+  kind: {type: str, required: true, enum: [precheck, resolve_sprint, plan_scope, flip_decision, report, refuse_binding, check_identities, select_candidates, decide_ticket, completion, ground_state]}
   date: {type: str, required: true, description: "YYYY-MM-DD the sweep is for."}
   force: {type: bool, required: false, description: "precheck: bypass the idempotency guard."}
-  clock_utc: {type: str, required: false, description: "precheck: one live clock reading, %Y-%m-%dT%H:%M:%SZ."}
-  ledger_rows: {type: list, required: false, description: "precheck: ledger rows, one string each."}
+  clock_utc: {type: str, required: false, description: "precheck: one live clock reading, %Y-%m-%dT%H:%M:%SZ; completion: the stamp of the rows it renders."}
+  ledger_rows: {type: list, required: false, description: "precheck, completion, ground_state: ledger rows, one string each; for completion and ground_state the archive rolls first, the live ledger last."}
   report_text: {type: str, required: false, description: "precheck: the date's report, absent when the file is."}
   report_commit_sha: {type: str, required: false}
   report_dirty: {type: bool, required: false}
@@ -94,6 +99,8 @@ inputs:
   records: {type: list, required: false, description: "select_candidates: every candidate with when its last closeout comment was posted."}
   text_state: {type: str, required: false, description: "select_candidates: the closeout text-state command's stdout, unedited."}
   max_candidates: {type: int, required: false}
+  run_summary: {type: object, required: false, description: "completion: the closer's run summary, verbatim; fields it does not count are ignored."}
+  report_ref: {type: str, required: false, description: "completion: the report path the TERMINAL cites; empty when no report was written."}
 outputs:
   kind: {type: str}
   verdict: {type: str, enum: [already-delivered, peer-owned, run]}
@@ -139,6 +146,11 @@ outputs:
   needs_amendment: {type: bool}
   signature: {type: str}
   comment_text: {type: str}
+  completion_rows: {type: list}
+  zero_flip_streak: {type: int}
+  top_deferral_reason: {type: str}
+  health: {type: str, enum: [GREEN, RED, UNKNOWN]}
+  ground_state_row: {type: str}
 terminal_event: onex.evt.omnimarket.dod-closeout-sweep-decided.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.dod-closeout-sweep-decide-requested.v1
