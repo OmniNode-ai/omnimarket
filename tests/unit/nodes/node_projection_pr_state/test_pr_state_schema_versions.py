@@ -103,7 +103,12 @@ def test_handoff_ingress_takes_the_transported_payload(make: Any) -> None:
 
 
 def test_handoff_ingress_still_refuses_a_mismatched_handoff_key() -> None:
-    wire = {**transported(event()), "handoff_key": "other/repo#1"}
+    e = event()
+    # The same transported payload with its own key is accepted, so the refusal
+    # below is the key guard and not the transport enrichment.
+    matching = {**transported(e), "handoff_key": f"{e.repo}#{e.pr_number}"}
+    assert ModelPrHandoffObservationIngress.model_validate(matching).digest == e.digest
+    wire = {**transported(e), "handoff_key": "other/repo#1"}
     with pytest.raises(ValidationError, match="does not match"):
         ModelPrHandoffObservationIngress.model_validate(wire)
 
