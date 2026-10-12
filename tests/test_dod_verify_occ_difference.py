@@ -1326,27 +1326,86 @@ def _handle_one_pr(
     ("max_examined", "stop_reason"),
     [(1, "max_examined reached"), (200, "merged list exhausted")],
 )
-def test_replay_job_log_emits_not_compared_row_and_stop_reason(
+def test_replay_cli_stderr_rows_and_stop_reason(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     max_examined: int,
     stop_reason: str,
 ) -> None:
+    """Gather emits progress without logging; the workflow's CLI emits it once."""
+    import os
+    import subprocess
+
+    from omnibase_core.validators.no_unguarded_git_subprocess import (
+        scrub_git_location_env,
+    )
+
     from omnimarket.nodes.node_dod_verify.handlers import handler_occ_replay
+    from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
+        ModelOccReplayRequest,
+    )
 
     registry = tmp_path / "registry"
     _, head = _canonical_clone_with_pr(registry, git_author_name="Some Human")
     monkeypatch.setenv("OMNI_HOME", str(registry))
+    monkeypatch.setattr(handler_occ_replay.logger, "disabled", True)
     handler = handler_occ_replay.HandlerOccReplay(
         github=_FakeGithub(head=head, login="some-human", occ=None)
     )
-    monkeypatch.setattr(handler_occ_replay, "HandlerOccReplay", lambda: handler)
-    monkeypatch.setattr(
-        sys,
-        "argv",
+    records = handler.gather(
+        ModelOccReplayRequest(
+            repository="OmniNode-ai/omnimarket",
+            count=1,
+            max_examined=max_examined,
+            work_dir=tmp_path / "gather",
+            verifier_python=Path(sys.executable),
+        )
+    )
+    assert len(records) == 1
+    progress = capsys.readouterr().err
+    row_line = f"replay OmniNode-ai/omnimarket#7 head={head}"
+    assert row_line in progress
+    assert "occ=None new=None outcome=not_compared" in progress
+    assert "note=no OCC run on the head (fake)" in progress
+    assert f"examined=1 compared=0/1 stop={stop_reason}" in progress
+
+    # Fixed responses at the existing effect adapter's subprocess boundary.
+    # The real -m CLI, handler and git history run in a new interpreter, with
+    # no pytest logging handlers and no network access through the fake gh.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    facts = {
+        "head_sha": head,
+        "author": "some-human",
+        "labels": [],
+        "title": "chore: bump pins",
+    }
+    gh.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        f"facts = {facts!r}\n"
+        "if any(arg.endswith('/pulls/7') for arg in sys.argv):\n"
+        "    print(json.dumps(facts))\n"
+        "elif any(arg.endswith('/check-runs') for arg in sys.argv):\n"
+        "    print(json.dumps({'check_runs': []}))\n"
+        "else:\n"
+        "    raise SystemExit('unexpected gh invocation: ' + repr(sys.argv))\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    env = scrub_git_location_env(os.environ)
+    env.pop("PYTHONPATH", None)
+    env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
+    env["ONEX_PR_WATCHER_STATE"] = str(tmp_path / "absent-watcher.json")
+    rows_path = tmp_path / "rows.json"
+    table_path = tmp_path / "table.md"
+    result = subprocess.run(
         [
-            "node_dod_verify",
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_dod_verify",
             "occ-difference",
             "replay",
             "--repository",
@@ -1356,23 +1415,30 @@ def test_replay_job_log_emits_not_compared_row_and_stop_reason(
             "--max-examined",
             str(max_examined),
             "--work-dir",
-            str(tmp_path / "work"),
+            str(tmp_path / "cli"),
+            "--record-to",
+            str(rows_path),
+            "--table-to",
+            str(table_path),
         ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
     )
-    with pytest.raises(SystemExit) as exc:
-        main()
-    captured = capsys.readouterr()
-    report = json.loads(captured.out)
-    assert exc.value.code == 2
+    assert result.returncode == 2, result.stderr
+    report = json.loads(result.stdout)
     assert report["summary"]["examined"] == 1
     assert report["summary"]["compared"] == 0
     assert report["rows"][0]["outcome"] == "not_compared"
-    assert f"replay OmniNode-ai/omnimarket#7 head={head}" in captured.err
-    assert "occ=None new=None outcome=not_compared" in captured.err
-    assert "note=no OCC run on the head (fake)" in captured.err
-    assert "examined=1 compared=0/1" in captured.err
-    assert f"stop={stop_reason}" in captured.err
-    assert f"max_examined={max_examined}" in captured.err
+    assert result.stderr.count(row_line) == 1
+    assert "occ=None new=None outcome=not_compared" in result.stderr
+    assert "note=no OCC run on the head (github:" in result.stderr
+    assert f"examined=1 compared=0/1 stop={stop_reason}" in result.stderr
+    assert f"max_examined={max_examined}" in result.stderr
+    assert len(json.loads(rows_path.read_text())) == 1
+    assert "not_compared" in table_path.read_text()
 
 
 @pytest.mark.parametrize(
