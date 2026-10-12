@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21043"
+title: "antipattern-validate reaches antipattern-validated over the bus"
+summary: >-
+  The semantic antipattern validator orchestrator, match effect and classifier
+  are wired by their contracts so one validate command yields exactly one
+  validated event, including when the embedding endpoint or Qdrant is unavailable.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-validate-chain"
+    statement: "A validate command must reach exactly one validated event over the in-memory bus wired from the node contracts."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: Each of six scenarios (blocking match, no match, short file, Qdrant unavailable, embedding endpoint unset, two commands in flight) yields exactly one validated event per correlation id -- falsifier: uv run pytest tests/integration/node_semantic_antipattern_validator_orchestrator/test_golden_chain_validate_to_validated.py fails on the previous node code
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden chain from validate command to validated event."
+    command: "uv run pytest tests/integration/node_semantic_antipattern_validator_orchestrator/test_golden_chain_validate_to_validated.py -m 'not kafka' --no-cov -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21043-ac1-golden-chain"
+    description: "Six in-memory bus scenarios each yield exactly one validated event."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/node_semantic_antipattern_validator_orchestrator/test_golden_chain_validate_to_validated.py -m 'not kafka' --no-cov -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21043-orchestrator-routes"
+    description: "The orchestrator contract declares the match-response and classified routes."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c 'antipattern-validated' src/omnimarket/nodes/node_semantic_antipattern_validator_orchestrator/contract.yaml"
+    binds_ac: ["AC1"]
