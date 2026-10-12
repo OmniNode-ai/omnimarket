@@ -4,7 +4,7 @@
 
 Reproduces the live failure where ``database_sweep`` shelled a bare
 ``psql -d <db>`` against the local unix socket (discovering 0 tables on the .201
-lanes that have no local Postgres) and left every migration bucket at 0 even
+remote lanes that have no local Postgres) and left every migration bucket at 0 even
 though every database errored. The fix routes psql through the lane Postgres
 container (mirroring node_data_flow_sweep) and classifies ERROR/NO_TABLE as
 ``failed``.
@@ -12,8 +12,11 @@ container (mirroring node_data_flow_sweep) and classifies ERROR/NO_TABLE as
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_database_sweep.handlers import handler_database_sweep as h
 from omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep import (
     ModelMigrationStateResult,
@@ -21,6 +24,7 @@ from omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep import
     _classify_migration_buckets,
     _get_all_tables,
 )
+from tests.node_overlay_support import install_node_overlay
 
 
 @pytest.mark.unit
@@ -61,6 +65,43 @@ class TestPsqlConnectionTarget:
         assert argv[0] == "docker"
         assert argv[:3] == ["docker", "exec", "omnibase-infra-postgres"]
         assert "ssh" not in argv
+
+    def test_runtime_host_comes_from_the_node_overlay(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """OMN-20935: with no variable set the node overlay supplies the host."""
+        install_node_overlay(
+            monkeypatch,
+            tmp_path,
+            "node_database_sweep",
+            {"runtime_host": "overlay.example.test"},
+        )
+        monkeypatch.delenv("ONEX_DATABASE_SWEEP_RUNTIME_HOST", raising=False)
+        monkeypatch.delenv("ONEX_DATA_FLOW_RUNTIME_HOST", raising=False)
+        assert h._resolve_pg_runtime_host() == "overlay.example.test"
+
+    def test_shared_variable_wins_over_the_node_overlay(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        install_node_overlay(
+            monkeypatch,
+            tmp_path,
+            "node_database_sweep",
+            {"runtime_host": "overlay.example.test"},
+        )
+        monkeypatch.delenv("ONEX_DATABASE_SWEEP_RUNTIME_HOST", raising=False)
+        monkeypatch.setenv("ONEX_DATA_FLOW_RUNTIME_HOST", "shared.example.test")
+        assert h._resolve_pg_runtime_host() == "shared.example.test"
+
+    def test_unconfigured_runtime_host_fails_loud_naming_the_overlay(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-20935: no variable and no overlay is a refusal, never a lab default."""
+        monkeypatch.delenv("ONEX_DATABASE_SWEEP_RUNTIME_HOST", raising=False)
+        monkeypatch.delenv("ONEX_DATA_FLOW_RUNTIME_HOST", raising=False)
+        monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+        with pytest.raises(NodeOverlayError, match="ONEX_SKILL_OVERLAY_ROOTS"):
+            h._resolve_pg_runtime_host()
 
     def test_table_discovery_with_injected_runner(self) -> None:
         """Given a working psql runner, table discovery returns the tables.
@@ -116,12 +157,15 @@ class TestMigrationBucketClassification:
 
         assert (current, pending, failed) == (1, 2, 3)
 
-    def test_default_psql_never_bare_local_socket(self) -> None:
+    def test_default_psql_never_bare_local_socket(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The module default psql builds a container-routed argv, not bare psql.
 
         Guards against a regression to ``psql -d <db>`` (the local-socket DSN
         that produced 0 tables in the OMN-13717 receipt).
         """
+        monkeypatch.setenv("ONEX_DATABASE_SWEEP_RUNTIME_HOST", "runtime.example.test")
         argv = h._build_psql_argv("SELECT 1;", "omnidash_analytics")
         assert argv[0] in ("ssh", "docker")
         assert argv[0] != "psql"

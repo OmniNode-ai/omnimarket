@@ -3,8 +3,10 @@
 """OMN-17353: the customer-facing provider catalogue is exactly the handler-backed set.
 
 Launch rule (beta requirements r4 §2.4 / §2.5, axiom 2): local models by
-default, bring-your-own key for any provider we ship a handler for, and Claude
-is never a delegation target. Until this ticket nothing asserted the
+default, bring-your-own key for any provider we ship a handler for. The axiom's
+third clause, that Claude is never a delegation target, was lifted for customer
+keys by operator ruling 2026-10-11T15:05:50Z (OMN-20990): ``anthropic`` is now an
+offered customer-only provider. Until this ticket nothing asserted the
 customer-visible catalogue (``configs/byok_provider_backends.v1.yaml``, the
 only authority that mints a BYOK route — OMN-17372) matched that shape in
 EITHER direction.
@@ -18,7 +20,8 @@ The gate is bidirectional and declared, never inferred:
 * every ``providers`` row and every ``not_offered`` row must be backed by a
   rung. A catalogue row addressing a provider the platform has no backend for
   fails here.
-* no row in the file, offered or not, may name Claude/Anthropic.
+* ``anthropic`` is offered as a customer-only row (OMN-20990), and no house
+  platform rung is a Claude rung: the platform holds no Anthropic key.
 * no row may carry a ``secret_ref`` — a house key on the customer path is
   impossible by construction, not by review.
 * every offered provider id is accepted by the intake request model.
@@ -40,7 +43,6 @@ from omnimarket.projection.credential_publisher import (
 from omnimarket.routing import byok_provider_backends as mod
 from omnimarket.routing.byok_provider_backends import (
     CATALOG_PATH,
-    FORBIDDEN_PROVIDER_PATTERN,
     ByokCatalogError,
     ModelByokProviderBackend,
     catalogue_parity_gap,
@@ -132,6 +134,7 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
         # Positive control for the exemption: it must name openai and nothing
         # that a house rung backs.
         assert "openai" in _customer_only_providers()
+        assert "anthropic" in _customer_only_providers()
         assert not _customer_only_providers() & house_keyed_provider_slugs(
             _platform_backends()
         )
@@ -255,53 +258,45 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
         assert "openrouter" in catalogue
 
 
-class TestNoClaudeEntry:
-    def test_the_forbidden_pattern_is_the_one_the_ticket_names(self) -> None:
-        assert FORBIDDEN_PROVIDER_PATTERN.search("Claude")
-        assert FORBIDDEN_PROVIDER_PATTERN.search("us.anthropic.opus")
-        assert not FORBIDDEN_PROVIDER_PATTERN.search("openrouter")
+#: The house platform has no Anthropic key and no Claude rung. That rule is about
+#: the PLATFORM contract and still holds; only the customer catalogue's refusal
+#: of an Anthropic key was lifted (operator ruling 2026-10-11T15:05:50Z, OMN-20990).
+_CLAUDE_RUNG_PATTERN = re.compile(r"anthropic|claude", re.IGNORECASE)
 
-    def test_no_offered_or_not_offered_row_names_claude(self) -> None:
-        for provider in (
-            *customer_provider_catalogue(),
-            *load_byok_not_offered_providers(),
-        ):
-            assert not FORBIDDEN_PROVIDER_PATTERN.search(provider), provider
 
-    def test_the_catalogue_refuses_a_claude_provider_row(self, tmp_path: Path) -> None:
-        bad = tmp_path / "claude.yaml"
-        bad.write_text(
-            _catalogue_text(
-                providers=[
-                    {
-                        "provider": "claude",
-                        "backend_id": "byok-claude",
-                        "endpoint_url": "https://example.invalid/v1/chat/completions",
-                        "models_url": "https://example.invalid/v1/models",
-                        "model_preference": [{"pattern": "x", "tags": ["fixture"]}],
-                    }
-                ]
-            ),
+class TestAnthropicIsACustomerOnlyProvider:
+    """OMN-20990: the provider list offers Anthropic keys, as a customer surface."""
+
+    def test_anthropic_is_offered(self) -> None:
+        assert "anthropic" in customer_provider_catalogue()
+
+    def test_the_anthropic_row_mirrors_no_house_rung(self) -> None:
+        rows = [
+            row
+            for (provider, _plan), row in load_byok_plan_catalog().items()
+            if provider == "anthropic"
+        ]
+        assert [row.backend_id for row in rows] == ["byok-anthropic"]
+        assert rows[0].mirrors_house_rung is False
+        assert rows[0].customer_routable is True
+
+    def test_the_loader_accepts_a_claude_provider_row(self, tmp_path: Path) -> None:
+        """The loader no longer refuses a provider id for naming Claude."""
+        live = yaml.safe_load(CATALOG_PATH.read_text(encoding="utf-8"))
+        row = next(r for r in live["providers"] if r["provider"] == "anthropic")
+        renamed = {**row, "provider": "claude", "backend_id": "byok-claude"}
+        catalogue = tmp_path / "claude.yaml"
+        catalogue.write_text(
+            _catalogue_text(providers=[*live["providers"], renamed]),
             encoding="utf-8",
         )
-        with pytest.raises(ByokCatalogError, match="never a delegation target"):
-            mod._read_catalog(bad)
+        assert "claude" in mod._read_catalog(catalogue)
 
-    def test_the_catalogue_refuses_a_claude_not_offered_row(
-        self, tmp_path: Path
-    ) -> None:
-        bad = tmp_path / "claude_no.yaml"
-        bad.write_text(
-            _catalogue_text(
-                not_offered=[
-                    {"provider": "Anthropic", "reason": "x", "ticket": "OMN-17353"}
-                ]
-            ),
-            encoding="utf-8",
-        )
-        with pytest.raises(ByokCatalogError, match="never a delegation target"):
-            mod._read_not_offered(bad)
+    def test_anthropic_is_not_declared_not_offered(self) -> None:
+        assert "anthropic" not in load_byok_not_offered_providers()
 
+
+class TestNoHouseClaudeRung:
     def test_no_platform_rung_is_a_claude_rung(self) -> None:
         # "not as a default, not as a fallback": the platform contract the
         # catalogue mirrors has no Anthropic surface either.
@@ -320,7 +315,7 @@ class TestNoClaudeEntry:
             for field in ("backend_id", "endpoint_url", "model_name", "secret_ref"):
                 value = b.get(field)
                 if isinstance(value, str):
-                    assert not FORBIDDEN_PROVIDER_PATTERN.search(value), (
+                    assert not _CLAUDE_RUNG_PATTERN.search(value), (
                         b.get("backend_id"),
                         field,
                         value,

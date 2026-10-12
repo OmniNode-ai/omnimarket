@@ -85,7 +85,8 @@ jobs:
             "https://github.com/OmniNode-ai/${REPOSITORY}.git" "$OMNI_HOME/$REPOSITORY"
           for home in omnibase_core omnibase_infra omniclaude omnimarket omnidash onex_change_control; do
             if [ "$home" != "$REPOSITORY" ]; then
-              git clone --quiet --no-checkout --depth 1 \
+              # OMN-21013: sibling working trees need pinned commits and history at merge time.
+              git clone --quiet --no-checkout \
                 "https://github.com/OmniNode-ai/${home}.git" "$OMNI_HOME/$home"
             fi
           done
@@ -153,7 +154,7 @@ jobs:
             --work-dir "$RUNNER_TEMP/replay-work" \
             --record-to replay-out/rows.json --table-to replay-out/table.md
 
-      - name: Publish the replay table to the job summary
+      - name: Publish the replay table to the job log and summary
         if: always()
         env:
           REPOSITORY: ${{ inputs.repository }}
@@ -169,6 +170,11 @@ jobs:
               echo "(no table: the replay did not finish; see the step logs)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s replay-out/table.md ]; then
+            cat replay-out/table.md
+          else
+            echo "(no table: the replay did not finish; see the step logs)"
+          fi
 
       - name: Upload rows.json and table.md
         if: always()

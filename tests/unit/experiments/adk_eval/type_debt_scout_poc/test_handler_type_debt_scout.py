@@ -168,7 +168,9 @@ class TestParsePriorities:
 @pytest.mark.unit
 class TestRunTypeDebtScout:
     async def test_builds_report_from_router(self) -> None:
-        config = ModelTrackBConfig(repo_name="unit-repo")
+        config = ModelTrackBConfig(
+            repo_name="unit-repo", base_url="http://llm.example.test:8000"
+        )
         findings = _sample_findings()
         fake_response = ModelLlmAdapterResponse(
             generated_text=json.dumps(_fake_response_payload()),
@@ -198,7 +200,9 @@ class TestRunTypeDebtScout:
         assert "src/module_a.py:10" in request.prompt
 
     async def test_propagates_parse_failure(self) -> None:
-        config = ModelTrackBConfig(repo_name="unit-repo")
+        config = ModelTrackBConfig(
+            repo_name="unit-repo", base_url="http://llm.example.test:8000"
+        )
         fake_response = ModelLlmAdapterResponse(
             generated_text="no json at all",
             model_used=config.model_id,
@@ -213,3 +217,17 @@ class TestRunTypeDebtScout:
                 config=config,
                 router=fake_router,
             )
+
+
+class TestEndpointIsADeploymentFact:
+    """OMN-20935: the experiment carries no endpoint of its own."""
+
+    def test_the_config_requires_an_endpoint(self) -> None:
+        with pytest.raises(ValueError, match="base_url"):
+            ModelTrackBConfig.model_validate({"repo_name": "unit-repo"})
+
+    def test_the_config_carries_the_endpoint_it_is_given(self) -> None:
+        config = ModelTrackBConfig(
+            repo_name="unit-repo", base_url="http://llm.example.test:8000"
+        )
+        assert config.base_url == "http://llm.example.test:8000"

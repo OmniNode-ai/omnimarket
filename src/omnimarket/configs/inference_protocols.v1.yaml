@@ -458,3 +458,18 @@ profiles:
       presence_penalty: 1.5
       chat_template_kwargs:
         enable_thinking: false
+
+  # OMN-20990: a customer's own Anthropic key (catalogue row byok-anthropic) is
+  # reached through Anthropic's OpenAI SDK compatibility endpoint. Current Claude
+  # models refuse a sampling temperature other than the default: "Claude 4.7 and
+  # later models ... any value below 1 returns a 400 error", and Claude Haiku 5.5
+  # refuses non-default sampling the same way (platform.claude.com/docs/en/api/
+  # openai-sdk, read 2026-10-11). The delegation default is 0.3, so without this
+  # profile every call on a current Claude model would answer HTTP 400. 1.0 is
+  # the API default, which older Claude models accept too. A caller that sends
+  # its own temperature still wins.
+  - profile_id: anthropic-claude-default-sampling
+    enabled: true
+    model_name_patterns:
+      - "claude-*"
+    default_temperature: 1.0

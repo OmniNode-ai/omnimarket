@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_linear_comments_sweep_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+description: >
+  Hourly Linear-comments sweep: collect every comment addressed to the operator since an
+  exact cutoff, ask node_linear_comments_decision_compute which get a draft, draft each
+  through the delegation orchestrator, check the draft's citations, verify it against the
+  facts table, then write the report and the metrics rows. Model calls reuse the canonical
+  delegation orchestrator and infra request-response wiring; every decision is asked of the
+  decision compute node over the bus. The deployment's briefs, report directory and standing
+  rules come from an overlay; the node holds none of them. Read-only on Linear.
+input_model:
+  name: ModelLinearCommentsSweepRequest
+  module: omnimarket.nodes.node_linear_comments_sweep_orchestrator.models.model_linear_comments_sweep
+output_model:
+  name: ModelLinearCommentsSweepResult
+  module: omnimarket.nodes.node_linear_comments_sweep_orchestrator.models.model_linear_comments_sweep
+handler:
+  module: omnimarket.nodes.node_linear_comments_sweep_orchestrator.handlers.handler_linear_comments_sweep
+  class: HandlerLinearCommentsSweep
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: linear_comments_sweep
+      handler:
+        name: HandlerLinearCommentsSweep
+        module: omnimarket.nodes.node_linear_comments_sweep_orchestrator.handlers.handler_linear_comments_sweep
+      input_model: omnimarket.nodes.node_linear_comments_sweep_orchestrator.models.model_linear_comments_sweep.ModelLinearCommentsSweepRequest
+      output_model: omnimarket.nodes.node_linear_comments_sweep_orchestrator.models.model_linear_comments_sweep.ModelLinearCommentsSweepResult
+terminal_event: onex.evt.omnimarket.linear-comments-sweep-completed.v1
+terminal_events:
+  success: onex.evt.omnimarket.linear-comments-sweep-completed.v1
+  failure: onex.evt.omnimarket.linear-comments-sweep-failed.v1
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 7200000
+  runtime_profiles: [effects]
+env_dependencies:
+  ONEX_ENVIRONMENT: {required: true, description: Explicit runtime environment for canonical bus wiring.}
+  OMNIMARKET_LINEAR_COMMENTS_SWEEP_OVERLAY: {required: false, description: Path to the deployment overlay.yaml; when unset the first node_linear_comments_sweep_orchestrator/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS is used, and a run with neither refuses to start.}
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.linear-comments-sweep-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.linear-comments-sweep-completed.v1
+    - onex.evt.omnimarket.linear-comments-sweep-failed.v1
+    - onex.cmd.omnibase-infra.delegation-request.v1
+    - onex.cmd.omnimarket.linear-comments-decision-requested.v1
+  request_response:
+    instances:
+      - name: sweep_phase
+        request_topic: onex.cmd.omnibase-infra.delegation-request.v1
+        reply_topics:
+          completed: onex.evt.omnibase-infra.delegation-completed.v1
+          failed: onex.evt.omnibase-infra.delegation-failed.v1
+        correlation: {location: body, field: correlation_id}
+        timeout_seconds: 3600
+        consumer_group_mode: per_instance
+      - name: sweep_decision
+        request_topic: onex.cmd.omnimarket.linear-comments-decision-requested.v1
+        reply_topics:
+          completed: onex.evt.omnimarket.linear-comments-decision-completed.v1
+          failed: onex.evt.omnimarket.linear-comments-decision-failed.v1
+        correlation: {location: body, field: correlation_id}
+        timeout_seconds: 60
+        consumer_group_mode: per_instance
+runtime_dispatch:
+  # The host scheduler (CLI dispatcher) is this node's producer; declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.linear-comments-sweep-start.v1
+
+# Explicit SINK declaration (contract topic graph closure): no node contract
+# subscribes to these; the host scheduler that started the run reads the terminal.
+externally_consumed_topics:
+  - onex.evt.omnimarket.linear-comments-sweep-completed.v1
+  - onex.evt.omnimarket.linear-comments-sweep-failed.v1
+
+metadata:
+  ticket: OMN-20680
+  phase_order: [Collect, Draft, Finalize]
+  transport_type: kafka

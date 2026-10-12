@@ -328,6 +328,31 @@ def test_summary_and_artifact_run_even_when_the_replay_is_red() -> None:
     assert any(p.endswith("table.md") for p in paths)
 
 
+def test_summary_and_artifact_publish_table_to_job_log(tmp_path: Path) -> None:
+    step = next(s for s in _steps(_load()) if s.get("name", "").startswith("Publish"))
+    out_dir = tmp_path / "replay-out"
+    out_dir.mkdir()
+    table = "| pr | outcome | note |\n| 7 | not_compared | no OCC run on the head |\n"
+    (out_dir / "table.md").write_text(table, encoding="utf-8")
+    summary = tmp_path / "summary.md"
+    proc = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "GITHUB_STEP_SUMMARY": str(summary),
+            "REPOSITORY": "omnimemory",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert table in proc.stdout
+    assert table in summary.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

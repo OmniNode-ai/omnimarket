@@ -52,6 +52,13 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20917-ac3-replay-cli-stderr"
+    description: "AC3: the readable replay output includes each classified row and the stop reason on stderr, independent of logging configuration, and the CLI records its rows and table."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_occ_difference.py -q -n 0 -k replay_cli_stderr_rows_and_stop_reason"
+    binds_ac: ["AC3"]
   - id: "dod-omn20917-ac5-extraction-drains"
     description: "AC5: the workflow's extraction pipeline drains a real git history and keeps exactly the newest 200 PR numbers under pipefail."
     source: "manual"
