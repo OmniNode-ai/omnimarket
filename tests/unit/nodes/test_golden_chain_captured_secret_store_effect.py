@@ -314,6 +314,51 @@ def test_config_refuses_a_non_http_address(tmp_path: Path) -> None:
         load_writer_config(_onex_home(tmp_path, addr="file:///etc"))
 
 
+@pytest.mark.parametrize(
+    "addr", ["http://store.example.test:8080", "http://192.0.2.10:8880"]
+)
+def test_config_refuses_plain_http_to_a_remote_store(tmp_path: Path, addr: str) -> None:
+    with pytest.raises(CapturedSecretWriterConfigError, match="infisical_addr"):
+        load_writer_config(_onex_home(tmp_path, addr=addr))
+
+
+@pytest.mark.parametrize(
+    "addr",
+    [
+        "http://127.0.0.1:8880",
+        "http://localhost:8880",
+        "http://[::1]:8880",
+        "https://store.example.test",
+    ],
+)
+def test_config_accepts_plain_http_to_a_loopback_store(
+    tmp_path: Path, addr: str
+) -> None:
+    assert load_writer_config(_onex_home(tmp_path, addr=addr)) is not None
+
+
+def test_the_transport_refuses_plain_http_to_a_remote_store_unopened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_captured_secret_store_effect.handlers import (
+        handler_captured_secret_store,
+    )
+
+    loaded = load_writer_config(_onex_home(tmp_path))
+    assert loaded is not None
+    config = CapturedSecretWriterConfig(
+        **{**loaded.__dict__, "infisical_addr": "http://store.example.test:8080"}
+    )
+
+    def unopened(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("a remote plain http connection must not be opened")
+
+    monkeypatch.setitem(handler_captured_secret_store._CONNECTIONS, "http", unopened)
+    transport = InfisicalCreateOnlySecretStore()
+    with pytest.raises(StoreUnreachableError, match="unsupported store address"):
+        transport.login(config)
+
+
 def test_a_reference_is_set_if_and_only_if_the_store_holds_it() -> None:
     with pytest.raises(ValueError, match="reference"):
         ModelCapturedSecretStoreResult(

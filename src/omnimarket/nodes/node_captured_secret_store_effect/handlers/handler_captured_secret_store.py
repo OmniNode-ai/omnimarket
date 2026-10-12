@@ -29,6 +29,7 @@ Configuration
 writer's client id and two references) with the values in
 ``<onex_home>/credentials.json``, refused unless mode 0600: the split
 ``onex auth login`` already uses. Nothing deployment specific is committed.
+Plain http is accepted only for a loopback store.
 
 Failure
 -------
@@ -43,6 +44,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import http.client
+import ipaddress
 import json
 import logging
 import urllib.parse
@@ -74,11 +76,23 @@ logger = logging.getLogger(__name__)
 #: a backgrounded capture process open.
 TIMEOUT_SECONDS = 5.0
 
-#: The two schemes a store address may use; anything else is refused unopened.
+#: The two schemes a store address may use; http is accepted only to a loopback
+#: host, and anything else is refused unopened.
 _CONNECTIONS: dict[str, type[http.client.HTTPConnection]] = {
     "https": http.client.HTTPSConnection,
     "http": http.client.HTTPConnection,
 }
+
+
+def _plain_http_allowed(hostname: str | None) -> bool:
+    if hostname is None:
+        return False
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 class CapturedSecretWriterConfigError(ValueError):
@@ -125,6 +139,12 @@ def load_writer_config(onex_home: Path) -> CapturedSecretWriterConfig | None:
         raise CapturedSecretWriterConfigError(str(exc)) from None
     if overlay.writer_client_id is None:
         return None
+    parts = urllib.parse.urlsplit(overlay.infisical_addr)
+    if parts.scheme == "http" and not _plain_http_allowed(parts.hostname):
+        raise CapturedSecretWriterConfigError(
+            "infisical_addr: plain http is accepted only to a loopback host; "
+            "a remote store needs https"
+        )
     named = {
         "writer_client_secret_ref": overlay.writer_client_secret_ref,
         "reference_key_ref": overlay.reference_key_ref,
@@ -208,7 +228,11 @@ class InfisicalCreateOnlySecretStore:
     ) -> tuple[int, dict[str, Any]]:
         parts = urllib.parse.urlsplit(url)
         connection_class = _CONNECTIONS.get(parts.scheme)
-        if connection_class is None or not parts.hostname:
+        if (
+            connection_class is None
+            or not parts.hostname
+            or (parts.scheme == "http" and not _plain_http_allowed(parts.hostname))
+        ):
             raise StoreUnreachableError("unsupported store address")
         headers = {"Content-Type": "application/json"}
         if token:
