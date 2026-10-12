@@ -1408,6 +1408,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
+      # lint step "No Anthropic key value in a workflow (OMN-20967)".
+      - id: anthropic-key-prefix-workflows
+        name: No Anthropic key value in a workflow (OMN-20967)
+        language: system
+        entry: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
+        files: ^(\.github/workflows/|tests/ci/test_anthropic_key_prefix_workflows_omn20967\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20838: dod_verify's read layer reads the canonical clone and the
       # PR watcher's state; the guard fails when it spawns gh for a read a local
       # source holds. SYNC with the ci.yml lint step "dod_verify local reads
