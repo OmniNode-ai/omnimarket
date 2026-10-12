@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from omnimarket.models.antipattern import ModelAntipatternValidationContext
 from omnimarket.nodes.node_antipattern_match_effect.handlers.handler_antipattern_match_effect import (
     HandlerAntipatternMatchEffect,
     _apply_freshness_boost,
@@ -333,22 +334,53 @@ class TestHandlerAntipatternMatchEffect:
         assert len(match.explanation) > 0
 
     @pytest.mark.asyncio
-    async def test_missing_embedding_url_raises(self) -> None:
-        import os
+    async def test_missing_embedding_url_is_a_graceful_skip(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A raise would dead-letter the command and leave its requester waiting
+        on the response topic; the handler answers with the reason instead."""
+        monkeypatch.delenv("EMBEDDING_MODEL_URL", raising=False)
+        qdrant = _make_mock_qdrant()
+        handler = HandlerAntipatternMatchEffect(qdrant_client=qdrant)
 
+        result = await handler.handle(
+            ModelAntipatternMatchRequest(
+                correlation_id="test-006",
+                code_text="some code",
+            )
+        )
+
+        assert result.correlation_id == "test-006"
+        assert result.matches == ()
+        assert result.error_message is not None
+        assert "EMBEDDING_MODEL_URL" in result.error_message
+        qdrant.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_validation_context_is_echoed_on_the_response(self) -> None:
+        context = ModelAntipatternValidationContext(
+            file_path="src/foo.py",
+            line_count=12,
+            similarity_threshold=0.8,
+            enforcement_mode="blocking",
+        )
         handler = HandlerAntipatternMatchEffect(qdrant_client=_make_mock_qdrant())
-        backup = os.environ.pop("EMBEDDING_MODEL_URL", None)
-        try:
-            with pytest.raises(OSError, match="EMBEDDING_MODEL_URL"):
-                await handler.handle(
-                    ModelAntipatternMatchRequest(
-                        correlation_id="test-006",
-                        code_text="some code",
-                    )
+
+        with patch(
+            "omnimarket.nodes.node_antipattern_match_effect.handlers."
+            "handler_antipattern_match_effect._get_embedding",
+            AsyncMock(return_value=[0.1] * 8),
+        ):
+            result = await handler.handle(
+                ModelAntipatternMatchRequest(
+                    correlation_id="test-ctx",
+                    code_text="some code",
+                    embedding_endpoint_override="http://embed.test:8100",
+                    validation_context=context,
                 )
-        finally:
-            if backup is not None:
-                os.environ["EMBEDDING_MODEL_URL"] = backup
+            )
+
+        assert result.validation_context == context
 
     @pytest.mark.asyncio
     async def test_both_code_and_description_none_raises(self) -> None:
