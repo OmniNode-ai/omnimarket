@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The omnibase_core pins move to the temp-file blob read fix (OMN-20460)."""
+"""OMN-21002: core pins include the caller-owned allowlist shape declaration."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PRECOMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
-NEW_CORE_REV = "f50d00fc7918d0b12ccd0d3497160325e32e7ac5"
+NEW_CORE_REV = "031148215620031436cba30619bbae67c0bb38ad"
 OLD_CORE_REV = "7f20b97895f01996c5858dde385ba8991c06e708"
 CORE_REPO_SUFFIX = "omnibase_core"
 FILE_SHAPE_HOOK_ID = "canonical-file-shape"

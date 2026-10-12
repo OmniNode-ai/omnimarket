@@ -1,0 +1,223 @@
+{
+  "COLLECT": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ticket": {
+              "type": "string"
+            },
+            "ticket_title": {
+              "type": "string"
+            },
+            "comment_id": {
+              "type": "string"
+            },
+            "comment_url": {
+              "type": "string"
+            },
+            "author_role": {
+              "type": "string"
+            },
+            "author_kind": {
+              "type": "string",
+              "enum": [
+                "human",
+                "automation",
+                "operator_self",
+                "unknown"
+              ]
+            },
+            "posted_at": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "needs_reply": {
+              "type": "boolean"
+            },
+            "asks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "already_answered_by": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "ticket",
+            "ticket_title",
+            "comment_id",
+            "author_role",
+            "author_kind",
+            "posted_at",
+            "text",
+            "needs_reply",
+            "asks"
+          ]
+        }
+      },
+      "positive_control": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "items",
+      "positive_control"
+    ]
+  },
+  "DRAFT": {
+    "type": "object",
+    "properties": {
+      "ticket": {
+        "type": "string"
+      },
+      "comment_id": {
+        "type": "string"
+      },
+      "comment_url": {
+        "type": "string"
+      },
+      "author_role": {
+        "type": "string"
+      },
+      "their_summary": {
+        "type": "string"
+      },
+      "proposed_reply": {
+        "type": "string"
+      },
+      "facts_cited": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "open_points_for_operator": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "confidence": {
+        "type": "string",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ]
+      }
+    },
+    "required": [
+      "ticket",
+      "comment_id",
+      "their_summary",
+      "proposed_reply",
+      "facts_cited",
+      "open_points_for_operator",
+      "confidence"
+    ]
+  },
+  "VERIFY": {
+    "type": "object",
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      },
+      "rejection_reason": {
+        "type": "string"
+      },
+      "draft": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string"
+          },
+          "comment_id": {
+            "type": "string"
+          },
+          "comment_url": {
+            "type": "string"
+          },
+          "author_role": {
+            "type": "string"
+          },
+          "their_summary": {
+            "type": "string"
+          },
+          "proposed_reply": {
+            "type": "string"
+          },
+          "facts_cited": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "open_points_for_operator": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          }
+        },
+        "required": [
+          "ticket",
+          "comment_id",
+          "their_summary",
+          "proposed_reply",
+          "facts_cited",
+          "open_points_for_operator",
+          "confidence"
+        ]
+      }
+    },
+    "required": [
+      "accepted",
+      "draft"
+    ]
+  },
+  "WRITE": {
+    "type": "object",
+    "properties": {
+      "report_path": {
+        "type": "string"
+      },
+      "metrics_path": {
+        "type": "string"
+      },
+      "rendered_by": {
+        "type": "string",
+        "enum": [
+          "delegated",
+          "fallback"
+        ]
+      },
+      "metrics_rows": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "report_path",
+      "metrics_path",
+      "rendered_by",
+      "metrics_rows"
+    ]
+  }
+}

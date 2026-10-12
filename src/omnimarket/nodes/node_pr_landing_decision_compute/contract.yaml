@@ -35,6 +35,16 @@
 # worker_gate) is released on a green, CLEAN head older than stale_gate_seconds
 # (two ticks), so that head takes the ordinary merge path.
 #
+# 0.4.0 (OMN-20865) adds typed no-new-commits update readbacks and external
+# shared-check verdict observations to the snapshot. A transient response
+# permits one same-head update retry after update_retry_seconds; a green
+# external verdict permits one rerun per member head, check and verdict id.
+# A green head already armed and owned still receives a strict-base update;
+# its other exclusions and the owned merge exclusion continue to apply.
+# Neither a base SHA change nor an arbitrary 422 is evidence for these paths.
+# Effects must collect these new optional facts; absent facts keep the
+# previous behavior. This compute performs no collection or GitHub effects.
+#
 # The landing controller calls it in process, so it has no event_bus; it is
 # addressable through runtime_dispatch like the other directly-invoked compute
 # nodes. Experimental until the controller runs it (observe-only first).
@@ -45,11 +55,11 @@ lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 0
-  minor: 3
+  minor: 4
   patch: 0
 node_version:
   major: 0
-  minor: 3
+  minor: 4
   patch: 0
 description: >
   Pure definition-B decision of one landing-controller tick. Reads one
