@@ -249,7 +249,23 @@ jobs:
     # This bump is workflow-only, so it triggers no rebuild. The proof is the
     # next omnimarket runtime merge: its compose-dev receipt must carry
     # node_inventory ok.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc
+    #
+    # Advanced from 04eb6d41d to cb5c0cfd7 by OMN-20008 to carry
+    # omnibase_infra#4900 (OMN-20934), the private census fetch for the routed
+    # sibling lane. The reusable uses ./.github/actions/fetch-census-overlay
+    # (#4901, 3e9cd7fe4, an ancestor), vars.OMNI_CI_OVERLAY_REPO, and the
+    # ONEXBOT_OCC_APP_ID / ONEXBOT_OCC_PRIVATE_KEY already passed below.
+    # Measured without it: trigger run 38293893148 for merge 886690e96602425262fbe59310a5d7129200189b
+    # (omnimarket#3819) wrote artifact 11768686435,
+    # the routed sibling lane's lab-pass receipt, FAIL at 2026-10-12T19:07:49Z.
+    # Every check was ok except lane_sync: "census unreadable: ValueError:
+    # census exit=3: ... ERROR: the lane census is not configured: neither
+    # ONEX_WORKSPACE_CONFIG_ROOT nor OMNI_HOME is set". That FAIL holds the
+    # omnimarket 0.4.312 release (release-cut tick reason lab_receipt_absent).
+    #
+    # This bump is workflow-only, so it triggers no rebuild. The proof is the
+    # next omnimarket runtime merge's sibling receipt carrying lane_sync ok.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@cb5c0cfd724905aec46d336dea84e8347cce9e20
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
