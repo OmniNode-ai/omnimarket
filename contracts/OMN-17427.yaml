@@ -460,3 +460,10 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_codex_headroom_throughput_tick_decision_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC28"]
+  - id: "dod-omn17427-ac28-tick-codex-headroom-deploy-probe"
+    description: "Deploy probe. The throughput tick decision model GitHub serves at the checked-out commit declares ModelCodexHeadroom, the typed Codex headroom reading this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/models/model_throughput_tick_decision.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class ModelCodexHeadroom(BaseModel):'"
+    binds_ac: ["AC28"]
