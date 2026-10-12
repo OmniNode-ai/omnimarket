@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-21049
+title: Session phase evaluation reaches the orchestrator tick over the bus
+summary: The session phase evaluator request and evaluation carry session_id and correlation_id, and the orchestrator input accepts one bare evaluation, so a session-phase-evaluated event is dispatched and produces a tick-completed event.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-session-phase-tick-wire
+    statement: An evaluation published by the evaluator matches the orchestrator's input model and dispatches to its handler.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the evaluator output is dispatched by the orchestrator contract and yields a tick-completed result carrying session_ids -- falsifier: tests/integration/nodes/node_session_phase_enforcement/test_omn21049_session_phase_tick_wire.py drives the runtime PayloadTypeMatcher, the dispatch callback and a result applier built from each contract.yaml, and fails with either node source at the base commit'
+evidence_requirements:
+  - kind: tests
+    description: The wire test between the evaluator and the orchestrator plus the existing evaluator and orchestrator handler tests.
+    command: uv run pytest tests/integration/nodes/node_session_phase_enforcement/test_omn21049_session_phase_tick_wire.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21049-ac1-tick-wire
+    description: The evaluator output dispatches through the orchestrator contract and produces a tick-completed payload with session_ids.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/integration/nodes/node_session_phase_enforcement/test_omn21049_session_phase_tick_wire.py -q
+    binds_ac:
+      - AC1
+  - id: dod-omn21049-deploy-probe-evaluation-session-id
+    description: Read the published evaluator handler at the checked-out commit through the GitHub contents API. It carries session_id and correlation_id in the evaluation model; both are absent from the merge base, so the probe fails there.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_phase_evaluator/handlers/handler_session_phase_evaluator.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("session_id") and contains("correlation_id"))' | grep -qx true
+    binds_ac:
+      - AC1
