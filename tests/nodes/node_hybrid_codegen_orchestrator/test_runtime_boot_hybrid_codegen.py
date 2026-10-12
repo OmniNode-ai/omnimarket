@@ -23,8 +23,8 @@ import contextlib
 import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import cast
-from uuid import uuid4
+from typing import NamedTuple, cast
+from uuid import UUID, uuid4
 
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -148,15 +148,23 @@ def _spec(target_root: Path, correlation_id: str) -> ModelCodegenSpec:
     )
 
 
+class _Run(NamedTuple):
+    """What one start command left on the bus."""
+
+    seen: dict[str, list[dict[str, object]]]
+    arrived: bool
+    start_correlation_id: UUID
+    completed_correlation_ids: list[str]
+
+
 async def _drive(
     monkeypatch: pytest.MonkeyPatch,
     spec: ModelCodegenSpec,
     source_text: str,
     *,
     wait_seconds: float = 30,
-) -> tuple[dict[str, list[dict[str, object]]], bool]:
-    """Publish one start command; return every probed topic's payloads and whether
-    the terminal event arrived."""
+) -> _Run:
+    """Publish one start command and collect every probed topic's payloads."""
     monkeypatch.setattr(
         handler_llm_codegen,
         "build_lab_inference_adapter",
@@ -172,12 +180,14 @@ async def _drive(
     await bus.start()
     seen: dict[str, list[dict[str, object]]] = {topic: [] for topic in T_PROBED}
     completed = asyncio.Event()
+    completed_correlation_ids: list[str] = []
 
     def _collector(topic: str) -> Callable[[object], Awaitable[None]]:
         async def _collect(message: object) -> None:
             wire = json.loads(bytes(getattr(message, "value", b"")))
             seen[topic].append(wire.get("payload", wire))
             if topic == T_COMPLETED:
+                completed_correlation_ids.append(str(wire.get("correlation_id")))
                 completed.set()
 
         return _collect
@@ -198,8 +208,9 @@ async def _drive(
     assert report.total_wired == len(FACTORY_NODES)
     engine.freeze()
 
+    start_correlation_id = uuid4()
     envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
-        payload=spec.model_dump(mode="json"), correlation_id=uuid4()
+        payload=spec.model_dump(mode="json"), correlation_id=start_correlation_id
     )
     await bus.publish(T_START, None, envelope.model_dump_json().encode("utf-8"), None)
     arrived = False
@@ -207,7 +218,7 @@ async def _drive(
         await asyncio.wait_for(completed.wait(), timeout=wait_seconds)
         arrived = True
     await bus.close()
-    return seen, arrived
+    return _Run(seen, arrived, start_correlation_id, completed_correlation_ids)
 
 
 def _stops_at(seen: dict[str, list[dict[str, object]]]) -> str:
@@ -222,12 +233,14 @@ async def test_start_command_reaches_completed_with_files_on_disk(
     target = tmp_path / "generated"
     spec = _spec(target, correlation_id=str(uuid4()))
 
-    seen, arrived = await _drive(monkeypatch, spec, _GOOD_SOURCE)
+    run = await _drive(monkeypatch, spec, _GOOD_SOURCE)
+    seen = run.seen
 
-    assert arrived, (
+    assert run.arrived, (
         f"no hybrid-codegen-completed event; the chain stopped after {_stops_at(seen)}"
     )
     assert len(seen[T_COMPLETED]) == 1
+    assert run.completed_correlation_ids == [str(run.start_correlation_id)]
     completed = seen[T_COMPLETED][0]
     assert completed["status"] == "completed", completed
     written = [Path(str(p)) for p in cast("list[object]", completed["written_paths"])]
@@ -246,22 +259,24 @@ async def test_every_hop_publishes_exactly_once(
 ) -> None:
     spec = _spec(tmp_path / "generated", correlation_id=str(uuid4()))
 
-    seen, arrived = await _drive(monkeypatch, spec, _GOOD_SOURCE)
+    run = await _drive(monkeypatch, spec, _GOOD_SOURCE)
+    seen = run.seen
 
-    assert arrived, f"the chain stopped after {_stops_at(seen)}"
+    assert run.arrived, f"the chain stopped after {_stops_at(seen)}"
     counts = {topic: len(seen[topic]) for topic in T_PROBED}
     assert counts == dict.fromkeys(T_PROBED, 1), counts
 
 
-async def test_validation_rejection_completes_rejected_and_writes_nothing(
+async def test_validation_failed_completes_rejected_and_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "generated"
     spec = _spec(target, correlation_id=str(uuid4()))
 
-    seen, arrived = await _drive(monkeypatch, spec, _STUB_SOURCE)
+    run = await _drive(monkeypatch, spec, _STUB_SOURCE)
+    seen = run.seen
 
-    assert arrived, (
+    assert run.arrived, (
         f"no hybrid-codegen-completed event; the chain stopped after {_stops_at(seen)}"
     )
     completed = seen[T_COMPLETED][0]
@@ -273,15 +288,16 @@ async def test_validation_rejection_completes_rejected_and_writes_nothing(
     assert seen["onex.cmd.omnimarket.codegen-file-write.v1"] == []
 
 
-async def test_typecheck_rejection_completes_rejected_and_writes_nothing(
+async def test_typecheck_failed_completes_rejected_and_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "generated"
     spec = _spec(target, correlation_id=str(uuid4()))
 
-    seen, arrived = await _drive(monkeypatch, spec, _TYPE_ERROR_SOURCE)
+    run = await _drive(monkeypatch, spec, _TYPE_ERROR_SOURCE)
+    seen = run.seen
 
-    assert arrived, (
+    assert run.arrived, (
         f"no hybrid-codegen-completed event; the chain stopped after {_stops_at(seen)}"
     )
     completed = seen[T_COMPLETED][0]
