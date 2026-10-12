@@ -483,7 +483,7 @@ class TestHandlerCanaryOrchestrator:
             workspace_root=str(tmp_path),
             dry_run=True,
         )
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
         assert isinstance(result, ModelCanaryReport)
         assert result.dry_run is True
         assert result.entries_total == 1
@@ -496,7 +496,7 @@ class TestHandlerCanaryOrchestrator:
             output_dir=str(tmp_path / "runs"),
             dry_run=True,
         )
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
         assert result.success is False
         assert result.error_message is not None
 
@@ -517,7 +517,7 @@ class TestHandlerCanaryOrchestrator:
             mock_draft_result,
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(minimal_manifest),
@@ -556,7 +556,7 @@ class TestHandlerCanaryOrchestrator:
             grader_model_key="qwen3-coder",
         )
 
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
 
         assert isinstance(result, ModelCanaryReport)
         assert result.entries_total == 1
@@ -641,7 +641,7 @@ class TestHandlerCanaryOrchestrator:
             )
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
@@ -709,7 +709,7 @@ class TestHandlerCanaryOrchestrator:
         )
         handler._allow_external_providers = False  # noqa: SLF001
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
@@ -772,7 +772,7 @@ class TestHandlerCanaryOrchestrator:
             mock_draft_result,
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
@@ -861,7 +861,7 @@ class TestHandlerCanaryOrchestrator:
             )
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
@@ -937,7 +937,7 @@ class TestHandlerCanaryOrchestrator:
             grader_model_key="qwen3-coder",
         )
 
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
 
         evidence_dir = Path(result.evidence_dir)
         entry_dir = evidence_dir / "test-entry-1"
@@ -1023,7 +1023,7 @@ class TestAdrBusProtocolAdapters:
             FakeContainer({ProtocolEventBusPublisher: bus})
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             adapter.ingest(root_paths=["/tmp/source"], workspace_root="/tmp")
         )
 
