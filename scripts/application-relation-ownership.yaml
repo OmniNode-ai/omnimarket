@@ -105,6 +105,24 @@ db_io:
     # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and no
     # _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the governed
     # OMN-15359 cutover.
+    - name: automation_liveness_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_automation_liveness/migrations/0000_create_automation_liveness.sql
+      access: read_write
+      role: automation_liveness_state
+    - name: automation_run_history
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_automation_liveness/migrations/0000_create_automation_liveness.sql
+      access: read_write
+      role: automation_run_history
+    - name: automation_alarm_episodes
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_automation_liveness/migrations/0000_create_automation_liveness.sql
+      access: read_write
+      role: automation_alarm_episodes
     - name: work_events
       database_ref: application
       schema: omninode_internal
