@@ -36,5 +36,3 @@ dod_evidence:
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/scm/scm_cli.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("{CLONE_ROOT_ENV}/<repo>")' | grep -qx true
         cwd: ${OMNI_HOME}/omnimarket
-    binds_ac:
-      - AC1
