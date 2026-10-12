@@ -1,0 +1,35 @@
+id: s22_green_disarmed_hold_release
+scenario: S22
+tla_modeled: false
+ledger_rows:
+  - 'docs/tracking/ROLLING_WORK_LEDGER.md:66017 HOLD 2026-10-11T10:22:23Z'
+  - 'docs/tracking/ROLLING_WORK_LEDGER.md:66385 RELEASE 2026-10-11T12:39:37Z'
+claim: >-
+  Class (a): a green head disarmed by a hold takes the pinned merge path
+  after release without a push or a driver action. The node owns selection;
+  the GitHub effect owns arming or merging the selected head.
+world:
+  prs:
+    - pr: acme/infra#1869
+      ci: green
+      auto_merge_head: h1
+    - pr: acme/infra#1871
+      ci: green
+      suspensions: [gate]
+      gate_reasons: [worker_gate]
+ticks:
+  - events:
+      - hold: {pr: 'acme/infra#1869'}
+    expect:
+      actions: []
+      lease_count: 0
+  - events:
+      - release: {pr: 'acme/infra#1869'}
+      - release: {pr: 'acme/infra#1871', suspension: gate}
+    expect:
+      actions: ['merge acme/infra#1869 h1', 'merge acme/infra#1871 h1']
+      lease_count: 0
+  - expect:
+      actions: []
+end:
+  dispatches: {}

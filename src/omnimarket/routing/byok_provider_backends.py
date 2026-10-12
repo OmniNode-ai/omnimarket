@@ -34,8 +34,10 @@ directions against the platform contract by
 ``bifrost_delegation.yaml`` must be offered here or declared ``not_offered``
 here (with a reason and a ticket), and every row here must be backed by a rung.
 Nothing is inferred from a backend's endpoint host — the binding is declared.
-Claude/Anthropic is refused as a provider id anywhere in the file
-(:data:`FORBIDDEN_PROVIDER_PATTERN`): Claude is never a delegation target.
+A provider the platform holds no key for is offered as a customer-only surface
+(``mirrors_house_rung: false``): ``openai`` (OMN-17373) and ``anthropic``
+(OMN-20990). Until OMN-20990 the loader refused any Claude/Anthropic provider
+id; operator ruling 2026-10-11T15:05:50Z lifted that rule.
 
 Related:
     - OMN-17372: cloud delegation on a customer's OpenRouter key (blocker b3)
@@ -47,6 +49,8 @@ Related:
     - OMN-20157: ``gemini`` and a second ``glm`` plan are offered, every row
       declares a plan and a limit model, ``vertex`` stays not-offered, and the
       ``glm`` default is the general API (the Coding Plan is detection-only)
+    - OMN-20990: ``anthropic`` is offered as a customer-only surface, and a row
+      declares how its list-models endpoint takes the key (``models_auth``)
 
 Plans (OMN-20157)
 -----------------
@@ -105,15 +109,6 @@ BYOK_CATALOG_SCHEMA_VERSION = "byok_provider_backends.v1"
 
 CATALOG_PATH: Path = (
     Path(__file__).parent.parent / "configs" / "byok_provider_backends.v1.yaml"
-)
-
-#: Provider ids that may never appear in the catalogue, offered or not. The
-#: launch rule (beta requirements r4 §2.4, axiom 2) is that Claude is never a
-#: delegation target — not a default, not a fallback, not an accepted
-#: credential type, not a catalogue row. Matched case-insensitively as a
-#: substring so ``us.anthropic.opus`` and ``Claude-3`` are both refused.
-FORBIDDEN_PROVIDER_PATTERN: re.Pattern[str] = re.compile(
-    r"anthropic|claude", re.IGNORECASE
 )
 
 #: The shape of a HOUSE credential reference on a platform rung. The middle
@@ -298,6 +293,16 @@ class ModelByokProviderBackend(BaseModel):
     #: the best entry here that the provider lists for that key, resolved by
     #: :func:`select_byok_model` and stored with the credential.
     model_preference: tuple[ModelByokModelPreference, ...] = Field(min_length=1)
+    #: OMN-20990. How the customer's key is presented to ``models_url``.
+    #: ``bearer`` sends ``Authorization: Bearer <key>`` (OpenRouter, z.ai,
+    #: Google's OpenAI-compatible surface, OpenAI). ``x_api_key`` sends
+    #: ``x-api-key: <key>``, the only header Anthropic's own list-models
+    #: endpoint takes an API key in.
+    models_auth: Literal["bearer", "x_api_key"] = "bearer"
+    #: OMN-20990. Non-secret headers ``models_url`` requires besides the key
+    #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
+    #: ever sent by ``models_auth``.
+    models_headers: dict[str, str] = Field(default_factory=dict)
     #: OMN-20844. ``true`` declares that the customer names the model their key
     #: runs: registration takes the model they choose (checked against the
     #: key's own list) and never picks one from ``model_preference`` for them,
@@ -390,15 +395,6 @@ class ModelCatalogueParityGap(BaseModel):
         return not self.missing_from_catalogue and not self.unbacked_in_catalogue
 
 
-def _refuse_forbidden_provider(provider: str, path: Path, *, section: str) -> None:
-    if FORBIDDEN_PROVIDER_PATTERN.search(provider):
-        raise ByokCatalogError(
-            f"BYOK provider catalog at {path} names provider {provider!r} in "
-            f"'{section}'. Claude/Anthropic is never a delegation target and may "
-            "not appear in the customer catalogue in any role."
-        )
-
-
 def _load_document(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise ByokCatalogError(
@@ -433,15 +429,6 @@ def _read_plan_catalog(
     catalog: dict[tuple[str, str], ModelByokProviderBackend] = {}
     backend_ids: set[str] = set()
     for entry in entries:
-        # OMN-18265: the forbidden-provider refusal runs on the RAW row, before
-        # shape validation. A Claude row must be refused for being Claude, not
-        # incidentally for whichever field it also happens to be missing — and
-        # adding a required field to the model above would otherwise silently
-        # move which refusal a reader sees.
-        if isinstance(entry, Mapping):
-            raw_provider = entry.get("provider")
-            if isinstance(raw_provider, str):
-                _refuse_forbidden_provider(raw_provider, path, section="providers")
         try:
             backend = ModelByokProviderBackend.model_validate(entry)
         except ValidationError as exc:
@@ -452,7 +439,6 @@ def _read_plan_catalog(
                 f"BYOK provider catalog at {path} has a mis-shaped 'providers' "
                 f"row: {exc}"
             ) from exc
-        _refuse_forbidden_provider(backend.provider, path, section="providers")
         key = (backend.provider, backend.plan)
         if key in catalog:
             raise ByokCatalogError(
@@ -556,7 +542,6 @@ def _read_not_offered(path: Path) -> dict[str, ModelByokNotOfferedProvider]:
                 f"BYOK provider catalog at {path} has a mis-shaped 'not_offered' "
                 f"row: {exc}"
             ) from exc
-        _refuse_forbidden_provider(row.provider, path, section="not_offered")
         normalized = row.provider.strip().lower()
         if normalized in offered:
             raise ByokCatalogError(
@@ -891,7 +876,6 @@ __all__: list[str] = [
     "BYOK_CATALOG_SCHEMA_VERSION",
     "BYOK_MODEL_UNRESOLVED",
     "CATALOG_PATH",
-    "FORBIDDEN_PROVIDER_PATTERN",
     "ByokCatalogError",
     "ByokPlanNotPermittedError",
     "ModelByokLimitModel",

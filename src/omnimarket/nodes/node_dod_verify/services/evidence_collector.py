@@ -2299,6 +2299,10 @@ def git_release_tags_containing(
     return tuple(line.strip() for line in proc.stdout.splitlines() if line.strip())
 
 
+class _SiblingCheckoutMissing(str):
+    """Typed cwd refusal; a command's output cannot manufacture this cause."""
+
+
 class EvidenceCollector:
     """Loads a ticket contract and runs dod_evidence checks.
 
@@ -5011,6 +5015,16 @@ class EvidenceCollector:
                 run_cwd, cwd_err, declared = self._resolve_check_cwd(
                     check, ticket_id, contract_path
                 )
+                if isinstance(cwd_err, _SiblingCheckoutMissing):
+                    return ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        unverifiable_cause=EnumEvidenceUnverifiableCause.SIBLING_CHECKOUT_MISSING,
+                        message=cwd_err,
+                        proof_class=item_proof_class,
+                        product_clones=tuple(clones),
+                    )
                 if cwd_err is None and declared and run_cwd is not None:
                     resolution = self._assess_product_clone(run_cwd)
                     if (
@@ -5303,6 +5317,7 @@ class EvidenceCollector:
         self,
         cwd_template: str,
         ticket_id: str,
+        own_repository: str | None = None,
     ) -> tuple[str | None, str | None]:
         """Resolve a ``cwd`` template string into an absolute, contained path.
 
@@ -5355,6 +5370,27 @@ class EvidenceCollector:
                     f"cwd escapes OMNI_HOME containment: {cwd_template!r} "
                     f"resolved to {candidate}"
                 )
+
+            sibling = re.fullmatch(
+                r"\$\{OMNI_HOME\}/([\w][\w.-]*)(?:/.*)?", cwd_template
+            )
+            if sibling and own_repository and sibling[1] != own_repository:
+                root = base / sibling[1]
+                # Only positively identify the absent working tree. A missing
+                # subdirectory of an existing checkout keeps its old verdict.
+                missing = not root.exists()
+                if (root / ".git").exists():
+                    rc, indexed, _ = self._run_git(root, "ls-files")
+                    tree_rc, tracked, _ = self._run_git(
+                        root, "ls-tree", "--name-only", "HEAD"
+                    )
+                    missing = rc == 0 and not indexed and tree_rc == 0 and bool(tracked)
+                if missing:
+                    return None, _SiblingCheckoutMissing(
+                        f"SIBLING_CHECKOUT_MISSING: sibling checkout is missing at {root}; "
+                        f"declared cwd {cwd_template!r}. Provide its read-only working tree "
+                        "at the PR's pinned revision or default-branch head at merge time."
+                    )
 
         if not candidate.exists():
             return None, f"cwd does not exist: {cwd_template!r} -> {candidate}"
@@ -6282,7 +6318,12 @@ class EvidenceCollector:
                 f"cwd must be a string, got {type(cwd_template).__name__}",
                 True,
             )
-        resolved, err = self._resolve_cwd(cwd_template, ticket_id)
+        own_repository = None
+        if contract_path is not None and contract_path.parent.name == "contracts":
+            own_repository = contract_path.parent.parent.name
+        if own_repository is None:
+            own_repository = os.environ.get("REPO", "").rsplit("/", 1)[-1] or None
+        resolved, err = self._resolve_cwd(cwd_template, ticket_id, own_repository)
         if err is not None:
             return None, err, True
         return resolved, None, True

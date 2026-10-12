@@ -13,6 +13,8 @@ from .handler_lab_fill_lane_render import HandlerLabFillLaneRender
 from .handler_lab_fill_ownership import HandlerLabFillOwnership
 from .handler_lab_fill_placement import HandlerLabFillPlacement
 from .handler_lab_fill_scheduled_fire import HandlerLabFillScheduledFire
+from .handler_lab_fill_source_candidates import HandlerLabFillSourceCandidates
+from .handler_lab_fill_source_tickets import HandlerLabFillSourceTickets
 from .handler_lab_fill_status import HandlerLabFillStatus
 
 __all__ = [
@@ -27,5 +29,7 @@ __all__ = [
     "HandlerLabFillOwnership",
     "HandlerLabFillPlacement",
     "HandlerLabFillScheduledFire",
+    "HandlerLabFillSourceCandidates",
+    "HandlerLabFillSourceTickets",
     "HandlerLabFillStatus",
 ]

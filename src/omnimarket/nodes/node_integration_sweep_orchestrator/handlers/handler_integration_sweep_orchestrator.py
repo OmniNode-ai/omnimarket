@@ -8,6 +8,11 @@ import yaml
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.validation.runtime_sha_match import CHECK_TYPE_RUNTIME_SHA_MATCH
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_node_overlay,
+    not_configured_message,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_runtime_sha_verify import (
     HandlerRuntimeShaVerify,
     ModelRuntimeShaVerifyRequest,
@@ -26,6 +31,19 @@ from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integrati
 )
 from omnimarket.nodes.node_integration_sweep_orchestrator.models.model_integration_sweep_orchestrator_result import (
     ModelIntegrationSweepOrchestratorResult,
+)
+
+# OMN-20935: the hosts, repo path and endpoints the probes reach are deployment
+# facts. A request value wins; a blank one reads the node overlay's field of the
+# same name; with neither, the probe that needs it reports "not configured".
+_NODE_NAME = "node_integration_sweep_orchestrator"
+_DEPLOYMENT_FIELDS = (
+    "runtime_host",
+    "runtime_repo_path",
+    "stability_test_runtime_url",
+    "container_health_host",
+    "infra_runtime_host",
+    "projection_api_url",
 )
 
 # Terminal sweep statuses (OMN-13924). ``no_input`` is the typed non-success
@@ -64,9 +82,32 @@ class HandlerIntegrationSweepOrchestrator:
     ) -> None:
         self._runtime_sha_handler = runtime_sha_handler or HandlerRuntimeShaVerify()
 
+    @staticmethod
+    def _with_deployment(
+        request: ModelIntegrationSweepOrchestratorRequest,
+    ) -> ModelIntegrationSweepOrchestratorRequest:
+        """Fill the request's blank deployment fields from the node overlay."""
+        blank = [name for name in _DEPLOYMENT_FIELDS if not getattr(request, name)]
+        if not blank:
+            return request
+        overlay = load_node_overlay(_NODE_NAME, fields=frozenset(_DEPLOYMENT_FIELDS))
+        return request.model_copy(
+            update={name: overlay[name] for name in blank if name in overlay}
+        )
+
+    @staticmethod
+    def _unconfigured(surface: str, field: str) -> dict[str, Any]:
+        """The structured outcome of a probe whose deployment fact nothing supplied."""
+        return {
+            "surface": surface,
+            "status": "error",
+            "details": {"error": not_configured_message(_NODE_NAME, field)},
+        }
+
     def handle(
         self, request: ModelIntegrationSweepOrchestratorRequest
     ) -> ModelIntegrationSweepOrchestratorResult:
+        request = self._with_deployment(request)
         artifact_root = self._resolve_root(request.artifact_root)
         contracts_dir = self._resolve_dir(
             request.contracts_dir, artifact_root / "contracts"
@@ -261,7 +302,9 @@ class HandlerIntegrationSweepOrchestrator:
                 "target": target,
             }
             if not target.strip():
-                entry["reason"] = "empty probe target"
+                entry["reason"] = "empty probe target: " + not_configured_message(
+                    _NODE_NAME, "<the probe's deployment field>"
+                )
             entry.update(extra)
             return entry
 
@@ -342,8 +385,17 @@ class HandlerIntegrationSweepOrchestrator:
         gets the baseline and never a spurious infra-probe failure.
         """
         results: list[dict[str, Any]] = []
-        results.append(probe_runtime_health(request.stability_test_runtime_url))
-        results.append(probe_container_health(request.container_health_host))
+        unconfigured = HandlerIntegrationSweepOrchestrator._unconfigured
+        results.append(
+            probe_runtime_health(request.stability_test_runtime_url)
+            if request.stability_test_runtime_url
+            else unconfigured("RUNTIME_HEALTH", "stability_test_runtime_url")
+        )
+        results.append(
+            probe_container_health(request.container_health_host)
+            if request.container_health_host
+            else unconfigured("CONTAINER_HEALTH", "container_health_host")
+        )
         results.append(probe_github_ci(request.github_ci_repo))
 
         if request.kafka_topics or request.kafka_consumer_groups:
@@ -354,6 +406,8 @@ class HandlerIntegrationSweepOrchestrator:
                     request.kafka_topics,
                     request.kafka_consumer_groups,
                 )
+                if request.infra_runtime_host
+                else unconfigured("KAFKA", "infra_runtime_host")
             )
         if request.db_tables:
             results.append(
@@ -364,6 +418,8 @@ class HandlerIntegrationSweepOrchestrator:
                     request.db_database,
                     request.db_tables,
                 )
+                if request.infra_runtime_host
+                else unconfigured("DB", "infra_runtime_host")
             )
         if request.projection_topics:
             results.append(
@@ -371,6 +427,8 @@ class HandlerIntegrationSweepOrchestrator:
                     request.projection_api_url,
                     request.projection_topics,
                 )
+                if request.projection_api_url
+                else unconfigured("PROJECTION", "projection_api_url")
             )
         for chain in request.golden_chains:
             results.append(
@@ -385,6 +443,8 @@ class HandlerIntegrationSweepOrchestrator:
                     tail_database=chain.tail_database,
                     tail_table=chain.tail_table,
                 )
+                if request.infra_runtime_host
+                else unconfigured("GOLDEN_CHAIN", "infra_runtime_host")
             )
         return results
 
@@ -461,9 +521,13 @@ class HandlerIntegrationSweepOrchestrator:
         request: ModelIntegrationSweepOrchestratorRequest,
     ) -> list[dict[str, str]]:
         records: list[dict[str, str]] = []
-        for ticket_id, evidence_item_id, merge_sha in self._enumerate_ticket_sha_checks(
+        sha_checks = self._enumerate_ticket_sha_checks(
             tickets=tickets, contracts_dir=contracts_dir
-        ):
+        )
+        for field in ("runtime_host", "runtime_repo_path"):
+            if sha_checks and not getattr(request, field):
+                raise NodeOverlayError(not_configured_message(_NODE_NAME, field))
+        for ticket_id, evidence_item_id, merge_sha in sha_checks:
             receipt = self._runtime_sha_handler.handle(
                 ModelRuntimeShaVerifyRequest(
                     ticket_id=ticket_id,

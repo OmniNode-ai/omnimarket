@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20990"
+title: "onex models add anthropic registers an Anthropic key through the customer key path and tests it with one pinned delegation"
+summary: "Operator ruling 2026-10-11T15:05:50Z lifted the rule that the provider list refuses Anthropic keys, and ruling 2026-10-11T15:00:01Z says keys go in through the script path. The BYOK catalogue now offers anthropic as a customer-only row on Anthropic's OpenAI-compatible chat endpoint; a row declares how its list-models endpoint takes the key (x-api-key for Anthropic); onex models add anthropic checks the key against Anthropic's own model list, stores it in the local store under a minted route reference and tests it with one delegation pinned to byok-anthropic. Claude models get the API default temperature because current Claude models refuse any other with HTTP 400."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20990-anthropic-customer-key-path"
+    statement: |-
+      An Anthropic key is registered the same way a Gemini, OpenRouter or OpenAI key is: through onex models add, checked with the provider, stored under the customer route and tested with one pinned delegation.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the BYOK catalogue offers an anthropic row as a customer-only surface (no house rung), and the catalogue tests encode the new policy instead of refusing the provider id -- falsifier: uv run pytest tests/test_omn17353_provider_catalogue.py tests/unit/routing -k byok -q
+      - id: "AC2"
+        statement: |-
+          AC2: onex models add anthropic with a key Anthropic refuses ends non-zero with the provider auth error and stores nothing -- falsifier: uv run pytest tests/unit/cli -k models_add_anthropic with an injected transport answering 401, asserting an empty local store
+      - id: "AC3"
+        statement: |-
+          AC3: onex models add anthropic with a key Anthropic accepts stores it under the customer route and runs one delegation pinned to the anthropic backend -- falsifier: uv run pytest tests/unit/cli -k models_add_anthropic with injected model-list and chat transports
+      - id: "AC4"
+        statement: |-
+          AC4: on a lab host the released command run with a deliberately invalid key refuses with the provider auth error and leaves the store empty -- falsifier: onex models add anthropic on a lab host with an invalid key on stdin, then onex models list showing Anthropic not set up
+evidence_requirements:
+  - kind: "tests"
+    description: "The catalogue, intake and models-add tests pass at the head; on the dev source the new models-add test file fails to collect."
+    command: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/test_omn17353_provider_catalogue.py tests/test_omn17939_intake_catalogue_constraint.py tests/nodes/node_model_setup_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20990-ac1-catalogue-offers-anthropic"
+    description: "The catalogue offers anthropic as a customer-only row and its tests encode the new policy: anthropic offered, no house Claude rung, intake accepts the id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17353_provider_catalogue.py tests/test_omn17939_intake_catalogue_constraint.py tests/test_omn18311_catalogue_no_house_entry.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20990-ac2-ac3-models-add-anthropic"
+    description: "onex models add anthropic refuses a key Anthropic answers 401 with the provider auth error and an empty store, and stores an accepted key under the customer route and tests it pinned to byok-anthropic. Fakes for the model list and the pinned delegation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/nodes/node_model_setup_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
+  - id: "dod-omn20990-deploy-probe-catalogue-row"
+    description: "The repo-owned catalogue tests exercise Anthropic being offered as a routable customer-only byok-anthropic backend with no house rung. Against the merge-base catalogue, the same head tests fail because Anthropic is not offered."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17353_provider_catalogue.py -k 'test_anthropic_is_offered or test_the_anthropic_row_mirrors_no_house_rung' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20990-ac4-invalid-key-refused"
+    description: "A key Anthropic refuses ends the command non-zero with Anthropic's own 401 message and an empty store. Lab readback before the PR: lab-run work unit lw-8cfffa823ec84ba5 on h201 at b73f5dd6ca80bfa8306b4b0756600dadd8b57c47 ran onex models add anthropic with a deliberately invalid key against Anthropic's live models endpoint and printed PROVIDER_AUTH_FAILED (HTTP 401) with the provider message invalid x-api-key; onex models list then showed Anthropic not set up and no store file existed. The rerunnable check is the same refusal path with the 401 answered by a fake transport."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py -k refused_key -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20990-deploy-probe-discovery-header"
+    description: "Read the published list-models module at the checked-out commit through the GitHub contents API. It carries models_request_headers, the function that sends the key in the x-api-key header Anthropic requires; the symbol is absent from the merge base, so the content read answers false there and the probe fails. The test runs inside jq so grep reads all of its input and the pipeline cannot exit 141; the base64 text is stripped of the newlines the contents API embeds before it is decoded."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/routing/byok_model_discovery.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("def models_request_headers(") and contains("x-api-key"))' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -3,8 +3,8 @@
 """Reject ``[skip-*]`` bypass tokens (operating rule 10).
 
 Pure scan of text a caller already read. A text carrying ``[skip-<letter>`` (any case) is a
-violation unless the same text also carries ``# skip-token-allowed: <receipt-id>``, the one
-sanctioned escape hatch; free-text justification never passes. A staged file is in scope only by
+violation, always: there is no escape hatch (OMN-20074 retired the approvals registry and the
+receipt-id comment that cited it), so no accompanying text rescues a token. A staged file is in scope only by
 its type: PR-body-like files (``.md``, ``.yaml``, ``.yml``, ``.txt``) and committed session
 evidence (``.onex_state/evidence/`` files ending ``.err``, ``.json``, ``.jsonl``, ``.log``,
 ``.out``), so source that discusses the token is not blocked. A commit message and a PR body are
@@ -28,14 +28,8 @@ from omnimarket.nodes.node_reject_skip_token_compute.models.model_skip_token_sca
     ModelSkipTokenScanResult,
 )
 
-# Line-local like grep: ``[ \t\r\f\v]`` is POSIX ``[[:space:]]`` without the newline, so an approval
-# receipt on the line after the marker is not an approval.
 SKIP_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"\[skip-[a-zA-Z]", re.IGNORECASE | re.ASCII
-)
-ALLOWLIST_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"#[ \t\r\f\v]*skip-token-allowed:[ \t\r\f\v]*[^ \t\r\n\f\v]",
-    re.IGNORECASE | re.ASCII,
 )
 
 _PROSE_SUFFIXES: Final[tuple[str, ...]] = (".md", ".yaml", ".yml", ".txt")
@@ -68,17 +62,10 @@ class HandlerRejectSkipToken:
             scanned += 1
             if SKIP_PATTERN.search(item.text) is None:
                 continue
-            findings.append(
-                ModelSkipTokenFinding(
-                    surface=item.surface,
-                    path=item.path,
-                    allowed=ALLOWLIST_PATTERN.search(item.text) is not None,
-                )
-            )
-        blocked = any(not f.allowed for f in findings)
+            findings.append(ModelSkipTokenFinding(surface=item.surface, path=item.path))
         return ModelSkipTokenScanResult(
             verdict=EnumSkipTokenVerdict.BLOCK
-            if blocked
+            if findings
             else EnumSkipTokenVerdict.PASS,
             scanned=scanned,
             out_of_scope=tuple(out_of_scope),

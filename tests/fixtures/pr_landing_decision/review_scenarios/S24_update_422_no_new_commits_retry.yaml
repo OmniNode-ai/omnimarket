@@ -1,0 +1,33 @@
+id: s24_update_422_no_new_commits_retry
+scenario: S24
+tla_modeled: false
+ledger_rows:
+  - 'docs/tracking/ROLLING_WORK_LEDGER.md:66419 MSG 2026-10-11T12:52:07Z'
+  - 'docs/tracking/ROLLING_WORK_LEDGER.md:66420 TERMINAL 2026-10-11T12:52:08Z'
+claim: >-
+  Class (c): update-branch 422 no-new-commits on a behind head is transient.
+  Typed effect feedback permits another update on that same cached head
+  after backoff; no worker or repeated retry is sent while waiting.
+update_branch_results: [no_new_commits, clean]
+world:
+  prs:
+    - pr: acme/internal#540
+      ci: green
+      merge_state: behind
+ticks:
+  - expect:
+      actions: ['update_branch acme/internal#540']
+      lease_count: 0
+  - expect:
+      actions: []
+      lease_count: 0
+  - expect:
+      actions: ['update_branch acme/internal#540']
+      lease_count: 0
+  - events:
+      - ci: {pr: 'acme/internal#540', result: green}
+    expect:
+      actions: ['merge acme/internal#540 h2']
+      lease_count: 0
+end:
+  dispatches: {}

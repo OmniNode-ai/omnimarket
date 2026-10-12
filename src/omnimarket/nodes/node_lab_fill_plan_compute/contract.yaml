@@ -12,9 +12,10 @@ node_version:
   patch: 0
 description: >
   Decide a lab-fill run from supplied facts without I/O: host capacity, candidate
-  choice, dispatch planning, ownership and completion, authorized lane briefs and
-  structured launches, receipt placement, single engine fallbacks and status with
-  idle diagnostics. Identities, reader facts and observed times arrive in requests.
+  choice, tier-1 source tickets and candidates, dispatch planning, ownership and
+  completion, authorized lane briefs and structured launches, receipt placement,
+  single engine fallbacks and status with idle diagnostics. Identities, reader
+  facts and observed times arrive in requests.
   Headroom comes from the pool hosts' capacity advertisements on the bus; a host
   with idle runner slots and no fresh advertisement is a HEADROOM_UNKNOWN failure,
   published on the failure terminal.
@@ -93,6 +94,23 @@ handler_routing:
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fanout_readback
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillFanoutRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_headroom.ModelLabFillFanoutResult
+  # OMN-20668: the stalled-plan and pending-ruling sources of lab-fill's enumeration. The
+  # effect side runs plans_today and ruling_mechanisms and reads Linear and the PR watcher;
+  # these two operations decide which tickets the sources name and which become candidates.
+  - operation: collect_lab_fill_source_tickets
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+    handler:
+      name: HandlerLabFillSourceTickets
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_source_tickets
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_sources.ModelLabFillSourceTicketsRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_sources.ModelLabFillSourceTicketsResult
+  - operation: classify_lab_fill_source_candidates
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+    handler:
+      name: HandlerLabFillSourceCandidates
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_source_candidates
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_sources.ModelLabFillSourceCandidatesRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_sources.ModelLabFillSourceCandidatesResult
   # OMN-20867: the schedule's entry. The tick that opens a config.lab_fill_plan.schedule
   # window returns that window's fire (ModelScheduledFire) on the terminal topic; every other
   # tick returns nothing. Stateless, so the compute stays pure.
