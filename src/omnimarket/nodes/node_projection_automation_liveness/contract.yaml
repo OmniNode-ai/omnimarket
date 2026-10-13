@@ -165,6 +165,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - process_key
+      # The ONEX status page reads this exposure through its contract-declared
+      # slot, the same typed reader the prod-promotion-gate panel uses.
+      backend_readers:
+        - id: onex_status_page
+          kind: projection_status_page
+          route: /
+          projection_slot: automation_liveness
     - topic: onex.snapshot.projection.automation-liveness-runs.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       key_grain: "mutable"
       table: automation_run_history
@@ -197,6 +204,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - run_key
+      # The ONEX status page reads this exposure through its contract-declared
+      # slot, the same typed reader the prod-promotion-gate panel uses.
+      backend_readers:
+        - id: onex_status_page
+          kind: projection_status_page
+          route: /
+          projection_slot: automation_liveness_runs
     - topic: onex.snapshot.projection.automation-liveness-alarms.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       key_grain: "mutable"
       table: automation_alarm_episodes
@@ -236,6 +250,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - episode_id
+      # The ONEX status page reads this exposure through its contract-declared
+      # slot, the same typed reader the prod-promotion-gate panel uses.
+      backend_readers:
+        - id: onex_status_page
+          kind: projection_status_page
+          route: /
+          projection_slot: automation_liveness_alarms
 
 metadata:
   transport_type: kafka
