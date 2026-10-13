@@ -79,6 +79,12 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effec
     HandlerDurableEvidenceGateEffect,
     pypi_release_files,
 )
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaCheck,
+)
+from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
+    ModelCriteriaPins,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
@@ -111,6 +117,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelRepoEvidenceVerdict,
     ModelTicketMergedPr,
 )
+from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
+    ModelTicketCriteriaRead,
+)
 from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
     resolve_retirements,
 )
@@ -135,6 +144,11 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
 from omnimarket.nodes.node_dod_verify.services.contract_subject import (
     inline_goal_subject,
     resolve_contract_subject,
+)
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
+    ProtocolDodTicketCriteriaReader,
+    evaluate_criteria,
+    extract_criteria_pins,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -534,6 +548,14 @@ _REF_LOCK_ERROR_MARKER = "cannot lock ref"
 # run under it records every affected check as unverifiable rather than
 # pretending the tree was current.
 _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
+
+# OMN-20858: set by the OCC replay (``handler_occ_replay``) on the verifier it
+# runs against an already-merged head. The live ticket's criteria today are not
+# the criteria that head merged against, and the replay compares a head verdict
+# with a control verdict that would read the same ticket, so the criteria-drift
+# check is not measured on that run (``criteria_check`` stays None) rather than
+# refusing every replayed contract that records criteria. Named and logged.
+_HISTORICAL_REPLAY_ENV = "DOD_VERIFY_HISTORICAL_REPLAY"
 
 # OMN-18117: path to the pin file whoever materialised this run's product
 # clones wrote — see ``ModelProductClonePinSet``. Unset (the local operator
@@ -2318,12 +2340,25 @@ class EvidenceCollector:
     """
 
     def __init__(
-        self, *, must_fail_runner: ProtocolMustFailTreeRunner | None = None
+        self,
+        *,
+        must_fail_runner: ProtocolMustFailTreeRunner | None = None,
+        ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
     ) -> None:
         # OMN-20032 (GC.9): runs one changed test file against the code before
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
         self._must_fail_runner = must_fail_runner
+        # OMN-20858: reads the live ticket whose criteria the contract is pinned
+        # to. None means the Linear effect, built on first use.
+        self._ticket_reader = ticket_reader
+        self._criteria_pins: ModelCriteriaPins | None = None
+        self._criteria_read_before: ModelTicketCriteriaRead | None = None
+        # OMN-20858: what the criteria-drift check established for the last
+        # ticket-contract collect(). None when the contract records no criteria
+        # (nothing to drift from) or no contract was loaded, so "not measured"
+        # is never "no drift". Read by ``handler_dod_verify``.
+        self.criteria_check: ModelCriteriaCheck | None = None
         # OMN-17795: the per-check ceiling is resolved per call from
         # ``_check_timeout_s()``, not captured here. It used to be a
         # constructor default that no caller ever passed and no operator could
@@ -3539,6 +3574,9 @@ class EvidenceCollector:
         self.acceptance_summary = None
         self.contract_subject = None
         self.contract_load_error = None
+        self.criteria_check = None
+        self._criteria_pins = None
+        self._criteria_read_before = None
         self._last_contract = None
         raw: dict[str, Any] | None
         if loaded_contract is not None:
@@ -3616,6 +3654,7 @@ class EvidenceCollector:
         # in it, so no marker may retire one, whatever ids coincide.
         declared_count = len(dod_items)
         if inline_items is None:
+            self._begin_criteria_check(ticket_id, raw, dod_items)
             derived_items, self.acceptance_summary = derive_falsifier_items(
                 raw,
                 dod_items,
@@ -4745,6 +4784,53 @@ class EvidenceCollector:
                 seen.add(item_id)
 
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
+
+    def _begin_criteria_check(
+        self, ticket_id: str, contract: dict[str, Any], dod_items: list[Any]
+    ) -> None:
+        """OMN-20858: read the live ticket before any check runs, when the contract
+        records criteria to compare it with."""
+        pins = extract_criteria_pins(contract, dod_items)
+        if pins is None:
+            return
+        if os.environ.get(_HISTORICAL_REPLAY_ENV, "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            logger.warning(
+                "%s set: %s is a replay of a merged head, so its live ticket "
+                "criteria are not read or compared",
+                _HISTORICAL_REPLAY_ENV,
+                ticket_id,
+            )
+            return
+        self._criteria_pins = pins
+        self._criteria_read_before = self._criteria_reader().read(ticket_id)
+
+    def finish_criteria_check(self) -> ModelCriteriaCheck | None:
+        """OMN-20858: read the ticket again after the checks and compare.
+
+        A second read, not the first reused, because an edit made while the
+        checks ran is exactly what the verdict must refuse. Returns None, and
+        reads nothing, when the contract recorded no criteria.
+        """
+        pins = self._criteria_pins
+        before = self._criteria_read_before
+        if pins is None or before is None:
+            return None
+        after = self._criteria_reader().read(before.ticket_id)
+        self.criteria_check = evaluate_criteria(pins, before.ticket_id, before, after)
+        return self.criteria_check
+
+    def _criteria_reader(self) -> ProtocolDodTicketCriteriaReader:
+        if self._ticket_reader is None:
+            from omnimarket.nodes.node_dod_verify.handlers.handler_dod_ticket_criteria_linear_effect import (
+                HandlerDodTicketCriteriaLinearEffect,
+            )
+
+            self._ticket_reader = HandlerDodTicketCriteriaLinearEffect()
+        return self._ticket_reader
 
     def _contract_repo_dirs(self, dod_items: list[Any]) -> tuple[str, ...]:
         """Repository directory names the contract's own PR-bound items name.
