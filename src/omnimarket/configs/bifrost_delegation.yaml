@@ -495,9 +495,9 @@ backends:
   # OpenRouter cheap-frontier-direct — free frontier-class model (OMN-12492;
   # slug repointed OMN-15638).
   #
-  # OMN-15638 repointed the slug. Under OMN-19455, the backend_id was renamed
-  # (formerly openrouter-qwen3-coder-480b) because it named a model the backend
-  # does not serve; the id now names what it serves (nvidia nemotron-3-ultra).
+  # OMN-15638 repointed the slug. The backend_id names the model it serves
+  # (nvidia nemotron-3-ultra); the earlier id, which named a different model, is
+  # mapped for old receipts by formerly_model_ids in model_registry_v1.yaml.
   - backend_id: openrouter-nemotron-ultra
     provider: openrouter
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.

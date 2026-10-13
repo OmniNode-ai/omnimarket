@@ -179,6 +179,8 @@ models:
     provider: "openrouter"
     endpoint_env: "OPENROUTER_URL"
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
+    formerly_model_ids:
+      - "openrouter-qwen3-coder-480b"
     requires_api_key_env: "OPENROUTER_API_KEY"
     context_window: 1000000
     pricing_per_1m_input: "0.00"
@@ -197,11 +199,10 @@ models:
       zero_marginal_api_cost remain TRUE — verified in-band, the provider's own
       usage payload returned "cost": 0. Rate-limited (429), no SLA. Requires
       OPENROUTER_API_KEY. Falls back to the cheap_cloud direct z.ai GLM-5.2
-      (cloud-glm) or local when key absent (OMN-13380). Under OMN-19455, the
-      id was renamed (formerly openrouter-qwen3-coder-480b) because it named
-      a model the backend does not serve; the id now names what it serves
-      (nvidia nemotron-3-ultra). model_id must stay byte-identical to the
-      bifrost backend_id.
+      (cloud-glm) or local when key absent (OMN-13380). The id
+      names the model the backend serves (nvidia nemotron-3-ultra); an earlier
+      id that named a different model is mapped by formerly_model_ids below.
+      model_id must stay byte-identical to the bifrost backend_id.
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"
