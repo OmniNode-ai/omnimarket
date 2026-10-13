@@ -15,21 +15,33 @@ Failure modes, each with a test below:
       over the call rows cannot be compared with the Usage page's figure;
   F3  a row with no cost is counted as 0 in that sum instead of left out;
   F4  the row republished to the bus snapshot (mode 2) does not carry the cost
-      the store returned, or carries the writer's own value in its place.
+      the store returned, or carries the writer's own value in its place;
+  F5  the deployed writer, which is a different class from the one F4 drives,
+      republishes another cost than the one its database statement returned,
+      or drops the column from what it asks the database to return;
+  F6  a row the store holds with no cost is republished as 0 instead of null,
+      by either writer.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
+from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
     create_dashboard_app,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+    DelegationProjectionRunner,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -43,6 +55,7 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 )
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.tenant_registry_resolution import (
@@ -199,7 +212,9 @@ def _published_and_stored(cost: float) -> tuple[dict[str, object], dict[str, obj
     )
     deltas = [m for m in publisher.messages if m.topic == _DECISIONS]
     assert len(deltas) == 1, [m.topic for m in publisher.messages]
-    published = json.loads(deltas[0].value.decode())["row"]
+    value = deltas[0].value
+    assert value is not None
+    published = json.loads(value.decode())["row"]
     stored = db.query("delegation_events")[0]
     return published, stored
 
@@ -215,3 +230,103 @@ def test_two_calls_with_different_costs_republish_different_costs() -> None:
     first, _ = _published_and_stored(0.0123)
     second, _ = _published_and_stored(0.000457)
     assert float(str(first["cost_usd"])) != float(str(second["cost_usd"]))
+
+
+def _seeded_store() -> InmemoryDatabaseAdapter:
+    db = InmemoryDatabaseAdapter()
+    db.upsert(
+        TENANT_REGISTRY_MIRROR_TABLE,
+        "tenant_slug",
+        {
+            "tenant_slug": _SLUG,
+            "tenant_uuid": _TENANT_UUID,
+            "status": "active",
+            "source_event_id": "c0000000-0000-0000-0000-000000020717",
+        },
+    )
+    return db
+
+
+def test_a_row_stored_with_no_cost_is_republished_as_null_not_zero() -> None:
+    """A verdict that arrives before its terminal writes a row with no cost."""
+    publisher = _RecordingPublisher()
+    db = _seeded_store()
+    HandlerProjectionDelegation(publisher=publisher).project_quality_gate_result(
+        ModelQualityGateResult(
+            correlation_id=_NO_COST,
+            passed=True,
+            quality_score=1.0,
+            actual_score=1.0,
+        ),
+        db,
+        tenant_identity=_SLUG,
+        event_timestamp=datetime(2026, 10, 12, 9, 0, 0, tzinfo=UTC),
+    )
+    stored = db.query("delegation_events")
+    assert len(stored) == 1, stored
+    assert stored[0].get("cost_usd") is None
+    deltas = [m for m in publisher.messages if m.topic == _DECISIONS]
+    assert len(deltas) == 1, [m.topic for m in publisher.messages]
+    value = deltas[0].value
+    assert value is not None
+    published = json.loads(value.decode())["row"]
+    assert "cost_usd" in published
+    assert published["cost_usd"] is None
+
+
+async def _deployed_writer_publishes(
+    monkeypatch: pytest.MonkeyPatch, cost: float | None
+) -> tuple[dict[str, Any], Sequence[str]]:
+    """Drive the deployed writer's one durable write; return what it republished.
+
+    Only its two edges are replaced. The database statement answers with the
+    columns it was asked to return, as the database does, and the bus call
+    records what it was handed instead of reaching a broker.
+    """
+    runner = DelegationProjectionRunner()
+    asked: list[Sequence[str]] = []
+    handed: list[tuple[str, dict[str, Any]]] = []
+
+    async def _statement(
+        *, row: dict[str, object], returning: Sequence[str] = (), **_: object
+    ) -> list[dict[str, Any]]:
+        asked.append(tuple(returning))
+        in_database: Mapping[str, object] = {
+            **dict.fromkeys(returning),
+            **row,
+            "cost_usd": cost,
+        }
+        return [{column: in_database[column] for column in returning}]
+
+    async def _bus(exposure: Any, *, row: dict[str, Any], **_: object) -> bool:
+        handed.append((str(exposure.topic), dict(row)))
+        return True
+
+    monkeypatch.setattr(runner, "_dynamic_upsert", _statement)
+    monkeypatch.setattr(runner, "publish_snapshot_delta", _bus)
+    await runner._write_delegation_row(
+        # The writer's own value differs from the stored one on purpose.
+        {"correlation_id": _PRICED, "tenant_id": _TENANT, "cost_usd": 9.99},
+        MessageMeta(partition=0, offset=7, fallback_id="omn20717"),
+    )
+    rows = [row for topic, row in handed if topic == _DECISIONS]
+    assert len(rows) == 1, [topic for topic, _ in handed]
+    assert len(asked) == 1
+    return rows[0], asked[0]
+
+
+@pytest.mark.parametrize("cost", [0.0123, 0.000457])
+async def test_the_deployed_writer_republishes_the_cost_its_statement_returned(
+    monkeypatch: pytest.MonkeyPatch, cost: float
+) -> None:
+    published, asked = await _deployed_writer_publishes(monkeypatch, cost)
+    assert "cost_usd" in asked
+    assert published["cost_usd"] == cost
+
+
+async def test_the_deployed_writer_republishes_a_returned_null_cost_as_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published, _ = await _deployed_writer_publishes(monkeypatch, None)
+    assert "cost_usd" in published
+    assert published["cost_usd"] is None
