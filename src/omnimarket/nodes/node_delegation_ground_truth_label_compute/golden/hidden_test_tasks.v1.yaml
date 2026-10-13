@@ -1,0 +1,921 @@
+schema_version: 1
+task_class: code_generation
+tasks:
+  - id: parse_duration
+    function: parse_duration
+    prompt: |
+      Implement parse_duration(s: str) -> int using the standard library only.
+      Return the total seconds represented by a nonempty sequence of digit-and-unit
+      components. Each component has one or more ASCII digits followed by h, m,
+      or s. Hours count as 3600 seconds, minutes as 60, and seconds as 1. Units
+      may be omitted, but each may occur at most once and must appear in h, m, s
+      order. Zero-valued components are allowed. The entire string must match;
+      whitespace, signs, Unicode digits, and other characters are forbidden.
+      Raise ValueError for empty input, wrong unit order, unknown units, missing
+      digits, repeated units, or whitespace. In particular, reject "", "1m1h",
+      "1x", "h", "1h1h", and " 1h".
+      Worked examples: "1h30m15s" represents 3600 + 1800 + 15 = 5415 seconds;
+      "45s" represents 45 seconds; "2h" represents 7200 seconds; "1h0m5s"
+      represents 3600 + 0 + 5 = 3605 seconds.
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import parse_duration
+
+      def test_all_units():
+          assert parse_duration("1h30m15s") == 5415
+
+      def test_seconds_only():
+          assert parse_duration("45s") == 45
+
+      def test_hours_only():
+          assert parse_duration("2h") == 7200
+
+      def test_zero_minutes():
+          assert parse_duration("1h0m5s") == 3605
+
+      def test_empty():
+          with pytest.raises(ValueError):
+              parse_duration("")
+
+      def test_wrong_order():
+          with pytest.raises(ValueError):
+              parse_duration("1m1h")
+
+      def test_unknown_unit():
+          with pytest.raises(ValueError):
+              parse_duration("1x")
+
+      def test_missing_digits():
+          with pytest.raises(ValueError):
+              parse_duration("h")
+
+      def test_repeated_unit():
+          with pytest.raises(ValueError):
+              parse_duration("1h1h")
+
+      def test_whitespace():
+          with pytest.raises(ValueError):
+              parse_duration(" 1h")
+    reference: |
+      import re
+
+      def parse_duration(s: str) -> int:
+          match = re.fullmatch(r"(?:([0-9]+)h)?(?:([0-9]+)m)?(?:([0-9]+)s)?", s)
+          if not s or match is None:
+              raise ValueError("invalid duration")
+          return sum(int(value or "0") * scale
+                     for value, scale in zip(match.groups(), (3600, 60, 1)))
+    control: |
+      # Mistake: validates components but forgets unit order and uniqueness.
+      import re
+
+      def parse_duration(s: str) -> int:
+          if not s or re.fullmatch(r"(?:[0-9]+[hms])+", s) is None:
+              raise ValueError("invalid duration")
+          scales = {"h": 3600, "m": 60, "s": 1}
+          return sum(int(value) * scales[unit]
+                     for value, unit in re.findall(r"([0-9]+)([hms])", s))
+
+  - id: merge_intervals
+    function: merge_intervals
+    prompt: |
+      Implement merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]
+      using the standard library only. The input contains half-open intervals
+      [start, end) in any order, with integer endpoints that may be negative.
+      Return tuples sorted by start, merging overlapping and touching intervals,
+      including chains of overlaps, nested intervals, and duplicates. Drop every
+      empty interval whose start equals its end; if all intervals are empty, the
+      result is an empty list. Empty input also produces an empty list. Raise
+      ValueError if any interval has start greater than end, even among otherwise
+      valid intervals.
+      Worked examples: [(1, 3), (3, 5)] becomes [(1, 5)] because the endpoints
+      touch; [(5, 5), (4, 7), (1, 2)] becomes [(1, 2), (4, 7)] after dropping the
+      empty interval and sorting; [(-4, -1), (-2, 2)] becomes [(-4, 2)].
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import merge_intervals
+
+      def test_empty_input():
+          assert merge_intervals([]) == []
+
+      def test_sort_disjoint():
+          assert merge_intervals([(8, 10), (1, 3), (5, 7)]) == [(1, 3), (5, 7), (8, 10)]
+
+      def test_overlap_chain():
+          assert merge_intervals([(4, 8), (1, 5), (7, 10)]) == [(1, 10)]
+
+      def test_touching():
+          assert merge_intervals([(1, 3), (3, 5)]) == [(1, 5)]
+
+      def test_nested():
+          assert merge_intervals([(1, 10), (3, 4)]) == [(1, 10)]
+
+      def test_drop_empty():
+          assert merge_intervals([(0, 0), (1, 3), (5, 5)]) == [(1, 3)]
+
+      def test_all_empty():
+          assert merge_intervals([(2, 2), (0, 0)]) == []
+
+      def test_reversed_endpoint():
+          with pytest.raises(ValueError):
+              merge_intervals([(1, 4), (3, 2)])
+
+      def test_negative_endpoints():
+          assert merge_intervals([(-2, 2), (-4, -1)]) == [(-4, 2)]
+
+      def test_duplicates():
+          assert merge_intervals([(1, 3), (1, 3)]) == [(1, 3)]
+    reference: |
+      def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+          if any(start > end for start, end in intervals):
+              raise ValueError("reversed interval")
+          result = []
+          for start, end in sorted((s, e) for s, e in intervals if s != e):
+              if result and start <= result[-1][1]:
+                  result[-1] = (result[-1][0], max(end, result[-1][1]))
+              else:
+                  result.append((start, end))
+          return result
+    control: |
+      # Mistake: merges only overlaps and leaves touching intervals separate.
+      def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+          if any(start > end for start, end in intervals):
+              raise ValueError("reversed interval")
+          result = []
+          for start, end in sorted((s, e) for s, e in intervals if s != e):
+              if result and start < result[-1][1]:
+                  result[-1] = (result[-1][0], max(end, result[-1][1]))
+              else:
+                  result.append((start, end))
+          return result
+
+  - id: roman_to_int
+    function: roman_to_int
+    prompt: |
+      Implement roman_to_int(s: str) -> int using the standard library only.
+      Accept only canonical uppercase Roman numerals representing integers from
+      1 through 3999. Thousands use zero to three M characters. Each remaining
+      decimal place uses its conventional canonical form: at most three repeats
+      of I, X, or C; V, L, or D followed by at most three repeats; or the subtractive
+      pairs IV, IX, XL, XC, CD, CM. No other subtraction, repeated five-symbols,
+      lowercase, whitespace, or extra characters are permitted. Raise ValueError
+      for every noncanonical or out-of-range string, including empty input,
+      "IIII", "IC", "VX", "MMMM", "iv", and "IIV".
+      Worked examples: "I" represents 1; "IV" represents 5 minus 1, hence 4;
+      "MMMCMXCIX" represents 3000 + 900 + 90 + 9 = 3999.
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import roman_to_int
+
+      def test_minimum():
+          assert roman_to_int("I") == 1
+
+      def test_subtraction():
+          assert roman_to_int("IV") == 4
+
+      def test_maximum():
+          assert roman_to_int("MMMCMXCIX") == 3999
+
+      def test_empty():
+          with pytest.raises(ValueError):
+              roman_to_int("")
+
+      def test_four_repetitions():
+          with pytest.raises(ValueError):
+              roman_to_int("IIII")
+
+      def test_invalid_subtraction():
+          with pytest.raises(ValueError):
+              roman_to_int("IC")
+
+      def test_reversed_five_symbol():
+          with pytest.raises(ValueError):
+              roman_to_int("VX")
+
+      def test_out_of_range():
+          with pytest.raises(ValueError):
+              roman_to_int("MMMM")
+
+      def test_lowercase():
+          with pytest.raises(ValueError):
+              roman_to_int("iv")
+
+      def test_repeated_subtraction():
+          with pytest.raises(ValueError):
+              roman_to_int("IIV")
+    reference: |
+      import re
+
+      def roman_to_int(s: str) -> int:
+          pattern = r"M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})"
+          if not s or re.fullmatch(pattern, s) is None:
+              raise ValueError("noncanonical Roman numeral")
+          values = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+          return sum(-values[c] if i + 1 < len(s) and values[c] < values[s[i + 1]]
+                     else values[c] for i, c in enumerate(s))
+    control: |
+      # Mistake: accepts any subtractive spelling without checking canonical form.
+      def roman_to_int(s: str) -> int:
+          values = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+          if not s or any(c not in values for c in s):
+              raise ValueError("invalid Roman numeral")
+          result = sum(-values[c] if i + 1 < len(s) and values[c] < values[s[i + 1]]
+                       else values[c] for i, c in enumerate(s))
+          if not 1 <= result <= 3999:
+              raise ValueError("out of range")
+          return result
+
+  - id: compare_semver
+    function: compare_semver
+    prompt: |
+      Implement compare_semver(a: str, b: str) -> int using the standard library only.
+      Apply SemVer 2.0.0 precedence and return exactly -1, 0, or 1 according to
+      whether a is lower than, equal to, or higher than b. Validate both inputs:
+      the core has exactly three nonnegative ASCII decimal integers, major,
+      minor, patch, without leading zeros except the digit zero itself. Optional
+      prerelease after a hyphen and optional build metadata after a plus consist
+      of nonempty dot-separated identifiers containing only ASCII letters,
+      digits, or hyphens. Numeric prerelease identifiers also forbid leading
+      zeros; build identifiers may have them. Raise ValueError for any malformed
+      version in either argument, including "1.0", "01.0.0", "1.0.0-", and
+      "1.0.0-01". Whitespace is forbidden.
+      Compare major, then minor, then patch numerically. A release outranks its
+      prereleases. Compare prerelease identifiers from left to right: numeric
+      ones compare numerically and rank below nonnumeric ones; nonnumeric ones
+      compare lexicographically by ASCII. When an equal prefix is exhausted, the
+      shorter prerelease ranks lower. Ignore build metadata for precedence.
+      The canonical increasing sequence is 1.0.0-alpha, 1.0.0-alpha.1,
+      1.0.0-alpha.beta, 1.0.0-beta, 1.0.0-beta.2, 1.0.0-beta.11, 1.0.0-rc.1,
+      1.0.0. Identical versions have equal precedence.
+      Worked examples: comparing "1.0.0-beta.2" with "1.0.0-beta.11" returns
+      -1 because 2 is numerically smaller than 11; comparing "1.0.0+build.5"
+      with "1.0.0" returns 0 because build metadata is ignored; comparing
+      "2.0.0" with "1.99.99" returns 1 because major takes priority.
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import compare_semver
+
+      def test_canonical_prerelease_sequence():
+          versions = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"]
+          assert [compare_semver(a, b) for a, b in zip(versions, versions[1:])] == [-1] * 7
+
+      def test_identical_prereleases():
+          assert compare_semver("1.2.3-rc.1", "1.2.3-rc.1") == 0
+
+      def test_build_metadata_ignored():
+          assert compare_semver("1.0.0+build.5", "1.0.0") == 0
+
+      def test_major_priority():
+          assert compare_semver("2.0.0", "1.99.99") == 1
+
+      def test_minor_priority():
+          assert compare_semver("1.2.0", "1.1.99") == 1
+
+      def test_patch_numeric():
+          assert compare_semver("1.0.9", "1.0.10") == -1
+
+      def test_missing_component():
+          with pytest.raises(ValueError):
+              compare_semver("1.0", "1.0.0")
+
+      def test_core_leading_zero():
+          with pytest.raises(ValueError):
+              compare_semver("1.0.0", "01.0.0")
+
+      def test_empty_prerelease():
+          with pytest.raises(ValueError):
+              compare_semver("1.0.0-", "1.0.0")
+
+      def test_prerelease_leading_zero():
+          with pytest.raises(ValueError):
+              compare_semver("1.0.0", "1.0.0-01")
+    reference: |
+      import re
+
+      def _parse_version(version):
+          number = r"(?:0|[1-9][0-9]*)"
+          identifiers = r"[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*"
+          pattern = rf"({number})\.({number})\.({number})(?:-({identifiers}))?(?:\+({identifiers}))?"
+          match = re.fullmatch(pattern, version)
+          if match is None:
+              raise ValueError("invalid semantic version")
+          prerelease = None if match[4] is None else match[4].split(".")
+          if prerelease is not None:
+              for part in prerelease:
+                  if part.isdigit() and len(part) > 1 and part[0] == "0":
+                      raise ValueError("leading zero in prerelease")
+          return tuple(int(match[i]) for i in (1, 2, 3)), prerelease
+
+      def compare_semver(a: str, b: str) -> int:
+          core_a, pre_a = _parse_version(a)
+          core_b, pre_b = _parse_version(b)
+          if core_a != core_b:
+              return (core_a > core_b) - (core_a < core_b)
+          if pre_a is None or pre_b is None:
+              return (pre_a is None) - (pre_b is None)
+          for left, right in zip(pre_a, pre_b):
+              if left == right:
+                  continue
+              if left.isdigit() and right.isdigit():
+                  return (int(left) > int(right)) - (int(left) < int(right))
+              if left.isdigit() != right.isdigit():
+                  return -1 if left.isdigit() else 1
+              return (left > right) - (left < right)
+          return (len(pre_a) > len(pre_b)) - (len(pre_a) < len(pre_b))
+    control: |
+      # Mistake: compares numeric prerelease identifiers lexicographically.
+      import re
+
+      def _parse_version(version):
+          number = r"(?:0|[1-9][0-9]*)"
+          identifiers = r"[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*"
+          pattern = rf"({number})\.({number})\.({number})(?:-({identifiers}))?(?:\+({identifiers}))?"
+          match = re.fullmatch(pattern, version)
+          if match is None:
+              raise ValueError("invalid semantic version")
+          prerelease = None if match[4] is None else match[4].split(".")
+          if prerelease is not None:
+              for part in prerelease:
+                  if part.isdigit() and len(part) > 1 and part[0] == "0":
+                      raise ValueError("leading zero in prerelease")
+          return tuple(int(match[i]) for i in (1, 2, 3)), prerelease
+
+      def compare_semver(a: str, b: str) -> int:
+          core_a, pre_a = _parse_version(a)
+          core_b, pre_b = _parse_version(b)
+          if core_a != core_b:
+              return (core_a > core_b) - (core_a < core_b)
+          if pre_a is None or pre_b is None:
+              return (pre_a is None) - (pre_b is None)
+          return (pre_a > pre_b) - (pre_a < pre_b)
+
+  - id: parse_csv_line
+    function: parse_csv_line
+    prompt: |
+      Implement parse_csv_line(line: str) -> list[str] using the standard library only.
+      Parse a single comma-separated record. An unquoted field contains literal
+      characters other than commas and double quotes. A field may instead be
+      wrapped in double quotes; commas inside those quotes are literal, and a
+      doubled double quote inside a quoted field represents one literal quote.
+      Remove the wrapping quotes, but preserve all other whitespace without
+      trimming. Empty fields, including quoted empty fields and a trailing empty
+      field after a comma, are valid. An empty line represents one empty field.
+      Raise ValueError for an unterminated quoted field, any double quote in an
+      unquoted field such as 'a"b', or any characters between a closing quote and
+      the next comma or end of input. Opening quotes must begin the field.
+      Worked examples: '"a,b",c' produces ["a,b", "c"]; '"a""b",c' produces
+      ['a"b', 'c']; 'a,' produces ["a", ""]; an empty line produces [""];
+      ' a , b ' produces [" a ", " b "] without trimming.
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import parse_csv_line
+
+      def test_empty_line():
+          assert parse_csv_line("") == [""]
+
+      def test_trailing_empty():
+          assert parse_csv_line("a,") == ["a", ""]
+
+      def test_whitespace_preserved():
+          assert parse_csv_line(" a , b ") == [" a ", " b "]
+
+      def test_quoted_comma():
+          assert parse_csv_line('"a,b",c') == ["a,b", "c"]
+
+      def test_escaped_quote():
+          assert parse_csv_line('"a""b",c') == ['a"b', "c"]
+
+      def test_quoted_empty():
+          assert parse_csv_line('""') == [""]
+
+      def test_plain_fields():
+          assert parse_csv_line("a,b,c") == ["a", "b", "c"]
+
+      def test_unterminated():
+          with pytest.raises(ValueError):
+              parse_csv_line('"a,b')
+
+      def test_quote_in_unquoted_field():
+          with pytest.raises(ValueError):
+              parse_csv_line('a"b')
+
+      def test_characters_after_closing_quote():
+          with pytest.raises(ValueError):
+              parse_csv_line('"a"b')
+    reference: |
+      def parse_csv_line(line: str) -> list[str]:
+          fields = []
+          i = 0
+          while True:
+              chars = []
+              if i < len(line) and line[i] == '"':
+                  i += 1
+                  while True:
+                      if i == len(line):
+                          raise ValueError("unterminated quoted field")
+                      if line[i] == '"':
+                          if i + 1 < len(line) and line[i + 1] == '"':
+                              chars.append('"')
+                              i += 2
+                              continue
+                          i += 1
+                          break
+                      chars.append(line[i])
+                      i += 1
+                  if i < len(line) and line[i] != ",":
+                      raise ValueError("characters after closing quote")
+              else:
+                  while i < len(line) and line[i] != ",":
+                      if line[i] == '"':
+                          raise ValueError("quote in unquoted field")
+                      chars.append(line[i])
+                      i += 1
+              fields.append("".join(chars))
+              if i == len(line):
+                  return fields
+              i += 1
+    control: |
+      # Mistake: assumes csv.reader strict mode rejects quotes in unquoted fields.
+      import csv
+
+      def parse_csv_line(line: str) -> list[str]:
+          if not line:
+              return [""]
+          try:
+              return next(csv.reader([line], strict=True))
+          except csv.Error as exc:
+              raise ValueError("invalid CSV") from exc
+
+  - id: normalize_path
+    function: normalize_path
+    prompt: |
+      Implement normalize_path(p: str) -> str using the standard library only.
+      Normalize an absolute POSIX path as text without accessing the filesystem.
+      Raise ValueError if the input does not start with a slash, including an
+      empty input. Collapse every run of slashes to one, including two leading
+      slashes. Remove dot segments, resolve dot-dot segments by removing the
+      preceding ordinary segment, and keep dot-dot at the root at the root.
+      Return exactly one leading slash and no trailing slash except when the
+      result is the root slash itself. Process mixed dot, dot-dot, and repeated
+      slash segments together; ordinary segment names are preserved.
+      Worked examples: "//a" becomes "/a"; "/a/./b/../c/" becomes "/a/c";
+      "/../a" becomes "/a" because root cannot be traversed upward;
+      "/a/.." becomes "/".
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import normalize_path
+
+      def test_root():
+          assert normalize_path("/") == "/"
+
+      def test_leading_double_slash():
+          assert normalize_path("//a") == "/a"
+
+      def test_repeated_slashes():
+          assert normalize_path("///a////b") == "/a/b"
+
+      def test_dot_segments():
+          assert normalize_path("/a/./b/.") == "/a/b"
+
+      def test_parent_segments():
+          assert normalize_path("/a/..") == "/"
+
+      def test_parent_at_root():
+          assert normalize_path("/../a") == "/a"
+
+      def test_trailing_slash():
+          assert normalize_path("/a/b/") == "/a/b"
+
+      def test_mixed_segments():
+          assert normalize_path("/a//./b/../../../../c/") == "/c"
+
+      def test_relative_input():
+          with pytest.raises(ValueError):
+              normalize_path("a/b")
+
+      def test_empty_input():
+          with pytest.raises(ValueError):
+              normalize_path("")
+    reference: |
+      def normalize_path(p: str) -> str:
+          if not p.startswith("/"):
+              raise ValueError("path must be absolute")
+          segments = []
+          for segment in p.split("/"):
+              if segment in ("", "."):
+                  continue
+              if segment == "..":
+                  if segments:
+                      segments.pop()
+              else:
+                  segments.append(segment)
+          return "/" + "/".join(segments)
+    control: |
+      # Mistake: posixpath.normpath preserves exactly two leading slashes.
+      import posixpath
+
+      def normalize_path(p: str) -> str:
+          if not p.startswith("/"):
+              raise ValueError("path must be absolute")
+          return posixpath.normpath(p)
+
+  - id: int_to_words
+    function: int_to_words
+    prompt: |
+      Implement int_to_words(n: int) -> str using the standard library only.
+      Convert integers from 0 through 999_999_999 inclusive into English words.
+      Use lowercase, single spaces, and no "and". Hyphenate compounds from 21
+      through 99 when the ones digit is nonzero, such as "twenty-one" and
+      "ninety-nine"; exact tens have no hyphen. Use hundred, thousand, and million
+      with their ordinary decimal groupings. Omit zero groups and zero remainders;
+      the number zero itself is "zero". Raise ValueError for a negative integer,
+      an integer greater than 999_999_999, or a bool input, including True, even
+      though Python treats bool as an int subclass.
+      Worked examples: 100 produces "one hundred"; 21 produces "twenty-one";
+      1001 produces "one thousand one"; 1_000_010 produces "one million ten";
+      999_999_999 produces "nine hundred ninety-nine million nine hundred
+      ninety-nine thousand nine hundred ninety-nine" on a single line.
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import int_to_words
+
+      def test_zero():
+          assert int_to_words(0) == "zero"
+
+      def test_exact_hundred():
+          assert int_to_words(100) == "one hundred"
+
+      def test_hyphenated_compound():
+          assert int_to_words(21) == "twenty-one"
+
+      def test_thousand_with_small_remainder():
+          assert int_to_words(1001) == "one thousand one"
+
+      def test_omitted_thousands():
+          assert int_to_words(1_000_010) == "one million ten"
+
+      def test_maximum():
+          assert int_to_words(999_999_999) == "nine hundred ninety-nine million nine hundred ninety-nine thousand nine hundred ninety-nine"
+
+      def test_exact_tens():
+          assert int_to_words(40) == "forty"
+
+      def test_negative():
+          with pytest.raises(ValueError):
+              int_to_words(-1)
+
+      def test_above_maximum():
+          with pytest.raises(ValueError):
+              int_to_words(1_000_000_000)
+
+      def test_bool():
+          with pytest.raises(ValueError):
+              int_to_words(True)
+    reference: |
+      def int_to_words(n: int) -> str:
+          if isinstance(n, bool) or not 0 <= n <= 999_999_999:
+              raise ValueError("integer out of range or bool")
+          small = ("zero one two three four five six seven eight nine ten eleven "
+                   "twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen").split()
+          tens = "zero ten twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+          def under_thousand(value):
+              parts = []
+              hundreds, remainder = divmod(value, 100)
+              if hundreds:
+                  parts.append(small[hundreds] + " hundred")
+              if 0 < remainder < 20:
+                  parts.append(small[remainder])
+              elif remainder >= 20:
+                  ten, one = divmod(remainder, 10)
+                  parts.append(tens[ten] + ("-" + small[one] if one else ""))
+              return " ".join(parts)
+
+          if n == 0:
+              return "zero"
+          parts = []
+          for divisor, suffix in ((1_000_000, "million"), (1000, "thousand"), (1, "")):
+              group, n = divmod(n, divisor)
+              if group:
+                  parts.append(under_thousand(group) + (" " + suffix if suffix else ""))
+          return " ".join(parts)
+    control: |
+      # Mistake: range validation accepts bool because it behaves like an integer.
+      def int_to_words(n: int) -> str:
+          if not 0 <= n <= 999_999_999:
+              raise ValueError("integer out of range")
+          small = ("zero one two three four five six seven eight nine ten eleven "
+                   "twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen").split()
+          tens = "zero ten twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+          def under_thousand(value):
+              parts = []
+              hundreds, remainder = divmod(value, 100)
+              if hundreds:
+                  parts.append(small[hundreds] + " hundred")
+              if 0 < remainder < 20:
+                  parts.append(small[remainder])
+              elif remainder >= 20:
+                  ten, one = divmod(remainder, 10)
+                  parts.append(tens[ten] + ("-" + small[one] if one else ""))
+              return " ".join(parts)
+
+          if n == 0:
+              return "zero"
+          parts = []
+          for divisor, suffix in ((1_000_000, "million"), (1000, "thousand"), (1, "")):
+              group, n = divmod(n, divisor)
+              if group:
+                  parts.append(under_thousand(group) + (" " + suffix if suffix else ""))
+          return " ".join(parts)
+
+  - id: is_valid_ipv4
+    function: is_valid_ipv4
+    prompt: |
+      Implement is_valid_ipv4(s: str) -> bool using the standard library only.
+      Return True only when the string has exactly four dot-separated decimal
+      octets, each from 0 through 255 inclusive. Every octet must be nonempty and
+      contain only ASCII digits. Leading zeros are forbidden except for the
+      single digit "0". Unicode digits such as "١" are invalid even though
+      str.isdigit considers them digits. Signs, whitespace, empty parts, extra
+      or missing octets, and octets above 255 are invalid. Return False for
+      invalid input; this function must never raise.
+      Worked examples: "0.0.0.0" is valid because each single zero is allowed;
+      "255.1.2.3" is valid at the upper octet boundary; "01.2.3.4" is invalid
+      because its first octet has a leading zero; "256.2.3.4" is invalid because
+      its first octet exceeds 255.
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import is_valid_ipv4
+
+      def test_zero_octets():
+          assert is_valid_ipv4("0.0.0.0") is True
+
+      def test_upper_boundary():
+          assert is_valid_ipv4("255.1.2.3") is True
+
+      def test_leading_zero():
+          assert is_valid_ipv4("01.2.3.4") is False
+
+      def test_unicode_digit():
+          assert is_valid_ipv4("١.2.3.4") is False
+
+      def test_sign():
+          assert is_valid_ipv4("+1.2.3.4") is False
+
+      def test_whitespace():
+          assert is_valid_ipv4("1.2.3.4 ") is False
+
+      def test_empty_part():
+          assert is_valid_ipv4("1..3.4") is False
+
+      def test_missing_octet():
+          assert is_valid_ipv4("1.2.3") is False
+
+      def test_extra_octet():
+          assert is_valid_ipv4("1.2.3.4.5") is False
+
+      def test_above_boundary():
+          assert is_valid_ipv4("256.2.3.4") is False
+    reference: |
+      def is_valid_ipv4(s: str) -> bool:
+          if not isinstance(s, str):
+              return False
+          parts = s.split(".")
+          if len(parts) != 4:
+              return False
+          for part in parts:
+              if not 1 <= len(part) <= 3 or any(c not in "0123456789" for c in part):
+                  return False
+              if len(part) > 1 and part[0] == "0":
+                  return False
+              if int(part) > 255:
+                  return False
+          return True
+    control: |
+      # Mistake: str.isdigit accepts Unicode decimal digits as valid octets.
+      def is_valid_ipv4(s: str) -> bool:
+          if not isinstance(s, str):
+              return False
+          parts = s.split(".")
+          if len(parts) != 4:
+              return False
+          for part in parts:
+              if not 1 <= len(part) <= 3 or not part.isdigit():
+                  return False
+              if len(part) > 1 and part[0] == "0":
+                  return False
+              try:
+                  if int(part) > 255:
+                      return False
+              except ValueError:
+                  return False
+          return True
+
+  - id: chunk_by_weight
+    function: chunk_by_weight
+    prompt: |
+      Implement chunk_by_weight(items: list[tuple[str, int]], limit: int) -> list[list[str]]
+      using the standard library only. Items are (name, weight) pairs. Greedily
+      form chunks of names while preserving input order. Add each item to the
+      current chunk unless its weight would make the total exceed limit; in
+      that case start a new chunk. A total equal to limit is allowed. An item
+      heavier than limit must be alone in its own chunk, with any preceding
+      chunk finished and subsequent items starting a fresh chunk. Zero-weight
+      items join the current ordinary chunk even when it is at its limit, or
+      start the first chunk if there is none. A zero-weight item after an
+      overweight singleton starts a new chunk, keeping that singleton alone.
+      Never return empty chunks. Empty items produce an empty list for a valid
+      limit. Raise ValueError if limit is zero or negative, even for empty items,
+      or if any item has negative weight.
+      Worked examples: [("a", 2), ("b", 3), ("c", 1)] with limit 5 produces
+      [["a", "b"], ["c"]]; [("heavy", 8), ("zero", 0), ("light", 2)] with
+      limit 5 produces [["heavy"], ["zero", "light"]]; [("a", 5), ("z", 0)]
+      with limit 5 produces [["a", "z"]].
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import chunk_by_weight
+
+      def test_empty():
+          assert chunk_by_weight([], 5) == []
+
+      def test_greedy_order():
+          assert chunk_by_weight([("a", 2), ("b", 3), ("c", 1)], 5) == [["a", "b"], ["c"]]
+
+      def test_zero_at_exact_limit():
+          assert chunk_by_weight([("a", 5), ("z", 0)], 5) == [["a", "z"]]
+
+      def test_initial_zero():
+          assert chunk_by_weight([("z", 0), ("a", 3)], 5) == [["z", "a"]]
+
+      def test_zero_after_overweight():
+          assert chunk_by_weight([("heavy", 8), ("zero", 0), ("light", 2)], 5) == [["heavy"], ["zero", "light"]]
+
+      def test_overweight_between_chunks():
+          assert chunk_by_weight([("a", 2), ("heavy", 8), ("b", 2)], 5) == [["a"], ["heavy"], ["b"]]
+
+      def test_all_zero():
+          assert chunk_by_weight([("x", 0), ("y", 0)], 1) == [["x", "y"]]
+
+      def test_zero_limit():
+          with pytest.raises(ValueError):
+              chunk_by_weight([], 0)
+
+      def test_negative_limit():
+          with pytest.raises(ValueError):
+              chunk_by_weight([("a", 1)], -1)
+
+      def test_negative_weight():
+          with pytest.raises(ValueError):
+              chunk_by_weight([("a", 1), ("b", -1)], 5)
+    reference: |
+      def chunk_by_weight(items: list[tuple[str, int]], limit: int) -> list[list[str]]:
+          if limit <= 0 or any(weight < 0 for _, weight in items):
+              raise ValueError("positive limit and nonnegative weights required")
+          result = []
+          current = []
+          total = 0
+          for name, weight in items:
+              if weight > limit:
+                  if current:
+                      result.append(current)
+                  result.append([name])
+                  current = []
+                  total = 0
+                  continue
+              if current and total + weight > limit:
+                  result.append(current)
+                  current = []
+                  total = 0
+              current.append(name)
+              total += weight
+          if current:
+              result.append(current)
+          return result
+    control: |
+      # Mistake: discards zero-weight items as if they carried no useful content.
+      def chunk_by_weight(items: list[tuple[str, int]], limit: int) -> list[list[str]]:
+          if limit <= 0 or any(weight < 0 for _, weight in items):
+              raise ValueError("positive limit and nonnegative weights required")
+          result = []
+          current = []
+          total = 0
+          for name, weight in items:
+              if weight == 0:
+                  continue
+              if weight > limit:
+                  if current:
+                      result.append(current)
+                  result.append([name])
+                  current = []
+                  total = 0
+                  continue
+              if current and total + weight > limit:
+                  result.append(current)
+                  current = []
+                  total = 0
+              current.append(name)
+              total += weight
+          if current:
+              result.append(current)
+          return result
+
+  - id: luhn_check_digit
+    function: luhn_check_digit
+    prompt: |
+      Implement luhn_check_digit(partial: str) -> str using the standard library only.
+      Return the single Luhn check digit to append to the supplied partial number,
+      as a one-character string. Ignore ASCII spaces anywhere in the partial,
+      including leading, trailing, and repeated spaces. All remaining characters
+      must be ASCII digits, with at least one digit present; leading zeros are
+      allowed. Raise ValueError when there are no digits (empty or spaces-only
+      input) or any character other than ASCII digits and ASCII spaces, including
+      letters, tabs, signs, or Unicode digits. Do not trim other whitespace.
+      To account for the future appended check digit, double the rightmost
+      partial digit, then every other digit moving left. Subtract nine from any
+      doubled value above nine, sum these values and the undoubled digits, and
+      choose the check digit that makes the total a multiple of ten.
+      Worked examples: "7992739871" has transformed sum 67 and produces "3";
+      "4111 1111 1111 111" has transformed sum 29 and produces "1";
+      "1" doubles to 2 and produces "8"; "0000" has sum zero and produces "0".
+      Reply with one Python code block containing the function and any helpers it needs. No tests, no explanation.
+    hidden_test: |
+      import pytest
+      from solution import luhn_check_digit
+
+      def test_known_number():
+          assert luhn_check_digit("7992739871") == "3"
+
+      def test_spaced_number():
+          assert luhn_check_digit("4111 1111 1111 111") == "1"
+
+      def test_single_digit_parity():
+          assert luhn_check_digit("1") == "8"
+
+      def test_leading_and_trailing_spaces():
+          assert luhn_check_digit("  7992739871  ") == "3"
+
+      def test_leading_zeros():
+          assert luhn_check_digit("0000") == "0"
+
+      def test_empty():
+          with pytest.raises(ValueError):
+              luhn_check_digit("")
+
+      def test_spaces_only():
+          with pytest.raises(ValueError):
+              luhn_check_digit("   ")
+
+      def test_unicode_digit():
+          with pytest.raises(ValueError):
+              luhn_check_digit("١23")
+
+      def test_letter():
+          with pytest.raises(ValueError):
+              luhn_check_digit("12a3")
+
+      def test_tab():
+          with pytest.raises(ValueError):
+              luhn_check_digit("12\t3")
+    reference: |
+      def luhn_check_digit(partial: str) -> str:
+          if any(c not in "0123456789 " for c in partial):
+              raise ValueError("only ASCII digits and spaces allowed")
+          digits = partial.replace(" ", "")
+          if not digits:
+              raise ValueError("at least one digit required")
+          total = 0
+          for i, char in enumerate(reversed(digits)):
+              value = int(char)
+              if i % 2 == 0:
+                  value *= 2
+                  if value > 9:
+                      value -= 9
+              total += value
+          return str((-total) % 10)
+    control: |
+      # Mistake: uses validation parity without accounting for the appended digit.
+      def luhn_check_digit(partial: str) -> str:
+          if any(c not in "0123456789 " for c in partial):
+              raise ValueError("only ASCII digits and spaces allowed")
+          digits = partial.replace(" ", "")
+          if not digits:
+              raise ValueError("at least one digit required")
+          total = 0
+          for i, char in enumerate(reversed(digits)):
+              value = int(char)
+              if i % 2 == 1:
+                  value *= 2
+                  if value > 9:
+                      value -= 9
+              total += value
+          return str((-total) % 10)

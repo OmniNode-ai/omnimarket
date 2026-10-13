@@ -32,7 +32,6 @@ from omnimarket.delegation.identifier_grounding import (
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     _HEURISTIC_CONTAINS_ANY_CHECKS,
     _HEURISTIC_SIMPLE_CHECKS,
-    _UNEVALUATED_DETERMINISTIC_CHECKS,
     SUPPORTED_DETERMINISTIC_CHECKS,
 )
 from omnimarket.ranges import (
@@ -402,7 +401,6 @@ class TestRequiredDelegationAcceptanceInventory:
     def test_gate_checks_match_the_quality_gate_inventory(self) -> None:
         gate_checks = (
             set(SUPPORTED_DETERMINISTIC_CHECKS)
-            | set(_UNEVALUATED_DETERMINISTIC_CHECKS)
             | set(_HEURISTIC_SIMPLE_CHECKS)
             | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
             | {

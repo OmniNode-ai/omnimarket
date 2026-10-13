@@ -81,6 +81,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegationEventProjectionRow,
     ModelProjectionEnvelopeMetadata,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_routing_decision import (
     ModelRoutingDecision,
 )
@@ -202,6 +203,7 @@ __all__: list[str] = [
     "ModelDelegationShadowConfig",
     "ModelInferenceIntent",
     "ModelInferenceResponseData",
+    "ModelNamedTestRun",
     "ModelProjectionEnvelopeMetadata",
     "ModelQualityGateInput",
     "ModelQualityGateIntent",

@@ -8355,6 +8355,7 @@
       "partitioning": [],
       "producer": "node_projection_tenant_credentials",
       "readers": [
+        "node_claude_review_gateway_effect",
         "node_local_secret_store_effect",
         "node_projection_tenant_credentials"
       ],

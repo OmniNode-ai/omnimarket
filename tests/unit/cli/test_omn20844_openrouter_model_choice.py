@@ -361,6 +361,8 @@ class TestRegisterTenantKey:
 
             class _Response:
                 api_key_ref = "cred_dev_openrouter_" + "a" * 32
+                # OMN-21014: the CLI folds the key into this machine's catalog.
+                name = "openrouter"
                 provider = "openrouter"
                 plan = None
                 model = request.model

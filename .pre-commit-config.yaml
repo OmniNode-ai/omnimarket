@@ -1167,6 +1167,19 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-20915: the source-control nodes (every node directory named
+      # *github*) reach GitHub through their transport, never the gh CLI or a
+      # hand-written api.github.com URL. The test plants a violation and
+      # requires the scan to refuse it. SYNC with the ci.yml lint step
+      # "Source-control nodes do not use the gh CLI (OMN-20915)".
+      - id: scm-nodes-no-gh-cli
+        name: Source-control nodes do not use the gh CLI (OMN-20915)
+        language: system
+        entry: uv run pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/[^/]*github[^/]*/.*\.py|tests/ci/test_scm_nodes_no_gh_cli_omn20915\.py|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-17372: house inference-credential gate. Fails if a delegation
       # backend re-declares `api_key_env`, or if any omnimarket source reads a
       # house provider key (OPENROUTER/GLM/GEMINI/...) from the process
@@ -1476,6 +1489,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21062: a binding is accepted by a second lane that reruns its check.
+      # Check-only; one run per selector so a renamed case selects nothing and
+      # fails. SYNC with the ci.yml lint step "dod_verify independent acceptance
+      # (OMN-21062)".
+      - id: dod-verify-independent-acceptance
+        name: dod_verify independent acceptance (OMN-21062)
+        language: system
+        entry: bash -c 'for selector in self_accepted_is_proposal acceptance_without_rerun_refused independent_rerun_accepted; do uv run pytest tests/unit/nodes/node_dod_verify/test_independent_acceptance.py -q -p no:randomly --no-cov -n 0 -k "$selector" || exit 1; done; uv run pytest tests/ci/test_dod_verify_independent_acceptance_wiring_omn21062.py -q -p no:randomly --no-cov -n 0'
+        files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_acceptance_basis\.py$|tests/ci/test_dod_verify_independent_acceptance_wiring_omn21062\.py$|tests/unit/nodes/node_dod_verify/(test_independent_acceptance|omn_19428_occ_tree|omn_20858_ticket_reader|conftest)\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20780: a criterion binding is never accepted by the lane that authored
       # it (ruling 2026-10-03T00:40:00Z); node_dod_verify demotes a self-accepted
       # binding. Check-only. SYNC with the ci.yml lint step
@@ -1485,6 +1510,18 @@ repos:
         language: system
         entry: uv run pytest tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py -q -p no:randomly --no-cov
         files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_occ_falsifier_checks\.py$|tests/test_dod_verify_acceptance_basis\.py$|tests/ci/test_dod_verify_self_accepted_wiring_omn20780\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20730: red CI emits ci-run-failed and the lifecycle orchestrator triages it on
+      # receipt (ruling 2026-10-08T14:27:26Z); the five contract legs of that chain stay
+      # connected. Check-only. SYNC with the ci.yml lint step
+      # "red CI bus chain stays connected (OMN-20730)".
+      - id: red-ci-event-chain
+        name: red CI bus chain stays connected (OMN-20730)
+        language: system
+        entry: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/(node_pr_state_emit_effect|node_pr_lifecycle_orchestrator|node_pr_lifecycle_state_reducer)/(contract\.yaml|handlers/)|src/omnimarket/events/topics\.py$|tests/ci/test_red_ci_bus_chain_omn20730\.py$)
         pass_filenames: false
         stages: [pre-commit]
 

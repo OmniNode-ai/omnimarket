@@ -1,0 +1,70 @@
+---
+name: node_delegation_ground_truth_label_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Labels delegated runs from evidence the acceptance gate never produced
+  (OMN-19787). Code: a hidden test the delegated model never saw passes every
+  case. Documents: every item of a fixed checklist is met, scored by a model
+  other than the delegated one. A hidden test whose lines appear in the prompt,
+  a test that ran no case, an unscored item or a scorer that is the delegated
+  model gives UNLABELABLE. Emits gate-eval items carrying the gate's recorded
+  verdict, so node_delegation_gate_eval_compute counts false passes against
+  them. No I/O, model calls or code execution; the caller runs test and scorer.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_ground_truth_label
+      handler:
+        name: HandlerGroundTruthLabel
+        module: omnimarket.nodes.node_delegation_ground_truth_label_compute.handlers.handler_ground_truth_label
+
+handler:
+  module: omnimarket.nodes.node_delegation_ground_truth_label_compute.handlers.handler_ground_truth_label
+  class: HandlerGroundTruthLabel
+  input_model: omnimarket.models.delegation_gate_eval.model_ground_truth_label_request.ModelGroundTruthLabelRequest
+  output_model: omnimarket.models.delegation_gate_eval.model_ground_truth_label_result.ModelGroundTruthLabelResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles: [main]
+
+inputs:
+  batch_id:
+    type: str
+    required: true
+    description: Caller-supplied batch identifier.
+  runs:
+    type: tuple
+    required: true
+    description: Delegated runs, each with its gate verdict and one evidence kind.
+
+outputs:
+  batch_id:
+    type: str
+  labels:
+    type: tuple
+  items:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.delegation-ground-truth-labelled.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-ground-truth-label-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-ground-truth-labelled.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-ground-truth-label-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-ground-truth-labelled.v1

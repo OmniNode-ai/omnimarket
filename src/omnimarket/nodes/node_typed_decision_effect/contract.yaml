@@ -23,8 +23,8 @@ description: >
   Observes the contract-pinned typed-decision backend in shadow without steering
   the incumbent decision, retaining the observed model, abstention, refusal or
   error outcome in the receipt. Reports independently adjudicated calibration
-  only after the contract sample floor is reached. A work unit that does not
-  belong to a public repository, resolved live and failing closed, is refused
+  only after the contract sample floor is reached. A work unit that names no
+  repository, or names a repository on the contract's refused list, is refused
   before anything is sent to the backend.
 
 input_model:
@@ -81,28 +81,22 @@ decision_routing:
   abstain_below_probability: 0.8
 
 work_unit_scoping:
-  # The decision backend is a third party. Only work that belongs to a public
-  # repository may reach it: a missing attribution, a private or absent
-  # repository, and any failure to resolve visibility are all refusals.
-  require_public_repository: true
-  visibility_timeout_ms: 5000
-  # A real 200 that reports a repository public is remembered this long, in
-  # process and on disk (OMN-20149). Only that positive answer is ever kept: a
-  # refusal, a 404, a rate limit or a transport failure is read again next
-  # time. A repository that turns private is served from the cache for at most
-  # this long, so it stays short. 0 disables the cache.
-  visibility_cache_ttl_seconds: 600
-
-secrets:
-  # OMN-20149: the visibility read carries this token when the secret store
-  # resolves it, which lifts the read from GitHub's anonymous 60 an hour to the
-  # authenticated allowance. Optional: with none the read is anonymous and the
-  # cache above is what keeps a burst under the cap. A token can widen what a
-  # read can SEE, never what counts as public: the guard admits only a 200
-  # whose ``private`` field is false.
-  GITHUB_TOKEN:
-    description: "GitHub token for the repository-visibility read (optional, read-only)."
-    required: false
+  # The decision backend is a third party. RULING 2026-10-13T18:34:53Z lifted
+  # the public-repository-only rule: a work unit reaches the backend for every
+  # repository except the two names below, which are refused. GitHub is never
+  # asked what a repository is.
+  #
+  # The refused names are listed as digests, not spelled out, because this
+  # repository is public and the public-repo hygiene gate bars those names from
+  # every tracked file. Each entry is ``sha256:`` plus the SHA-256 hex digest of
+  # the lower-cased repository name (the part of ``owner/name`` after the
+  # slash); the handler hashes the request's name and compares. This keeps the
+  # names out of the tree; it is not secrecy, a guessable name has a guessable
+  # digest. A request that names no repository cannot be checked against the
+  # list and is refused.
+  refused_repositories:
+    - "sha256:f36f5806d0ce905afcc14a8e2a41c350226946fd20db41b26b31be7ef9be87f6"
+    - "sha256:ee7bb71b3bbc91e6c49048c5db0adfa15910ce03e22abb48e5a8d3cd2dcae1c9"
 
 descriptor:
   node_archetype: effect
