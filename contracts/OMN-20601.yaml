@@ -14,10 +14,22 @@ requirements:
         statement: "AC1: a publisher in the node package builds exactly one command on the topic read from the node contract and rejects an invalid command without publishing -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q"
       - id: "AC2"
         statement: "AC2: the node contract declares a top-level runtime_profiles of effects -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q -k runtime_profile"
+  - id: "req-routing-decisions-come-from-overlays"
+    statement: "Routing decisions come from overlays, never from omnimarket code (ruling 2026-10-10T17:54:30Z): every routing selection source is inventoried, the deployment overlay wins over each code default, and a new route-selecting comparison in non-test code fails the Deployment Fact Gate job and its pre-commit hook."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: an inventory lists every routing selection source in omnimarket, and a resolution site or packaged config missing from it fails -- falsifier: uv run pytest tests/test_routing_sources_omn20601.py -q -k inventory"
+      - id: "AC6"
+        statement: "AC6: the overlay wins over every code default, for each source in the inventory -- falsifier: uv run pytest tests/test_routing_sources_omn20601.py -q -k overlay_precedence"
+      - id: "AC7"
+        statement: "AC7: a new routing branch in code fails the deployment-fact gate -- falsifier: uv run pytest tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py -q -k routing_in_code_refused"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2 hosted probe. The publisher tests pass at the head and fail at the merge base, where the publisher module does not exist."
     command: "env -u PYTHONPATH uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q"
+  - kind: "tests"
+    description: "AC5, AC6 and AC7: the inventory, overlay precedence and routing-in-code checks, with the existing outcome-overlay test the inventory cites."
+    command: "uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +43,27 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20601-ac5-routing-source-inventory"
+    description: "AC5: the inventory test fails on a resolution site or packaged config the inventory lacks."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_routing_sources_omn20601.py -q -k inventory"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20601-ac6-overlay-precedence"
+    description: "AC6: for each routing source the overlay, pin or environment wins over the code default."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_routing_sources_omn20601.py -q -k overlay_precedence"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20601-ac7-routing-in-code-refused"
+    description: "AC7: a new route-selecting comparison in non-test code fails the deployment-fact gate, judged against the base revision."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py -q -k routing_in_code_refused"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]

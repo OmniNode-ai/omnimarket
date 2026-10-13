@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Refuse a new deployment fact in omnimarket's packaged routing configs (OMN-20287).
 
+The handler also reports a new code path that chooses a route (OMN-20601, see
+:mod:`omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_routing_in_code`),
+judged against the same base revision.
+
 ``HandlerDeploymentFactGate.handle(ModelDeploymentFactGateRequest) -> ModelDeploymentFactGateResult``.
 
 Routing decisions belong in a deployment's overlay, not in the config this
@@ -50,6 +54,10 @@ from omnimarket.models.delegation.model_packaged_routing_tiers import (
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
+)
+from omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_routing_in_code import (
+    RoutingInCodeGateError,
+    judge_tree,
 )
 from omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate import (
     ModelDeploymentFactGateRequest,
@@ -210,8 +218,19 @@ class HandlerDeploymentFactGate:
     def handle(
         self, request: ModelDeploymentFactGateRequest
     ) -> ModelDeploymentFactGateResult:
-        texts = read_packaged_config_texts(Path(request.repo_root), request.base_ref)
-        return judge_packaged_configs(texts, request.base_ref)
+        repo_root = Path(request.repo_root)
+        texts = read_packaged_config_texts(repo_root, request.base_ref)
+        configs = judge_packaged_configs(texts, request.base_ref)
+        try:
+            new_branches, branch_inventory = judge_tree(repo_root, request.base_ref)
+        except RoutingInCodeGateError as exc:
+            raise DeploymentFactGateError(str(exc)) from exc
+        return configs.model_copy(
+            update={
+                "new_routing_branches": new_branches,
+                "routing_branch_inventory": branch_inventory,
+            }
+        )
 
 
 __all__: list[str] = [

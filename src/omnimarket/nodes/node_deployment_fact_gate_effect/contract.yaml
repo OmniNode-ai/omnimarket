@@ -4,7 +4,8 @@
 # ONEX Node Contract
 # Node: NodeDeploymentFactGateEffect
 #
-# Refuses a new deployment fact in omnimarket's packaged routing configs (OMN-20287):
+# Refuses a new deployment fact in omnimarket's packaged routing configs (OMN-20287)
+# and a new code path that chooses a route (OMN-20601):
 #
 #   handle(ModelDeploymentFactGateRequest) -> ModelDeploymentFactGateResult
 #
@@ -36,7 +37,10 @@ description: >
   provider, routing tier or per-class order) and a new undeclared key in
   omnimarket's packaged routing configs, judged against a base revision that
   is the shrink-only baseline. Values in the declared neutral local-only
-  default set are never facts.
+  default set are never facts. The same base revision judges the package's
+  non-test code, and a new comparison of a routing selector (task class, tier,
+  backend, provider, rung, harness or model name) with a string literal is
+  refused (OMN-20601): routing decisions come from overlays, never from code.
 input_model:
   name: "ModelDeploymentFactGateRequest"
   module: "omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate"
@@ -44,7 +48,7 @@ input_model:
 output_model:
   name: "ModelDeploymentFactGateResult"
   module: "omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate"
-  description: "New deployment facts, new undeclared keys, and the inventory of facts the tree still carries."
+  description: "New deployment facts, new undeclared keys, new route-selecting comparisons in code, and the inventories of facts and comparisons the tree still carries."
 handler:
   module: "omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_deployment_fact_gate"
   class: "HandlerDeploymentFactGate"
@@ -80,3 +84,4 @@ metadata:
     - routing
     - overlay
     - OMN-20287
+    - OMN-20601
