@@ -36,6 +36,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import (
     load_topics,
 )
 from omnimarket.models.scm import EnumScmNode
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
@@ -46,6 +47,13 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+)
+from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
+    JsonExchange,
+    RecordedGatewayTransport,
+    get,
+    json_response,
+    run_job,
 )
 
 pytestmark = pytest.mark.unit
@@ -437,6 +445,60 @@ def test_read_verb_publishes_typed_command_and_returns_terminal(
     assert answer["bus"]["terminal_partition"] == 0
     assert answer["bus"]["command_envelope_id"] == envelope["envelope_id"]
     assert answer["bus"]["correlation_id"] == str(sent.correlation_id)
+
+
+def test_run_view_returns_step_timestamps_without_an_additional_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = f"/repos/{REPO}/actions/runs/11/jobs?filter=all&per_page=100&page=1"
+    transport = RecordedGatewayTransport(
+        [
+            JsonExchange(
+                get(path),
+                json_response(
+                    {
+                        "total_count": 1,
+                        "jobs": [run_job(1, attempt=1, conclusion="success")],
+                    }
+                ),
+            )
+        ]
+    )
+
+    class GatewayBus(FakeBus):
+        def _respond(
+            self, topic: str, payload: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            assert topic == GATEWAY.command
+            request = ModelGithubGatewayRequest.model_validate(payload)
+            response = ModelGithubGatewayResponse(
+                correlation_id=request.correlation_id,
+                result=dispatch(request, transport),
+            )
+            return GATEWAY.success, response.model_dump(mode="json")
+
+    bus = GatewayBus()
+    _install(monkeypatch, bus)
+    result = _run(["run-view", REPO, "--run-id", "11"])
+
+    assert result.exit_code == 0, result.output
+    answer = _answer(result)
+    assert answer["outcome"] == "completed"
+    assert answer["result"]["operation"] == "run_jobs"
+    steps = answer["result"]["jobs"][0]["steps"]
+    assert [(step["started_at"], step["completed_at"]) for step in steps] == [
+        ("2026-10-10T18:01:00Z", "2026-10-10T18:01:02Z"),
+        ("2026-10-10T18:01:02Z", "2026-10-10T18:09:00Z"),
+    ]
+    assert len(bus.published) == 1
+    assert bus.published[0][1]["payload"]["operation"] == "run_jobs"
+    transport.assert_drained()
+    assert transport.sent == [get(path)]
+    declared = sorted(contract_operations(EnumScmNode.GATEWAY))
+    assert len(declared) == 14
+    assert declared == sorted(
+        spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
+    )
 
 
 @pytest.mark.parametrize("verb_name", sorted(_WRITE_ARGS))
