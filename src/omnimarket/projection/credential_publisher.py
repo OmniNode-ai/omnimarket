@@ -88,6 +88,11 @@ from omnimarket.routing.byok_provider_backends import (
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
 
+#: OMN-21012. A lab host table row name: one lowercase DNS label (h201, h200),
+#: the same shape omnibase_core's delegation request ``source_host`` takes, so
+#: the router can compare the two as plain strings.
+LAB_HOST_NAME_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+
 # Every variable the Infisical machine identity needs, resolved fail-closed and
 # reported together. Deliberately byte-identical to
 # ``inference.secret_store_resolver._INFISICAL_BOOTSTRAP_VARS`` (the READ half,
@@ -323,6 +328,18 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
             )
         return expires_at
 
+    bound_host: str | None = Field(
+        default=None,
+        pattern=LAB_HOST_NAME_PATTERN,
+        description=(
+            "OMN-21012. The lab host whose Claude account owns this key, as its "
+            "lab host table row name (for example h201). Operator ruling "
+            "2026-10-11T17:58:45Z binds each account's key to the machine the "
+            "account lives on, so the router spends it only on work sent from "
+            "that host. None leaves the key usable from any host, as before."
+        ),
+    )
+
     @field_validator("provider", mode="after")
     @classmethod
     def _provider_must_be_on_the_customer_catalogue(cls, provider: str) -> str:
@@ -416,6 +433,8 @@ class ModelInferenceCredentialResponse(BaseModel):
     #: OMN-20991. Set when the expiry is absent or is not January 1. A warning,
     #: never a refusal: the key is stored and routed either way.
     expiry_warning: EnumCredentialExpiryWarning | None = None
+    #: OMN-21012. The lab host the key is bound to, if any.
+    bound_host: str | None = None
     created_at: datetime
 
 
@@ -453,6 +472,9 @@ class ModelCredentialRegisteredEvent(BaseModel):
     # OMN-20991. Optional for the same reason: an older producer's event still
     # validates, and a credential without one is simply undated.
     expires_at: datetime | None = None
+    # OMN-21012. The lab host the key is bound to; optional for the same reason,
+    # and a key without one stays usable from any host.
+    bound_host: str | None = Field(default=None, pattern=LAB_HOST_NAME_PATTERN)
 
 
 class ModelCredentialRevokedEvent(BaseModel):
@@ -850,6 +872,7 @@ async def register_inference_credential(
             if value is not None
         },
         expires_at=request.expires_at,
+        bound_host=request.bound_host,
     )
     envelope: ModelEventEnvelope[
         ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
@@ -882,6 +905,7 @@ async def register_inference_credential(
         model=model,
         expires_at=request.expires_at,
         expiry_warning=credential_expiry_warning(request.expires_at),
+        bound_host=request.bound_host,
         created_at=envelope.envelope_timestamp,
     )
 

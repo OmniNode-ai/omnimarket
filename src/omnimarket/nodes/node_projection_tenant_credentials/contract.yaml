@@ -154,6 +154,8 @@ projection_api:
     - "set_at"
     # 0006 (OMN-20991): the key's expiry date, for routing and the pool alert.
     - "expires_at"
+    # 0007 (OMN-21012): the lab host whose Claude account owns the key.
+    - "bound_host"
   order_by: "created_at DESC"
   freshness_column: "created_at"
   limit: 200

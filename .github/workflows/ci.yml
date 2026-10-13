@@ -537,6 +537,12 @@ jobs:
       # digest. SYNC with pre-commit hook 'ci-red-triage-model'.
       - name: Red CI triage model and verdict (OMN-20730)
         run: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-20601: routing decisions come from overlays, never from omnimarket code
+      # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
+      # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
+      # 'routing-sources-omn20601'.
+      - name: Routing sources, overlay precedence and routing-in-code ratchet (OMN-20601)
+        run: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly

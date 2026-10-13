@@ -436,7 +436,8 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     revoked_at  TEXT,
     fingerprint TEXT,
     set_at      TEXT,
-    expires_at  TEXT
+    expires_at  TEXT,
+    bound_host  TEXT
 )
 """
 
@@ -447,6 +448,8 @@ _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
     "set_at": None,
     # 0006 (OMN-20991): the key's expiry date.
     "expires_at": None,
+    # 0007 (OMN-21012): the lab host the key is bound to.
+    "bound_host": None,
 }
 
 _DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """

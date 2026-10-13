@@ -9,11 +9,15 @@ from omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_f
     ModelNewUndeclaredKey,
     ModelPackagedConfigTexts,
 )
+from omnimarket.nodes.node_deployment_fact_gate_effect.models.model_routing_in_code_gate import (
+    ModelNewRoutingBranch,
+)
 
 __all__: list[str] = [
     "ModelDeploymentFactGateRequest",
     "ModelDeploymentFactGateResult",
     "ModelNewDeploymentFact",
+    "ModelNewRoutingBranch",
     "ModelNewUndeclaredKey",
     "ModelPackagedConfigTexts",
 ]

@@ -1,0 +1,11 @@
+-- OMN-21012: a credential row names the lab host whose Claude account owns it.
+--
+-- Every lab machine has its own Claude Code account, and each account's API
+-- key is bound to the machine the account lives on (operator ruling
+-- 2026-10-11T17:58:45Z), so work sent from a host spends only that host's key.
+-- The router reads this column against the request's source_host.
+--
+-- Nullable with no default and no backfill: a row registered before this
+-- migration, or with no host given, is unbound and stays usable from any host,
+-- exactly as before.
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS bound_host TEXT;
