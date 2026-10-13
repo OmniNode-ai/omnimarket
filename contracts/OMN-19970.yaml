@@ -66,13 +66,13 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn19970-ac3-lab-exposure-read"
-    description: "AC3, the lab step: reads the dev lane's projection API for every fixture correlation id of the declared fixture set, on every delegation_events exposure the API serves (the Runs exposure is required), and fails when a fixture row comes back without data_source fixture or a fixture id returns no row. Read-only; the lane must have been seeded with onex seed --bus kafka --lane dev --tenant <house tenant uuid>. It carries no binds_ac only because the hosted repo-evidence control never runs a local_done_gate item, at the head or at the control; the local Done gate executes it in the same verdict as the AC3 bindings above."
+    description: "AC3, the lab step: reads the dev lane's projection API for every fixture correlation id of the declared fixture set, on every delegation_events exposure the API serves (the Runs exposure is required), and fails when a fixture row comes back without data_source fixture or a fixture id returns no row. The API is ONEX_LAB_PROJECTION_API, else port 3002 on the host of KAFKA_BOOTSTRAP_SERVERS. Read-only; the lane must have been seeded with onex seed --bus kafka --lane dev --tenant <house tenant uuid>. It carries no binds_ac only because the hosted repo-evidence control never runs a local_done_gate item, at the head or at the control; the local Done gate executes it in the same verdict as the AC3 bindings above."
     source: "manual"
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
         check_value: |-
-          broker="${KAFKA_BOOTSTRAP_SERVERS:?set KAFKA_BOOTSTRAP_SERVERS to the dev lane broker}"
+          broker="${KAFKA_BOOTSTRAP_SERVERS:?set ONEX_LAB_PROJECTION_API, or KAFKA_BOOTSTRAP_SERVERS to a broker on the dev lane host}"
           LAB_PROJECTION_API="${ONEX_LAB_PROJECTION_API:-http://${broker%%:*}:3002}" uv run --frozen python - <<'PROBE'
           import json, os, urllib.parse, urllib.request
           from omnimarket.nodes.node_dev_seed_effect.handlers.handler_dev_seed import HandlerDevSeed
