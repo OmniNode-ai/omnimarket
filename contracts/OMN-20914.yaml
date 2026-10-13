@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20914"
+title: "The gh shim's refusal table, the contract operations and onex scm verbs it reads, is checked in the required lint job and a pre-commit hook, and refuses a planted drift"
+summary: "Operator ruling 2026-10-10T18:32:46Z: GitHub access moves onto the source-control nodes and the gh shim refuses a lane's gh write once onex scm serves it. The shim holds no list of its own: it reads the operations block of node_github_repo_write_effect's contract and two literals of handlers/scm/handler_scm_dispatch.py in this repository. A reworded description, a renamed verb or a reformatted literal turned a refusal off in every lane with no failure anywhere. tests/ci/test_gh_shim_coverage_table_omn20914.py reads both files the way the shim does and names every operation the shim would stop refusing; a lint step and a check-only hook run it, and it fails when either is dropped. This contract binds the two criteria the lane brief names; the shim itself and its own tests are the omniclaude half and are not part of this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-wire-gh-shim-coverage-table"
+    statement: |-
+      The table the gh shim refuses from stays readable and served, and a change that breaks it is refused before it merges.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the coverage check refuses a planted violation -- falsifier: uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py -q -p no:randomly --no-cov fails on a contract description without its one-line 'replaces gh <group> <sub>.' clause, on a renamed verb in the dispatch table, on a reformatted replaces literal, on an operation with no clause, on a verb bound to another operation and on two operations claiming one gh verb
+      - id: "AC2"
+        statement: |-
+          AC2: the pre-commit hook gh-shim-coverage-table and the required lint job both run the coverage check -- falsifier: uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py -q -p no:randomly --no-cov fails at the merge base because the hook and the lint step are absent
+evidence_requirements:
+  - kind: "tests"
+    description: "The real contract and dispatch table pass the check, each planted violation is refused, and the hook and the lint step run the check."
+    command: "uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py tests/unit/handlers/scm/test_onex_scm_command.py::test_every_contract_operation_has_exactly_one_verb tests/unit/handlers/scm/test_onex_scm_command.py::test_no_refused_verb_is_also_served -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20914-planted-violation-refused"
+    description: "The coverage check passes on the real tables and refuses each planted violation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20914-wiring"
+    description: "The hook and the lint step name the coverage check and the two operation-to-verb binding tests, and the tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py tests/unit/handlers/scm/test_onex_scm_command.py::test_every_contract_operation_has_exactly_one_verb tests/unit/handlers/scm/test_onex_scm_command.py::test_no_refused_verb_is_also_served -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
