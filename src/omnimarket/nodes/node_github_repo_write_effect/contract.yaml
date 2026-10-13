@@ -9,7 +9,7 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 1, patch: 0}
 
@@ -66,13 +66,15 @@ modes:
   - dry_run
   - enforce
 
-# Default dry_run. enforce is declared for omnimarket only, the repository the
-# lab proof writes a scratch PR in; the landing orchestrator's per-repository
-# github_mode (OMN-20866) is the precedent. Widening it is a contract change.
+# Default enforce, so `onex scm` writes in every registry repository lanes
+# open pull requests in; the expected-head, quota-floor and claim guards apply
+# to each write, and the token's own grants bound where it reaches. The
+# landing orchestrator's per-repository github_mode (OMN-20866) is the
+# precedent: pin one repository to dry_run by adding a row here, for example
+# `OmniNode-ai/<repo>: dry_run`. A request may still force dry_run.
 write_config:
-  github_mode: dry_run
-  github_mode_by_repository:
-    OmniNode-ai/omnimarket: enforce
+  github_mode: enforce
+  github_mode_by_repository: {}
 
 quota_floor:
   # The landing effect's rule (OMN-19826): quota is read only from response

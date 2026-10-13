@@ -41,6 +41,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpResponse,
 )
 from omnimarket.models.pr_claim import EnumPrClaimOperation, ModelPrClaimRegistryRequest
+from omnimarket.nodes.node_git_query_mirror_effect.git_mirror import REGISTRY_REPOS
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_github_repo_write import (
     HandlerGithubRepoWriteEffect,
     idempotency_marker,
@@ -580,6 +581,51 @@ async def test_a_request_can_force_dry_run_but_not_enforce() -> None:
     assert transport.sent == []
 
 
+def _contract_handler(
+    transport: _Recorded, *, claims: ProtocolPrClaimLookup | None = None
+) -> HandlerGithubRepoWriteEffect:
+    """The handler with the mode its contract declares, no injected config."""
+    return HandlerGithubRepoWriteEffect(
+        transport, claim_lookup=claims or _NoClaims(), clock=lambda: _NOW
+    )
+
+
+async def test_contract_mode_performs_a_pr_edit_outside_omnimarket() -> None:
+    repo = "OmniNode-ai/omnibase_core"
+    transport = _Recorded(
+        [
+            (pull_request_request(repo, 4000), _ok(_pr())),
+            (edit_pull_request_request(repo, 4000, {"title": "new"}), _ok(_pr())),
+        ]
+    )
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=repo,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert [r.method for r in transport.sent] == ["GET", "PATCH"]
+    assert transport.drained()
+
+
+async def test_contract_mode_still_refuses_a_close_without_a_claim(
+    tmp_path: Path,
+) -> None:
+    transport = _Recorded([])
+    result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close(tmp_path, repo="OmniNode-ai/omnibase_core")
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert transport.sent == []
+
+
 async def test_dry_run_close_still_needs_the_claim(tmp_path: Path) -> None:
     transport = _Recorded([])
     result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
@@ -616,9 +662,8 @@ def test_each_operation_requires_its_fields(
 def test_contract_declares_mode_floor_and_topics() -> None:
     contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
     config = ModelRepoWriteConfig.from_contract(_CONTRACT)
-    assert config.github_mode is EnumRepoWriteMode.DRY_RUN
+    assert config.github_mode is EnumRepoWriteMode.ENFORCE
     assert config.mode_for("omninode-ai/OMNIMARKET") is EnumRepoWriteMode.ENFORCE
-    assert config.mode_for("OmniNode-ai/omnibase_core") is EnumRepoWriteMode.DRY_RUN
     assert contract["quota_floor"]["min_remaining"] == {"core": 500, "graphql": 500}
     assert {op["name"] for op in contract["operations"]} == {
         op.value for op in EnumRepoWriteOperation
@@ -633,3 +678,22 @@ def test_contract_declares_mode_floor_and_topics() -> None:
     assert contract["event_bus"]["subscribe_topics"] == [
         "onex.cmd.omnimarket.github-repo-write-requested.v1"
     ]
+
+
+def test_contract_enforces_every_registry_repository() -> None:
+    config = ModelRepoWriteConfig.from_contract(_CONTRACT)
+    dry = [
+        r for r in REGISTRY_REPOS if config.mode_for(r) is not EnumRepoWriteMode.ENFORCE
+    ]
+    assert dry == []
+
+
+def test_a_repository_can_still_be_pinned_to_dry_run_by_declaration() -> None:
+    contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    table = dict(contract["write_config"]["github_mode_by_repository"])
+    table["OmniNode-ai/omnibase_core"] = "dry_run"
+    config = ModelRepoWriteConfig.model_validate(
+        {**contract["write_config"], "github_mode_by_repository": table}
+    )
+    assert config.mode_for("OmniNode-ai/omnibase_core") is EnumRepoWriteMode.DRY_RUN
+    assert config.mode_for("OmniNode-ai/omnimarket") is EnumRepoWriteMode.ENFORCE
