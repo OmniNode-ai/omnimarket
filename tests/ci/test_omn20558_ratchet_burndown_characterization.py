@@ -96,7 +96,7 @@ def _resolved_refs(workflow_dir: Path) -> list[list[object]]:
 def _ref_diff(
     expected: list[list[object]], actual: list[list[object]]
 ) -> tuple[list[list[object]], list[list[object]]]:
-    """Return (missing, extra) rows, comparing file, action and resolved commit.
+    """Return missing uses and unrecognized pins, ignoring added uses of known pins.
 
     The line number is carried in each row for the message but is not compared: a
     step added above a ``uses:`` line moves it without changing what it runs, and a
@@ -157,6 +157,11 @@ def test_action_ref_diff_accepts_added_jobs_using_existing_pins() -> None:
     assert _ref_diff(golden, [*golden, other_workflow]) == ([], [other_workflow])
     # Removing one of several original invocations remains a mismatch.
     assert _ref_diff([*golden, added], golden) == ([*golden, added], [])
+    # Multiplicity still detects a changed use when the pin is used twice.
+    assert _ref_diff([*golden, added], [*golden, moved]) == (
+        [*golden, added],
+        [moved],
+    )
 
 
 @pytest.mark.unit

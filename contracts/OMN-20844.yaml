@@ -27,6 +27,12 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: the OpenRouter catalogue row declares customer_chooses_model and its billing is pay_as_you_go, not free_tier.
+  - id: "req-ci-check-prerequisite"
+    statement: "The separate check-only prerequisite for OmniNode-ai/omnimarket#3838 accepts unrelated CI additions while retaining the characterized pin and release-staleness requirements."
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: workflow action comparisons accept added uses of characterized action/commit pairs in the same workflow while refusing missing uses, moved pins, unknown actions and unknown workflows; release-staleness checks require unconditional jobs and steps, one strict CI Summary registration and no skippable registration, ordered after Canonical File Shape and before CI Summary, regardless of unrelated jobs added around it, with positive and negative controls.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -57,3 +63,19 @@ dod_evidence:
       - AC3
       - AC4
       - AC5
+  - id: "dod-omn20844-action-ref-prerequisite"
+    description: "Workflow action comparisons accept added uses of characterized pins and refuse missing uses, moved pins, unknown actions and unknown workflows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20844-release-staleness-prerequisite"
+    description: "Release-staleness checks retain unconditional jobs and steps, one strict CI Summary registration and no skippable registration, ordered after Canonical File Shape and before CI Summary, regardless of unrelated jobs added around it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
