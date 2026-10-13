@@ -78,27 +78,12 @@ _TOPOLOGY_PROFILE = "local"
 
 # Shrink-only. Contracts whose derived dispatch identifiers exceed a
 # ModelDispatchRoute limit under the omnibase-infra this repo resolves.
-_IDS_OVER_LIMIT: dict[str, str] = {
-    "node_delegation_acceptance_judged_publish_effect": (
-        "route.auto.<contract>.<handler>.<topic> is 206 characters; the 0.38.69 "
-        "runtime does not bound derived ids. omnibase_infra#4767 bounds them with "
-        "a digest suffix; remove this entry when the omnibase-infra pin carries it"
-    ),
-    "node_delegation_acceptance_judged_replay_compute": (
-        "same derived route id class as the publish effect; same exit condition"
-    ),
-}
+_IDS_OVER_LIMIT: dict[str, str] = {}
 
 # Shrink-only. Contracts that cannot wire in-process for a reason this test
 # cannot supply honestly (a secret, an operator overlay, explicit dependencies)
 # or because of a defect already filed.
 _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
-    "node_delegation_acceptance_judged_publish_effect": (
-        "ModelDispatchRoute ValidationError on the derived route id (see _IDS_OVER_LIMIT)"
-    ),
-    "node_delegation_acceptance_judged_replay_compute": (
-        "ModelDispatchRoute ValidationError on the derived route id (see _IDS_OVER_LIMIT)"
-    ),
     "node_adr_canary_orchestrator": (
         "HandlerCanaryOrchestrator needs the ADR bus protocol as an explicit dependency"
     ),

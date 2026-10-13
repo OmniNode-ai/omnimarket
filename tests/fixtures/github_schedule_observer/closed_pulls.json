@@ -1,0 +1,111 @@
+[
+ {
+  "path": "/repos/example-owner/example-repo/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1",
+  "status": 200,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "4900",
+   "x-ratelimit-used": "100",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "value": [
+    {
+     "number": 204,
+     "state": "closed",
+     "title": "change 204",
+     "updated_at": "2026-10-10T03:50:00Z",
+     "merged_at": null,
+     "merge_commit_sha": null,
+     "base": {
+      "ref": "main"
+     }
+    },
+    {
+     "number": 203,
+     "state": "closed",
+     "title": "change 203",
+     "updated_at": "2026-10-10T03:40:00Z",
+     "merged_at": "2026-10-10T03:40:00Z",
+     "merge_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+     "base": {
+      "ref": "main"
+     }
+    },
+    {
+     "number": 202,
+     "state": "closed",
+     "title": "change 202",
+     "updated_at": "2026-10-10T02:30:00Z",
+     "merged_at": "2026-10-10T02:30:00Z",
+     "merge_commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "base": {
+      "ref": "main"
+     }
+    },
+    {
+     "number": 201,
+     "state": "closed",
+     "title": "change 201",
+     "updated_at": "2026-10-10T01:10:00Z",
+     "merged_at": "2026-10-10T01:10:00Z",
+     "merge_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "base": {
+      "ref": "main"
+     }
+    },
+    {
+     "number": 150,
+     "state": "closed",
+     "title": "change 150",
+     "updated_at": "2026-10-08T01:10:00Z",
+     "merged_at": "2026-10-08T01:10:00Z",
+     "merge_commit_sha": "9999999999999999999999999999999999999999",
+     "base": {
+      "ref": "main"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "path": "/repos/example-owner/example-repo/pulls/203/files?per_page=100&page=1",
+  "status": 200,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "4900",
+   "x-ratelimit-used": "100",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "value": [
+    {
+     "filename": "docs/notes.md"
+    }
+   ]
+  }
+ },
+ {
+  "path": "/repos/example-owner/example-repo/pulls/202/files?per_page=100&page=1",
+  "status": 200,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "4900",
+   "x-ratelimit-used": "100",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "value": [
+    {
+     "filename": "src/runtime/handler.py"
+    },
+    {
+     "filename": "README.md"
+    }
+   ]
+  }
+ }
+]

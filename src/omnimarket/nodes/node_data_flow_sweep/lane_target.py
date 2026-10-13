@@ -5,19 +5,15 @@
 OMN-13552: the collector previously probed *whatever host the CLI process is on*
 (``docker exec omnibase-infra-redpanda ...`` / ``psql -h localhost ...``) rather
 than the lane it was nominally verifying. For the dev/stability/prod lanes that
-run on the .201 runtime host this produced false-broken (no local container =>
+run on a remote runtime host this produced false-broken (no local container =>
 "Topic does not exist" => PRODUCER_DOWN) or false-clean (a stale local stack)
 verdicts for a lane that was never actually probed.
 
-OMN-14531: the default runtime host was a hardcoded raw private LAN IP that is
-unroutable off-network — the exact bug class node_database_sweep already hit
-and fixed under OMN-14526 by defaulting to the Tailscale MagicDNS host
-instead. This module's own docstring/comment also claimed
-``ONEX_DATA_FLOW_RUNTIME_HOST`` overrode the default, but the code never read
-that env var — the override was inert. Both are fixed here:
-:func:`_resolve_default_runtime_host` reads ``ONEX_DATA_FLOW_RUNTIME_HOST``
-(the same var node_database_sweep reads so the two sweeps agree on which host
-they probe) and falls back to the Tailscale hostname, never the raw IP.
+OMN-14531: the runtime host is read from ``ONEX_DATA_FLOW_RUNTIME_HOST`` (the
+same variable node_database_sweep reads so the two sweeps agree on which host
+they probe). OMN-20935: with that variable unset the host comes from the node
+overlay, and with neither the resolution fails loud; the package carries no
+host of its own.
 
 This module resolves a lane name to the concrete broker + Postgres endpoints for
 that lane (container names + the host they live on), mirroring the runtime
@@ -36,13 +32,14 @@ A ``ModelLaneTarget`` carries either:
 
 from __future__ import annotations
 
-import os
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError, resolve_setting
+
 # ---------------------------------------------------------------------------
-# Lane registry — the .201 runtime lanes and their broker/DB container names.
+# Lane registry — the runtime lanes and their broker/DB container names.
 #
 # Container names are derived from the canonical lane manifest
 # (omnibase_infra/deploy/lane-census/lane-manifest.yaml): every non-dev lane
@@ -55,26 +52,33 @@ from pydantic import BaseModel, ConfigDict, Field
 # lane's containers on that remote host.
 # ---------------------------------------------------------------------------
 
-# Tailscale MagicDNS name for the .201 runtime host — resolves both on-LAN and
-# off-network, unlike a raw private IP (OMN-14531, mirrors OMN-14526).
-_DEFAULT_RUNTIME_HOST: Final[str] = (
-    "omninode-pc.tail75df5e.ts.net"  # onex-allow-internal-ip OMN-16156 reason="env-overridable runtime-host default, already documented above (OMN-14531/OMN-14526)"
-)
+# OMN-20935: the runtime host the lanes run on is a deployment fact, supplied by
+# whoever runs the sweep (``ONEX_DATA_FLOW_RUNTIME_HOST`` or the node overlay),
+# never by this package.
+_NODE_NAME: Final[str] = "node_data_flow_sweep"
+_OVERLAY_FIELDS: Final[frozenset[str]] = frozenset({"runtime_host"})
+_RUNTIME_HOST_ENV_VAR: Final[str] = "ONEX_DATA_FLOW_RUNTIME_HOST"
 _SSH_USER: Final[str] = "jonah"
 
 
 def _resolve_default_runtime_host() -> str:
-    """Resolve the default lane runtime host, honoring the env override.
+    """Resolve the lane runtime host: the environment variable, then the node overlay.
 
-    ``ONEX_DATA_FLOW_RUNTIME_HOST`` overrides :data:`_DEFAULT_RUNTIME_HOST`
-    when set (mirrors node_database_sweep's ``_resolve_pg_runtime_host``, which
-    reads this same var, OMN-14526). A caller-supplied ``runtime_host=`` kwarg
-    to :func:`resolve_lane_target` still takes precedence over both.
+    ``ONEX_DATA_FLOW_RUNTIME_HOST`` wins (node_database_sweep reads the same
+    variable, OMN-14526, so the two sweeps agree on which host they probe), then the
+    ``runtime_host`` field of the node overlay. A caller-supplied ``runtime_host=``
+    kwarg to :func:`resolve_lane_target` still takes precedence over both. With none
+    of them set this raises :class:`LaneResolutionError` naming how to supply a host.
     """
-    return (
-        os.environ.get("ONEX_DATA_FLOW_RUNTIME_HOST", "").strip()
-        or _DEFAULT_RUNTIME_HOST
-    )
+    try:
+        return resolve_setting(
+            _NODE_NAME,
+            "runtime_host",
+            fields=_OVERLAY_FIELDS,
+            env_vars=(_RUNTIME_HOST_ENV_VAR,),
+        )
+    except NodeOverlayError as exc:
+        raise LaneResolutionError(str(exc)) from exc
 
 
 class ModelLaneTarget(BaseModel):
@@ -129,7 +133,7 @@ class ModelLaneTarget(BaseModel):
         return bool(self.runtime_host.strip())
 
 
-# Per-lane container layout on .201, keyed by lane name. dev uses the unprefixed
+# Per-lane container layout on the runtime host, keyed by lane name. dev uses the unprefixed
 # compose-project container names; every other lane prefixes by compose project.
 _LANE_CONTAINERS: Final[dict[str, tuple[str, str]]] = {
     "dev": ("omnibase-infra-redpanda", "omnibase-infra-postgres"),
@@ -170,9 +174,8 @@ def resolve_lane_target(
 
     ``lane="local"`` keeps the legacy in-stack behavior (local docker/psql). Any
     of the .201 lanes (``dev`` / ``stability-test`` / ``prod`` / ``judge``)
-    resolve to that lane's container names on the runtime host (default the
-    Tailscale MagicDNS host, overridable via ``runtime_host=`` or
-    ``ONEX_DATA_FLOW_RUNTIME_HOST``). An unknown lane raises
+    resolve to that lane's container names on the runtime host (``runtime_host=``,
+    else ``ONEX_DATA_FLOW_RUNTIME_HOST``, else the node overlay). An unknown lane raises
     :class:`LaneResolutionError` so the caller can fail loud instead of probing
     the wrong host.
     """

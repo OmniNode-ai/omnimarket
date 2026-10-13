@@ -29,6 +29,7 @@ import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.inference.delegation_config_provenance import (
     DELEGATION_ROUTING_OVERLAY_CONFIG_KEY,
     resolve_optional_path_config,
@@ -43,6 +44,10 @@ from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
 #: Env key a contract overlay / deployment MUST bind to pin the tiers file.
 ROUTING_TIERS_PATH_ENV_KEY = "DELEGATION_ROUTING_TIERS_PATH"
 DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY = DELEGATION_ROUTING_OVERLAY_CONFIG_KEY
+
+#: The node whose overlay (``<root>/node_delegation_routing_reducer/overlay.yaml`` under
+#: ``ONEX_SKILL_OVERLAY_ROOTS``) is a deployment's complete tier ladder (OMN-20935).
+ROUTING_TIERS_OVERLAY_NODE = "node_delegation_routing_reducer"
 
 # OMN-15628: this is the single canonical routing_tiers.yaml location (the
 # diverged omnibase_infra copy was deleted; this repo's packaged copy is the
@@ -79,12 +84,20 @@ def resolve_routing_tiers_path() -> Path:
     ``source=bootstrap_default`` provenance line naming the resolved path, and
     a deployment that binds the key still gets exactly the file it bound.
 
+    OMN-20935: the tier ladder is a deployment's routing order, so between the pin
+    and the packaged file sits the node overlay a deployment supplies:
+    ``<root>/node_delegation_routing_reducer/overlay.yaml`` under the first root in
+    ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one. It is a complete ladder, not a patch.
+
     Returns:
         The env-pinned :class:`Path` from ``DELEGATION_ROUTING_TIERS_PATH`` when
-        bound, otherwise :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`.
+        bound, otherwise the node overlay's ladder when a root supplies one,
+        otherwise :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`.
     """
     config_path, _ = resolve_path_config(
-        ROUTING_TIERS_PATH_ENV_KEY, ROUTING_TIERS_PACKAGED_DEFAULT_PATH
+        ROUTING_TIERS_PATH_ENV_KEY,
+        ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
+        node_overlay=find_node_overlay(ROUTING_TIERS_OVERLAY_NODE),
     )
     return config_path
 
@@ -139,6 +152,7 @@ def load_harness_tiers(
 
 __all__ = [
     "DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY",
+    "ROUTING_TIERS_OVERLAY_NODE",
     "ROUTING_TIERS_PACKAGED_DEFAULT_PATH",
     "ROUTING_TIERS_PATH_ENV_KEY",
     "load_delegation_routing_overlay",

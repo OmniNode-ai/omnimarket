@@ -1,0 +1,16 @@
+[
+ {
+  "path": "/repos/example-owner/example-repo/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1",
+  "status": 404,
+  "headers": {
+   "x-ratelimit-limit": "5000",
+   "x-ratelimit-remaining": "4900",
+   "x-ratelimit-used": "100",
+   "x-ratelimit-reset": "1791700000",
+   "x-ratelimit-resource": "core"
+  },
+  "body": {
+   "message": "Not Found"
+  }
+ }
+]

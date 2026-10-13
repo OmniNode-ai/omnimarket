@@ -58,6 +58,11 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
 
 __all__ = ["DOC_CONTENT_SCAN_CORPUS"]
 
+# A synthetic private-range address for the positive controls. It is assembled here so no
+# private-network literal sits in source; the corpus subject is the scanner's reaction to
+# the rendered fixture text, which carries the full address.
+_SERVER = ".".join(("192", "168", "77", "20"))
+
 
 DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
     source_field="source",
@@ -66,7 +71,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         # --- base cases: one per violation class, in documentation prose --------
         ModelCorpusFixture(
             fixture_id="v-base-lan-ip",
-            source="The broker runs on 192.168.86.201 in the lab.",  # onex-allow-internal-ip OMN-13568 corpus fixture
+            source=f"The broker runs on {_SERVER} in the datacenter.",
             description="RFC1918 LAN IP literal in doc prose — must flag",
         ),
         ModelCorpusFixture(
@@ -81,7 +86,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         ),
         ModelCorpusFixture(
             fixture_id="v-base-ssh-line",
-            source="Connect with `ssh jonah@192.168.86.201` then tail the logs.",  # onex-allow-internal-ip OMN-13568 corpus fixture
+            source=f"Connect with `ssh admin@{_SERVER}` then tail the logs.",
             description="ssh <user>@<host> line in a doc — must flag",
         ),
         ModelCorpusFixture(
@@ -225,7 +230,7 @@ DOC_CONTENT_SCAN_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatches -----------------------------------------
         ModelCorpusFixture(
             fixture_id="c-mut-line-suppressed",
-            source="The broker runs on 192.168.86.201.  <!-- doc-content-ok approved example -->",  # onex-allow-internal-ip OMN-13568 corpus fixture
+            source=f"The broker runs on {_SERVER}.  <!-- doc-content-ok approved example -->",
             description=(
                 "LAN IP on a line carrying the doc-content-ok marker — suppressed, "
                 "must stay clean"

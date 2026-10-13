@@ -1,0 +1,37 @@
+id: s23_green_armed_owned_behind
+scenario: S23
+tla_modeled: false
+ledger_rows:
+  - 'Controller facts 2026-10-11T13:01:20Z: merge_state=behind, suspension=owned'
+  - 'docs/tracking/ROLLING_WORK_LEDGER.md:66443 MSG 2026-10-11T13:09:11Z'
+claim: >-
+  Class (b): controller ownership does not strand a green armed head behind
+  its strict base. Update that head without a worker; ownership still holds
+  the merge until it is released. A separate hold still forbids updating.
+world:
+  prs:
+    - pr: acme/infra#1869
+      ci: green
+      merge_state: behind
+      auto_merge_head: h1
+      suspensions: [owned]
+    - pr: acme/infra#1870
+      ci: green
+      merge_state: behind
+      auto_merge_head: h1
+      suspensions: [owned, hold]
+ticks:
+  - expect:
+      actions: ['update_branch acme/infra#1869']
+      lease_count: 0
+  - expect:
+      actions: []
+      lease_count: 0
+  - events:
+      - ci: {pr: 'acme/infra#1869', result: green}
+      - release: {pr: 'acme/infra#1869', suspension: owned}
+    expect:
+      actions: ['merge acme/infra#1869 h2']
+      lease_count: 0
+end:
+  dispatches: {}

@@ -34,6 +34,11 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "AC5: the effect contract declares its command topic and terminal events, its six operations resolve to handle(request) -> result handlers, a cycle with the plan node passes JSON between them, and every port failure is named in a typed result rather than raised or read as an empty answer."
+  - id: "req-tier1-sources"
+    statement: "The stalled-plan and pending-ruling sources of the enumeration decide in the plan node from supplied tool documents, Linear ticket facts and PR watcher facts."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: collect_lab_fill_source_tickets and classify_lab_fill_source_candidates resolve through the plan node's contract bindings, a source document with no list or an unreadable value and a failed ticket or watcher read are named unreadable rather than read as empty, and at least 20 cases per operation recorded from the old enumerate read's tier-1 block answer the same."
 evidence_requirements:
   - kind: "tests"
     description: "AC1: golden chain passes."
@@ -50,6 +55,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC5: effect golden chain, cycle chain, error chain and adapters pass."
     command: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC6: tier-1 source golden chain, error chain and parity cases pass."
+    command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_sources.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -95,3 +103,18 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20668-ac6-tier1-sources"
+    description: "AC6: tier-1 source golden chain, error chain and parity cases pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_sources.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20668-deploy-probe"
+    description: "Deploy probe. The tier-1 source tickets handler at the checked-out commit carries the class this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_source_tickets.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerLabFillSourceTickets'"
+        cwd: "${OMNI_HOME}/omnimarket"

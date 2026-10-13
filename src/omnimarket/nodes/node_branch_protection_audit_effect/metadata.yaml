@@ -1,0 +1,29 @@
+name: node_branch_protection_audit_effect
+version: 1.0.0
+description: Branch-protection audit of an overlay-defined repository fleet
+omnibase_core_compat: '>=0.40.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_branch_protection_audit_effect: omnimarket.nodes.node_branch_protection_audit_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- omnibase_core>=0.40.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- github
+- branch-protection
+- governance
+- read-only
+pack: core
+display_name: Branch Protection Audit
+node_role: effect

@@ -65,13 +65,13 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20680-deploy-probe"
-    description: "Deploy probe. The sweep orchestrator is discovered from its contract and executes a complete sweep over the in-memory bus through its declared command and terminal topics, using the real decision node."
+    description: "The bus-cycle test exercises the sweep through its declared command and terminal topics using the real decision node. The package probe reads the handler from GitHub at the checked-out commit and requires its entry class; a commit without the sweep handler fails the probe."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/commits/$(git rev-parse HEAD)\" --jq .sha && uv run pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_comments_sweep_orchestrator/handlers/handler_linear_comments_sweep.py?ref=$(git rev-parse HEAD)\" --jq '.content | @base64d | contains(\"class HandlerLinearCommentsSweep:\")' | grep -qx true"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
