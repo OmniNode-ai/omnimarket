@@ -4,6 +4,7 @@
 
 Failure modes enumerated before the fix:
 * budget expiry, shutdown and an exception interrupt inference or the gate;
+* interruption during effect boot invents a call that never reached a provider;
 * a gate interruption loses the provider call which already succeeded;
 * the interrupted step/terminal is absent, duplicated or names itself;
 * two cancelled runs share a counter or a finalizer;
@@ -260,7 +261,7 @@ async def test_two_failed_models_keep_both_calls_in_the_failure_trace(
 
 @pytest.mark.parametrize("ending", ["shutdown", "dispatch_deadline"])
 @pytest.mark.parametrize("second_call_started", [False, True])
-async def test_shutdown_during_stalled_discovery_never_invents_a_provider_call(
+async def test_interruption_during_stalled_discovery_never_invents_a_provider_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     second_call_started: bool,
@@ -322,3 +323,43 @@ async def test_shutdown_during_stalled_discovery_never_invents_a_provider_call(
     assert [s["step_sequence"] for s in steps] == list(range(1, len(steps) + 1))
     assert steps[-1]["failing_step_sequence"] == calls[-1]["step_sequence"]
     assert len(_stored(db_path, request.correlation_id)) == len(steps)
+
+
+@pytest.mark.parametrize("ending", ["budget", "shutdown", "exception"])
+async def test_interrupted_effect_boot_never_records_a_provider_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    _install_ladder(monkeypatch, max_escalations=0)
+    _budget(monkeypatch)
+    ready = asyncio.Event()
+
+    async def booting(*_: Any, **__: Any) -> Any:
+        progress = current_dispatch_progress.get()
+        assert progress is not None
+        progress.stage = "effect_boot"
+        ready.set()
+        if ending == "exception":
+            raise RuntimeError("effect child did not become ready")
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(port_mod, "_run_effect_handler_with_killable_timeout", booting)
+    port, publisher, db_path = _port(
+        tmp_path, _PerTierEffect(pass_tiers=frozenset({"local"}))
+    )
+    port._effect_process_boundary = True
+    request = _request()
+    task = asyncio.create_task(HandlerDelegateSkill(dispatch_port=port).handle(request))
+    await asyncio.wait_for(ready.wait(), timeout=5)
+    if ending == "shutdown":
+        task.cancel()
+    terminal = await asyncio.wait_for(task, timeout=5)
+    assert terminal.status in {"failed", "timeout"}
+    steps = _steps(publisher, request.correlation_id)
+    assert [s["step_kind"] for s in steps] == [
+        "request",
+        "routing_decision",
+        "terminal",
+    ]
+    assert steps[-1]["outcome"] == "failed"
+    assert steps[-1]["failing_step_sequence"] is None
+    assert len(_stored(db_path, request.correlation_id)) == 3

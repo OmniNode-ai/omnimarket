@@ -1373,8 +1373,17 @@ class LocalDelegationDispatchPort:
                     # A finished call followed by model discovery has no
                     # provider in flight. Preserve its failure without making
                     # the handler's interruption into an invented second call.
-                    provider_call_in_flight=not observations
-                    or observations[-1].phase == "started",
+                    provider_call_in_flight=(
+                        observations[-1].phase == "started"
+                        if observations
+                        else progress is None
+                        or (
+                            progress.cancelled_stage
+                            or progress.failed_stage
+                            or progress.stage
+                        )
+                        != "effect_boot"
+                    ),
                 )
 
             progress.bind_run_step_finalizer(finalize_trace)

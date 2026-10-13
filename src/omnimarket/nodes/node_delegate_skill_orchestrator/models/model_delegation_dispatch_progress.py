@@ -41,6 +41,7 @@ class ModelDelegationDispatchProgress(BaseModel):
 
     stage: DispatchStage = "dispatch"
     cancelled_stage: DispatchStage | None = None
+    failed_stage: DispatchStage | None = None
     # The port's own ladder of settled attempts, in the shape it returns on its
     # terminal. The port appends to this list in place.
     attempts: list[dict[str, object]] = Field(default_factory=list)
