@@ -53,9 +53,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21078-deploy-probe"
-    description: "Deploy probe. Both delegation call effects read who chose the credential's model at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe exits nonzero on a tree without it, so it fails at the merge base."
+    description: "Deploy probe. Read both delegation call effects from GitHub at the checked-out commit and require each credential-chooser call to guard against MODEL_CHOSEN_BY_CATALOGUE. Each check fails on the pre-change handler. The hosted runner needs only GitHub contents read access; this source readback does not claim a live provider call or a completed runtime rollout."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "git grep -q resolve_local_byok_model_chooser HEAD -- src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_llm_delegation_call.py src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_llm_delegation_call.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F -A 1 \"resolve_local_byok_model_chooser(request.secret_ref)\" | grep -F -c \"!= MODEL_CHOSEN_BY_CATALOGUE\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F -A 1 \"resolve_local_byok_model_chooser(intent.api_key_ref)\" | grep -F -c \"!= MODEL_CHOSEN_BY_CATALOGUE\"'"
         cwd: "${OMNI_HOME}/omnimarket"
