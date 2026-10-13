@@ -47,6 +47,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_webhook_ingress_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .path"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20915-poller-publishes-only-status-events"
+    description: "AC1 (omnimarket half): the moved poller behaves as the omnibase_infra node it replaces. Wired through wire_from_manifest on an in-memory bus, an unconfigured poller publishes nothing on a runtime tick and a configured one publishes one PR status event per open PR and never its poll-cycle summary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_pr_poller_effect -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20915-poller-status-event-deploy-probe"
+    description: "Deploy probe. The poller's PR status event model exists in omnimarket at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe reads it from GitHub at that commit and exits nonzero at the merge base, where the poller still returns its poll-cycle summary. The dev-lane readout after the roll is the effects runtime log showing no onex.evt.github.pr-status.v1 publish per tick while the contract configures no repositories."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_pr_poller_effect/models/model_github_pr_status_poll_event.py?ref=$(git rev-parse HEAD)\" --jq .path"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20915-ac3-triage-reads-on-one-transport"
     description: "AC3 (omnimarket half): the PR triage reads are served by omnimarket's GitHubHttpTransport."
     source: "manual"

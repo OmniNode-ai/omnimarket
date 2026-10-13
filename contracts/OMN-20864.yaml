@@ -50,6 +50,12 @@ requirements:
         statement: "AC8: M4 pr_create refuses a missing or invalid title-cited contract before POST, reads evidence at an immutable head, and refuses a moved head; a valid contract allows creation."
       - id: "AC9"
         statement: "AC9: the two pipeline-observability exports from emit_daemon and node_event_emit_effect explicitly leave the internal contract graph; removing those declarations produces all four orphaned producer defects."
+  - id: "req-throughput-tick-live-admission"
+    statement: "The throughput tick reports a host's free slots from the runner's live pool admission, per engine and from one shared slot budget, so it reports zero whenever placement would refuse the host."
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: given the caller's live admission facts, a host placement refuses (0.9% or 7.3% idle CPU, swap traffic, a shared admission bar) reports free Claude slots 0 and free Codex slots 0 as a NOTE with no FIX, a Claude or Codex limit refuses only its engine, an unreadable probe is UNKNOWN, and shared slots are never counted twice for the pr-land fallback -- falsifier: pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py fails at the merge base, where the facts model rejects the live admission schema
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -57,6 +63,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2 and AC3: the throughput tick's lab-headroom FIX."
     command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC11: the throughput tick's live admission headroom."
+    command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -160,3 +169,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC10"]
+  - id: "dod-omn20864-live-admission"
+    description: "AC11: the live admission cases, including the 0.9% and 7.3% idle-CPU refusal controls and the shared-slot negative control, pass at the head and fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
