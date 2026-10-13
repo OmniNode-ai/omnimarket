@@ -63,6 +63,19 @@ def test_an_unconfigured_request_is_refused_by_naming_its_empty_fields(
     assert runner.argvs == []
 
 
+def test_a_request_that_names_no_fleet_is_refused_by_name(tmp_path: Path) -> None:
+    """The repositories arrive as data: an unset overlay value is an empty fleet, refused."""
+    spec = RECORDED["scenarios"][0]
+    request = run_request(spec, RECORDED["base"], tmp_path, fleet="")
+    assert request.fleet == []
+    runner = ScriptedRunner({})
+    result = HandlerMergeSweepRun(stages=RecordingStages(runner)).handle(request)
+    assert result.ok is False
+    assert result.why == "request not configured: fleet is empty"
+    assert result.plan is None
+    assert runner.argvs == []
+
+
 def test_a_dispatching_request_with_no_runner_is_refused_before_any_lane_starts(
     tmp_path: Path,
 ) -> None:

@@ -24,6 +24,7 @@ from omnimarket.nodes.node_merge_sweep_effect.protocols import (
 )
 
 NOW = "2026-10-09T12:01:00Z"
+FLEET = ["omnimarket"]
 
 
 def _state(**over: Any) -> dict[str, Any]:
@@ -66,6 +67,7 @@ def _load(tmp_path: Path, state: Any) -> Any:
             ledger_path=str(tmp_path / "ledger.md"),
             floors_path=str(tmp_path / "floors.json"),
             now=NOW,
+            fleet=FLEET,
             load1=1.0,
             cpus=2,
         )
@@ -101,10 +103,28 @@ def test_a_missing_state_is_refused(tmp_path: Path) -> None:
             ledger_path=str(tmp_path / "ledger.md"),
             floors_path=str(tmp_path / "floors.json"),
             now=NOW,
+            fleet=FLEET,
         )
     )
     assert not loaded.ok
     assert "no state file" in loaded.why
+
+
+def test_a_load_that_names_no_fleet_is_refused(tmp_path: Path) -> None:
+    """The repositories a sweep reads arrive as data; none named is never every repository."""
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps(_state()))
+    loaded = HandlerMergeSweepLoadFacts().handle(
+        ModelMergeSweepLoadRequest(
+            state_path=str(path),
+            ledger_path=str(tmp_path / "ledger.md"),
+            floors_path=str(tmp_path / "floors.json"),
+            now=NOW,
+        )
+    )
+    assert not loaded.ok
+    assert "names no fleet" in loaded.why
+    assert loaded.facts is None
 
 
 def test_a_head_with_no_check_read_is_unread_not_green(tmp_path: Path) -> None:
@@ -125,6 +145,7 @@ def test_unreadable_floors_are_refused(tmp_path: Path) -> None:
             ledger_path=str(tmp_path / "ledger.md"),
             floors_path=str(tmp_path / "floors.json"),
             now=NOW,
+            fleet=FLEET,
         )
     )
     assert not loaded.ok
@@ -145,6 +166,7 @@ def test_an_unparseable_tick_is_an_unknown_tick(tmp_path: Path) -> None:
             ticks_path=str(ticks),
             floors_path=str(tmp_path / "floors.json"),
             now=NOW,
+            fleet=FLEET,
         )
     )
     assert loaded.facts is not None

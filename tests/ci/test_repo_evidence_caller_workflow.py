@@ -90,9 +90,12 @@ def test_every_repo_contract_binds_every_criterion() -> None:
             selectors = [
                 next(
                     (
-                        token
-                        for token in shlex.split(check["check_value"])
-                        if token.endswith(".py") or token.endswith("/tests")
+                        path
+                        for path in (
+                            token.split("::", 1)[0]
+                            for token in shlex.split(check["check_value"])
+                        )
+                        if path.endswith(".py") or path.endswith("/tests")
                     ),
                     "",
                 )

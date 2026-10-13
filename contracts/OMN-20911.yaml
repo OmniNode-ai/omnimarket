@@ -45,7 +45,7 @@ dod_evidence:
       - check_type: "command"
         check_value: "test \"$(grep -c '^  - name: ' src/omnimarket/nodes/node_github_repo_gateway_effect/contract.yaml)\" = 14"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py tests/unit/handlers/scm/test_onex_scm_customer_surface.py -q --no-cov"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py tests/unit/handlers/scm/test_onex_scm_command.py tests/unit/handlers/scm/test_onex_scm_customer_surface.py -q --no-cov"
     binds_ac: ["AC2"]
   - id: "dod-omn20911-deploy-probe-step-timestamps"
     description: "Deploy probe: the gateway's job step model read from GitHub at the checked-out commit declares started_at and completed_at after its conclusion. The merge base does not declare them, so the probe fails there. It reads the published source at the commit the deploy agent rolls, not this contract or a receipt."

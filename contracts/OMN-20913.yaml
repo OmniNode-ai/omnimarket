@@ -19,6 +19,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC1: every verb of onex scm publishes its node's typed request on the contract command topic of a fake bus and returns the terminal event with topic, partition, offset and envelope ids; every operation the two node contracts declare has exactly one verb; pr-view, pr-status, pr-checks, pr-list and pr-merge-commit answer from a fixture watcher state file (and a git clone) with no publish; merge, arm, rerun and update-branch are refused naming the landing controller."
     command: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC1 (clone-only reads): pr-commits, file-read, commit-view and commit-checks answer from a real git clone and a fixture watcher state with the bus failing the test if opened; a read the local sources cannot answer exits 3 with its reason; ref, path and sha that could be read as a git option or leave the tree are usage errors."
+    command: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -30,6 +33,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20913-ac1-onex-scm-clone-reads"
+    description: "AC1: pr-commits, file-read, commit-view and commit-checks are answered from the canonical clone and the watcher state, with no bus call and no GitHub request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20913-ac1-onex-scm-deploy-probe"

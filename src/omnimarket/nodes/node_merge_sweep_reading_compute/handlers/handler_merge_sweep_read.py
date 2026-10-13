@@ -6,7 +6,9 @@ A port of the merge-sweep skill's ``sweep_read.live_reading`` and ``claim_check`
 GitHub layer removed: the open PRs, their newest check copies and the merges arrive from the
 watcher's state file (gathered by node_merge_sweep_effect), never from a search. The rules are the
 skill's own ``sweep_rules``, in ``rules_merge_sweep``. A fact the state does not hold is named under
-``unread`` and never read as a zero.
+``unread`` and never read as a zero. The fleet, the non-product repositories and the out-of-scope
+rulings arrive on the request. PRs are read in (repository, number) order, every red is classified,
+and an out-of-scope repository's PRs are named and never read.
 """
 
 from __future__ import annotations
@@ -15,6 +17,10 @@ from typing import Any
 
 from omnimarket.handlers import rules_merge_sweep as rules
 from omnimarket.models.merge_sweep import (
+    CHECKS_READ,
+    CHECKS_ROLLUP_ONLY,
+    CHECKS_SKIPPED,
+    CHECKS_UNREAD,
     ModelMergeSweepClaimCheckRequest,
     ModelMergeSweepClaimCheckResult,
     ModelMergeSweepReadRequest,
@@ -49,6 +55,8 @@ class HandlerMergeSweepRead:
         rows = rules.parse_rows(request.ledger_lines)
         unread: list[ModelMergeSweepUnread] = []
 
+        non_product = frozenset(request.non_product_repos)
+        counted = frozenset(request.fleet) | non_product
         merges = [
             {
                 "repo": m.repo,
@@ -57,85 +65,90 @@ class HandlerMergeSweepRead:
                 "files": m.files,
             }
             for m in request.merges
+            if m.repo in counted
         ]
+        # A merge with no changed-file list is counted under product.excluded.files_unread.
         product = rules.product_merges(
-            merges, request.floors, t, window_min=request.window_min
+            merges,
+            request.floors,
+            t,
+            window_min=request.window_min,
+            non_product=non_product,
         )
-        if product["excluded"]["files_unread"]:
-            unread.append(
-                ModelMergeSweepUnread(
-                    field="merge-files",
-                    why=(
-                        f"{product['excluded']['files_unread']} merges in the window "
-                        "carry no changed-file list; none counts as a product merge"
-                    ),
-                )
-            )
 
+        # A repository ruled out of scope is named, not read: no checks, no classes, no lane.
+        out_of_scope_prs = sorted(
+            rules.pr_key(f"{p.repo}#{p.number}")
+            for p in request.open_prs
+            if p.repo in request.out_of_scope
+        )
+        in_scope = frozenset(request.fleet) - request.out_of_scope.keys()
         reds: list[dict[str, Any]] = []
         open_prs: list[dict[str, Any]] = []
         red_now: dict[str, bool] = {}
-        detail_budget = request.max_reds
-        for repo in sorted(rules.FLEET_REPOS):
-            for pr in (p for p in request.open_prs if p.repo == repo):
-                key = f"{repo}#{pr.number}"
-                open_prs.append(
-                    {
-                        "repo": repo,
-                        "number": pr.number,
-                        "base": pr.base,
-                        "head_ref": pr.head_ref,
-                        "state": "OPEN",
-                    }
-                )
-                red_now[key] = _rollup_red(pr)
-                if pr.draft:
-                    continue
-                if pr.runs is None:
-                    unread.append(
-                        ModelMergeSweepUnread(
-                            field=f"checks:{key}",
-                            why=pr.runs_why
-                            or "the state holds no check read at this head",
-                        )
-                    )
-                    continue
-                if not red_now[key]:
-                    continue
-                ticket = ticket_of(pr.title)
-                entry: dict[str, Any] = {
+        for pr in sorted(
+            (p for p in request.open_prs if p.repo in in_scope),
+            key=lambda p: (p.repo, p.number),
+        ):
+            repo = pr.repo
+            key = f"{repo}#{pr.number}"
+            open_prs.append(
+                {
                     "repo": repo,
                     "number": pr.number,
+                    "base": pr.base,
+                    "head_ref": pr.head_ref,
                     "state": "OPEN",
-                    "ticket": ticket,
-                    "owner": rules.claim_owner(key, ticket, rows, t),
                 }
-                if detail_budget <= 0:
+            )
+            red_now[key] = False
+            checks = pr.checks_state
+            if pr.draft or checks.startswith(CHECKS_SKIPPED):
+                continue
+            if checks.startswith(CHECKS_UNREAD):
+                unread.append(
+                    ModelMergeSweepUnread(
+                        field=f"checks:{key}", why=checks.removeprefix(CHECKS_UNREAD)
+                    )
+                )
+                continue
+            if checks == CHECKS_READ and not _rollup_red(pr):
+                continue
+            red_now[key] = True
+            ticket = ticket_of(pr.title)
+            entry: dict[str, Any] = {
+                "repo": repo,
+                "number": pr.number,
+                "state": "OPEN",
+                "ticket": ticket,
+                "owner": rules.claim_owner(key, ticket, rows, t),
+            }
+            if checks == CHECKS_ROLLUP_ONLY:
+                unread.append(
+                    ModelMergeSweepUnread(
+                        field=f"checks:{key}",
+                        why=pr.runs_why
+                        or "the rollup is red and its check detail is unread",
+                    )
+                )
+                entry["classes"] = None
+                reds.append(entry)
+                continue
+            for name in ("ready_at", "files"):
+                if name in pr.facts_unread:
                     unread.append(
                         ModelMergeSweepUnread(
-                            field=f"checks:{key}",
-                            why=f"over max_reds {request.max_reds}; classes unread",
+                            field=f"{name}:{key}",
+                            why="the PR watcher state does not record it",
                         )
                     )
-                    entry["classes"] = None
-                    reds.append(entry)
-                    continue
-                detail_budget -= 1
-                for name in ("ready_at", "files"):
-                    if name in pr.facts_unread:
-                        unread.append(
-                            ModelMergeSweepUnread(
-                                field=f"{name}:{key}",
-                                why="the PR watcher state does not record it",
-                            )
-                        )
-                runs = [run.model_dump() for run in pr.runs]
-                entry["ready_at"] = pr.ready_at
-                entry["classes"] = rules.classify_checks(runs, pr.ready_at, pr.files)
-                if all(c["cls"] == "in-progress" for c in entry["classes"]):
-                    red_now[key] = False
-                    continue
-                reds.append(entry)
+            runs = [run.model_dump() for run in pr.runs or ()]
+            entry["ready_at"] = pr.ready_at
+            entry["classes"] = rules.classify_checks(runs, pr.ready_at, pr.files)
+            if all(c["cls"] == "in-progress" for c in entry["classes"]):
+                red_now[key] = False
+                continue
+            reds.append(entry)
 
         heads = []
         for h in rules.chain_heads(open_prs):
@@ -190,6 +203,8 @@ class HandlerMergeSweepRead:
             chain_heads=heads,
             escalations=escalations,
             open_prs=len(open_prs),
+            scope=sorted(in_scope),
+            out_of_scope_prs=out_of_scope_prs,
             unread=unread,
         )
 
@@ -203,11 +218,18 @@ class HandlerMergeSweepClaimCheck:
         key = rules.pr_key(request.pr)
         rows = rules.parse_rows(request.ledger_lines)
         state = request.state or "UNREAD"
-        owner = rules.claim_owner(key, ticket_of(request.title), rows, request.now)
+        owner = rules.claim_owner(
+            key,
+            ticket_of(request.title),
+            rows,
+            request.now,
+            self_lane=request.self_lane,
+        )
         verdict, code = rules.claim_check_verdict(state, owner)
         line = (
             f"CLAIM-CHECK {key} state={state} owner={owner.get('state')} "
-            f"lane={owner.get('lane') or '-'} verdict={verdict}"
+            f"lane={owner.get('lane') or '-'} verdict={verdict} "
+            f"self-lane={request.self_lane or '-'}"
         )
         return ModelMergeSweepClaimCheckResult(
             key=key,

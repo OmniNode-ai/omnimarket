@@ -1476,6 +1476,30 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20780: a criterion binding is never accepted by the lane that authored
+      # it (ruling 2026-10-03T00:40:00Z); node_dod_verify demotes a self-accepted
+      # binding. Check-only. SYNC with the ci.yml lint step
+      # "dod_verify demotes self-accepted bindings (OMN-20780)".
+      - id: dod-verify-self-accepted-bindings
+        name: dod_verify demotes self-accepted bindings (OMN-20780)
+        language: system
+        entry: uv run pytest tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_occ_falsifier_checks\.py$|tests/test_dod_verify_acceptance_basis\.py$|tests/ci/test_dod_verify_self_accepted_wiring_omn20780\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20914: the gh shim refuses a lane's gh write only while the contract
+      # operations and the onex scm verb table it reads stay readable and served
+      # (ruling 2026-10-10T18:32:46Z). Check-only. SYNC with the ci.yml lint step
+      # "gh shim coverage table stays served (OMN-20914)".
+      - id: gh-shim-coverage-table
+        name: gh shim coverage table stays served (OMN-20914)
+        language: system
+        entry: uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py tests/unit/handlers/scm/test_onex_scm_command.py::test_every_contract_operation_has_exactly_one_verb tests/unit/handlers/scm/test_onex_scm_command.py::test_no_refused_verb_is_also_served -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_github_repo_write_effect/contract\.yaml$|src/omnimarket/handlers/scm/|src/omnimarket/models/scm/|tests/ci/test_gh_shim_coverage_table_omn20914\.py$|tests/unit/handlers/scm/test_onex_scm_command\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20001: the event registry drift check reads omniclaude at the pinned
       # rev, a pin move needs the integration step, both drift directions stay
       # strict, and the two OMN-13146 tests stay present and uninverted.

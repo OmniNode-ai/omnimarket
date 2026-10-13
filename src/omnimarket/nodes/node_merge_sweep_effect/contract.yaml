@@ -33,7 +33,7 @@ description: >
 input_model:
   name: "ModelMergeSweepLoadRequest"
   module: "omnimarket.models.merge_sweep.model_merge_sweep_effect"
-  description: "Paths of the state, ledger, tick log and floors, and the time (load facts); each operation has its own request."
+  description: "Paths of the state, ledger, tick log and floors, the time, and the repositories the sweep reads (load facts); each operation has its own request."
 output_model:
   name: "ModelMergeSweepLoadResult"
   module: "omnimarket.models.merge_sweep.model_merge_sweep_effect"
