@@ -9,10 +9,7 @@ summary: The reading request carries the fleet, the non-product repositories and
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-- omnimarket.models.merge_sweep.model_merge_sweep_read.ModelMergeSweepReadRequest
-- omnimarket.models.merge_sweep.model_merge_sweep_read.ModelMergeSweepClaimCheckRequest
-- omnimarket.models.merge_sweep.model_merge_sweep_effect.ModelMergeSweepLoadRequest
-- omnimarket.models.merge_sweep.model_merge_sweep_run.ModelMergeSweepRunRequest
+- public_api
 requirements:
 - id: req-reading-parity
   statement: The reading node reads a recorded sweep as the script reads it, with the repositories arriving as
