@@ -8,6 +8,9 @@ Reads models_registry.yaml at construction time. At handle() time:
   3. Calculates cost from registry pricing fields.
   4. Returns ModelAbCompareResult with comparison rows sorted by cost.
 
+A requested model the registry does not declare is refused: it is named in
+models_refused and no inference request is sent for it.
+
 All LLM I/O is delegated to HandlerLlmOpenaiCompatible (omnibase_infra), which
 handles retries, circuit breaking, auth, and error classification. The orchestrator
 never makes direct HTTP calls or imports httpx.
@@ -47,6 +50,9 @@ class ProtocolLlmEffectHandler(Protocol):
 
 
 _REGISTRY_PATH = Path(__file__).parent.parent / "models_registry.yaml"
+# The infra OpenAI-compatible effect posts ``endpoint_url`` verbatim and builds
+# nothing from ``base_url``, so the orchestrator hands it the complete URL.
+_OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an expert software engineer. Respond with clean, working Python code only."
 )
@@ -142,6 +148,17 @@ def _resolve_models(
     return resolved, skipped
 
 
+def _undeclared_models(
+    registry: list[dict[str, Any]],
+    requested: list[str],
+) -> list[str]:
+    """Requested model IDs the registry does not declare, in request order."""
+    if requested == ["all"]:
+        return []
+    declared = {entry["id"] for entry in registry}
+    return list(dict.fromkeys(m for m in requested if m not in declared))
+
+
 def _run_quality_check(output: str) -> str:
     """Run ruff check on code output, return 'pass' or 'fail:<reason>'."""
     fname: str | None = None
@@ -164,6 +181,14 @@ def _run_quality_check(output: str) -> str:
     finally:
         if fname is not None:
             Path(fname).unlink(missing_ok=True)
+
+
+def _chat_completions_url(endpoint_url: str) -> str:
+    """The complete chat-completions URL for an OpenAI-compatible endpoint."""
+    trimmed = endpoint_url.rstrip("/")
+    if trimmed.endswith(_OPENAI_CHAT_COMPLETIONS_PATH):
+        return trimmed
+    return f"{trimmed}{_OPENAI_CHAT_COMPLETIONS_PATH}"
 
 
 def _calculate_cost(
@@ -214,14 +239,16 @@ class HandlerAbCompareOrchestrator:
     async def handle(self, command: ModelAbCompareStart) -> ModelAbCompareResult:
         system_prompt = command.system_prompt or _DEFAULT_SYSTEM_PROMPT
 
+        refused = _undeclared_models(self._registry, command.models)
         resolved, skipped = _resolve_models(self._registry, command.models)
 
         if not resolved:
             return ModelAbCompareResult(
                 comparison=[],
                 correlation_id=command.correlation_id,
-                status="PARTIAL",
+                status="REFUSED" if refused and not skipped else "PARTIAL",
                 models_skipped=skipped,
+                models_refused=refused,
             )
 
         # Fan out inference in parallel — the effect handler handles connection
@@ -274,12 +301,19 @@ class HandlerAbCompareOrchestrator:
             )
 
         rows.sort(key=lambda r: r.cost_usd)
-        status = "COMPLETED" if not skipped else "PARTIAL"
+        errored = sum(1 for row in rows if row.error)
+        if errored == len(rows):
+            status = "FAILED"
+        elif errored or skipped or refused:
+            status = "PARTIAL"
+        else:
+            status = "COMPLETED"
         return ModelAbCompareResult(
             comparison=rows,
             correlation_id=command.correlation_id,
             status=status,
             models_skipped=skipped,
+            models_refused=refused,
         )
 
     async def _call_model(
@@ -295,7 +329,10 @@ class HandlerAbCompareOrchestrator:
         )
 
         request = ModelLlmInferenceRequest(
-            base_url=model.endpoint_url,
+            base_url=model.endpoint_url.rstrip("/").removesuffix(
+                _OPENAI_CHAT_COMPLETIONS_PATH
+            ),
+            endpoint_url=_chat_completions_url(model.endpoint_url),
             operation_type=EnumLlmOperationType.CHAT_COMPLETION,
             model=model.model_id_resolved,
             messages=({"role": "user", "content": user_prompt},),

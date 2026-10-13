@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_contract_prerequisite_effect
+version: "1.0.0"
+description: "Check ticket contracts at an immutable local git commit."
+omnibase_core_compat: ">=0.47.23,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ticket_contract_prerequisite_effect: "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  side_effect_class: filesystem_read
+dependencies:
+  - "omnibase_core>=0.47.23"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "validation", "git"]
+pack: "core"
+display_name: "Ticket Contract Prerequisite Effect"
+node_role: "effect"

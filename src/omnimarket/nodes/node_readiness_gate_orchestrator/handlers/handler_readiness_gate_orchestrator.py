@@ -16,6 +16,9 @@ from omnimarket.nodes.evidence_pipeline_native import (
     coerce_gap,
     coerce_readiness,
 )
+from omnimarket.nodes.node_readiness_gate_orchestrator.models import (
+    ModelReadinessGateBlocked,
+)
 
 
 class HandlerReadinessGateOrchestrator:
@@ -38,4 +41,9 @@ class HandlerReadinessGateOrchestrator:
             readiness = coerce_readiness(unwrapped)
         else:
             readiness = self._ports.score(coerce_gap(unwrapped))
-        return self._ports.publish_gate(readiness)
+        published = self._ports.publish_gate(readiness)
+        # The runtime routes a returned model to a topic by its class, so a
+        # BLOCKED decision is returned as the blocked variant.
+        if published.readiness_state == "BLOCKED":
+            return ModelReadinessGateBlocked(**published.model_dump())
+        return published

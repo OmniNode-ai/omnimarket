@@ -6,9 +6,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 node_not_implemented: false
 description: >
   Native Onex PR watch orchestrator. Consumes a typed PR watch command with
-  repo and PR number, polls GitHub CI status through the typed gh effect
-  boundary, and emits the contract-declared completed or failed terminal event
-  when checks reach a green, red, or timeout terminal state.
+  repo and PR number, polls GitHub CI status through the typed checks effect
+  boundary (GitHub REST, one read of the PR per poll interval), and emits the
+  contract-declared completed or failed terminal event when checks reach a
+  green, red, or timeout terminal state.
 
 handler:
   module: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator
@@ -44,21 +45,21 @@ runtime_dispatch:
 pr_watch:
   effect_boundary:
     protocol: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator.ProtocolPrChecksClient
-    default_client: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator.GitHubCliPrChecksClient
-  gh_command:
-    argv:
-      - gh
-      - pr
-      - checks
-      - "{pr_number}"
-      - --repo
-      - "{repo}"
-      - --json
-      - name,state,bucket,workflow,link,startedAt,completedAt
+    default_client: omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator.HandlerPrChecksGithubRest
+  github_rest:
+    reads:
+      - "/repos/{repo}/pulls/{pr_number}"
+      - "/repos/{repo}/commits/{head_sha}/check-runs"
+      - "/repos/{repo}/commits/{head_sha}/status"
   terminal_buckets:
     green: [pass, skipping]
     red: [fail, cancel]
     pending: [pending, unknown]
+
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub token for read-only PR check state."
+    required: true
 
 event_bus:
   subscribe_topics:

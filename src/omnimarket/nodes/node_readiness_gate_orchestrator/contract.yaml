@@ -72,6 +72,17 @@ event_bus:
     - onex.evt.omnimarket.readiness-gate-completed.v1
     - onex.evt.omnimarket.readiness-gate-blocked.v1
 
+# The runtime publishes a returned model on the topic its class name maps to here
+# (class name without the Model prefix); an unmapped class goes to terminal_event.
+# ModelDeploymentReadinessResult has no verdict field, so BLOCKED is its own class.
+published_events:
+  - event_type: DeploymentReadinessResult
+    topic: onex.evt.omnimarket.readiness-gate-completed.v1
+    description: Readiness result that is not blocked (READY, DEGRADED, ADVISORY_ONLY).
+  - event_type: ReadinessGateBlocked
+    topic: onex.evt.omnimarket.readiness-gate-blocked.v1
+    description: Readiness result whose state is BLOCKED.
+
 externally_consumed_topics:
   - onex.evt.omnimarket.readiness-gate-completed.v1
   - onex.evt.omnimarket.readiness-gate-blocked.v1

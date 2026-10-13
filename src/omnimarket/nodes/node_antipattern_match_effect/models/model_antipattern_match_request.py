@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.antipattern import ModelAntipatternValidationContext
+
 
 class ModelAntipatternMatchRequest(BaseModel):
     """Command payload for antipattern similarity search."""
@@ -50,6 +52,13 @@ class ModelAntipatternMatchRequest(BaseModel):
             "Weight applied to recently-discovered antipatterns. "
             "Score boost = freshness_decay_factor * recency_weight. "
             "Set to 0.0 to disable freshness ranking."
+        ),
+    )
+    validation_context: ModelAntipatternValidationContext | None = Field(
+        default=None,
+        description=(
+            "Set by the validator orchestrator; echoed unchanged on the response "
+            "so the orchestrator needs no state between hops."
         ),
     )
 

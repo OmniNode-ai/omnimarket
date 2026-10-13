@@ -100,6 +100,14 @@ class ModelLabHost(BaseModel):
     name: str
     local: bool = False
     cap: int | None = None
+    codex_allowed: bool = Field(
+        default=False,
+        description=(
+            "Whether the shared lab host table (or ONEX_CODEX_HOSTS) lets this host run a Codex lane, as "
+            "the remote-lane runner's codex_placement.codex_hosts reads it; False reports no Codex "
+            "headroom for the host."
+        ),
+    )
     limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     auth_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     parses: dict[str, ModelLabReadingParse] = Field(
@@ -108,6 +116,31 @@ class ModelLabHost(BaseModel):
             "For each placement reading text of this host in the receipts, whether the placement "
             "module parsed it and the lane admission refusal it names, if any."
         ),
+    )
+
+
+class ModelCodexHeadroom(BaseModel):
+    """One host's Codex headroom, read from the same cached placement reading as its Claude headroom.
+
+    The reading carries `codex=login/<sandbox>` and `CODEX-LIMITED-UNTIL=`; the `.limited-<host>` and
+    auth-expired marks are Claude's and never enter it. The sandbox word is not judged: the
+    `.codex-sandbox-<host>` marks gate landing workers only, and a lane's own run script probes its
+    sandbox before Codex starts.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    free: int = Field(ge=0, description="Further Codex lanes the host can take now.")
+    cap: int | None = None
+    running: int | None = None
+    refusal: str | None = Field(
+        default=None,
+        description="Why `free` is zero, when the host cannot take a Codex lane.",
+    )
+    claude_blocked: str | None = Field(
+        default=None,
+        description="The Claude mark that keeps Claude lanes off the host (limited or auth expired), if any.",
     )
 
 
@@ -339,6 +372,15 @@ class ModelThroughputTickResult(BaseModel):
     open_count: int | None = Field(
         default=None,
         description="The open PR count read from a fresh watcher state, for the caller to record; None when unread.",
+    )
+    codex_headroom: list[ModelCodexHeadroom] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
+        description=(
+            "Codex headroom of every Codex-capable pool host with a fresh placement reading, separate "
+            "from the Claude headroom the lab-headroom lines report; a host Claude cannot use that has "
+            "free Codex slots is also a MISSING lab-headroom line. Absent from the dump when empty."
+        ),
     )
     pr_land: ModelLabFillPrLandPlan | None = Field(
         default=None,

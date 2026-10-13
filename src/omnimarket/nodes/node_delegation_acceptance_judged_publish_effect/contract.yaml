@@ -9,7 +9,9 @@ description: >
   delegation terminals use (omnimarket.events.emit_client over the daemon's Unix socket), never
   a direct database or broker write. Used by the delegation-judge skill after score, and to
   replay a committed run. A socket that is absent or refuses an event fails the run and names the
-  socket; the events carry deterministic ids, so publishing them again is safe.
+  socket; the events carry deterministic ids, so publishing them again is safe. Each event carries
+  its origin (live or eval) and, for eval, its eval_run_id, which the daemon forwards unchanged;
+  neither is part of the event id (OMN-20968).
 
 handler:
   module: omnimarket.nodes.node_delegation_acceptance_judged_publish_effect.handlers.handler_delegation_acceptance_judged_publish

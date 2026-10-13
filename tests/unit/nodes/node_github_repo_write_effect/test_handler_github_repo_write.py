@@ -66,7 +66,9 @@ from omnimarket.nodes.node_pr_claim_registry_effect.handlers.handler_pr_claim_re
 
 pytestmark = pytest.mark.unit
 
-_REPO = "OmniNode-ai/omnimarket"
+# Generic write/adapter behavior outside the M4 contract gate.
+# M4 PR-create refusals and success are covered in the OMN-20864 suite.
+_REPO = "OmniNode-ai/omnibase_spi"
 _HEAD = "4ceedeafeb4040c987883d96c20e745ad5eed6e1"
 _MOVED = "a7f20d7a0" + "0" * 31
 _NODE_ID = "PR_kwDOR6jjtc8AAAABFQhbqA"

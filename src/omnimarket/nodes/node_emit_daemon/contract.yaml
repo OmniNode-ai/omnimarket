@@ -189,6 +189,11 @@ event_bus:
     - onex.evt.omniclaude.work-obligation-abandoned.v1
 
 externally_consumed_topics:
+  # Pipeline observability exports owned by omniclaude's shared pipeline event
+  # models, alongside epic-run-updated and gate-decision below. These channels
+  # leave this node graph; there is no internal subscriber for either signal.
+  - onex.evt.omniclaude.budget-cap-hit.v1
+  - onex.evt.omniclaude.circuit-breaker-tripped.v1
   - onex.cmd.omniintelligence.tool-content.v1
   - onex.cmd.omniintelligence.claude-hook-event.v1
   - onex.cmd.omniintelligence.compliance-evaluate.v1

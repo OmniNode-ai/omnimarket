@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21034"
+title: "Rebase pushes only the PR head ref; polish dispatch runs off the kernel loop"
+summary: >-
+  node_rebase_effect treats dev as a protected head, refuses a head_ref_name
+  that is not a plain branch name before any git call, refuses with head_moved
+  when origin's head is not the commanded head_ref_oid, and pushes with a lease
+  on refs/heads/<head> only. node_pr_polish gains handle_async, which runs the
+  synchronous handle on a worker thread so the repair-delegation publish never
+  calls asyncio.run inside the runtime's running event loop.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-rebase-head-only"
+    statement: "The rebase effect can move only the pull request's own head branch."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A landing-branch head (main, master, develop, dev) or a head_ref_name that is not a plain branch name is refused before any git call, a head that moved since the command is not pushed, and the one push is a lease on refs/heads/<head> -- falsifier: uv run pytest tests/test_rebase_effect.py fails when the handler accepts dev or a refs/ qualified head, pushes a moved head, or pushes any other ref
+  - id: "req-polish-off-kernel-loop"
+    statement: "The pr-polish runtime entrypoint publishes its repair delegation from the runtime event loop."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: A pr-polish start command dispatched on a running event loop with a Kafka bootstrap configured publishes the repair delegation instead of ending FAILED with the asyncio.run error -- falsifier: uv run pytest tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py fails without handle_async
+evidence_requirements:
+  - kind: "tests"
+    description: "Rebase head-ref refusal, lease push and moved-head cases; polish entrypoint on a running loop."
+    command: "uv run pytest tests/test_rebase_effect.py tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21034-ac1-rebase-head-only"
+    description: "Landing-branch and malformed heads are refused without git, a moved head is not pushed, and the real-git case advances only the PR head branch."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_rebase_effect.py -q -n 0"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21034-ac2-polish-event-loop"
+    description: "The start command dispatched on the running loop publishes the repair delegation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_polish/test_runtime_entrypoint_event_loop.py -q -n 0"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21034-source-probe"
+    description: "Source probe: the rebase handler at the checked-out commit carries the head_moved refusal added by this PR. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c 'head_moved: origin/' src/omnimarket/nodes/node_rebase_effect/handlers/handler_rebase.py"
+  - id: "dod-omn21034-deploy-probe-handler-import"
+    description: "Deploy smoke on the effects runtime after the deploy agent rolls this change: import the pr-polish handler and the rebase handler from the running container, assert that HandlerPrPolish.handle_async is a coroutine function and that the rebase handler source carries the head_moved refusal. The command exits nonzero on an image without this change, including the dev image deployed on lab host h202 at dispatch. It reads deployed code, not this contract or a receipt. Hosted CI has no effects runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime-effects} python -c 'import inspect; from omnimarket.nodes.node_pr_polish.handlers.handler_pr_polish import HandlerPrPolish; from omnimarket.nodes.node_rebase_effect.handlers import handler_rebase; assert inspect.iscoroutinefunction(HandlerPrPolish.handle_async); assert \"head_moved: origin/\" in inspect.getsource(handler_rebase)'"
+        cwd: "${OMNI_HOME}/omnimarket"

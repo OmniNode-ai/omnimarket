@@ -1,0 +1,69 @@
+schema_version: 1.0.0
+ticket_id: OMN-21036
+title: The autopilot orchestrator records a phase result only from the downstream result event
+summary: The autopilot orchestrator no longer records a phase PASS when event_bus.publish returns. A phase advances only on the downstream node's result event for the same correlation id; phase C halts on a FAIL or unreadable verdict, and a runtime tick past the contract-declared phase window closes the phase as timeout (a phase C timeout halts). The terminal event is published once per correlation id, and the dispatch payloads validate against the downstream start models.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-phase-result-from-downstream-event
+    statement: A phase result exists only after the downstream node's result event for the run's correlation id, and the infra gate can halt on a real result.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: no phase is PASS while no downstream result has arrived, and a phase advances only on the result event for its own correlation id -- falsifier: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -k "TestPublishReturningIsNotAPhaseResult or TestPhaseAdvancesOnDownstreamResult" fails against a handler that records PASS when publish returns'
+      - id: AC2
+        statement: 'AC2: a platform-diagnostics FAIL or unreadable verdict halts the run and dispatches no quality sweep, a WARN does not halt -- falsifier: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -k TestInfraGateHaltAuthority'
+      - id: AC3
+        statement: 'AC3: a runtime tick past the declared phase window closes the phase as timeout, a phase C timeout halts, and the run publishes exactly one terminal event -- falsifier: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -k TestPhaseTimeoutOnRuntimeTick'
+      - id: AC4
+        statement: 'AC4: dispatch payloads validate against the downstream start models, downstream nodes echo the correlation id, and the contract subscribes to every result topic and the runtime tick -- falsifier: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -k "TestDispatchPayloadsMatchDownstreamNodes or TestContractDeclaresTheResultTopics" and the golden chain tests/test_golden_chain_autopilot_orchestrator.py'
+evidence_requirements:
+  - kind: tests
+    description: Phase-advance tests over the event-driven handler and the migrated golden chain.
+    command: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py tests/test_golden_chain_autopilot_orchestrator.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21036-ac1-phase-result-from-event
+    description: No phase is PASS before a downstream result arrives; results for another correlation id or a phase not awaited change nothing.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -q -k "TestPublishReturningIsNotAPhaseResult or TestPhaseAdvancesOnDownstreamResult"
+    binds_ac:
+      - AC1
+  - id: dod-omn21036-ac2-infra-gate-halt
+    description: Diagnostics FAIL and an unreadable verdict halt the run; WARN does not.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -q -k TestInfraGateHaltAuthority
+    binds_ac:
+      - AC2
+  - id: dod-omn21036-ac3-phase-timeout
+    description: A tick inside the window changes nothing; a tick past it closes the phase as timeout, phase C halts, and exactly one terminal event is published.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -q -k TestPhaseTimeoutOnRuntimeTick
+    binds_ac:
+      - AC3
+  - id: dod-omn21036-ac4-payloads-and-contract
+    description: Dispatch payloads validate against the downstream start models, correlation ids are echoed, the contract declares the result topics and the golden chain passes.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_autopilot_orchestrator_phase_advance.py -q -k "TestDispatchPayloadsMatchDownstreamNodes or TestContractDeclaresTheResultTopics"
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_golden_chain_autopilot_orchestrator.py -q
+    binds_ac:
+      - AC4
+  - id: dod-omn21036-deploy-probe-run-store
+    description: Deploy probe. The autopilot handler GitHub serves at the checked-out commit carries the per-correlation-id run store this change adds; the probe reads the handler from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_autopilot_orchestrator/handlers/handler_autopilot_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class AutopilotRunStore:'
+        cwd: ${OMNI_HOME}/omnimarket
