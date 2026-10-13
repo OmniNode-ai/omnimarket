@@ -64,11 +64,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn19987-ac2-storage-proof-no-skips"
-    description: "The same storage-half proof as the item this one supersedes, run so that it cannot pass without a database. The earlier item's command exits 0 when every test skips, which is what happens where no Postgres is provisioned (11 skipped, read on a host with no database password). This command adds --refuse-skips: the run exits 1 unless all eleven tests ran against a real Postgres and passed. The earlier item and its receipts stay as they were merged."
+    description: "The storage-half proof of the item this one supersedes, together with the run-trace writer's own real-Postgres proof, run so that neither can pass without a database. The earlier item's command exits 0 when every test skips, which is what happens where no Postgres is provisioned (11 skipped, read on a host with no database password). This command adds --refuse-skips and the writer's proof (another tenant's step with the same run id and sequence neither joins nor overwrites this tenant's stored run): the run exits 1 unless all twenty-two tests ran against a real Postgres and passed. Before the writer exists its proof cannot be collected, so the command fails there. The earlier item and its receipts stay as they were merged."
     source: "manual"
     evidence_artifact: "supersedes_dod_evidence:dod-omn19987-ac2-run-trace-table-tenant-isolation"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q --refuse-skips"
+        check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py tests/test_omn19987_run_trace_real_postgres.py -q --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
