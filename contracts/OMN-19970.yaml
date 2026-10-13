@@ -41,7 +41,7 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19970_dev_seed.py::test_runtime_seed_replay_keeps_fixture_labels_and_measured_total tests/test_omn19970_dev_seed.py::test_metering_excludes_fixture_rows_unless_asked tests/test_omn19970_dev_seed.py::test_overview_measured_savings_are_unchanged_by_seeding -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn19970-ac2-postgres-summary-excludes-fixtures"
+  - id: "dod-omn19970-ac2-postgres-summary-no-fixtures"
     description: "AC2 on PostgreSQL: after a runtime seed replay into a mixed store, the delegation summary view keeps fixture savings out of totalSavingsUsd."
     source: "manual"
     checks:
