@@ -9,8 +9,9 @@ REST and GraphQL shapes; a mutation cannot be recorded without mutating.
 
 Covered: each of the six writes; the expected-head refusal; the refused close
 (no claim, and a claim held by another lane) against the real claim registry
-on a temporary directory; the quota-floor refusal; idempotent replays; and
-dry_run, which sends nothing.
+on a temporary directory; the quota-floor refusal; idempotent replays;
+dry_run, which sends nothing; and the contract's own mode per repository
+class, with every guard applied in each registry repository.
 """
 
 from __future__ import annotations
@@ -385,7 +386,7 @@ async def test_graphql_errors_in_a_200_are_a_refusal() -> None:
 # --- pr_close and the claim ----------------------------------------------------
 
 
-def _acquire(claims_dir: Path, *, lane: str, run: str) -> None:
+def _acquire(claims_dir: Path, *, lane: str, run: str, repo: str = _REPO) -> None:
     registry = HandlerPrClaimRegistry()
     result = registry.handle(
         ModelPrClaimRegistryRequest(
@@ -396,7 +397,7 @@ def _acquire(claims_dir: Path, *, lane: str, run: str) -> None:
             ),
             instance_id_path=str(claims_dir / "instance-id"),
             host="lab-host",
-            pr_key=f"{_REPO.lower()}#4000",
+            pr_key=f"{repo.lower()}#4000",
             run_id=run,
             action="close",
             lane_id=lane,
@@ -590,8 +591,21 @@ def _contract_handler(
     )
 
 
-async def test_contract_mode_performs_a_pr_edit_outside_omnimarket() -> None:
-    repo = "OmniNode-ai/omnibase_core"
+# --- the contract's mode, per repository class ----------------------------------
+#
+# Three classes of repository reach the write effect: omnimarket, every other
+# registry repository, and a repository outside the declared owner. Each
+# registry repository writes in enforce under the contract's own config, and
+# every guard (expected head, quota floor, claim for close) still applies to
+# it; a repository outside the owner runs dry and sends nothing.
+
+_OUTSIDE = "octocat/hello-world"
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_performs_a_pr_edit_in_each_registry_repository(
+    repo: str,
+) -> None:
     transport = _Recorded(
         [
             (pull_request_request(repo, 4000), _ok(_pr())),
@@ -613,16 +627,111 @@ async def test_contract_mode_performs_a_pr_edit_outside_omnimarket() -> None:
     assert transport.drained()
 
 
-async def test_contract_mode_still_refuses_a_close_without_a_claim(
-    tmp_path: Path,
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_refuses_a_moved_head_in_each_registry_repository(
+    repo: str,
+) -> None:
+    transport = _Recorded([(pull_request_request(repo, 4000), _ok(_pr(head=_MOVED)))])
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=repo,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.HEAD_MOVED
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert [r.method for r in transport.sent] == ["GET"]
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_holds_the_quota_floor_in_each_registry_repository(
+    repo: str,
+) -> None:
+    transport = _Recorded(
+        [(pull_request_request(repo, 4000), _ok(_pr(), remaining=120))]
+    )
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=repo,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.QUOTA_FLOOR
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert [r.method for r in transport.sent] == ["GET"]
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_refuses_a_close_without_a_claim_in_each_registry_repository(
+    repo: str, tmp_path: Path
 ) -> None:
     transport = _Recorded([])
     result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
-        _close(tmp_path, repo="OmniNode-ai/omnibase_core")
+        _close(tmp_path, repo=repo)
     )
     assert isinstance(result, ModelRepoWriteFailed)
     assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
     assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert transport.sent == []
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_closes_with_the_lanes_claim_in_each_registry_repository(
+    repo: str, tmp_path: Path
+) -> None:
+    _acquire(tmp_path, lane=_LANE, run=_RUN, repo=repo)
+    transport = _Recorded(
+        [
+            (pull_request_request(repo, 4000), _ok(_pr())),
+            (
+                edit_pull_request_request(repo, 4000, {"state": "closed"}),
+                _ok(_pr(state="closed")),
+            ),
+        ]
+    )
+    result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close(tmp_path, repo=repo)
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert transport.drained()
+
+
+async def test_contract_mode_runs_dry_outside_the_declared_owner() -> None:
+    transport = _Recorded([])
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=_OUTSIDE,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert [r.method for r in result.requests] == ["GET", "PATCH"]
+    assert transport.sent == []
+
+
+async def test_contract_mode_still_needs_the_claim_to_close_outside_the_owner(
+    tmp_path: Path,
+) -> None:
+    transport = _Recorded([])
+    result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close(tmp_path, repo=_OUTSIDE)
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
     assert transport.sent == []
 
 
@@ -662,8 +771,10 @@ def test_each_operation_requires_its_fields(
 def test_contract_declares_mode_floor_and_topics() -> None:
     contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
     config = ModelRepoWriteConfig.from_contract(_CONTRACT)
-    assert config.github_mode is EnumRepoWriteMode.ENFORCE
+    assert config.github_mode is EnumRepoWriteMode.DRY_RUN
+    assert config.github_mode_by_owner == {"OmniNode-ai": EnumRepoWriteMode.ENFORCE}
     assert config.mode_for("omninode-ai/OMNIMARKET") is EnumRepoWriteMode.ENFORCE
+    assert config.mode_for(_OUTSIDE) is EnumRepoWriteMode.DRY_RUN
     assert contract["quota_floor"]["min_remaining"] == {"core": 500, "graphql": 500}
     assert {op["name"] for op in contract["operations"]} == {
         op.value for op in EnumRepoWriteOperation
@@ -680,12 +791,21 @@ def test_contract_declares_mode_floor_and_topics() -> None:
     ]
 
 
-def test_contract_enforces_every_registry_repository() -> None:
+def test_contract_enforces_every_registry_repository_through_the_owner_row() -> None:
     config = ModelRepoWriteConfig.from_contract(_CONTRACT)
+    assert config.github_mode is EnumRepoWriteMode.DRY_RUN
     dry = [
         r for r in REGISTRY_REPOS if config.mode_for(r) is not EnumRepoWriteMode.ENFORCE
     ]
     assert dry == []
+
+
+@pytest.mark.parametrize(
+    "repo", [_OUTSIDE, "OmniNode-ai-fork/omnimarket", "omninode/omnimarket"]
+)
+def test_contract_keeps_a_repository_outside_the_owner_dry(repo: str) -> None:
+    config = ModelRepoWriteConfig.from_contract(_CONTRACT)
+    assert config.mode_for(repo) is EnumRepoWriteMode.DRY_RUN
 
 
 def test_a_repository_can_still_be_pinned_to_dry_run_by_declaration() -> None:
@@ -697,3 +817,10 @@ def test_a_repository_can_still_be_pinned_to_dry_run_by_declaration() -> None:
     )
     assert config.mode_for("OmniNode-ai/omnibase_core") is EnumRepoWriteMode.DRY_RUN
     assert config.mode_for("OmniNode-ai/omnimarket") is EnumRepoWriteMode.ENFORCE
+
+
+def test_an_owner_row_naming_a_repository_is_refused_at_load() -> None:
+    with pytest.raises(ValueError, match="must name an owner"):
+        ModelRepoWriteConfig.model_validate(
+            {"github_mode_by_owner": {"OmniNode-ai/omnimarket": "enforce"}}
+        )

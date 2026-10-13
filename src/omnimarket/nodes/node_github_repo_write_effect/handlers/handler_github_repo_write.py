@@ -9,8 +9,9 @@ uses; no ``gh`` subprocess.
 
 Rules this handler enforces:
 
-- **Mode from the contract.** ``write_config`` names the mode per repository;
-  a repository not named takes the default (enforce). dry_run returns the
+- **Mode from the contract.** ``write_config`` names the mode per repository
+  and per owner; a repository row wins over its owner's row, and a repository
+  named by neither takes the default (dry_run). dry_run returns the
   requests the write would send and sends nothing. A request may force
   dry_run; it can never force enforce.
 - **Quota floor.** The landing effect's rule, read from this contract's
