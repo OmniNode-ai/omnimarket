@@ -9,6 +9,9 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_outcome import (
     EnumRouteCheckOutcome,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_walk import (
+    EnumRouteCheckWalk,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_observation import (
     ModelRouteObservation,
 )
@@ -18,7 +21,7 @@ class ModelRouteCheckVerdict(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     outcome: EnumRouteCheckOutcome
     run_directory: str
-    route: Literal["L", "C"]
+    route: EnumRouteCheckWalk
     pin: str
     draw_class: Literal["REFUSED"] | None = None
     failure_reason: str | None = None

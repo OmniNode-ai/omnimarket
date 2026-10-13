@@ -9,6 +9,9 @@ from pydantic import JsonValue
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_outcome import (
     EnumRouteCheckOutcome,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_walk import (
+    EnumRouteCheckWalk,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_check_request import (
     ModelRouteCheckRequest,
 )
@@ -110,7 +113,7 @@ class HandlerDelegationRouteCheck:
 
         expect("requested_backend_id", doc.get("requested_backend_id"), request.pin)
         expect("backend_pin_honoured", doc.get("backend_pin_honoured"), True)
-        if request.route == "L":
+        if request.route is EnumRouteCheckWalk.LOCAL:
             expect("bus", doc.get("bus"), "kafka")
             expect("locus", doc.get("locus"), "deployed-lane")
             if request.lane:
@@ -162,7 +165,7 @@ class HandlerDelegationRouteCheck:
 
         tenant = terminal.get("tenant_id")
         observe("tenant_id", tenant)
-        if request.route == "C":
+        if request.route is EnumRouteCheckWalk.CUSTOMER_KEY:
             if not tenant or tenant == "omninode":
                 failures.append(
                     f"tenant_id: read {tenant!r}, expected the walker's own tenant, not the house default"
