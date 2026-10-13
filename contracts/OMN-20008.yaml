@@ -21,6 +21,9 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: Every run row shows its basis, `measured` or `estimated`, from the stored provenance rather than a default -- falsifier: a row whose basis is absent or hardcoded
+  - id: "req-sibling-census-pin"
+    statement: |-
+      The runtime rebuild trigger must pin omnibase_infra's reusable at a recorded commit carrying cb5c0cfd7 (#4900, OMN-20934), which fetches the private lane census for sibling lab-pass receipts. This is a requirement of the release path and not an acceptance criterion of this ticket (ruling of 2026-10-13T06:59:27Z on OMN-20008), so it carries no criterion label. The caller's full-SHA pin is recorded as carrying the sibling census fetch -- falsifier: uv run pytest tests/ci/test_rebuild_trigger_pin_sibling_census_omn20008.py -q fails, including when the pin is reverted to 04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc. This workflow-only bump triggers no rebuild; runtime proof is the next omnimarket runtime merge's sibling receipt carrying lane_sync ok.
   - id: "req-savings-share-of-the-baseline-served"
     statement: |-
       metering-summary.v1 serves savings as a share of the baseline, savings_usd over counterfactual_usd, and serves nothing when either is unknown or the counterfactual is zero, so the Savings card can show the percentage line without doing money arithmetic in the browser. The criterion below is transcribed from the ticket body; this repository proves its omnimarket half, the fold test.
@@ -40,6 +43,13 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20008-ac5-sibling-census-pin"
+    description: "The runtime rebuild trigger pin carries omnibase_infra#4900 (OMN-20934), fetching the private census needed by sibling lab-pass receipts after artifact 11768686435 failed lane_sync with census unreadable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_rebuild_trigger_pin_sibling_census_omn20008.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20008-ac4-served-excluded-counts"
     description: "The savings-overview exposure serves estimated_run_count and unknown_run_count, appended after tenant_id, so the excluded runs are counted beside the measured total."
     source: "manual"

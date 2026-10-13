@@ -1004,8 +1004,16 @@ class TestOmn15800ExposureParity:
         # 71 as of OMN-19079: +1 for node_projection_open_obligations, whose
         # `schema` recorded the relation's own schema (omninode_internal)
         # instead of the database, so the loader excluded it at every boot.
+        # 74 as of OMN-20802: +3 for node_projection_automation_liveness's
+        # bus-backed process state, run history and alarm episodes.
         topic_map = real_topic_map
-        assert len(topic_map) == 71
+        assert len(topic_map) == 74
+        for liveness_topic in (
+            "onex.snapshot.projection.automation-liveness.v1",
+            "onex.snapshot.projection.automation-liveness-runs.v1",
+            "onex.snapshot.projection.automation-liveness-alarms.v1",
+        ):
+            assert liveness_topic in topic_map
         assert "onex.snapshot.projection.metering-summary.v1" in topic_map
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         assert "onex.snapshot.projection.delegation.acceptance-eval.v1" in topic_map

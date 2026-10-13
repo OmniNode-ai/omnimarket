@@ -113,6 +113,7 @@ async def test_design_to_plan_handle_publishes_typed_result_no_095() -> None:
     command = ModelDesignToPlanCommand(
         correlation_id=uuid.uuid4(),
         topic="regression probe",
+        plan_path="/tmp/regression-plan.md",  # existing plan: no model call
         requested_at=datetime.now(tz=UTC),
         dry_run=True,
         plan_only=True,

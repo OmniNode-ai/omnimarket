@@ -295,6 +295,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # it would be dispatched by nobody. Its node's pure fold,
     # HandlerProjectionPrLanding, does NOT declare the capability.
     #
+    # LabJobProjectionWriter (OMN-20604 M2) is the only writer of
+    # lab_job_state and lab_job_transitions, dispatched once per transitioned
+    # event by runtime auto-wiring. Its pure fold, HandlerProjectionLabJob,
+    # does NOT declare the capability; there is no dedicated deployment.
+    #
     # SessionContentProjectionWriter (OMN-19550) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed
     # content record by the runtime auto-wiring, and it has no dedicated writer
@@ -357,8 +362,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # writer, dispatched once per consumed reducer output by runtime
     # auto-wiring; the reducer's pure fold is a separate node and does NOT
     # declare the capability.
+    # OMN-20802: the runtime dispatches this writer once; its definition-B
+    # fold, HandlerProjectionAutomationLiveness, has no dispatch declaration.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
+        "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "MeteringSummaryProjectionWriter",
@@ -373,6 +381,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LabLaneHealthProjectionWriter",
         "LabProofReceiptsProjectionWriter",
         "PrLandingProjectionWriter",
+        "LabJobProjectionWriter",
         "PrStateProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",

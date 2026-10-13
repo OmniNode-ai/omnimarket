@@ -99,11 +99,20 @@ def test_render_marks_an_edit_loop_turn_from_its_opening_line() -> None:
     assert "kind: edit_loop_turn" in result.batches[0].prompt
 
 
-def test_render_refuses_duplicate_ids_and_a_probe_only_corpus() -> None:
+def test_render_refuses_duplicate_ids() -> None:
     with pytest.raises(ValueError, match="unique"):
         render([item("a"), item("a")])
-    with pytest.raises(ValueError, match="every item is a probe"):
-        render([item("p", task="say ok")])
+
+
+def test_render_of_a_probe_only_corpus_excludes_the_probes_and_renders_nothing() -> (
+    None
+):
+    """A liveness probe completes like any delegation; refusing it dead-letters the request."""
+    result = render([item("p", task="say ok")])
+    assert result.status.value == "passed"
+    assert result.batches == ()
+    assert result.excluded_probe_ids == ("p",)
+    assert result.double_judge_item_ids == ()
 
 
 def test_render_needs_a_seed() -> None:

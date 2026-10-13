@@ -145,6 +145,7 @@ class _StubGrading:
         extraction: ModelAdrExtractionSummary,
         source_summary: str,
         correlation_id: str,
+        grader_model_key: str,
     ) -> ModelAdrGradingScores:
         self.call_count += 1
         return ModelAdrGradingScores(
@@ -200,6 +201,7 @@ async def test_proof_of_life_full_pipeline(tmp_path: Path) -> None:
     request = ModelCanaryCommandPayload(
         manifest_path=manifest_abs,
         workspace_root=str(tmp_path),
+        grader_model_key="qwen3-coder",
         output_dir=str(tmp_path / "evidence"),
     )
     report = await handler.handle(request)
@@ -304,6 +306,7 @@ async def test_proof_of_life_extraction_failure_path(tmp_path: Path) -> None:
     request = ModelCanaryCommandPayload(
         manifest_path=manifest_abs,
         workspace_root=str(tmp_path),
+        grader_model_key="qwen3-coder",
         output_dir=str(tmp_path / "evidence"),
     )
     report = await handler.handle(request)

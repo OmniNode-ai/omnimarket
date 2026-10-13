@@ -476,13 +476,16 @@ class BusLaneLedgerAppender:
     async def append(
         self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float
     ) -> ModelWorkLedgerAppendReceipt | None:
-        from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
+        from omnimarket.delegated_test_loop.lane_bus import (
+            bound_lane_principal,
+            open_lab_run_bus,
+        )
         from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller
 
         async with open_lab_run_bus(
             bus="kafka", lane=self._lane, kafka_bootstrap=None, omni_home=self._root
         ) as bus:
-            caller = WorkLedgerAppendCaller(bus)
+            caller = WorkLedgerAppendCaller(bus, principal=bound_lane_principal())
             try:
                 return await caller.append(request, timeout_s=timeout_s)
             except TimeoutError:

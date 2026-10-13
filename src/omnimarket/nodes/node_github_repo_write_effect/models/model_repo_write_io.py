@@ -62,6 +62,7 @@ class EnumRepoWriteRefusal(StrEnum):
     QUOTA_FLOOR = "quota_floor"
     HEAD_MOVED = "head_moved"
     CLAIM_NOT_HELD = "claim_not_held"
+    CONTRACT_REQUIRED = "contract_required"
     NOT_FOUND = "not_found"
     GITHUB_REFUSED = "github_refused"
     TRANSPORT_ERROR = "transport_error"

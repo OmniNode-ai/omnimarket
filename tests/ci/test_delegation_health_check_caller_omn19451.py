@@ -161,10 +161,11 @@ def infra_tree(tmp_path_factory: pytest.TempPathFactory) -> Path:
     deploy_gate = (REPO_ROOT / ".github/workflows/deploy-gate.yml").read_text(
         encoding="utf-8"
     )
+    # OMN-20413: deploy-gate.yml checks out omniclaude's deploy-gate validator
+    # at a full-sha ref instead of calling the composite action.
     pins = set(
         re.findall(
-            r"OmniNode-ai/omniclaude/\.github/actions/deploy-gate@"
-            r"([0-9a-f]{40})(?=[\s\"']|$)",
+            r"repository: OmniNode-ai/omniclaude\n\s+ref: ([0-9a-f]{40})(?=[\s\"']|$)",
             deploy_gate,
         )
     )

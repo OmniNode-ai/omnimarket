@@ -49,7 +49,8 @@ class ProtocolCredentialStore(
 
 
 _SECRET_SHAPED_KEYS = ("value", "key_value", "secret", "api_key")
-_REGISTERED_OPTIONAL_COLUMNS = ("fingerprint", "set_at")
+# OMN-20991 adds expires_at: an event without it never erases a stored date.
+_REGISTERED_OPTIONAL_COLUMNS = ("fingerprint", "set_at", "expires_at")
 _NOW = "NOW()"
 
 

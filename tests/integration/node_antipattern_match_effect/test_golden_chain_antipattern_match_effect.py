@@ -339,13 +339,13 @@ async def test_qdrant_search_failure_graceful_skip_over_bus(
 
 
 @pytest.mark.integration
-async def test_missing_embedding_endpoint_publishes_no_output_over_bus(
+async def test_missing_embedding_endpoint_publishes_graceful_skip_over_bus(
     integration_event_bus: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Gate-blocked failure: with no endpoint override and EMBEDDING_MODEL_URL unset,
-    the handler raises OSError -> the adapter suppresses output (nothing on the
-    response topic)."""
+    """With no endpoint override and EMBEDDING_MODEL_URL unset, the handler answers
+    with empty matches and the reason, so a requester waiting on the response topic
+    still hears back (a raise would dead-letter the command and publish nothing)."""
     bus = integration_event_bus
     await bus.start()
     try:
@@ -354,7 +354,10 @@ async def test_missing_embedding_endpoint_publishes_no_output_over_bus(
             qdrant_client=_make_qdrant(), embedding_endpoint=None
         )
         result = await _drive(bus, harness, _request())
-        assert result is None, "handler raise must not publish a response"
+        assert result is not None
+        assert result.matches == ()
+        assert result.error_message is not None
+        assert "EMBEDDING_MODEL_URL" in result.error_message
     finally:
         await bus.close()
 

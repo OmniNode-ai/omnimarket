@@ -6,26 +6,89 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   4-phase autonomous close-out pipeline orchestrator.
-  Dispatches to sub-nodes via Kafka publish and FSM state tracking.
+  Dispatches to sub-nodes via Kafka publish and advances its FSM only on the
+  sub-node's result event, never on the publish returning.
 
-  Phase A: Worktree health sweep (node_worktree_triage or prune script)
+  Phase A: Worktree health sweep (no command topic exists yet: recorded skipped)
   Phase B: Merge sweep (node_pr_lifecycle_orchestrator)
   Phase C: Infra health gate (node_platform_diagnostics)
-  Phase D: Quality sweeps (aislop_sweep, dod_verify, gap)
+  Phase D: Quality sweep (node_aislop_sweep; dod_verify verifies one ticket and
+           has no valid start command without a ticket id, so it is not sent)
 
+  A phase with no result event inside phase_windows_seconds is closed by a
+  runtime tick with a timeout result; a timeout at the infra gate halts.
   Circuit breaker: 3 consecutive phase failures -> FAILED.
-  Each phase records pass | pass_repaired | warn | fail | halt | skipped.
+  Each phase records pass | pass_repaired | warn | fail | halt | skipped | timeout.
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: autopilot
+      message_category: command
       handler:
         name: HandlerAutopilotOrchestrator
         module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
       event_model:
         name: ModelAutopilotStartCommand
         module: omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_start_command
+      event_type: omnimarket.autopilot-orchestrator-start
+    # Downstream result events. The phase advances only on these (or on a tick).
+    - operation: pr_lifecycle_completed
+      topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+      message_category: event
+      handler:
+        name: HandlerAutopilotOrchestrator
+        module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
+      event_model:
+        name: ModelPrLifecycleCompletedEvent
+        module: omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_downstream_event
+      event_type: omnimarket.pr-lifecycle-orchestrator-completed
+    - operation: pr_lifecycle_failed
+      topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1
+      message_category: event
+      handler:
+        name: HandlerAutopilotOrchestrator
+        module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
+      event_model:
+        name: ModelPrLifecycleFailedEvent
+        module: omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_downstream_event
+      event_type: omnimarket.pr-lifecycle-orchestrator-failed
+    - operation: platform_diagnostics_completed
+      topic: onex.evt.omnimarket.platform-diagnostics-completed.v1
+      message_category: event
+      handler:
+        name: HandlerAutopilotOrchestrator
+        module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
+      event_model:
+        name: ModelPlatformDiagnosticsCompletedEvent
+        module: omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_downstream_event
+      event_type: omnimarket.platform-diagnostics-completed
+    - operation: aislop_sweep_completed
+      topic: onex.evt.omnimarket.aislop-sweep-completed.v1
+      message_category: event
+      handler:
+        name: HandlerAutopilotOrchestrator
+        module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
+      event_model:
+        name: ModelAislopSweepCompletedEvent
+        module: omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_downstream_event
+      event_type: omnimarket.aislop-sweep-completed
+    # The runtime tick closes a phase whose window has elapsed (timeout result).
+    - operation: phase_timeout_tick
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerAutopilotOrchestrator
+        module: omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+# How long each phase may wait for its downstream node's result event before a
+# runtime tick closes it with a timeout result. Sized above the downstream
+# node's own declared timeout_ms (pr_lifecycle 300s, diagnostics 120s, aislop 120s).
+phase_windows_seconds:
+  phase_b_merge_sweep: 600
+  phase_c_infra_gate: 300
+  phase_d_quality_sweeps: 300
 
 descriptor:
   node_archetype: orchestrator
@@ -34,8 +97,6 @@ descriptor:
     - effects
   idempotent: false
   timeout_ms: 3600000
-  runtime_profiles:
-    - effects
 
 inputs:
   correlation_id:
@@ -77,6 +138,11 @@ terminal_event: onex.evt.omnimarket.autopilot-orchestrator-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.autopilot-orchestrator-start.v1
+    - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+    - onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1
+    - onex.evt.omnimarket.platform-diagnostics-completed.v1
+    - onex.evt.omnimarket.aislop-sweep-completed.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.autopilot-orchestrator-phase-transition.v1
     - onex.evt.omnimarket.autopilot-orchestrator-completed.v1
@@ -84,13 +150,12 @@ event_bus:
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
     - onex.cmd.omnimarket.platform-diagnostics-start.v1
     - onex.cmd.omnimarket.aislop-sweep-start.v1
-    - onex.cmd.omnimarket.dod-verify-start.v1
 
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: autopilot_orchestrator
   state_machine_version: {major: 1, minor: 0, patch: 0}
-  description: "Autopilot close-out pipeline: worktree sweep, merge sweep, infra gate (halt authority), quality sweeps. The handler drives it in order in handle(); an uncaught exception in any phase ends in FAILED."
+  description: "Autopilot close-out pipeline: worktree sweep, merge sweep, infra gate (halt authority), quality sweeps. A phase advances only on its downstream node's result event or on a runtime tick that finds its window elapsed; an uncaught exception in any phase ends in FAILED."
   initial_state: IDLE
   terminal_states: [COMPLETE, HALTED, FAILED]
   error_states: [FAILED]
@@ -140,36 +205,36 @@ state_machine:
       from_state: IDLE
       to_state: PHASE_A_WORKTREE
       trigger: start_received
-    # worktree sweep completed (pass | warn | fail)
+    # worktree sweep: no downstream node, recorded skipped, advances at once
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: phase_a_worktree_to_phase_b_merge_sweep
       from_state: PHASE_A_WORKTREE
       to_state: PHASE_B_MERGE_SWEEP
-      trigger: worktree_sweep_completed
-    # merge sweep completed
+      trigger: worktree_sweep_skipped
+    # pr-lifecycle-orchestrator-completed | -failed, or the window elapsed (pass | fail | timeout)
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: phase_b_merge_sweep_to_phase_c_infra_gate
       from_state: PHASE_B_MERGE_SWEEP
       to_state: PHASE_C_INFRA_GATE
-      trigger: merge_sweep_completed
-    # infra gate passed
+      trigger: merge_sweep_result
+    # platform-diagnostics-completed with PASS or WARN
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: phase_c_infra_gate_to_phase_d_quality_sweeps
       from_state: PHASE_C_INFRA_GATE
       to_state: PHASE_D_QUALITY_SWEEPS
       trigger: infra_gate_passed
-    # infra gate failed (halt authority)
+    # platform-diagnostics-completed with FAIL or an unreadable verdict, or the window elapsed (halt authority)
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: phase_c_infra_gate_to_halted
       from_state: PHASE_C_INFRA_GATE
       to_state: HALTED
       trigger: infra_gate_halted
-    # quality sweeps completed
+    # aislop-sweep-completed (pass | warn | fail), or the window elapsed
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: phase_d_quality_sweeps_to_complete
       from_state: PHASE_D_QUALITY_SWEEPS
       to_state: COMPLETE
-      trigger: quality_sweeps_completed
+      trigger: quality_sweeps_result
     # hard-gate quality check failed
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: phase_d_quality_sweeps_to_halted
@@ -226,8 +291,6 @@ runtime_dispatch:
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
-  # consumed off-graph by omnimarket/src/omnimarket/nodes/node_autopilot_orchestrator/consumer.py
   - onex.evt.omnimarket.autopilot-orchestrator-completed.v1
-  # consumed off-graph by omnimarket/src/omnimarket/nodes/node_autopilot_orchestrator/consumer.py
   - onex.evt.omnimarket.autopilot-orchestrator-failed.v1
   - onex.evt.omnimarket.autopilot-orchestrator-phase-transition.v1

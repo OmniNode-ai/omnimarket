@@ -7,13 +7,16 @@ from __future__ import annotations
 import dataclasses
 import tomllib
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from scripts.audit.market_node_runtime_dogfood import (
     _NODES_DIR,
     _PYPROJECT,
+    _local_invocation_check,
     build_report,
 )
 
@@ -92,16 +95,29 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # secret delete`; it returns credential events for the CLI shim to fold and
     # subscribes to no topic, so it has no onex.nodes entry point.
     "node_local_secret_store_effect",
+    # OMN-20926: the captured secret resolver is called in-process by a
+    # consumer that holds a captured record, with a store built from the
+    # consumer's own identity; it returns the value as a SecretStr, publishes
+    # nothing and subscribes to no topic, so it has no onex.nodes entry point.
+    "node_captured_secret_resolve_effect",
+    # OMN-20926: the captured secret store effect is called in-process by the
+    # content-capture producer for each secret its scrub detects; it returns a
+    # reference, publishes nothing and subscribes to no topic.
+    "node_captured_secret_store_effect",
     # OMN-20817: the model setup effect runs from `onex models`; it returns its
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
+    # OMN-19987: the directory carries only the migrations omnibase_infra
+    # vendors; its contract, handlers and entry point land with the node,
+    # which removes this line and the MIGRATION_ONLY_NODE_DIRS entry together.
+    "node_projection_run_trace",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = set()
+MIGRATION_ONLY_NODE_DIRS: set[str] = {"node_projection_run_trace"}
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -255,9 +271,8 @@ def test_market_node_inventory_fails_on_a_missing_or_extra_node(
 def test_migration_only_dir_fails_once_it_gains_a_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # No directory is migration-only on this head, so the self-expiring entry
-    # is exercised against a directory that does have a contract: listing it
-    # must be reported.
+    # The self-expiring entry is exercised against a directory that does have
+    # a contract: listing it must be reported.
     node = "node_similarity_compute"
     monkeypatch.setitem(globals(), "MIGRATION_ONLY_NODE_DIRS", {node})
     violations = _inventory_violations(_real_inventory())
@@ -307,10 +322,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # the writer calls in process, so it has no handler_routing: 17 -> 18.
     # node_work_ledger_delegation_mirror is hosted by the single ledger serve
     # process, not by a runtime, so it has no handler_routing: 18 -> 19.
+    # OMN-20541's node_work_ledger_seq_gap_effect is run by `python -m` and its
+    # reader is used in process by the branch claim check, so it has no bus route: 19 -> 20.
     # node_operator_capture_effect is hosted by the work-ledger serve process
     # on the ledger host (--operator-capture), not by a runtime, so it has no
-    # handler_routing: 19 -> 20.
-    assert summary["skipped"] == 20
+    # handler_routing: 20 -> 21.
+    assert summary["skipped"] == 21
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
@@ -444,3 +461,90 @@ def test_market_node_runtime_dogfood_audits_former_non_addressable_nodes() -> No
         routable[node_name]["command_topic"].startswith("onex.cmd.")
         for node_name in command_addressable_nodes
     )
+
+
+class _LocalRequest(BaseModel):
+    pass
+
+
+class _LocalResult(BaseModel):
+    passed: bool = True
+
+
+class _LocalHandler:
+    def handle(self, request: _LocalRequest) -> _LocalResult:
+        return _LocalResult()
+
+
+def _local_contract() -> dict[str, object]:
+    return {
+        "metadata": {"transport_type": "local"},
+        "runtime_dispatch": {"external_trigger": "CLI in the target worktree"},
+        "descriptor": {"runtime_profiles": []},
+        "event_bus": {"subscribe_topics": [], "publish_topics": []},
+        "handler": {
+            "module": __name__,
+            "class": "_LocalHandler",
+            "input_model": f"{__name__}._LocalRequest",
+            "output_model": f"{__name__}._LocalResult",
+        },
+    }
+
+
+def test_local_invocation_requires_a_resolvable_typed_handler() -> None:
+    assert _local_invocation_check(_local_contract()) == (True, "")
+    broken = _local_contract()
+    broken["handler"]["class"] = "MissingHandler"
+    claimed, error = _local_invocation_check(broken)
+    assert claimed
+    assert error
+    broken = _local_contract()
+    broken["handler"]["input_model"] = f"{__name__}._LocalResult"
+    claimed, error = _local_invocation_check(broken)
+    assert claimed
+    assert "declared request/result" in error
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("runtime_dispatch", {}),
+        ("event_bus", {"subscribe_topics": ["unexpected"], "publish_topics": []}),
+        ("descriptor", {"runtime_profiles": ["dev"]}),
+    ],
+)
+def test_local_transport_does_not_excuse_a_malformed_invocation(
+    key: str, value: object
+) -> None:
+    contract = _local_contract()
+    contract[key] = value
+    claimed, error = _local_invocation_check(contract)
+    assert claimed
+    assert error
+
+
+def test_inventory_accounts_for_local_invocation_and_refuses_broken_handler(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from scripts.audit import market_node_runtime_dogfood as audit
+
+    node = "node_local_example_effect"
+    directory = tmp_path / node
+    directory.mkdir()
+    contract = _local_contract()
+    path = directory / "contract.yaml"
+    path.write_text(yaml.safe_dump(contract))
+    monkeypatch.setattr(audit, "_NODES_DIR", tmp_path)
+    monkeypatch.setattr(audit, "_load_entry_points", lambda: [node])
+    report = audit.build_report()
+    assert report["summary"]["local_invokable"] == 1
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["skipped"] == 0
+    assert report["local_invokable"] == [{"command_name": node, "node_name": node}]
+    contract["handler"]["class"] = "MissingHandler"
+    path.write_text(yaml.safe_dump(contract))
+    report = audit.build_report()
+    assert report["summary"]["local_invokable"] == 0
+    assert report["summary"]["failed"] == 1
+    assert report["summary"]["failure_buckets"] == {"invalid_local_invocation": 1}

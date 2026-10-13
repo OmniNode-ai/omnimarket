@@ -43,6 +43,10 @@ from omnibase_core.models.adr.model_adr_extraction_metadata import (
 )
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from omnimarket.inference.bridge_config_loader import (
+    is_local_endpoint_model_key,
+    is_vendor_routed_model_key,
+)
 from omnimarket.models.adr import (
     EnumAdrKBDestination,
     ModelAdrDocumentSegment,
@@ -121,6 +125,7 @@ class ProtocolAdrGrading(Protocol):
         extraction: ModelAdrExtractionSummary,
         source_summary: str,
         correlation_id: str,
+        grader_model_key: str,
     ) -> ModelAdrGradingScores: ...
 
 
@@ -134,6 +139,73 @@ class ProtocolAdrDraftGen(Protocol):
         extraction: ModelAdrExtractionSummary,
         run_id: str,
     ) -> str: ...
+
+
+# ---------------------------------------------------------------------------
+# External-provider policy
+# ---------------------------------------------------------------------------
+
+
+def _model_reaches_external_provider(model: ModelAdrManifestModel) -> bool:
+    """Whether the manifest model can only be served by an external provider.
+
+    The manifest's own ``external`` flag is honored, and a key the inference
+    bridge registers only against a vendor API (``glm``, ``openrouter/*``) is
+    external whatever the manifest declares: a manifest cannot launder a
+    vendor-routed key by marking it local.
+    """
+    return model.external or is_vendor_routed_model_key(model.key)
+
+
+def _selected_models(
+    entries: list[ModelAdrManifestEntry],
+    model_subset: list[str] | None,
+) -> list[ModelAdrManifestModel]:
+    return [
+        model
+        for entry in entries
+        for model in entry.models
+        if not model_subset or model.key in model_subset
+    ]
+
+
+def _external_provider_refusal(
+    entries: list[ModelAdrManifestEntry],
+    *,
+    model_subset: list[str] | None,
+    grader_model_key: str,
+) -> str | None:
+    """Name why this run can only reach an external provider, or ``None``.
+
+    Evaluated before the first command is published, so a refusal costs no
+    inference call. A run that mixes lab-hosted and external models proceeds
+    with the lab-hosted ones (the external ones are recorded as disabled); a
+    run with nothing lab-hosted to run, or whose grader can only reach a paid
+    provider, is refused outright.
+    """
+    models = _selected_models(entries, model_subset)
+    if models and all(_model_reaches_external_provider(m) for m in models):
+        keys = ", ".join(sorted({m.key for m in models}))
+        return (
+            f"every selected model key ({keys}) reaches only an external "
+            "provider and allow_external_providers is false"
+        )
+    grades = any(
+        entry.ground_truth_adr is not None
+        and any(
+            not _model_reaches_external_provider(m)
+            for m in entry.models
+            if not model_subset or m.key in model_subset
+        )
+        for entry in entries
+    )
+    if grades and not is_local_endpoint_model_key(grader_model_key):
+        return (
+            f"grader_model_key '{grader_model_key}' reaches only an external "
+            "provider and allow_external_providers is false; name a lab-hosted "
+            "grader_model_key in the request"
+        )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +479,29 @@ def _write_scorecard(
     return scorecard_path
 
 
+def _failed_report(
+    request: ModelCanaryCommandPayload,
+    run_id: str,
+    *,
+    error_message: str,
+    entries_total: int = 0,
+) -> ModelCanaryReport:
+    """Report a run that stopped before it wrote evidence.
+
+    No scorecard is named: the run wrote none, and a completed event carrying a
+    path to a file that does not exist reads as a finished run.
+    """
+    return ModelCanaryReport(
+        run_id=run_id,
+        manifest_path=request.manifest_path,
+        entries_total=entries_total,
+        evidence_dir=str(Path(request.output_dir) / run_id),
+        scorecard_path=None,
+        success=False,
+        error_message=error_message,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator handler
 # ---------------------------------------------------------------------------
@@ -462,9 +557,10 @@ class HandlerCanaryOrchestrator:
         segments: tuple[ModelAdrDocumentSegment, ...],
         evidence_entry_dir: Path,
         allow_external_providers: bool,
+        grader_model_key: str,
     ) -> _RunModelOutcome:
         source_documents = _source_document_evidence(ingestion)
-        if model.external and not allow_external_providers:
+        if _model_reaches_external_provider(model) and not allow_external_providers:
             logger.info(
                 "Skipping external model %s (allow_external_providers=False)", model.key
             )
@@ -558,6 +654,7 @@ class HandlerCanaryOrchestrator:
                     extraction=extraction,
                     source_summary=source_summary,
                     correlation_id=run_id,
+                    grader_model_key=grader_model_key,
                 )
             except Exception as exc:
                 logger.warning(
@@ -629,9 +726,7 @@ class HandlerCanaryOrchestrator:
                     run_id=run_id,
                     manifest_path=request.manifest_path,
                     evidence_dir=str(Path(request.output_dir) / run_id),
-                    scorecard_path=str(
-                        Path(request.output_dir) / run_id / "scorecard.md"
-                    ),
+                    scorecard_path=None,
                     dry_run=True,
                     success=False,
                     error_message=f"manifest load failed: {exc}",
@@ -641,7 +736,7 @@ class HandlerCanaryOrchestrator:
                 manifest_path=request.manifest_path,
                 entries_total=len(manifest.entries),
                 evidence_dir=str(Path(request.output_dir) / run_id),
-                scorecard_path=str(Path(request.output_dir) / run_id / "scorecard.md"),
+                scorecard_path=None,
                 dry_run=True,
             )
 
@@ -649,13 +744,8 @@ class HandlerCanaryOrchestrator:
             manifest = self._load_manifest(request.manifest_path)
         except Exception as exc:
             logger.error("Failed to load manifest: %s", exc)
-            return ModelCanaryReport(
-                run_id=run_id,
-                manifest_path=request.manifest_path,
-                evidence_dir=str(Path(request.output_dir) / run_id),
-                scorecard_path=str(Path(request.output_dir) / run_id / "scorecard.md"),
-                success=False,
-                error_message=f"manifest load failed: {exc}",
+            return _failed_report(
+                request, run_id, error_message=f"manifest load failed: {exc}"
             )
 
         # The extraction protocol currently reports post-call evidence only.
@@ -663,12 +753,9 @@ class HandlerCanaryOrchestrator:
         # the first LLM call; accepting a cap and discovering an overage later
         # would not enforce it. Fail closed until that accounting contract exists.
         if request.max_cost_usd is not None:
-            return ModelCanaryReport(
-                run_id=run_id,
-                manifest_path=request.manifest_path,
-                evidence_dir=str(Path(request.output_dir) / run_id),
-                scorecard_path=str(Path(request.output_dir) / run_id / "scorecard.md"),
-                success=False,
+            return _failed_report(
+                request,
+                run_id,
                 error_message=(
                     "max_cost_usd is fail-closed: ADR extraction lacks a "
                     "prospective metering bound backed by cost_pricing"
@@ -678,17 +765,9 @@ class HandlerCanaryOrchestrator:
         try:
             workspace_root = _resolve_workspace_root(request.workspace_root)
         except ValueError as exc:
-            return ModelCanaryReport(
-                run_id=run_id,
-                manifest_path=request.manifest_path,
-                evidence_dir=str(Path(request.output_dir) / run_id),
-                scorecard_path=str(Path(request.output_dir) / run_id / "scorecard.md"),
-                success=False,
-                error_message=str(exc),
-            )
+            return _failed_report(request, run_id, error_message=str(exc))
 
         evidence_dir = Path(request.output_dir) / run_id
-        evidence_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             entries = _select_manifest_entries(
@@ -697,14 +776,28 @@ class HandlerCanaryOrchestrator:
                 workspace_root=workspace_root,
             )
         except ValueError as exc:
-            return ModelCanaryReport(
-                run_id=run_id,
-                manifest_path=request.manifest_path,
-                evidence_dir=str(evidence_dir),
-                scorecard_path=str(evidence_dir / "scorecard.md"),
-                success=False,
-                error_message=str(exc),
+            return _failed_report(request, run_id, error_message=str(exc))
+
+        allow_external_providers = (
+            self._allow_external_providers and request.allow_external_providers
+        )
+        grader_model_key = request.grader_model_key or self._grader_model_key
+        if not allow_external_providers:
+            refusal = _external_provider_refusal(
+                entries,
+                model_subset=request.model_subset,
+                grader_model_key=grader_model_key,
             )
+            if refusal is not None:
+                logger.error("adr-canary refused (run_id=%s): %s", run_id, refusal)
+                return _failed_report(
+                    request,
+                    run_id,
+                    error_message=f"external provider refused: {refusal}",
+                    entries_total=len(entries),
+                )
+
+        evidence_dir.mkdir(parents=True, exist_ok=True)
 
         ingestion_proto = self._ingestion
         segmentation_proto = self._segmentation
@@ -714,10 +807,6 @@ class HandlerCanaryOrchestrator:
         all_decisions: list[dict[str, object]] = []
         entries_completed = 0
         entries_failed = 0
-        allow_external_providers = (
-            self._allow_external_providers and request.allow_external_providers
-        )
-
         for entry in entries:
             evidence_entry_dir = evidence_dir / entry.id
             evidence_entry_dir.mkdir(parents=True, exist_ok=True)
@@ -741,7 +830,7 @@ class HandlerCanaryOrchestrator:
                 ]
 
             needs_segmentation = any(
-                not model.external or allow_external_providers
+                not _model_reaches_external_provider(model) or allow_external_providers
                 for model in models_to_run
             )
             if needs_segmentation:
@@ -764,7 +853,8 @@ class HandlerCanaryOrchestrator:
                     for model in models_to_run:
                         model_error = (
                             "external_provider_disabled"
-                            if model.external and not allow_external_providers
+                            if _model_reaches_external_provider(model)
+                            and not allow_external_providers
                             else error_message
                         )
                         record = ModelEvidenceRecord(
@@ -802,6 +892,7 @@ class HandlerCanaryOrchestrator:
                         _segments,
                         _edir,
                         allow_external_providers,
+                        grader_model_key,
                     )
 
             tasks = [asyncio.create_task(_bounded(_model=m)) for m in models_to_run]

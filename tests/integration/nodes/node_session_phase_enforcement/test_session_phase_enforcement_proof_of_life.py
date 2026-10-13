@@ -126,9 +126,12 @@ def test_session_phase_enforcement_proof_of_life() -> None:
     # halt_threshold_pct=110 so budget-exhausted (100%) triggers transition_required
     # rather than halt_required (which fires at >= halt_threshold_pct).
     elapsed_minutes = (now - started_at).total_seconds() / 60.0
+    correlation_id = uuid.uuid4()
     evaluator = HandlerSessionPhaseEvaluator()
     evaluation = evaluator.handle(
         ModelPhaseEvaluationRequest(
+            session_id=_SESSION_ID,
+            correlation_id=correlation_id,
             phase_name=_PHASE_1_NAME,
             max_duration_minutes=phase_1_budget_minutes,
             elapsed_minutes=elapsed_minutes,
@@ -141,7 +144,6 @@ def test_session_phase_enforcement_proof_of_life() -> None:
     )
 
     # Step 4: Feed evaluation to orchestrator — should emit transition command.
-    correlation_id = uuid.uuid4()
     orchestrator = HandlerSessionPhaseOrchestrator()
     orch_result = orchestrator.handle(
         ModelSessionPhaseOrchestratorInput(
@@ -239,6 +241,8 @@ def test_budget_exhaustion_triggers_phase_transition() -> None:
     # halt_threshold_pct=110 so budget-exhausted (100%) triggers transition_required.
     evaluation = evaluator.handle(
         ModelPhaseEvaluationRequest(
+            session_id=_SESSION_ID,
+            correlation_id=uuid.uuid4(),
             phase_name=_PHASE_1_NAME,
             max_duration_minutes=1,
             elapsed_minutes=2.0,  # 200% of budget, capped to 100%
