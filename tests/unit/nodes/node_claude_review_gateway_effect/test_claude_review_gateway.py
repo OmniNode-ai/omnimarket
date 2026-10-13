@@ -512,6 +512,88 @@ def test_signature_valid_is_served_and_no_key_value_reaches_the_reply_or_log(
         assert all(value not in request.model_dump_json() for request in call.calls)
 
 
+def _upstream_call_for(body: bytes, signature: str) -> tuple[int, list[str]]:
+    """Serve one body through the signed route; return the status and upstream calls.
+
+    Each call carries fresh request ids; everything else is what was acted on.
+    """
+    gateway, _values, call = _gateway([_row("key-a")], [_ok()])
+    status, _reply = asyncio.run(
+        serve_chat_call(gateway, body=body, signature=signature, secret=_SECRET)
+    )
+    per_call_ids = {"request_id", "correlation_id", "causation_id"}
+    return status, [
+        request.model_dump_json(exclude=per_call_ids) for request in call.calls
+    ]
+
+
+def _with_leading_duplicate(payload: dict[str, Any], key: str, value: Any) -> bytes:
+    """The wire body with ``key`` sent twice: ``value`` first, the payload's own last."""
+    rest = json.dumps(payload)
+    return (json.dumps({key: value})[:-1] + ", " + rest[1:]).encode("utf-8")
+
+
+def _with_trailing_duplicate(payload: dict[str, Any], key: str, value: Any) -> bytes:
+    """The wire body with ``key`` sent twice: the payload's own first, ``value`` last."""
+    rest = json.dumps(payload)
+    return (rest[:-1] + ", " + json.dumps({key: value})[1:]).encode("utf-8")
+
+
+def test_signature_a_reordered_body_is_acted_on_exactly_as_signed() -> None:
+    """Key order on the wire cannot change what the gateway sends upstream."""
+    signature = _signed(_PAYLOAD)[SIGNATURE_HEADER]
+    reordered = json.dumps(dict(reversed(list(_PAYLOAD.items())))).encode("utf-8")
+    assert reordered != _wire(_PAYLOAD)
+    status, calls = _upstream_call_for(reordered, signature)
+    baseline_status, baseline_calls = _upstream_call_for(_wire(_PAYLOAD), signature)
+    assert (status, baseline_status) == (200, 200)
+    assert calls == baseline_calls
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("model", "another-model"),
+        ("max_tokens", 100000),
+        ("metadata", {"repository": _REFUSED_REPO}),
+    ],
+    ids=["model", "max_tokens", "repository"],
+)
+def test_signature_a_duplicate_key_body_cannot_change_what_is_acted_on(
+    key: str, value: Any
+) -> None:
+    """A duplicated key is acted on only as the signed payload, or refused.
+
+    The body is parsed once and the same parsed object is both verified and
+    served. A duplicate that ends on the signed value is served exactly as the
+    signed payload; one that ends on another value fails the signature, before
+    any key is read.
+    """
+    signature = _signed(_PAYLOAD)[SIGNATURE_HEADER]
+    _status, baseline_calls = _upstream_call_for(_wire(_PAYLOAD), signature)
+
+    status, calls = _upstream_call_for(
+        _with_leading_duplicate(_PAYLOAD, key, value), signature
+    )
+    assert status == 200
+    assert calls == baseline_calls
+
+    gateway, values, call = _gateway([_row("key-a")], [_ok()])
+    status, reply = asyncio.run(
+        serve_chat_call(
+            gateway,
+            body=_with_trailing_duplicate(_PAYLOAD, key, value),
+            signature=signature,
+            secret=_SECRET,
+        )
+    )
+    assert status == 401
+    assert reply["error"]["type"] == "gateway_signature"
+    assert values.reads == []
+    assert call.calls == []
+
+
 # --- AC4: the dry run ---------------------------------------------------------
 
 
