@@ -14,7 +14,11 @@ from pathlib import Path
 import click
 import pytest
 
-from omnimarket.handlers.scm.handler_scm_dispatch import SCM_REFUSED_VERBS, SCM_VERBS
+from omnimarket.handlers.scm.handler_scm_dispatch import (
+    SCM_LOCAL_VERBS,
+    SCM_REFUSED_VERBS,
+    SCM_VERBS,
+)
 from omnimarket.handlers.scm.handler_scm_local_state import default_clone_path
 from omnimarket.handlers.scm.scm_cli import scm_group
 
@@ -97,6 +101,7 @@ def test_walk_reaches_every_verb() -> None:
     }
     expected = {"scm", "scm verbs"}
     expected.update("scm " + spec.verb for spec in SCM_VERBS)
+    expected.update("scm " + spec.verb for spec in SCM_LOCAL_VERBS)
     expected.update("scm " + spec.verb for spec in SCM_REFUSED_VERBS)
     assert expected <= reached
     assert sum(where.endswith(":default") for where, _ in surface) > 0

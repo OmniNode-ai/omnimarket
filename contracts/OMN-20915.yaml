@@ -52,7 +52,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_github_pr_poller_effect/test_golden_chain_api_poll.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_runtime_tick_omn20590.py tests/nodes/node_github_pr_poller_effect/test_handler_github_api_poll.py tests/nodes/node_github_pr_poller_effect/test_poller_publishes_only_status_events.py tests/nodes/node_github_pr_poller_effect/test_runtime_profile.py tests/nodes/node_github_pr_poller_effect/test_triage_state.py -q -p no:randomly"
+        check_value: "uv run pytest tests/nodes/node_github_pr_poller_effect/test_poller_publishes_only_status_events.py tests/nodes/node_github_pr_poller_effect/test_handler_github_api_poll.py tests/nodes/node_github_pr_poller_effect/test_runtime_profile.py tests/nodes/node_github_pr_poller_effect/test_triage_state.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_runtime_tick_omn20590.py tests/nodes/node_github_pr_poller_effect/test_golden_chain_api_poll.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20915-poller-status-event-deploy-probe"

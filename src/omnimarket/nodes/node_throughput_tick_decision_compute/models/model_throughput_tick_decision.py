@@ -92,6 +92,38 @@ class ModelLabReadingParse(BaseModel):
     admission_refusal: str | None = None
 
 
+class ModelLabAdmission(BaseModel):
+    """What the remote-lane runner's live pool read says one host admits right now (OMN-20864).
+
+    The caller reads `landing_placement.read_pool` once per tick and reports the admitted slots per engine and
+    the rule that refused an engine; the node decides the finding from them. `slots` is the host's one lane
+    slot budget, which a Claude lane and a Codex lane both draw from: the engine slot counts are never added.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    placed: int = Field(
+        ge=0, description="Placed units (lanes and landing workers) on the host."
+    )
+    lanes: int = Field(ge=0, description="Lane placements among the placed units.")
+    cap: int = Field(ge=0, description="The host's lane cap.")
+    slots: int = Field(
+        ge=0, description="Further lanes the host admits, before any engine mark."
+    )
+    probe_error: str | None = Field(
+        default=None,
+        description="Why the live probe could not read the host; the host's capacity is then unread.",
+    )
+    claude_slots: int = Field(
+        ge=0, description="`slots` when a Claude lane is admitted, else 0."
+    )
+    claude_refusal: str | None = None
+    codex_slots: int = Field(
+        ge=0, description="`slots` when a Codex lane is admitted, else 0."
+    )
+    codex_refusal: str | None = None
+
+
 class ModelLabHost(BaseModel):
     """A pool host the caller read, with the marks, parse and admission facts for it."""
 
@@ -107,6 +139,10 @@ class ModelLabHost(BaseModel):
             "the remote-lane runner's codex_placement.codex_hosts reads it; False reports no Codex "
             "headroom for the host."
         ),
+    )
+    admission: ModelLabAdmission | None = Field(
+        default=None,
+        description="The live admission read (OMN-20864); used when the facts set `live_admission`.",
     )
     limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     auth_mark: ModelLabMark = Field(default_factory=ModelLabMark)
@@ -149,6 +185,13 @@ class ModelLabHeadroomFacts(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    live_admission: bool = Field(
+        default=False,
+        description=(
+            "The caller read the runner's live pool admission (OMN-20864): each host's `admission` decides its "
+            "free slots per engine, and the receipts, marks and parses below decide nothing."
+        ),
+    )
     module_unavailable: bool = False
     unavailable_hosts: list[str] = Field(
         default_factory=list,
