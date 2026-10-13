@@ -14,7 +14,17 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: Another tenant's event mixed into that chain never appears -- falsifier: the same pytest finds it
+  - id: "req-omn19987-run-steps-fold-in-the-orchestrators-order"
+    statement: |-
+      The delegate orchestrator numbers each step of a run itself and publishes one step event per stage; node_projection_run_trace folds those events into rows keyed on tenant, correlation id and step sequence, so the stored order is the orchestrator's whatever order the events arrive in and whatever their timestamps say, and a step that names another tenant never joins the run. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A real recorded chain delivered shuffled, with two equal timestamps, projects to rows in the orchestrator's step order -- falsifier: the fold test run with uv run pytest gives a different order
 evidence_requirements:
+  - kind: "tests"
+    description: "The fold stores a recorded chain in step order when it is delivered shuffled with two equal timestamps, and never stores another tenant's step under the run."
+    command: "uv run pytest tests/test_omn19987_run_trace.py -q"
   - kind: "tests"
     description: "The migration proof passes at the head against a real Postgres and fails at the merge base, where the three migration files do not exist."
     command: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
@@ -29,5 +39,21 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19987-ac1-recorded-chain-stores-in-step-order"
+    description: "The chain one real lab delegation emitted is delivered shuffled, and again reversed, with two steps sharing a timestamp; the fold and the store-neutral writer leave rows in the orchestrator's step sequence on a local store. Run on both recorded fixtures. Changing the store's order key to the timestamp turns it red."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k 'test_a_shuffled_chain_with_two_equal_timestamps_stores_in_step_order or test_reversed_delivery_stores_in_step_order'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19987-ac2-another-tenants-step-never-joins-the-run"
+    description: "The fold half of AC2, which the storage item above could not prove: a step carrying another tenant's id and the same correlation id is mixed into the chain, and the run's rows for the chain's tenant neither gain it nor are overwritten by it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k test_another_tenants_step_never_joins_or_overwrites_the_run"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
