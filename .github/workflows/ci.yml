@@ -522,6 +522,12 @@ jobs:
       # 'dod-verify-every-criterion-bound'.
       - name: dod_verify refuses partly bound criteria (OMN-20032)
         run: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+      # OMN-20001: the drift check reads omniclaude at the pin, a pin move needs the
+      # integration step, both drift directions stay strict, and the two OMN-13146
+      # tests stay present and uninverted. SYNC with pre-commit hook
+      # 'omniclaude-pin-drift'.
+      - name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
@@ -1956,6 +1962,12 @@ jobs:
         run: uv sync --locked
       - name: Validate event registry drift
         run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
+      # OMN-20001: a pin move merges only with the omniclaude-coupled tests passing
+      # against the new version. This job is "Event Registry Drift" in CI Summary's
+      # strict set and clones omniclaude at the one pin, so moving the literal above
+      # makes this step run against the new version in the same PR.
+      - name: Integration suite against the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov
 
   # ============================================================================
   # RUNTIME SWEEP GATE (OMN-8611)

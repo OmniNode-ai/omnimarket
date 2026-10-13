@@ -1463,6 +1463,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20001: the event registry drift check reads omniclaude at the pinned
+      # rev, a pin move needs the integration step, both drift directions stay
+      # strict, and the two OMN-13146 tests stay present and uninverted.
+      # Check-only. SYNC with the ci.yml lint step "Event registry drift reads the
+      # pinned omniclaude (OMN-20001)".
+      - id: omniclaude-pin-drift
+        name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        language: system
+        entry: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_gate\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
         language: system

@@ -21,6 +21,12 @@ this validator a full structural comparison: event-type membership plus, for
 every shared event, the fan-out topic set, the ``partition_key_field``, and the
 ``required_fields``.
 
+The hook-side registry is read at the omniclaude revision this repository has
+pinned (OMN-20001), never at whatever commit a sibling checkout happens to sit
+at: omniclaude ``dev`` moving with the pin unmoved leaves this check unchanged.
+The pin is the tag the ``Event Registry Drift`` job in ``ci.yml`` clones, so one
+literal drives both the hosted job and every local run.
+
 Legitimate, intentional divergence (emit-daemon-only events such as the
 synthetic ``daemon.health.probe`` round-trip, or pre-existing debt) is declared
 explicitly in the baseline file. Anything else fails the gate.
@@ -31,11 +37,19 @@ from __future__ import annotations
 import argparse
 import ast
 import os
+import re
+import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 _DEFAULT_BASELINE = Path("scripts/validation/event_registry_drift_baseline.txt")
 _DEFAULT_MARKET_REGISTRY = Path(
@@ -43,6 +57,10 @@ _DEFAULT_MARKET_REGISTRY = Path(
 )
 _OMNICLAUDE_EVENT_REGISTRY = Path("src/omniclaude/hooks/event_registry.py")
 _OMNICLAUDE_TOPICS = Path("src/omniclaude/hooks/topics.py")
+_CI_WORKFLOW = Path(".github/workflows/ci.yml")
+_PIN_STEP_NAME = "Clone omniclaude"
+_PIN_JOB_NAME = "event-registry-drift"
+_GIT_TIMEOUT_S = 60
 
 
 # =============================================================================
@@ -143,6 +161,78 @@ def resolve_omniclaude_root(
         "Could not resolve omniclaude root with hooks/event_registry.py and "
         "hooks/topics.py"
     )
+
+
+# =============================================================================
+# Pinned omniclaude revision (OMN-20001)
+# =============================================================================
+
+
+def read_pinned_omniclaude_rev(repo_root: Path) -> str:
+    """Return the omniclaude tag the ``Event Registry Drift`` CI job clones.
+
+    The literal ``--branch <tag>`` on the job's ``Clone omniclaude`` step is the
+    single pin: moving it is the one act that moves the hook-side registry this
+    validator compares against, in CI and locally.
+    """
+    workflow_path = repo_root / _CI_WORKFLOW
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = (workflow.get("jobs") or {}).get(_PIN_JOB_NAME)
+    if not isinstance(job, dict):
+        raise ValueError(f"{workflow_path} has no {_PIN_JOB_NAME!r} job")
+    for step in job.get("steps") or []:
+        if not isinstance(step, dict) or step.get("name") != _PIN_STEP_NAME:
+            continue
+        match = re.search(r"--branch\s+(\S+)", str(step.get("run", "")))
+        if match is None:
+            raise ValueError(
+                f"{workflow_path} step {_PIN_STEP_NAME!r} carries no --branch pin"
+            )
+        return match.group(1)
+    raise ValueError(
+        f"{workflow_path} job {_PIN_JOB_NAME!r} has no {_PIN_STEP_NAME!r} step"
+    )
+
+
+def _git_show(omniclaude_root: Path, rev: str, relative: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(omniclaude_root), "show", f"{rev}:{relative.as_posix()}"],
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        text=True,
+        timeout=_GIT_TIMEOUT_S,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise FileNotFoundError(
+            f"omniclaude checkout {omniclaude_root} cannot show {relative} at pinned "
+            f"revision {rev!r}: {result.stderr.strip()}. Fetch the pinned tag "
+            f"(git -C {omniclaude_root} fetch --tags) -- the drift check never "
+            "falls back to the checkout's own HEAD."
+        )
+    return result.stdout
+
+
+@contextmanager
+def pinned_omniclaude_tree(omniclaude_root: Path, rev: str) -> Iterator[Path]:
+    """Yield a temp tree holding the two hook files as they are at ``rev``.
+
+    A checkout without a ``.git`` entry has no revision to read, so its working
+    tree is yielded as-is; any git checkout is read through ``git show`` so its
+    HEAD, branch and dirty files cannot reach the comparison.
+    """
+    if not (omniclaude_root / ".git").exists():
+        yield omniclaude_root
+        return
+    with tempfile.TemporaryDirectory(prefix="omniclaude-pinned-") as tmp:
+        tree = Path(tmp)
+        for relative in (_OMNICLAUDE_EVENT_REGISTRY, _OMNICLAUDE_TOPICS):
+            destination = tree / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(
+                _git_show(omniclaude_root, rev, relative), encoding="utf-8"
+            )
+        yield tree
 
 
 # =============================================================================
@@ -560,12 +650,20 @@ def validate_event_registry_drift(
     omniclaude_root: Path,
     market_registry_path: Path,
     baseline_path: Path,
+    omniclaude_rev: str | None = None,
 ) -> CombinedDriftReport:
-    """Validate that the omniclaude hook registry matches the omnimarket YAML."""
-    source = load_omniclaude_registrations(
-        omniclaude_root / _OMNICLAUDE_EVENT_REGISTRY,
-        omniclaude_root / _OMNICLAUDE_TOPICS,
-    )
+    """Validate that the omniclaude hook registry matches the omnimarket YAML.
+
+    The hook side is read at ``omniclaude_rev`` (default: the tag pinned in
+    ``ci.yml``), so the verdict is a function of this repository's pin and not
+    of the omniclaude checkout's HEAD (OMN-20001).
+    """
+    rev = omniclaude_rev or read_pinned_omniclaude_rev(repo_root)
+    with pinned_omniclaude_tree(omniclaude_root, rev) as tree:
+        source = load_omniclaude_registrations(
+            tree / _OMNICLAUDE_EVENT_REGISTRY,
+            tree / _OMNICLAUDE_TOPICS,
+        )
     registry = load_market_registrations(repo_root / market_registry_path)
     baseline = load_baseline(repo_root / baseline_path)
 
@@ -619,6 +717,11 @@ def main(argv: list[str] | None = None) -> int:
         default=_DEFAULT_MARKET_REGISTRY,
     )
     parser.add_argument("--baseline", type=Path, default=_DEFAULT_BASELINE)
+    parser.add_argument(
+        "--omniclaude-rev",
+        default=None,
+        help="omniclaude revision to read (default: the tag pinned in ci.yml)",
+    )
     args = parser.parse_args(argv)
 
     repo_root = resolve_repo_root(args.repo_root)
@@ -631,6 +734,7 @@ def main(argv: list[str] | None = None) -> int:
         omniclaude_root=omniclaude_root,
         market_registry_path=args.market_registry,
         baseline_path=args.baseline,
+        omniclaude_rev=args.omniclaude_rev,
     )
 
     if report.has_drift:
