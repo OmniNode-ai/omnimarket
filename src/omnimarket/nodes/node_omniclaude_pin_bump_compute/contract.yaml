@@ -7,11 +7,11 @@
 # that lands through the consumer's own checks. This is the pure half of that
 # PR: the ci.yml text and the released version in, the text with every omniclaude
 # pin moved (or a typed refusal) out. Directly invoked by the omniclaude-pin-bump
-# workflow; it declares no event_bus topics.
+# workflow; it declares empty event_bus topics and a typed local invocation.
 name: "node_omniclaude_pin_bump_compute"
 lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
-runtime_profiles: [main]
+runtime_profiles: []
 contract_version:
   major: 1
   minor: 0
@@ -34,6 +34,7 @@ handler:
   module: "omnimarket.nodes.node_omniclaude_pin_bump_compute.handlers.handler_omniclaude_pin_bump"
   class: "HandlerOmniclaudePinBump"
   input_model: "omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump.ModelOmniclaudePinBumpRequest"
+  output_model: "omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump.ModelOmniclaudePinBumpResult"
 
 handler_routing:
   routing_strategy: "operation_match"
@@ -44,10 +45,17 @@ handler_routing:
         name: "HandlerOmniclaudePinBump"
         module: "omnimarket.nodes.node_omniclaude_pin_bump_compute.handlers.handler_omniclaude_pin_bump"
 
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "The omniclaude-pin-bump workflow invokes the local node module with ci.yml and the released version."
+
 descriptor:
   node_archetype: compute
   purity: pure
-  runtime_profiles: [main]
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 5000
 
@@ -57,7 +65,7 @@ replay:
   deterministic: true
 
 metadata:
-  transport_type: inmemory
+  transport_type: local
   description: "Omniclaude pin bump COMPUTE - moves the pin on a producer release (OMN-20001, no external transport)"
   author: "OmniNode Team"
   created: "2026-10-13"

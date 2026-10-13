@@ -41,7 +41,14 @@ def test_contract_names_the_node_and_declares_no_bus_topics(
 ) -> None:
     assert contract["name"] == NODE_NAME
     assert contract["node_type"] == "COMPUTE_GENERIC"
-    assert "event_bus" not in contract
+    assert contract["event_bus"] == {
+        "subscribe_topics": [],
+        "publish_topics": [],
+    }
+    assert contract["metadata"]["transport_type"] == "local"
+    assert contract["runtime_dispatch"]["external_trigger"]
+    assert contract["runtime_profiles"] == []
+    assert contract["descriptor"]["runtime_profiles"] == []
     assert contract["descriptor"]["purity"] == "pure"
 
 
