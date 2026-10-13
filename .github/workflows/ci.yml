@@ -535,6 +535,11 @@ jobs:
       # connected. SYNC with pre-commit hook 'red-ci-event-chain'.
       - name: red CI bus chain stays connected (OMN-20730)
         run: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
+      # OMN-20914: the gh shim refuses a lane's gh write only while the contract
+      # operations and the onex scm verb table it reads stay readable and served
+      # (ruling 2026-10-10T18:32:46Z). SYNC with pre-commit hook 'gh-shim-coverage-table'.
+      - name: gh shim coverage table stays served (OMN-20914)
+        run: uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py tests/unit/handlers/scm/test_onex_scm_command.py::test_every_contract_operation_has_exactly_one_verb tests/unit/handlers/scm/test_onex_scm_command.py::test_no_refused_verb_is_also_served -q -p no:randomly --no-cov
       # OMN-20001: the drift check reads omniclaude at the pin, a pin move needs the
       # integration step, both drift directions stay strict, and the two OMN-13146
       # tests stay present and uninverted. SYNC with pre-commit hook
