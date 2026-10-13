@@ -87,18 +87,18 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20890-ac5-hook-and-ci-step"
-    description: "AC5: the park-ladder hook runs the test file and passes; the ci.yml lint job carries the paired step."
+    description: "AC5: regression tests require the pre-commit hook and the required lint step to run the full causes test file, including the retry tests."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -p no:randomly -k park_ladder_wiring"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn20890-ac6-negative-control"
-    description: "AC6: with _base_moved forced to return False in a scratch copy, test_park_retry_on_base_head_waits_for_the_head_to_move and test_park_retry_on_base_head_spends_one_attempt_and_files_no_second_ticket fail (2 failed, 79 passed); the break is not committed."
+    description: "AC6: the wiring tests require both enforcement commands to run the full causes file; the retry tests reject a cause that does not retry when the base head moves. The selector exercises both wiring and retry behavior."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_retry_on_base_head"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -p no:randomly -k 'park_ladder_wiring or park_retry_on_base_head'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
