@@ -857,15 +857,16 @@ repos:
 
       # OMN-20287: no new deployment fact (backend, endpoint, model name, secret
       # ref, provider, tier or per-class order) in the packaged routing configs.
-      # Routing decisions belong in a deployment overlay. Same entry point as
-      # the `Deployment Fact Gate` CI job; here the commit being made is judged
-      # against HEAD, which is the shrink-only baseline.
+      # OMN-20601: nor a new code path that chooses a route, so any python under
+      # src/omnimarket triggers it. Routing decisions belong in a deployment
+      # overlay. Same entry point as the `Deployment Fact Gate` CI job; here the
+      # commit being made is judged against HEAD, which is the shrink-only baseline.
       - id: deployment-fact-gate
         name: No new deployment fact in packaged routing configs
         language: system
         entry: uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect
         pass_filenames: false
-        files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/nodes/node_deployment_fact_gate_effect/.*)$
+        files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/.*\.py)$
         stages: [pre-commit]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
@@ -1419,6 +1420,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20910: a review voter's model is declared only in the contract
+      # overlay. Refuses any vars.*MODEL* reference and any model id literal in
+      # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
+      # comes from the overlay (OMN-20910)".
+      - id: review-voter-model-from-overlay
+        name: Review voter model comes from the overlay (OMN-20910)
+        language: system
+        entry: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+        files: ^(\.github/workflows/[^/]+\.ya?ml|tests/ci/test_hostile_reviewer_voters_overlay_omn20910\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
       # lint step "No Anthropic key value in a workflow (OMN-20967)".
       - id: anthropic-key-prefix-workflows
@@ -1460,6 +1473,43 @@ repos:
         language: system
         entry: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
         files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_every_criterion_bound\.py$|tests/unit/nodes/node_dod_verify/omn_20858_ticket_reader\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20001: the event registry drift check reads omniclaude at the pinned
+      # rev, a pin move needs the integration step, both drift directions stay
+      # strict, and the two OMN-13146 tests stay present and uninverted.
+      # Check-only. SYNC with the ci.yml lint step "Event registry drift reads the
+      # pinned omniclaude (OMN-20001)".
+      - id: omniclaude-pin-drift
+        name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        language: system
+        entry: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_gate\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20730: the red CI triage model passes its design config, each property
+      # fails on a one-knob mutation, the TLC results match the committed model,
+      # configs and outputs, and VERDICT.txt approves the model's digest.
+      # Check-only. SYNC with the ci.yml lint step "Red CI triage model and
+      # verdict (OMN-20730)".
+      - id: ci-red-triage-model
+        name: Red CI triage model and verdict (OMN-20730)
+        language: system
+        entry: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/ci_red_triage/|tests/formal/(test_ci_red_triage_model\.py|ci_red_triage_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20601: routing decisions come from overlays, never from omnimarket code.
+      # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
+      # precedence and routing-in-code ratchet (OMN-20601)".
+      - id: routing-sources-omn20601
+        name: Routing sources, overlay precedence and routing-in-code ratchet (OMN-20601)
+        language: system
+        entry: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/.*\.py|src/omnimarket/(configs/.*|model_policy\.yaml|data/model_registry/.*)|tests/test_routing_sources_omn20601\.py|tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601\.py|tests/fixtures/routing_sources/.*)$
         pass_filenames: false
         stages: [pre-commit]
 

@@ -34,6 +34,7 @@ import asyncio
 import fcntl
 import json
 import os
+import socket
 import sqlite3
 import sys
 from collections.abc import Iterator
@@ -44,6 +45,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import click
+import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
@@ -397,6 +399,83 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     return None
 
 
+#: OMN-21012. The lab host table is a deployment fact kept outside this
+#: repository, named by ONEX_LAB_RUN_HOSTS (the variable ``onex delegate`` and
+#: the lab placement read). Without it this machine is off the lab and a key
+#: is registered with no host binding.
+_LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
+#: A remote lane declares its host because its namespace may not carry the
+#: host's own name (the same two variables ``onex delegate`` reads).
+_LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
+
+
+def _lab_host_table() -> Path | None:
+    """The lab host table this machine reads, or ``None`` off the lab."""
+    configured = os.environ.get(_LAB_HOSTS_ENV, "").strip()
+    return Path(configured) if configured else None
+
+
+def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
+    """Each row's ``(name, target)``, or a refusal naming the table."""
+    try:
+        document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise click.ClickException(
+            f"the lab host table {table} could not be read ({exc}); nothing was stored."
+        ) from exc
+    rows = document.get("hosts") if isinstance(document, dict) else None
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and row.get("name") for row in rows
+    ):
+        raise click.ClickException(
+            f"the lab host table {table} has no hosts with a name; nothing was stored."
+        )
+    return [(str(row["name"]), str(row.get("target") or "")) for row in rows]
+
+
+def _resolve_bound_host(declared: str | None) -> str | None:
+    """The lab host a registered key is bound to (OMN-21012), or ``None``.
+
+    Operator ruling 2026-10-11T17:58:45Z: each Claude account's key is bound to
+    the machine the account lives on. ``--host`` names that machine and must be
+    a row of the lab host table. Without it, the registering machine's own row
+    is used: the declared lane host first, else the short hostname matched to a
+    row's name or target. Off the lab (no table), or on a machine no row names,
+    the key is unbound and usable from any host, as before.
+    """
+    table = _lab_host_table()
+    if declared is not None:
+        host = declared.strip()
+        if table is None:
+            raise click.ClickException(
+                f"--host {declared!r} cannot be checked: there is no lab host table "
+                f"on this machine (set {_LAB_HOSTS_ENV}); nothing was stored."
+            )
+        names = [name for name, _target in _lab_host_rows(table)]
+        if host not in names:
+            raise click.ClickException(
+                f"--host {declared!r} is not a host in the lab host table "
+                f"({', '.join(names)}); nothing was stored."
+            )
+        return host
+    if table is None:
+        return None
+    rows = _lab_host_rows(table)
+    row_names = {name for name, _target in rows}
+    for env in _LANE_HOST_ENVS:
+        lane_host = os.environ.get(env, "").strip()
+        if lane_host:
+            if lane_host not in row_names:
+                raise click.ClickException(
+                    f"{env}={lane_host!r} is not a host in the lab host table; "
+                    "pass --host or fix the declaration. Nothing was stored."
+                )
+            return lane_host
+    hostname = socket.gethostname().split(".")[0]
+    matches = [name for name, target in rows if hostname in (name, target)]
+    return matches[0] if len(matches) == 1 else None
+
+
 @secret_group.command("register-tenant-key")
 @click.argument("provider")
 @click.option("--tenant", required=True, help="Tenant that owns this provider key.")
@@ -417,6 +496,16 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
         "keys all expire on January 1; any other date is stored with a warning."
     ),
 )
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "The lab host whose Claude account owns this key (a lab host table row, "
+        "e.g. h201). Work sent from that host is the only work that spends it. "
+        "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
+        "the lab the key is unbound."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
@@ -424,11 +513,13 @@ def register_tenant_key(
     plan: str | None,
     model_option: str | None,
     expires: str | None,
+    host: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
     expires_at = _parse_expires(expires)
+    bound_host = _resolve_bound_host(host)
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -440,6 +531,7 @@ def register_tenant_key(
             plan=plan,
             model=model_option,
             expires_at=expires_at,
+            bound_host=bound_host,
         )
         response = asyncio.run(
             register_inference_credential(
@@ -479,6 +571,8 @@ def register_tenant_key(
         )
     if response.expiry_warning is not None:
         shown["expiry_warning"] = response.expiry_warning.value
+    if response.bound_host is not None:
+        shown["bound_host"] = response.bound_host
     click.echo(json.dumps(shown))
 
 

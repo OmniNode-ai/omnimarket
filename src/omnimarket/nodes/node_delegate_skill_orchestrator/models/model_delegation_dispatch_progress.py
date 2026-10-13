@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.nodes.node_llm_delegation_call_effect import (
@@ -24,6 +26,8 @@ DispatchStage = Literal[
     "quality_gate",
 ]
 
+logger = logging.getLogger(__name__)
+
 
 class ModelDelegationDispatchProgress(BaseModel):
     """Shared by one handler and its wait_for child, never by unrelated runs.
@@ -37,6 +41,7 @@ class ModelDelegationDispatchProgress(BaseModel):
 
     stage: DispatchStage = "dispatch"
     cancelled_stage: DispatchStage | None = None
+    failed_stage: DispatchStage | None = None
     # The port's own ladder of settled attempts, in the shape it returns on its
     # terminal. The port appends to this list in place.
     attempts: list[dict[str, object]] = Field(default_factory=list)
@@ -54,3 +59,24 @@ class ModelDelegationDispatchProgress(BaseModel):
     secret_ref: str | None = None
     escalation_count: int = 0
     cost_usd: float = 0.0
+
+    # The handler and its wait_for child share this request-local object. A
+    # ContextVar assigned by the child alone would not reach the handler when
+    # it builds a timeout/shutdown terminal. Never serialize the callback.
+    _run_step_finalizer: Callable[[str, str], None] | None = PrivateAttr(default=None)
+
+    def bind_run_step_finalizer(self, finalizer: Callable[[str, str], None]) -> None:
+        self._run_step_finalizer = finalizer
+
+    def finalize_run_steps(self, cause: str, reason: str) -> None:
+        finalizer = self._run_step_finalizer
+        self._run_step_finalizer = None
+        if finalizer is not None:
+            try:
+                finalizer(cause, reason)
+            except Exception:
+                # Trace delivery must never replace the original failed
+                # delegation with a second failure from its reporting path.
+                logger.warning(
+                    "interrupted run trace could not be finalized", exc_info=True
+                )

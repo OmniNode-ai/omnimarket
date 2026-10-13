@@ -25,6 +25,22 @@ def _git(*args: str) -> str:
     ).stdout.strip()
 
 
+# The receipt gate admits a release cut only while its diff against the merge base
+# stays inside these root paths, so a cut cannot carry a contracts/ file.
+_RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
+
+
+def _is_release_cut(sha: str, base: str) -> bool:
+    """Whether the diff against the merge base is a root changelog plus optional pins."""
+    try:
+        merge_base = _git("merge-base", base, sha)
+        listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    paths = {path for path in listing.split("\0") if path}
+    return "CHANGELOG.md" in paths and paths <= _RELEASE_CUT_PATHS
+
+
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
@@ -43,6 +59,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         # CI's explicit PR title still must cite one, as receipt-gate requires.
         return ()
     failures = []
+    release_cut: bool | None = None
     for ticket in tickets:
         path = f"contracts/{ticket}.yaml"
         exists = subprocess.run(
@@ -54,6 +71,11 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         # Unreadable objects never count as a present contract.
         text = None if exists.returncode else _git("show", f"{sha}:{path}")
         failure = contract_prerequisite(ticket, text)
+        if failure and text is None:
+            if release_cut is None:
+                release_cut = _is_release_cut(sha, base)
+            if release_cut:
+                continue
         if failure:
             failures.append(failure)
     return tuple(failures)

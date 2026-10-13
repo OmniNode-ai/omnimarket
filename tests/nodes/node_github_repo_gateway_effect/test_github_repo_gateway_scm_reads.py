@@ -197,6 +197,46 @@ def test_run_jobs_returns_every_attempt_with_steps() -> None:
     assert result.truncated is False
 
 
+def test_run_jobs_steps_carry_when_each_started_and_completed() -> None:
+    """The published-board reader dates a publish by its upload step's ``completed_at``."""
+    path = f"{_BASE}/actions/runs/{_RUN}/jobs?filter=all&per_page=100&page=1"
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.RUN_JOBS, run_id=_RUN),
+        [
+            JsonExchange(
+                get(path),
+                json_response(
+                    {
+                        "total_count": 1,
+                        "jobs": [run_job(1, attempt=1, conclusion="success")],
+                    }
+                ),
+            )
+        ],
+    )
+    assert isinstance(result, ModelRunJobsResult)
+    steps = result.jobs[0].steps
+    assert [(s.started_at, s.completed_at) for s in steps] == [
+        ("2026-10-10T18:01:00Z", "2026-10-10T18:01:02Z"),
+        ("2026-10-10T18:01:02Z", "2026-10-10T18:09:00Z"),
+    ]
+
+
+def test_run_jobs_step_that_has_not_run_has_no_timestamps() -> None:
+    path = f"{_BASE}/actions/runs/{_RUN}/jobs?filter=all&per_page=100&page=1"
+    job = run_job(1, attempt=1, conclusion=None)
+    job["steps"] = [
+        {"name": "Queued step", "status": "queued", "conclusion": None, "number": 1}
+    ]
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.RUN_JOBS, run_id=_RUN),
+        [JsonExchange(get(path), json_response({"total_count": 1, "jobs": [job]}))],
+    )
+    assert isinstance(result, ModelRunJobsResult)
+    step = result.jobs[0].steps[0]
+    assert (step.started_at, step.completed_at) == (None, None)
+
+
 # --- job_log_tail -----------------------------------------------------------------
 
 

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Entry point of the deployment-fact gate (OMN-20287).
+"""Entry point of the deployment-fact gate (OMN-20287) and its routing-in-code check (OMN-20601).
 
     uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect [--base REF | --no-base] [--inventory]
 
@@ -10,8 +10,8 @@ merge base. ``--no-base`` judges the tree against no baseline and so lists
 every deployment fact the packaged configs still carry; ``--inventory`` prints
 that list on any run.
 
-Exit 0 when nothing new is found, 1 when a new deployment fact or undeclared
-key is found, 2 when the configs or the base revision cannot be read.
+Exit 0 when nothing new is found, 1 when a new deployment fact, undeclared
+key or route-selecting comparison in code is found, 2 when the configs or the base revision cannot be read.
 """
 
 from __future__ import annotations
@@ -36,6 +36,14 @@ _REMEDY = (
     "(omnimarket.models.delegation.model_deployment_fact_marker). A new key must be "
     "declared on the file's typed model, and marked with deployment_fact() when it "
     "records a deployment's choice. The base revision is the baseline; it only shrinks."
+)
+
+
+_ROUTING_IN_CODE_REMEDY = (
+    "A code path that compares a routing selector (task class, tier, backend, "
+    "provider, rung, harness or model name) with a literal chooses a route in code. "
+    "Routing decisions come from overlays, never from omnimarket code (ruling "
+    "2026-10-10T17:54:30Z): read the choice from the deployment overlay instead."
 )
 
 
@@ -64,7 +72,22 @@ def _render(result: ModelDeploymentFactGateResult, inventory: bool) -> str:
         )
         for key in result.new_undeclared_keys:
             lines.append(f"  {key.file_name} {key.path}")
-    if not result.passed:
+    if inventory:
+        lines.append(
+            f"route-selecting comparisons in code: {len(result.routing_branch_inventory)}"
+        )
+        lines.extend(f"  {key}" for key in result.routing_branch_inventory)
+    if result.new_routing_branches:
+        lines.append(
+            f"new route-selecting comparison(s) against base {result.base_ref}: "
+            f"{len(result.new_routing_branches)}"
+        )
+        for branch in result.new_routing_branches:
+            lines.append(
+                f"  {branch.fingerprint} ({branch.base_count} -> {branch.head_count})"
+            )
+        lines.append(_ROUTING_IN_CODE_REMEDY)
+    if result.new_facts or result.new_undeclared_keys:
         lines.append(_REMEDY)
     return "\n".join(lines)
 

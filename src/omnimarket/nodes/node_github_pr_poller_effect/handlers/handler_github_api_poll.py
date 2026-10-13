@@ -25,15 +25,20 @@ Evaluation order (first match wins):
 Non-blocking Design
 -------------------
 The handler uses the one omnimarket ``GitHubHttpTransport``. GitHub API errors are logged and surfaced in
-``ModelGitHubPollerResult.errors`` rather than raising — the poller must not
+``ModelHandlerOutput.logs`` rather than raising — the poller must not
 block the runtime tick loop.
 
 Handler Purity
 --------------
-The handler does NOT publish events directly. Instead it returns
-``ModelGitHubPollerResult.pending_events`` — a list of event payloads
-for the node shell / runtime to publish. This follows the ONEX contract
-that handlers must not access the event bus.
+The handler does NOT publish events directly. It returns
+``ModelHandlerOutput.for_effect(events=...)`` carrying one
+``ModelGitHubPrStatusPollEvent`` per open PR, and the runtime publishes exactly
+those events to the contract's publish topic. A tick that polls nothing (no
+configured repos, or every repo inside ``poll_interval_seconds``) returns no
+events, so nothing is published. The poll-cycle counts and errors go to the
+output's ``metrics`` and ``logs``, never onto the topic. The runtime
+publishes any bare model a handler returns, and the cycle summary used to reach
+onex.evt.github.pr-status.v1 once per tick.
 
 Related Tickets:
     - OMN-2656: Phase 2 — Effect Nodes & CLIs (omnibase_infra)
@@ -47,9 +52,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import yaml
+from omnibase_core.enums.events.enum_triage_state import EnumTriageState
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.types import JsonType
 from omnibase_infra.enums import (
     EnumHandlerType,
@@ -69,11 +76,13 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_config import (
     ModelGitHubPollerConfig,
 )
-from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_result import (
-    ModelGitHubPollerResult,
+from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_pr_status_poll_event import (
+    ModelGitHubPrStatusPollEvent,
 )
 
 logger = logging.getLogger(__name__)
+
+HANDLER_ID_GITHUB_API_POLL: str = "github-api-poll-handler"
 
 
 class ProtocolGitHubTriageClient(Protocol):
@@ -102,7 +111,11 @@ def _coerce_correlation_id(value: object) -> UUID | None:
 _BLOCKING_LABELS = frozenset({"blocked", "do-not-merge", "wip"})
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
-__all__ = ["HandlerGitHubApiPoll", "compute_triage_state"]
+__all__ = [
+    "HANDLER_ID_GITHUB_API_POLL",
+    "HandlerGitHubApiPoll",
+    "compute_triage_state",
+]
 
 
 def compute_triage_state(
@@ -225,22 +238,22 @@ class HandlerGitHubApiPoll:
 
     Fetches open PRs from the GitHub REST API for each configured repository,
     classifies their triage state via ``compute_triage_state``, and returns
-    event payloads in ``ModelGitHubPollerResult.pending_events`` for the
-    node shell / runtime to publish.
+    one ``ModelGitHubPrStatusPollEvent`` per open PR in
+    ``ModelHandlerOutput.events`` for the runtime to publish.
 
     Handler Purity:
-        This handler does NOT publish events directly. All event payloads are
-        returned in ``ModelGitHubPollerResult.pending_events`` for the runtime
-        to publish. Handlers must not access the event bus directly.
+        This handler does NOT publish events directly. The runtime publishes
+        ``ModelHandlerOutput.events`` and nothing else; an empty tuple
+        publishes nothing. Handlers must not access the event bus directly.
 
     Throttling:
         The handler tracks the last poll time per repo (``self._last_polled``)
         and skips repos whose ``poll_interval_seconds`` has not elapsed yet.
 
     Non-blocking contract:
-        Errors from individual repo/PR lookups are collected in
-        ``ModelGitHubPollerResult.errors`` (sanitized) rather than raised.
-        The handler always returns a result, even on partial failure.
+        Errors from individual repo/PR lookups are logged and collected in
+        ``ModelHandlerOutput.logs`` (sanitized) rather than raised. The
+        handler always returns an output, even on partial failure.
 
     Args:
         publish_topic: Override of the contract-declared publish topic.
@@ -280,7 +293,7 @@ class HandlerGitHubApiPoll:
         # Per-repo throttle tracker — maps repo identifier to last poll time
         self._last_polled: dict[str, datetime] = {}
 
-    async def handle(self, request: ModelRuntimeTick) -> ModelGitHubPollerResult:
+    async def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
         """Execute one poll cycle for all configured repositories.
 
         Repos whose ``poll_interval_seconds`` has not elapsed since the last
@@ -292,27 +305,22 @@ class HandlerGitHubApiPoll:
                 construction time; a tick carries none.
 
         Returns:
-            ``ModelGitHubPollerResult`` with counts, pending events, and any
-            non-fatal errors.
+            ``ModelHandlerOutput`` for an EFFECT whose ``events`` are the PR
+            status events to publish (empty when nothing was polled), with the
+            cycle counts in ``metrics`` and non-fatal errors in ``logs``.
         """
         config = self._config
         incoming_correlation_id = _coerce_correlation_id(request.correlation_id)
 
         errors: list[str] = []
-        pending_events: list[JsonType] = []
+        events: list[ModelGitHubPrStatusPollEvent] = []
         repos_polled: list[str] = []
         prs_polled = 0
         now = datetime.now(tz=UTC)
         interval = timedelta(seconds=max(0, config.poll_interval_seconds))
 
         if not config.repos:
-            return ModelGitHubPollerResult(
-                events_published=0,
-                repos_polled=repos_polled,
-                prs_polled=prs_polled,
-                errors=errors,
-                pending_events=pending_events,
-            )
+            return self._output(incoming_correlation_id, events, errors, 0, 0)
 
         try:
             token = self._github_token or await _resolve_github_token()
@@ -330,13 +338,7 @@ class HandlerGitHubApiPoll:
             )
             logger.warning("%s", sanitized)
             errors.append(sanitized)
-            return ModelGitHubPollerResult(
-                events_published=0,
-                repos_polled=repos_polled,
-                prs_polled=prs_polled,
-                errors=errors,
-                pending_events=pending_events,
-            )
+            return self._output(incoming_correlation_id, events, errors, 0, 0)
 
         for repo in config.repos:
             # Throttle: skip if interval has not elapsed
@@ -355,7 +357,7 @@ class HandlerGitHubApiPoll:
                 repos_polled.append(repo)
                 prs_polled += repo_prs
                 errors.extend(repo_errors)
-                pending_events.extend(pr_events)
+                events.extend(pr_events)
             except Exception as exc:
                 error_ctx = ModelInfraErrorContext.with_correlation(
                     correlation_id=incoming_correlation_id,
@@ -370,12 +372,30 @@ class HandlerGitHubApiPoll:
                 logger.warning("%s", sanitized)
                 errors.append(sanitized)
 
-        return ModelGitHubPollerResult(
-            events_published=0,  # Runtime publishes from pending_events
-            repos_polled=repos_polled,
-            prs_polled=prs_polled,
-            errors=errors,
-            pending_events=pending_events,
+        return self._output(
+            incoming_correlation_id, events, errors, len(repos_polled), prs_polled
+        )
+
+    @staticmethod
+    def _output(
+        correlation_id: UUID | None,
+        events: list[ModelGitHubPrStatusPollEvent],
+        errors: list[str],
+        repos_polled: int,
+        prs_polled: int,
+    ) -> ModelHandlerOutput[None]:
+        """Build the EFFECT output: the events to publish, nothing else."""
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=uuid4(),
+            correlation_id=correlation_id or uuid4(),
+            handler_id=HANDLER_ID_GITHUB_API_POLL,
+            events=tuple(events),
+            metrics={
+                "repos_polled": float(repos_polled),
+                "prs_polled": float(prs_polled),
+                "events": float(len(events)),
+            },
+            logs=tuple(errors),
         )
 
     async def _poll_repo(
@@ -384,14 +404,14 @@ class HandlerGitHubApiPoll:
         repo: str,
         stale_hours: int,
         correlation_id: UUID | None = None,
-    ) -> tuple[list[JsonType], int, list[str]]:
+    ) -> tuple[list[ModelGitHubPrStatusPollEvent], int, list[str]]:
         """Poll all open PRs for a single repository with pagination.
 
         Returns:
-            Tuple of (event_payloads, total_prs_polled, errors).
+            Tuple of (events, total_prs_polled, errors).
         """
         errors: list[str] = []
-        pr_events: list[JsonType] = []
+        pr_events: list[ModelGitHubPrStatusPollEvent] = []
         all_prs = await asyncio.to_thread(client.fetch_open_prs_for_triage, repo)
 
         for pr in all_prs:
@@ -403,19 +423,21 @@ class HandlerGitHubApiPoll:
                     cast("dict[str, JsonType]", pr), stale_hours
                 )
                 # Topic declared in contract.yaml event_bus.publish_topics
-                event_payload: JsonType = {
-                    "event_type": self._publish_topic,
-                    "repo": repo,
-                    "pr_number": pr_number,
-                    "triage_state": triage,
-                    "title": str(pr.get("title", "")),
-                    # is_draft mirrors the pr["draft"] read already used by
-                    # compute_triage_state above -- OMN-14394 seam gap fix,
-                    # matches ModelOpenPrSummary.is_draft (omnimarket reader).
-                    "is_draft": pr.get("draft") is True,
-                    "partition_key": f"{repo}:{pr_number}",
-                }
-                pr_events.append(event_payload)
+                pr_events.append(
+                    ModelGitHubPrStatusPollEvent(
+                        event_type=self._publish_topic,
+                        correlation_id=correlation_id,
+                        repo=repo,
+                        pr_number=pr_number,
+                        triage_state=EnumTriageState(triage),
+                        title=str(pr.get("title", "")),
+                        # is_draft mirrors the pr["draft"] read already used by
+                        # compute_triage_state above -- OMN-14394 seam gap fix,
+                        # matches ModelOpenPrSummary.is_draft (omnimarket reader).
+                        is_draft=pr.get("draft") is True,
+                        partition_key=f"{repo}:{pr_number}",
+                    )
+                )
             except Exception as exc:
                 error_ctx = ModelInfraErrorContext.with_correlation(
                     correlation_id=correlation_id,

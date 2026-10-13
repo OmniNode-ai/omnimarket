@@ -66,7 +66,7 @@ async def test_github_pr_poller_contract_is_effects_owned_and_tick_invocable() -
     handler = HandlerGitHubApiPoll()
     result = await handler.handle(_runtime_tick())
 
-    assert result.errors == []
-    assert result.repos_polled == []
-    assert result.prs_polled == 0
-    assert result.pending_events == []
+    assert result.logs == ()
+    assert result.metrics["repos_polled"] == 0
+    assert result.metrics["prs_polled"] == 0
+    assert result.events == ()

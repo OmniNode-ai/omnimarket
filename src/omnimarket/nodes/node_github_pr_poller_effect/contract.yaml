@@ -27,7 +27,7 @@ node_type: "EFFECT_GENERIC"
 runtime_profiles:
   - "effects"
 description: >
-  Effect node that polls the GitHub REST API for open pull-request triage state across configured repositories. Triggered by the runtime tick intent; checks elapsed time against poll_interval_seconds before calling the API. Publishes one ModelGitHubPRStatusEvent per open PR to onex.evt.github.pr-status.v1 with partition key "{repo}:{pr_number}", including GitHub's draft flag as is_draft.
+  Effect node that polls the GitHub REST API for open pull-request triage state across configured repositories. Triggered by the runtime tick intent; checks elapsed time against poll_interval_seconds before calling the API. Publishes one ModelGitHubPRStatusEvent per open PR to onex.evt.github.pr-status.v1 with partition key "{repo}:{pr_number}", including GitHub's draft flag as is_draft. A tick that polls nothing (no configured repos, or every repo inside poll_interval_seconds) publishes nothing.
 
 # Input subscriptions: this is the scheduling trigger
 input_subscriptions:
@@ -44,9 +44,9 @@ input_model:
   module: "omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_config"
   description: "Configuration model for the GitHub PR poller (repos, interval, token env var)."
 output_model:
-  name: "ModelGitHubPollerResult"
-  module: "omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_result"
-  description: "Result model containing events published and any errors encountered."
+  name: "ModelGitHubPrStatusPollEvent"
+  module: "omnimarket.nodes.node_github_pr_poller_effect.models.model_github_pr_status_poll_event"
+  description: "One PR status event per open PR polled, returned in ModelHandlerOutput.events; the only thing published to onex.evt.github.pr-status.v1."
 handler_routing:
   routing_strategy: "operation_match"
   handlers:
@@ -61,10 +61,7 @@ handler_routing:
         module: "omnimarket.nodes.node_github_pr_poller_effect.handlers.handler_github_api_poll"
       description: "Poll GitHub API for open PR triage state across configured repos"
       output_fields:
-        - events_published
-        - errors
-        - repos_polled
-        - prs_polled
+        - events
 error_handling:
   retry_policy:
     max_retries: 3
@@ -105,10 +102,7 @@ io_operations:
       - stale_threshold_hours
       - github_token_env_var
     output_fields:
-      - events_published
-      - repos_polled
-      - prs_polled
-      - errors
+      - events
 # The GitHub token is resolved at the effect boundary from this declared ref via
 # the canonical secret-store resolver; no raw environment read.
 secrets:
@@ -169,33 +163,42 @@ definitions:
         description: "Environment variable name containing the GitHub token"
         default: "GITHUB_TOKEN"
     required: []
-  ModelGitHubPollerResult:
+  ModelGitHubPrStatusPollEvent:
     type: object
-    description: "Result from one poll cycle"
+    description: "ModelGitHubPRStatusEvent for one open PR, as the poller observes it"
     frozen: true
     extra: "forbid"
     properties:
-      events_published:
+      event_type:
+        type: string
+        description: "The topic this event is published to"
+        default: "onex.evt.github.pr-status.v1"
+      repo:
+        type: string
+        description: "Repository in {owner}/{name} format"
+      pr_number:
         type: integer
-        description: "Number of ModelGitHubPRStatusEvent instances published"
-        default: 0
-        ge: 0
-      repos_polled:
-        type: array
-        item_type: string
-        description: "Repository identifiers polled in this cycle"
-        default_factory: "list"
-      prs_polled:
-        type: integer
-        description: "Total number of PRs polled"
-        default: 0
-        ge: 0
-      errors:
-        type: array
-        item_type: string
-        description: "Error messages encountered during polling (non-fatal)"
-        default_factory: "list"
-    required: []
+        description: "Pull request number"
+        ge: 1
+      triage_state:
+        type: string
+        description: "One of the 8 triage states"
+      title:
+        type: string
+        description: "Pull request title"
+        default: ""
+      is_draft:
+        type: boolean
+        description: "GitHub's draft flag for the pull request"
+        default: false
+      partition_key:
+        type: string
+        description: "{repo}:{pr_number}"
+    required:
+      - repo
+      - pr_number
+      - triage_state
+      - partition_key
 health_check:
   enabled: true
   endpoint: "/health"

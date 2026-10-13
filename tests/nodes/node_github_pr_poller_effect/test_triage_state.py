@@ -277,7 +277,7 @@ async def test_handler_runtime_tick_uses_contract_config_without_polling() -> No
 
     result = await handler.handle(tick)
 
-    assert result.repos_polled == []
-    assert result.prs_polled == 0
-    assert result.pending_events == []
-    assert result.errors == []
+    assert result.metrics["repos_polled"] == 0
+    assert result.metrics["prs_polled"] == 0
+    assert result.events == ()
+    assert result.logs == ()

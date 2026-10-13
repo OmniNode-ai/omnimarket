@@ -371,6 +371,8 @@ class ModelJobStep(BaseModel):
     name: str
     status: str
     conclusion: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
 
 
 class ModelRunJob(BaseModel):

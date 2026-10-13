@@ -491,6 +491,9 @@ jobs:
       # OMN-21002: paired with the imperative-contract-guard-caller hook.
       - name: Imperative guard caller regression (OMN-21002)
         run: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+      # OMN-20910: paired with the review-voter-model-from-overlay hook.
+      - name: Review voter model comes from the overlay (OMN-20910)
+        run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
       # OMN-20967: paired with the anthropic-key-prefix-workflows hook.
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
@@ -522,6 +525,24 @@ jobs:
       # 'dod-verify-every-criterion-bound'.
       - name: dod_verify refuses partly bound criteria (OMN-20032)
         run: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+      # OMN-20001: the drift check reads omniclaude at the pin, a pin move needs the
+      # integration step, both drift directions stay strict, and the two OMN-13146
+      # tests stay present and uninverted. SYNC with pre-commit hook
+      # 'omniclaude-pin-drift'.
+      - name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+      # OMN-20730: the red CI triage model (formal/ci_red_triage) passes its design
+      # config, each property fails on a one-knob mutation, the results match the
+      # committed model, configs and outputs, and the verdict approves the model's
+      # digest. SYNC with pre-commit hook 'ci-red-triage-model'.
+      - name: Red CI triage model and verdict (OMN-20730)
+        run: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-20601: routing decisions come from overlays, never from omnimarket code
+      # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
+      # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
+      # 'routing-sources-omn20601'.
+      - name: Routing sources, overlay precedence and routing-in-code ratchet (OMN-20601)
+        run: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
@@ -1956,6 +1977,12 @@ jobs:
         run: uv sync --locked
       - name: Validate event registry drift
         run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
+      # OMN-20001: a pin move merges only with the omniclaude-coupled tests passing
+      # against the new version. This job is "Event Registry Drift" in CI Summary's
+      # strict set and clones omniclaude at the one pin, so moving the literal above
+      # makes this step run against the new version in the same PR.
+      - name: Integration suite against the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov
 
   # ============================================================================
   # RUNTIME SWEEP GATE (OMN-8611)
