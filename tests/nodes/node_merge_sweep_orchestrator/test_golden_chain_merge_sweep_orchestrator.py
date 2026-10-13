@@ -41,11 +41,17 @@ def _operations(node: str) -> set[str]:
     return {e["operation"] for e in _contract(node)["handler_routing"]["handlers"]}
 
 
-def test_contract_declares_its_topics_and_no_shared_runtime_bus_block() -> None:
+def test_contract_declares_its_topics_on_the_bus_for_the_effects_runtime() -> None:
     contract = _contract()
     assert contract["name"] == NAME
     assert contract["node_type"] == "orchestrator"
-    assert "event_bus" not in contract
+    bus = contract["event_bus"]
+    assert bus["subscribe_topics"] == [
+        "onex.cmd.omnimarket.merge-sweep-run-requested.v1"
+    ]
+    assert bus["publish_topics"] == ["onex.evt.omnimarket.merge-sweep-run-completed.v1"]
+    assert "runtime_lanes" not in contract
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
     dispatch = contract["runtime_dispatch"]
     assert (
         dispatch["command_topic"] == "onex.cmd.omnimarket.merge-sweep-run-requested.v1"

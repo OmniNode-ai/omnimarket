@@ -22,6 +22,9 @@ from omnimarket.events.topics import DELEGATION_ACCEPTANCE_JUDGED_TOPIC_V1
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
     EnumAcceptanceFailureClass,
 )
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_origin import (
+    EnumAcceptanceOrigin,
+)
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_publish_status import (
     EnumAcceptancePublishStatus,
 )
@@ -43,7 +46,9 @@ NODE = "node_delegation_acceptance_judged_publish_effect"
 NODES = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
 
 
-def _event(n: int = 0) -> ModelDelegationAcceptanceJudgedEvent:
+def _event(
+    n: int = 0, *, origin: EnumAcceptanceOrigin = EnumAcceptanceOrigin.LIVE
+) -> ModelDelegationAcceptanceJudgedEvent:
     return ModelDelegationAcceptanceJudgedEvent(
         correlation_id=uuid4(),
         tenant_id=UUID("820272f9-4aaf-5add-a2df-0af942852ab2"),
@@ -66,6 +71,10 @@ def _event(n: int = 0) -> ModelDelegationAcceptanceJudgedEvent:
         quality=1,
         failure_class=EnumAcceptanceFailureClass.NONE,
         judged_at=datetime(2026, 10, 2, tzinfo=UTC),
+        origin=origin,
+        eval_run_id="synthetic-eval-run"
+        if origin is EnumAcceptanceOrigin.EVAL
+        else None,
     )
 
 
@@ -168,6 +177,31 @@ def test_publish_sends_each_event_to_the_daemon_as_the_registered_event_type(
     assert [r["payload"]["event_id"] for r in daemon.requests] == [
         str(e.event_id) for e in events
     ]
+
+
+def test_origin_publish_carries_origin_and_eval_run_id_to_the_daemon(
+    sock_path: str,
+) -> None:
+    events = (
+        _event(1, origin=EnumAcceptanceOrigin.LIVE),
+        _event(2, origin=EnumAcceptanceOrigin.EVAL),
+    )
+    daemon = _FakeDaemon(sock_path, [{"status": "queued", "event_id": "d"}] * 2)
+    try:
+        result = HandlerDelegationAcceptanceJudgedPublish().handle(
+            ModelAcceptancePublishRequest(events=events, socket_path=sock_path)
+        )
+    finally:
+        daemon.close()
+    assert result.status is EnumAcceptancePublishStatus.COMPLETED
+    assert [
+        (r["payload"]["origin"], r["payload"]["eval_run_id"]) for r in daemon.requests
+    ] == [("live", None), ("eval", "synthetic-eval-run")]
+    # The payload the daemon receives is the schema's own: it validates back to the event.
+    assert [
+        ModelDelegationAcceptanceJudgedEvent.model_validate(r["payload"])
+        for r in daemon.requests
+    ] == list(events)
 
 
 def test_publish_stops_at_a_daemon_refusal_and_reports_how_many_got_through(

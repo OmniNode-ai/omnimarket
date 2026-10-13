@@ -61,6 +61,17 @@ class ModelLabReceipt(BaseModel):
     path: str | None = Field(
         default=None, description="Where the caller read the receipt."
     )
+    claim_host: str | None = Field(
+        default=None,
+        description=(
+            "The `host=` cell of the ledger CLAIM row that names this receipt's run (OMN-20851); a running "
+            "receipt counts as a running lane only when this and `claim_run_id` are both set."
+        ),
+    )
+    claim_run_id: str | None = Field(
+        default=None,
+        description="The `run=` cell of that CLAIM row; None when no CLAIM carries a run id.",
+    )
 
 
 class ModelOpenPoint(BaseModel):
@@ -89,6 +100,14 @@ class ModelLabHost(BaseModel):
     name: str
     local: bool = False
     cap: int | None = None
+    codex_allowed: bool = Field(
+        default=False,
+        description=(
+            "Whether the shared lab host table (or ONEX_CODEX_HOSTS) lets this host run a Codex lane, as "
+            "the remote-lane runner's codex_placement.codex_hosts reads it; False reports no Codex "
+            "headroom for the host."
+        ),
+    )
     limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     auth_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     parses: dict[str, ModelLabReadingParse] = Field(
@@ -97,6 +116,31 @@ class ModelLabHost(BaseModel):
             "For each placement reading text of this host in the receipts, whether the placement "
             "module parsed it and the lane admission refusal it names, if any."
         ),
+    )
+
+
+class ModelCodexHeadroom(BaseModel):
+    """One host's Codex headroom, read from the same cached placement reading as its Claude headroom.
+
+    The reading carries `codex=login/<sandbox>` and `CODEX-LIMITED-UNTIL=`; the `.limited-<host>` and
+    auth-expired marks are Claude's and never enter it. The sandbox word is not judged: the
+    `.codex-sandbox-<host>` marks gate landing workers only, and a lane's own run script probes its
+    sandbox before Codex starts.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    free: int = Field(ge=0, description="Further Codex lanes the host can take now.")
+    cap: int | None = None
+    running: int | None = None
+    refusal: str | None = Field(
+        default=None,
+        description="Why `free` is zero, when the host cannot take a Codex lane.",
+    )
+    claude_blocked: str | None = Field(
+        default=None,
+        description="The Claude mark that keeps Claude lanes off the host (limited or auth expired), if any.",
     )
 
 
@@ -122,6 +166,66 @@ class ModelLabHeadroomFacts(BaseModel):
         default_factory=list,
         description="One host name per placement marker whose process is alive.",
     )
+
+
+class ModelDispatchedLane(BaseModel):
+    """A lane the ledger records as dispatched, with the placement facts the caller read for it (OMN-20851).
+
+    A lane counts as running only with a CLAIM that carries `host=` and a run id; a lane recorded as
+    dispatched whose runner wrote no placement receipt is unplaced.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    dispatched_at: str = Field(
+        pattern=_TS, description="When the ledger recorded the dispatch."
+    )
+    claim_host: str | None = Field(
+        default=None, description="The `host=` cell of the lane's CLAIM row, if any."
+    )
+    claim_run_id: str | None = Field(
+        default=None, description="The `run=` cell of the lane's CLAIM row, if any."
+    )
+    placement_receipt: bool = Field(
+        default=False,
+        description="Whether the runner wrote a placement receipt for this lane.",
+    )
+
+
+class ModelVenvDivergence(BaseModel):
+    """A dispatch venv that differs between lab hosts, and since when (OMN-20851)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    surface: str = Field(
+        description="The diverged surface, e.g. `venv:omnimarket`; names the package set that differs."
+    )
+    hosts: list[str] = Field(
+        min_length=2, description="The hosts whose dispatch venvs disagree."
+    )
+    diverged_since: str = Field(
+        pattern=_TS,
+        description="When the caller first read this divergence; unchanged while it persists.",
+    )
+    detail: str = ""
+
+
+class ModelTickAlarmVerdict(BaseModel):
+    """The typed verdict record of one ALARM, written to the tick's declared evidence file (OMN-20851)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["ALARM"] = "ALARM"
+    loop: str = Field(
+        description="The finding name, e.g. `unplaced-lane:<lane>` or `venv-divergence:<surface>`."
+    )
+    since: str = Field(
+        pattern=_TS, description="When the condition began (dispatch or divergence)."
+    )
+    age_minutes: float = Field(ge=0)
+    why: str
+    fix: str
 
 
 class ModelThroughputTickRequest(BaseModel):
@@ -221,6 +325,31 @@ class ModelThroughputTickRequest(BaseModel):
         description="Points older than this belong to another session and are not a trend.",
     )
 
+    dispatched_lanes: list[ModelDispatchedLane] | None = Field(
+        default=None,
+        description=(
+            "Lanes the ledger records as dispatched, with the placement facts read for each; None skips "
+            "the unplaced-lane finding (and its `checked` entry) (OMN-20851)."
+        ),
+    )
+    unplaced_lane_alarm_minutes: int = Field(
+        default=10,
+        ge=0,
+        description="A dispatched lane with no placement receipt for longer than this is an ALARM.",
+    )
+    venv_divergences: list[ModelVenvDivergence] | None = Field(
+        default=None,
+        description=(
+            "Cross-host dispatch-venv divergences the caller read; None skips the venv-divergence finding "
+            "(and its `checked` entry) (OMN-20851)."
+        ),
+    )
+    venv_divergence_alarm_minutes: int = Field(
+        default=30,
+        ge=0,
+        description="A divergence older than this is an ALARM; a younger one is a NOTE.",
+    )
+
 
 class ModelThroughputTickResult(BaseModel):
     """The tick's finding lines and its status line, exactly as the retired script printed them."""
@@ -232,10 +361,26 @@ class ModelThroughputTickResult(BaseModel):
     missing: list[str]
     unknown: list[str]
     checked: list[str]
+    alarms: list[ModelTickAlarmVerdict] = Field(
+        default_factory=list,
+        description=(
+            "Every ALARM verdict, for the caller to print, write into the tick's evidence file and exit "
+            "non-zero on (OMN-20851); an ALARM is never also listed in `missing` or `unknown`."
+        ),
+    )
     exit_code: int = Field(ge=0, le=1)
     open_count: int | None = Field(
         default=None,
         description="The open PR count read from a fresh watcher state, for the caller to record; None when unread.",
+    )
+    codex_headroom: list[ModelCodexHeadroom] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
+        description=(
+            "Codex headroom of every Codex-capable pool host with a fresh placement reading, separate "
+            "from the Claude headroom the lab-headroom lines report; a host Claude cannot use that has "
+            "free Codex slots is also a MISSING lab-headroom line. Absent from the dump when empty."
+        ),
     )
     pr_land: ModelLabFillPrLandPlan | None = Field(
         default=None,

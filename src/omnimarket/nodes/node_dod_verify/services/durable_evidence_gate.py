@@ -91,6 +91,7 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelCitedMergeCommit,
     ModelDurableEvidenceCheckResult,
     ModelDurableEvidenceGateResult,
+    ModelEngagedRepoContract,
     ModelRepoContractRead,
     ModelRepoEvidenceCheckRun,
     ModelRepoEvidenceVerdict,
@@ -99,6 +100,7 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
 from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
     resolve_retirements,
 )
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import criteria_revision
 from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
     evaluate_receipt_bound,
     is_receipt_bound_contract,
@@ -435,34 +437,32 @@ def _contract_bindings(contract: dict[str, object]) -> dict[str, list[str]]:
     return bindings
 
 
-def evaluate_repo_evidence(
+def resolve_repo_contracts(
     ticket_id: str,
-    ticket_description: str,
     merged_prs: tuple[ModelTicketMergedPr, ...],
     *,
     read_repo_contract: RepoContractReader,
     read_repo_check_runs: RepoEvidenceCheckRunsReader,
-) -> ModelRepoEvidenceVerdict:
-    """Decide a ticket from the product repositories its PRs merged into.
+) -> ModelRepoEvidenceVerdict | tuple[ModelEngagedRepoContract, ...]:
+    """The product-repository contracts that govern a ticket, per repository.
 
-    The resolution order of the omniclaude Done gate, all I/O through the two
-    readers:
+    Steps 1 to 3 of :func:`evaluate_repo_evidence`, shared with
+    ``node_dod_verify``'s contract lookup (OMN-20886) so the node and the gate
+    resolve one ticket to the same contracts:
 
     1. Read ``contracts/<ticket>.yaml`` at every merged PR's merge commit. No PR
-       carrying one leaves the ticket NOT_ENGAGED (OCC decides); an unreadable
-       or malformed contract REFUSES.
+       carrying one is NOT_ENGAGED; an unreadable or malformed contract is
+       REFUSED.
     2. Within one repository, only the newest merged contract-carrying PR
-       decides, because its check re-verifies the whole contract. A PR without
-       a merge time is never treated as superseded.
+       decides. A PR without a merge time is never treated as superseded.
     3. A deciding PR with no ``repo-evidence / dod-verify`` run on its head has
        not adopted the repo path; when no deciding PR has one, NOT_ENGAGED.
-       Unreadable check runs REFUSE.
-    4. The newest run on each engaged head must be a completed success, and the
-       contract at that head must equal the merged one, or REFUSED.
-    5. Every labelled acceptance criterion of the ticket description must be
-       bound by some engaged contract, or REFUSED. A description with no
-       criterion, or an unlabelled one, REFUSES: there is nothing to bind.
+       Unreadable check runs are REFUSED.
+
+    Returns the engaged contracts, one per deciding PR, or the verdict that
+    stops resolution there.
     """
+
     candidates = {(pr.repo, pr.pr_number): pr for pr in merged_prs}
     if not candidates:
         return ModelRepoEvidenceVerdict(
@@ -497,9 +497,7 @@ def evaluate_repo_evidence(
         if not pr.merged_at or pr.merged_at == newest[pr.repo]
     ]
 
-    engaged: list[
-        tuple[ModelTicketMergedPr, dict[str, object], list[ModelRepoEvidenceCheckRun]]
-    ] = []
+    engaged: list[ModelEngagedRepoContract] = []
     skipped: list[str] = []
     for pr, contract in contracts:
         source = f"{pr.repo}#{pr.pr_number}"
@@ -524,16 +522,58 @@ def evaluate_repo_evidence(
                 f"{REPO_EVIDENCE_CHECK_NAME} run on head {_diagnostic_text(pr.head_sha[:12])}"
             )
             continue
-        engaged.append((pr, contract, kept))
+        engaged.append(
+            ModelEngagedRepoContract(pr=pr, contract=contract, check_runs=tuple(kept))
+        )
     if not engaged:
         return ModelRepoEvidenceVerdict(
             outcome=EnumRepoEvidenceOutcome.NOT_ENGAGED, detail="; ".join(skipped)
         )
+    return tuple(engaged)
+
+
+def evaluate_repo_evidence(
+    ticket_id: str,
+    ticket_description: str,
+    merged_prs: tuple[ModelTicketMergedPr, ...],
+    *,
+    read_repo_contract: RepoContractReader,
+    read_repo_check_runs: RepoEvidenceCheckRunsReader,
+) -> ModelRepoEvidenceVerdict:
+    """Decide a ticket from the product repositories its PRs merged into.
+
+    The resolution order of the omniclaude Done gate, all I/O through the two
+    readers:
+
+    1. Read ``contracts/<ticket>.yaml`` at every merged PR's merge commit. No PR
+       carrying one leaves the ticket NOT_ENGAGED (OCC decides); an unreadable
+       or malformed contract REFUSES.
+    2. Within one repository, only the newest merged contract-carrying PR
+       decides, because its check re-verifies the whole contract. A PR without
+       a merge time is never treated as superseded.
+    3. A deciding PR with no ``repo-evidence / dod-verify`` run on its head has
+       not adopted the repo path; when no deciding PR has one, NOT_ENGAGED.
+       Unreadable check runs REFUSE.
+    4. The newest run on each engaged head must be a completed success, and the
+       contract at that head must equal the merged one, or REFUSED.
+    5. Every labelled acceptance criterion of the ticket description must be
+       bound by some engaged contract, or REFUSED. A description with no
+       criterion, or an unlabelled one, REFUSES: there is nothing to bind.
+    """
+    resolved = resolve_repo_contracts(
+        ticket_id,
+        merged_prs,
+        read_repo_contract=read_repo_contract,
+        read_repo_check_runs=read_repo_check_runs,
+    )
+    if isinstance(resolved, ModelRepoEvidenceVerdict):
+        return resolved
 
     bindings: dict[str, list[str]] = {}
     governing: list[dict[str, object]] = []
     sources: list[str] = []
-    for pr, contract, kept in engaged:
+    for engaged in resolved:
+        pr, contract, kept = engaged.pr, engaged.contract, engaged.check_runs
         source = f"{pr.repo}#{pr.pr_number}"
         context = f"{source} at head {pr.head_sha} and merge {pr.merge_commit_sha}"
         safe_context = _diagnostic_text(context)
@@ -1013,6 +1053,7 @@ class DurableEvidenceGate:
         ticket_labels: frozenset[str] = frozenset(),
         merged_prs: tuple[ModelTicketMergedPr, ...] = (),
         ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
     ) -> ModelDurableEvidenceGateResult:
         """Run the gate against the canonical platform layout for ``ticket_id``.
 
@@ -1040,9 +1081,78 @@ class DurableEvidenceGate:
             ticket_labels=ticket_labels,
             merged_prs=merged_prs,
             ticket_description=ticket_description,
+            verdict_criteria_revision=verdict_criteria_revision,
         )
 
     def evaluate(
+        self,
+        *,
+        ticket_id: str,
+        contract: dict[str, object],
+        receipt_dir: str,
+        contract_rel_path: str,
+        ticket_labels: frozenset[str] = frozenset(),
+        merged_prs: tuple[ModelTicketMergedPr, ...] = (),
+        ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
+    ) -> ModelDurableEvidenceGateResult:
+        """Run the durable-evidence checks, then re-check the verdict's criteria revision.
+
+        ``verdict_criteria_revision`` is the ``criteria_revision`` the dod_verify
+        verdict carried (OMN-20858). When given, the live ``ticket_description``
+        must still have that revision: a criterion edited, deleted or added after
+        the verdict was computed makes the verdict stale, and the Done transition
+        refuses it. An empty description cannot be compared and refuses too, never
+        passing as unchanged. Omitted, the gate behaves exactly as before.
+        """
+        result = self._evaluate_durable(
+            ticket_id=ticket_id,
+            contract=contract,
+            receipt_dir=receipt_dir,
+            contract_rel_path=contract_rel_path,
+            ticket_labels=ticket_labels,
+            merged_prs=merged_prs,
+            ticket_description=ticket_description,
+        )
+        if verdict_criteria_revision is None:
+            return result
+        live_revision = (
+            criteria_revision(ticket_description) if ticket_description else None
+        )
+        current = live_revision == verdict_criteria_revision
+        if current:
+            message = (
+                f"The verdict's criteria revision {verdict_criteria_revision[:12]} "
+                f"is still the live revision of {ticket_id}."
+            )
+        elif live_revision is None:
+            message = (
+                f"CRITERIA_DRIFT: the verdict for {ticket_id} was computed against "
+                f"criteria revision {verdict_criteria_revision[:12]}, and the live "
+                "ticket description was not supplied, so the revision cannot be "
+                "re-checked. A revision that cannot be re-checked is not current; "
+                "re-run dod_verify against the ticket."
+            )
+        else:
+            message = (
+                f"CRITERIA_DRIFT: the verdict for {ticket_id} was computed against "
+                f"criteria revision {verdict_criteria_revision[:12]} and the live "
+                f"ticket is at {live_revision[:12]}: a criterion was edited, "
+                "deleted or added since. Re-run dod_verify, and amend and "
+                "re-accept the contract bindings it names."
+            )
+        check = ModelDurableEvidenceCheckResult(
+            check=EnumDurableEvidenceCheck.CRITERIA_REVISION_CURRENT,
+            passed=current,
+            message=message,
+        )
+        return ModelDurableEvidenceGateResult(
+            ticket_id=result.ticket_id,
+            status=(result.status if current else EnumDurableEvidenceStatus.FAIL),
+            checks=[*result.checks, check],
+        )
+
+    def _evaluate_durable(
         self,
         *,
         ticket_id: str,
@@ -1636,6 +1746,7 @@ class DurableEvidenceGate:
         ticket_labels: frozenset[str] = frozenset(),
         merged_prs: tuple[ModelTicketMergedPr, ...] = (),
         ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate` and raise on failure.
 
@@ -1650,6 +1761,7 @@ class DurableEvidenceGate:
             ticket_labels=ticket_labels,
             merged_prs=merged_prs,
             ticket_description=ticket_description,
+            verdict_criteria_revision=verdict_criteria_revision,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
@@ -1663,6 +1775,7 @@ class DurableEvidenceGate:
         ticket_labels: frozenset[str] = frozenset(),
         merged_prs: tuple[ModelTicketMergedPr, ...] = (),
         ticket_description: str = "",
+        verdict_criteria_revision: str | None = None,
     ) -> ModelDurableEvidenceGateResult:
         """Run :meth:`evaluate_default` and raise on failure.
 
@@ -1677,6 +1790,7 @@ class DurableEvidenceGate:
             ticket_labels=ticket_labels,
             merged_prs=merged_prs,
             ticket_description=ticket_description,
+            verdict_criteria_revision=verdict_criteria_revision,
         )
         if result.status != EnumDurableEvidenceStatus.PASS:
             raise DurableEvidenceGateError(result)
@@ -1705,4 +1819,5 @@ __all__: list[str] = [
     "extract_contract_check_keys",
     "extract_receipt_merge_commits",
     "parse_pr_url",
+    "resolve_repo_contracts",
 ]

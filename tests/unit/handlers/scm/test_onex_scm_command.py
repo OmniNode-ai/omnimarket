@@ -23,6 +23,9 @@ from typing import Any
 import pytest
 from click.testing import CliRunner, Result
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 from omnibase_infra.errors import InfraConnectionError
 
 from omnimarket.handlers.scm import scm_cli
@@ -240,6 +243,11 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
         "releases_truncated": False,
         "tags_truncated": False,
     },
+    "pr_heads": lambda r: {
+        "operation": "pr_heads",
+        "repo": r.repo,
+        "truncated": False,
+    },
 }
 
 
@@ -369,6 +377,7 @@ _READ_ARGS: dict[str, list[str]] = {
     "job-log": [REPO, "--job-id", "12", "--tail-bytes", "1024"],
     "run-download": [REPO, "--run-id", "11"],
     "release-list": [REPO],
+    "pr-heads": [REPO, "--source", "bus"],
 }
 _WRITE_ARGS: dict[str, list[str]] = {
     "pr-create": [
@@ -650,6 +659,175 @@ def test_merge_commit_is_answered_from_the_canonical_clone(
     answer = _answer(result)
     assert answer["source"] == "clone"
     assert answer["result"]["merge_commit_sha"] == sha
+    assert bus.published == []
+
+
+# ------------------------------------------------- pr-heads (OMN-20977)
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+    "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+}
+
+
+def _git_in(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=scrub_git_location_env(_GIT_ENV),
+    ).stdout.strip()
+
+
+def _origin_and_clone(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    """A bare origin with PR head refs and a clone whose dev history merged #88.
+
+    #88 was squash-merged (its head branch deleted); #89 is open on a live
+    branch; #90 was never merged and its branch is gone.
+    """
+    work = tmp_path / "work"
+    work.mkdir()
+    _git_in(work, "init", "-q", "-b", "dev")
+    _git_in(work, "commit", "-q", "--allow-empty", "-m", "feat: base (#12)")
+    base = _git_in(work, "rev-parse", "HEAD")
+    heads: dict[str, str] = {}
+    for number, branch in (("88", "jonah/omn-1-merged"), ("89", "jonah/omn-1-open")):
+        _git_in(work, "checkout", "-q", "-b", branch, base)
+        _git_in(work, "commit", "-q", "--allow-empty", "-m", f"work {number}")
+        heads[number] = _git_in(work, "rev-parse", "HEAD")
+    _git_in(work, "checkout", "-q", "-b", "jonah/omn-1-dropped", base)
+    _git_in(work, "commit", "-q", "--allow-empty", "-m", "work 90")
+    heads["90"] = _git_in(work, "rev-parse", "HEAD")
+    _git_in(work, "checkout", "-q", "dev")
+    _git_in(work, "commit", "-q", "--allow-empty", "-m", "feat(OMN-1): merged (#88)")
+    heads["merge"] = _git_in(work, "rev-parse", "HEAD")
+
+    origin = tmp_path / "origin.git"
+    _git_in(tmp_path, "init", "-q", "--bare", str(origin))
+    _git_in(work, "push", "-q", str(origin), "dev", "jonah/omn-1-open")
+    for number in ("88", "89", "90"):
+        _git_in(
+            work, "push", "-q", str(origin), f"{heads[number]}:refs/pull/{number}/head"
+        )
+    clone = tmp_path / "omnimarket"
+    _git_in(tmp_path, "clone", "-q", "-b", "dev", str(origin), str(clone))
+    return clone, heads
+
+
+def test_pr_heads_is_answered_from_the_canonical_clone_over_git(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    clone, heads = _origin_and_clone(tmp_path)
+
+    result = _run(
+        [
+            "pr-heads",
+            REPO,
+            "--source",
+            "local",
+            "--clone",
+            str(clone),
+            "--watcher-state",
+            str(tmp_path / "absent.json"),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    answer = _answer(result)
+    assert answer["source"] == "clone"
+    assert answer["bus"] is None
+    assert bus.published == []
+    prs = {pr["number"]: pr for pr in answer["result"]["prs"]}
+    assert answer["result"]["operation"] == "pr_heads"
+    assert prs[88]["state"] == "MERGED"
+    assert prs[88]["head_oid"] == heads["88"]
+    assert prs[88]["merge_commit_sha"] == heads["merge"]
+    # the merged branch is gone from origin, so the clone cannot name it
+    assert prs[88]["head_ref"] is None
+    # a clone cannot tell open from closed: never merged reads UNMERGED
+    assert prs[89]["state"] == "UNMERGED"
+    assert prs[89]["head_ref"] == "jonah/omn-1-open"
+    assert prs[90]["state"] == "UNMERGED"
+    assert prs[90]["merge_commit_sha"] is None
+
+
+def test_pr_heads_overlays_the_watcher_and_narrows_by_head(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, FakeBus())
+    clone, heads = _origin_and_clone(tmp_path)
+    tick = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state = tmp_path / "state.json"
+    state.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "last_tick": tick,
+                "prs": {
+                    "omnimarket#89": {
+                        "facts": {
+                            "number": 89,
+                            "state": "OPEN",
+                            "head_ref": "jonah/omn-1-open",
+                            "head_sha": heads["89"],
+                            "base": "dev",
+                        }
+                    }
+                },
+                "merges": {
+                    "omnimarket#88": {
+                        "head_ref": "jonah/omn-1-merged",
+                        "head_sha": heads["88"],
+                        "merge_sha": heads["merge"],
+                        "merged_at": tick,
+                        "base": "dev",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    base = ["pr-heads", REPO, "--source", "local", "--clone", str(clone)]
+
+    answer = _answer(_run([*base, "--watcher-state", str(state)]))
+    prs = {pr["number"]: pr for pr in answer["result"]["prs"]}
+    assert prs[88]["head_ref"] == "jonah/omn-1-merged"
+    assert prs[88]["merged_at"] == tick
+    assert prs[89]["state"] == "OPEN"
+    assert answer["watcher_tick"] == tick
+
+    narrowed = _answer(
+        _run([*base, "--watcher-state", str(state), "--head-sha", heads["88"]])
+    )
+    assert [pr["number"] for pr in narrowed["result"]["prs"]] == [88]
+
+
+def test_pr_heads_without_a_clone_is_unanswered_locally(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+    monkeypatch.delenv("ONEX_SCM_CLONE_ROOT", raising=False)
+    result = CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            "pr-heads",
+            REPO,
+            "--source",
+            "local",
+            "--watcher-state",
+            str(tmp_path / "absent.json"),
+        ],
+    )
+    assert result.exit_code == scm_cli.EXIT_LOCAL_UNANSWERED
+    assert "no canonical clone" in result.output
     assert bus.published == []
 
 

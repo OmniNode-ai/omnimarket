@@ -15,6 +15,9 @@ from datetime import timedelta
 from uuid import UUID
 
 from omnimarket.events import ModelDelegationAcceptanceJudgedEvent
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_origin import (
+    EnumAcceptanceOrigin,
+)
 from omnimarket.nodes.node_projection_delegation_judged_acceptance.models import (
     ModelJudgedAcceptanceCell,
     ModelJudgedAcceptanceFoldRequest,
@@ -29,8 +32,8 @@ FOLDED_KINDS = frozenset({"task", "edit_loop_turn"})
 
 _Z = 1.959963984540054
 
-_VerdictKey = tuple[UUID, UUID, str]
-_CellKey = tuple[UUID, str, str, str, str, str]
+_VerdictKey = tuple[UUID, UUID, str, EnumAcceptanceOrigin, str | None]
+_CellKey = tuple[UUID, str, str, str, str, str, EnumAcceptanceOrigin, str | None]
 
 
 def _wilson_interval(accepts: int, n: int) -> tuple[float, float]:
@@ -50,7 +53,13 @@ def _is_calibrated(event: ModelDelegationAcceptanceJudgedEvent) -> bool:
 
 
 def _verdict_key(event: ModelDelegationAcceptanceJudgedEvent) -> _VerdictKey:
-    return event.tenant_id, event.correlation_id, event.rubric_version
+    return (
+        event.tenant_id,
+        event.correlation_id,
+        event.rubric_version,
+        event.origin,
+        event.eval_run_id,
+    )
 
 
 def _cell_key(event: ModelDelegationAcceptanceJudgedEvent) -> _CellKey:
@@ -61,6 +70,8 @@ def _cell_key(event: ModelDelegationAcceptanceJudgedEvent) -> _CellKey:
         event.delegated_tier,
         event.delegated_model_key,
         event.rubric_version,
+        event.origin,
+        event.eval_run_id,
     )
 
 
@@ -77,7 +88,11 @@ def _winning_verdict(
 
 
 class HandlerProjectionDelegationJudgedAcceptance:
-    """Fold judged acceptance events into one cell per model, task type and kind."""
+    """Fold judged acceptance events into one cell per model, task type, kind and origin.
+
+    Origin (and, for an eval, its eval run) is part of both the verdict key and the cell key, so
+    an eval verdict and a live verdict never pool and never displace one another.
+    """
 
     def handle(
         self, request: ModelJudgedAcceptanceFoldRequest
@@ -128,7 +143,9 @@ class HandlerProjectionDelegationJudgedAcceptance:
 def _build_cell(
     key: _CellKey, members: Sequence[ModelDelegationAcceptanceJudgedEvent]
 ) -> ModelJudgedAcceptanceCell:
-    tenant_id, task_type, kind, tier, model_key, rubric_version = key
+    tenant_id, task_type, kind, tier, model_key, rubric_version, origin, eval_run_id = (
+        key
+    )
     n = len(members)
     accepts = sum(1 for m in members if m.accept)
     low, high = _wilson_interval(accepts, n)
@@ -139,6 +156,8 @@ def _build_cell(
         delegated_tier=tier,
         delegated_model_key=model_key,
         rubric_version=rubric_version,
+        origin=origin,
+        eval_run_id=eval_run_id,
         n=n,
         accepts=accepts,
         accept_rate=accepts / n,

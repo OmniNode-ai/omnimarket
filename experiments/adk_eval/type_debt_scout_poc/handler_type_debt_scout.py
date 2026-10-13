@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 from datetime import UTC, datetime
@@ -55,7 +54,6 @@ _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.md"
 _USER_TEMPLATE_PATH = _PROMPTS_DIR / "user_template.md"
 
 _PROVIDER_NAME = "qwen3_coder_local"
-_DEFAULT_BASE_URL = "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10580 reason="experiment dev default; real deployments set LLM_CODER_URL"
 _DEFAULT_MODEL_ID = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="experiment dev default; real deployments set LLM_CODER_MODEL_NAME"
 _DEFAULT_MAX_TOKENS = 4096
 _DEFAULT_TIMEOUT_SECONDS = 420.0
@@ -71,9 +69,9 @@ class ModelTrackBConfig(BaseModel):
         description="Name of the repo the findings came from.",
     )
     base_url: str = Field(
-        default=_DEFAULT_BASE_URL,
+        ...,
         min_length=1,
-        description="OpenAI-compatible endpoint base URL.",
+        description="OpenAI-compatible endpoint base URL; a deployment fact with no default.",
     )
     model_id: str = Field(
         default=_DEFAULT_MODEL_ID,
@@ -322,14 +320,8 @@ def run_type_debt_scout_sync(
     return asyncio.run(run_type_debt_scout(findings, config=config))
 
 
-def resolve_base_url_from_env() -> str:
-    """Return ``LLM_CODER_URL`` if set, otherwise the .201 default."""
-    return os.environ.get("LLM_CODER_URL", _DEFAULT_BASE_URL)
-
-
 __all__ = [
     "ModelTrackBConfig",
-    "resolve_base_url_from_env",
     "run_type_debt_scout",
     "run_type_debt_scout_sync",
 ]

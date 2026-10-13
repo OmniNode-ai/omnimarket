@@ -15,6 +15,7 @@ poor extraction).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -24,7 +25,9 @@ from typing import Any, Literal
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
-    ModelInferenceBridgeConfig,
+)
+from omnimarket.inference.bridge_config_loader import (
+    load_inference_bridge_config_from_env_async,
 )
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request import (
     ModelGradingRequest,
@@ -119,15 +122,31 @@ class HandlerExtractionGrader:
         prompt_template_id: str = "adr_grading_v1",
         prompt_template_version: str = "1.0.0",
     ) -> None:
-        self._bridge: ModelInferenceAdapter = (
-            inference_bridge or AdapterInferenceBridge(ModelInferenceBridgeConfig())
-        )
+        # Construction is pure and sync: when no bridge is injected the default
+        # bridge is built lazily on first ``handle`` via ``_ensure_bridge``, from
+        # the LLM_*_URL routes, so the async secret-store resolution never runs
+        # inside this sync constructor (the runtime auto-wiring boot path builds
+        # handlers inside a running event loop). It used to be built from an empty
+        # route table, so every grader key raised ``Unknown model_key``.
+        self._bridge: ModelInferenceAdapter | None = inference_bridge
+        self._bridge_lock = asyncio.Lock()
         self._grader_model_key = grader_model_key
         self._grader_timeout_seconds = grader_timeout_seconds
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
 
+    async def _ensure_bridge(self) -> ModelInferenceAdapter:
+        """Return the inference bridge, building the default one once on demand."""
+        if self._bridge is not None:
+            return self._bridge
+        async with self._bridge_lock:
+            if self._bridge is None:
+                bridge_config = await load_inference_bridge_config_from_env_async()
+                self._bridge = AdapterInferenceBridge(bridge_config)
+            return self._bridge
+
     async def handle(self, request: ModelGradingRequest) -> ModelGradingResult:
+        grader_model_key = request.grader_model_key or self._grader_model_key
         logger.info(
             "adr-grading started (model_under_test=%s, correlation_id=%s)",
             request.model_key_under_test,
@@ -137,9 +156,10 @@ class HandlerExtractionGrader:
         user_prompt = _build_user_prompt(request)
         t0 = time.monotonic()
 
+        bridge = await self._ensure_bridge()
         try:
-            raw_response = await self._bridge.infer(
-                model_key=self._grader_model_key,
+            raw_response = await bridge.infer(
+                model_key=grader_model_key,
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 timeout_seconds=self._grader_timeout_seconds,
@@ -180,7 +200,7 @@ class HandlerExtractionGrader:
         evidence = ModelLLMCallEvidence(
             prompt_template_id=self._prompt_template_id,
             prompt_template_version=self._prompt_template_version,
-            grader_model_key=self._grader_model_key,
+            grader_model_key=grader_model_key,
             latency_ms=latency_ms,
         )
 

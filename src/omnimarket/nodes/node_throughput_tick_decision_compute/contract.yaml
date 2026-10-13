@@ -79,19 +79,25 @@ inputs:
   policy_load_error: {type: str, required: false}
   policy_error: {type: str, required: false}
   land_like_operator: {type: list, required: false}
-  lab_headroom: {type: object, required: false, description: "Pool hosts, marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
+  lab_headroom: {type: object, required: false, description: "Pool hosts (each with codex_allowed from the lab host table), marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
   pr_land: {type: object, required: false, description: "Open PRs with their landing facts and hold source (OMN-20864); the lab-headroom FIX then names pr-land lanes for idle slots on parked, escalated or unowned-red PRs."}
   park_max_hours: {type: float, required: false, description: "A park over a floor-stalled repository with zero merges covers it only while it ends within this many hours (default 2)."}
   dispatch_window_hours: {type: float, required: false, description: "Runner receipts started this many hours back that ended without running are findings; omitted skips the dispatches finding."}
   open_history: {type: list, required: false, description: "Open counts earlier tick runs recorded, oldest first; omitted skips the open-trend finding."}
   open_rise_pct: {type: float, required: false}
   open_history_max_age_hours: {type: float, required: false}
+  dispatched_lanes: {type: list, required: false, description: "Lanes the ledger records as dispatched with their CLAIM host and run id and whether the runner wrote a placement receipt; omitted skips the unplaced-lane finding."}
+  unplaced_lane_alarm_minutes: {type: int, required: false, description: "A dispatched lane with no placement receipt for longer than this is an ALARM (default 10)."}
+  venv_divergences: {type: list, required: false, description: "Cross-host dispatch-venv divergences with the stamp each was first read; omitted skips the venv-divergence finding."}
+  venv_divergence_alarm_minutes: {type: int, required: false, description: "A divergence older than this is an ALARM, a younger one a NOTE (default 30)."}
 outputs:
   lines: {type: list}
   status_line: {type: str}
   missing: {type: list}
   unknown: {type: list}
   checked: {type: list}
+  codex_headroom: {type: list, description: "Codex headroom per Codex-capable pool host with a fresh reading, apart from Claude's; a Claude-limited host with free Codex slots is a MISSING lab-headroom line (absent when empty)."}
+  alarms: {type: list, description: "Typed ALARM verdict records (unplaced lanes, lasting venv divergence) for the caller to print, write to its evidence file and exit non-zero on."}
   exit_code: {type: int}
   open_count: {type: int, description: The open PR count of a fresh watcher state, for the caller to record.}
 config:
@@ -121,4 +127,4 @@ metadata:
   description: Merge-throughput tick decisions
   author: OmniNode Team
   created: "2026-10-09"
-  related_tickets: [OMN-20686, OMN-20840]
+  related_tickets: [OMN-20686, OMN-20840, OMN-20851]

@@ -8,10 +8,13 @@ publishing typed commands on THEIR contract-declared subscribe topics. It never
 constructs sibling handlers in-process, never runs an in-process FSM loop, and
 never does I/O.
 
-**Definition B (OMN-14355, canon-locked).** ``handle(request) -> tuple[out, ...]``:
-a bare typed payload in (the runtime validates each subscribe topic's wire shape
-into the contract-declared ``event_model`` before calling ``handle``), a tuple of
-bare typed event models out. It NEVER imports the event-envelope type nor the
+**Definition B (OMN-14355, canon-locked).** ``handle(request) -> out``: a bare
+typed payload in (the runtime validates each subscribe topic's wire shape into the
+contract-declared ``event_model`` before calling ``handle``), one bare typed event
+model out. Every phase emits exactly one event, so the handler returns that model
+and not a one-element sequence: the runtime publishes a single returned model, and
+drops a returned sequence unless its fan-out publish seam is switched on, which
+left the start command consumed and committed with nothing published. It NEVER imports the event-envelope type nor the
 handler-output wrapper (either would hard-fail the OMN-14355 canon ratchet, whose
 C-core check text-scans this module for the envelope type name). The subscribe
 topic's *payload type* IS the FSM discriminator — routing on a string event-type
@@ -180,9 +183,7 @@ def _generated_files(
 class HandlerHybridCodegenOrchestrator:
     """Sequence the codegen factory by emitting commands over the bus (def-B)."""
 
-    def handle(
-        self, request: CodegenOrchestratorInput
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
+    def handle(self, request: CodegenOrchestratorInput) -> CodegenOrchestratorOutput:
         """Route one phase input by its concrete payload type (no envelope)."""
         match request:
             case ModelCodegenSpec():
@@ -200,47 +201,41 @@ class HandlerHybridCodegenOrchestrator:
             case _:
                 assert_never(request)
 
-    def _on_start(
-        self, spec: ModelCodegenSpec
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
+    def _on_start(self, spec: ModelCodegenSpec) -> CodegenOrchestratorOutput:
         state = ModelCodegenPipelineState(spec=spec, correlation_id=spec.correlation_id)
-        return (ModelLlmGenerateCommand(state=state),)
+        return ModelLlmGenerateCommand(state=state)
 
     def _on_llm_generated(
         self, result: ModelLlmGenerateResult
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
+    ) -> CodegenOrchestratorOutput:
         spec = result.state.spec
-        return (
-            ModelValidatorRequestSeam(
-                source_text=result.state.source_text,
-                expected=ModelValidatorExpectedSeam(
-                    class_name=spec.node_name,
-                    base_class=spec.base_class,
-                    required_methods=(spec.handler_method,),
-                ),
-                correlation_id=result.state.correlation_id,
+        return ModelValidatorRequestSeam(
+            source_text=result.state.source_text,
+            expected=ModelValidatorExpectedSeam(
+                class_name=spec.node_name,
+                base_class=spec.base_class,
+                required_methods=(spec.handler_method,),
             ),
+            correlation_id=result.state.correlation_id,
         )
 
     def _on_validation_outcome(
         self, outcome: ModelCodegenValidationOutcome
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
+    ) -> CodegenOrchestratorOutput:
         if not outcome.is_valid:
             return self._completed(
                 outcome.state,
                 EnumCodegenStatus.REJECTED_VALIDATION,
                 issues=outcome.issues,
             )
-        return (
-            ModelMypyRequestSeam(
-                source_text=outcome.state.source_text,
-                correlation_id=outcome.state.correlation_id,
-            ),
+        return ModelMypyRequestSeam(
+            source_text=outcome.state.source_text,
+            correlation_id=outcome.state.correlation_id,
         )
 
     def _on_typecheck_outcome(
         self, outcome: ModelCodegenTypecheckOutcome
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
+    ) -> CodegenOrchestratorOutput:
         if not outcome.success:
             return self._completed(
                 outcome.state,
@@ -248,37 +243,31 @@ class HandlerHybridCodegenOrchestrator:
                 issues=(f"mypy reported {outcome.error_count} error(s)",),
             )
         spec = outcome.state.spec
-        return (
-            ModelContractAssemblyRequestSeam(
-                node_name=spec.node_name,
-                namespace=spec.namespace,
-                archetype=spec.archetype,
-                analysis=ModelNodeAnalysisSeam(description=spec.description),
-                correlation_id=outcome.state.correlation_id,
-            ),
+        return ModelContractAssemblyRequestSeam(
+            node_name=spec.node_name,
+            namespace=spec.namespace,
+            archetype=spec.archetype,
+            analysis=ModelNodeAnalysisSeam(description=spec.description),
+            correlation_id=outcome.state.correlation_id,
         )
 
     def _on_serialize_outcome(
         self, outcome: ModelCodegenSerializeOutcome
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
-        return (
-            ModelFileWriteCommand(
-                state=outcome.state,
-                target_root=outcome.state.spec.target_root,
-                files=_generated_files(outcome.state),
-            ),
+    ) -> CodegenOrchestratorOutput:
+        return ModelFileWriteCommand(
+            state=outcome.state,
+            target_root=outcome.state.spec.target_root,
+            files=_generated_files(outcome.state),
         )
 
     def _on_files_written(
         self, result: ModelFileWriteResult
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
-        return (
-            ModelCodegenCompleted(
-                node_name=result.state.spec.node_name,
-                status=EnumCodegenStatus.COMPLETED,
-                target_root=result.state.spec.target_root,
-                written_paths=result.written_paths,
-            ),
+    ) -> CodegenOrchestratorOutput:
+        return ModelCodegenCompleted(
+            node_name=result.state.spec.node_name,
+            status=EnumCodegenStatus.COMPLETED,
+            target_root=result.state.spec.target_root,
+            written_paths=result.written_paths,
         )
 
     def _completed(
@@ -287,14 +276,12 @@ class HandlerHybridCodegenOrchestrator:
         status: EnumCodegenStatus,
         *,
         issues: tuple[str, ...],
-    ) -> tuple[CodegenOrchestratorOutput, ...]:
-        return (
-            ModelCodegenCompleted(
-                node_name=state.spec.node_name,
-                status=status,
-                target_root=state.spec.target_root,
-                issues=issues,
-            ),
+    ) -> CodegenOrchestratorOutput:
+        return ModelCodegenCompleted(
+            node_name=state.spec.node_name,
+            status=status,
+            target_root=state.spec.target_root,
+            issues=issues,
         )
 
 

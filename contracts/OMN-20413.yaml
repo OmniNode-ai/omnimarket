@@ -1,0 +1,30 @@
+schema_version: 1.0.0
+ticket_id: OMN-20413
+title: the deploy-gate check reads the cited ticket from the pull request title as well as its body
+summary: omnimarket's deploy-gate ran the pinned omniclaude deploy-gate action, which reads the cited ticket only from the pull request body, while repo-evidence / dod-verify reads it from the title. A runtime pull request whose title names its ticket and whose head carries that ticket's contracts/OMN-<n>.yaml with a deploy probe was refused with "cites no OMN-XXXX ticket". The workflow now runs the same validator, at the same omniclaude pin and in the same default report mode, with the title and the body.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-deploy-gate-reads-title
+    statement: deploy-gate hands the pinned validator the pull request title, taken from the event through env, ahead of the body, with the PR head's contracts directory and no change in the validator's pin or mode.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the deploy-gate run step, executed with a recording gh and python, hands the validator a --pr-body whose first line is the title and whose tail is the body, and the validator checkout is pinned at omniclaude 61761f04a8c8edfb810bd261bb82ed60b8bcad2d -- falsifier: uv run pytest tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly fails at the merge base'
+evidence_requirements:
+  - kind: tests
+    description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
+    command: uv run pytest tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn20413-ac1-deploy-gate-reads-title
+    description: The deploy-gate run step hands the pinned validator the title and the body, and the validator checkout stays at the omniclaude pin.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly
+    binds_ac:
+      - AC1

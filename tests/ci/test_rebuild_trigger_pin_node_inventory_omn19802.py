@@ -44,6 +44,11 @@ _PINS_CARRYING_THE_NODE_INVENTORY_FIX: Final[dict[str, str]] = {
     "04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc": (
         "omnibase_infra#4175 (OMN-19802) itself, merged 2026-09-26"
     ),
+    "cb5c0cfd724905aec46d336dea84e8347cce9e20": (
+        "omnibase_infra#4900 (OMN-20934); `git merge-base --is-ancestor "
+        "04eb6d41d cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
+        "verified 2026-10-12"
+    ),
 }
 
 _FULL_SHA: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")

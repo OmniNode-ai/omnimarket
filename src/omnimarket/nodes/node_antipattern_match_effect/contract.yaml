@@ -71,7 +71,7 @@ service_configuration:
 config:
   embedding_endpoint:
     env_var: "EMBEDDING_MODEL_URL"
-    description: "Base URL for the embedding model OpenAI-compatible endpoint. Fail-fast if unset."
+    description: "Base URL for the embedding model OpenAI-compatible endpoint. A graceful skip (empty matches plus error_message) if unset."
     required: true
   vector_backend:
     env_var: "ANTIPATTERN_VECTOR_BACKEND"
@@ -117,6 +117,7 @@ input_state:
     - "freshness_decay_factor"
     - "qdrant_collection_override"
     - "embedding_endpoint_override"
+    - "validation_context"
 
 output_state:
   object_type: "object"
@@ -126,6 +127,7 @@ output_state:
     - "qdrant_collection"
     - "total_candidates_searched"
     - "error_message"
+    - "validation_context"
 
 # === ACTIONS ===
 actions:

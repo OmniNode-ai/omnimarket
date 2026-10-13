@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-20676: request the existing sweep over the bus when its scheduled window opens.
+name: node_merge_sweep_request_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+description: >
+  Turn the merge-sweep schedule's fire into a typed run request. The deployment overlay
+  supplies the request template; the handler only combines it with the fire. The runtime
+  publishes the command and the existing orchestrator consumes it and answers on its
+  completed topic, including an exact refusal when the supplied facts cannot be read.
+input_model:
+  name: ModelScheduledFire
+  module: omnimarket.models.model_runtime_tick_schedule
+output_model:
+  name: ModelMergeSweepRunRequest
+  module: omnimarket.models.merge_sweep.model_merge_sweep_run
+handler:
+  module: omnimarket.nodes.node_merge_sweep_request_compute.handlers.handler_merge_sweep_scheduled_request
+  class: HandlerMergeSweepScheduledRequest
+  input_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: request_scheduled_merge_sweep
+    topic: onex.evt.omnimarket.merge-sweep-planned.v1
+    handler:
+      name: HandlerMergeSweepScheduledRequest
+      module: omnimarket.nodes.node_merge_sweep_request_compute.handlers.handler_merge_sweep_scheduled_request
+    event_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
+    event_type: omnimarket.merge-sweep-planned
+    output_model: omnimarket.models.merge_sweep.model_merge_sweep_run.ModelMergeSweepRunRequest
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+config:
+  scheduled_run:
+    workflow: merge-sweep
+    request:
+      state_path: "${env.MERGE_SWEEP_STATE_PATH}"
+      ledger_path: "${env.MERGE_SWEEP_LEDGER_PATH}"
+      floors_path: "${env.MERGE_SWEEP_FLOORS_PATH}"
+      ticks_path: "${env.MERGE_SWEEP_TICKS_PATH}"
+      now: ""
+      lane: "${env.MERGE_SWEEP_LANE}"
+      parent: "${env.MERGE_SWEEP_PARENT}"
+      ticket: "${env.MERGE_SWEEP_TICKET}"
+      model: "${env.MERGE_SWEEP_MODEL}"
+      runner_script: "${env.MERGE_SWEEP_RUNNER_SCRIPT}"
+      brief_dir: "${env.MERGE_SWEEP_BRIEF_DIR}"
+      # An unconfigured runtime answers with a refusal and never starts a lane.
+      dispatch: "${env.MERGE_SWEEP_DISPATCH:false}"
+input_subscriptions:
+- topic: onex.evt.omnimarket.merge-sweep-planned.v1
+  operation: request_scheduled_merge_sweep
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.merge-sweep-planned.v1
+  publish_topics:
+  - onex.cmd.omnimarket.merge-sweep-run-requested.v1
+terminal_event: onex.cmd.omnimarket.merge-sweep-run-requested.v1
+published_events:
+- event_type: ModelMergeSweepRunRequest
+  topic: onex.cmd.omnimarket.merge-sweep-run-requested.v1
+  description: The schedule window's typed request, published by the runtime.
+metadata:
+  ticket: OMN-20676
+  transport_type: kafka

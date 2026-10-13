@@ -31,6 +31,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingCi,
     EnumLandingEngine,
     EnumLandingExternalBlockerKind,
+    EnumLandingGateReason,
     EnumLandingMergeState,
     EnumLandingPrState,
     EnumLandingPushMode,
@@ -100,6 +101,8 @@ class FakePr:
     ref_updates: list[ModelLandingRefUpdate] = field(default_factory=list)
     rerun_runs: list[ModelLandingRerunRun] = field(default_factory=list)
     auto_merge_head: int | None = None
+    gate_reasons: tuple[EnumLandingGateReason, ...] = ()
+    gate_since: datetime | None = None
 
 
 @dataclass
@@ -179,6 +182,9 @@ class LandingWorld:
         self.facts_seen: list[ModelLandingFacts] = []
         self.outcomes_by_lease: Counter[int] = Counter()
         self.crash: str | None = None
+        self.update_results = list(spec.get("update_branch_results", []))
+        self.update_no_new_commits: list[dict[str, Any]] = []
+        self.shared_verdicts: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------ heads
     def head_sha(self, subject: str, label: str) -> str:
@@ -210,6 +216,13 @@ class LandingWorld:
         pr.process_fix = bool(raw.get("process_fix", pr.process_fix))
         pr.parents = tuple(raw.get("parents", pr.parents))
         pr.blockers.update(raw.get("blockers", {}))
+        if "auto_merge_head" in raw:
+            pr.auto_merge_head = head_no(raw["auto_merge_head"])
+        pr.gate_reasons = tuple(
+            EnumLandingGateReason(r) for r in raw.get("gate_reasons", [])
+        )
+        if pr.gate_reasons:
+            pr.gate_since = EPOCH
 
     @staticmethod
     def _set_ci(
@@ -292,9 +305,23 @@ class LandingWorld:
 
     def _ev_hold(self, arg: dict[str, Any]) -> None:
         self.prs[arg["pr"]].suspensions.add(EnumLandingSuspension.HOLD)
+        self.prs[arg["pr"]].auto_merge_head = None
 
     def _ev_release(self, arg: dict[str, Any]) -> None:
-        self.prs[arg["pr"]].suspensions.discard(EnumLandingSuspension.HOLD)
+        self.prs[arg["pr"]].suspensions.discard(
+            EnumLandingSuspension(arg.get("suspension", "hold"))
+        )
+        if arg.get("suspension") == "gate":
+            self.prs[arg["pr"]].gate_reasons = ()
+            self.prs[arg["pr"]].gate_since = None
+
+    def _ev_shared_verdict(self, arg: dict[str, Any]) -> None:
+        self.shared_verdicts = [
+            v
+            for v in self.shared_verdicts
+            if (v["repo"], v["check"]) != (arg["repo"], arg["check"])
+        ]
+        self.shared_verdicts.append({**arg, "at": self.now})
 
     def _ev_blocker(self, arg: dict[str, Any]) -> None:
         self.prs[arg["pr"]].blockers[arg["ref"]] = arg["state"]
@@ -461,6 +488,8 @@ class LandingWorld:
                     red_checks=pr.red_checks,
                     merge_state=pr.merge_state,
                     suspensions=tuple(sorted(pr.suspensions)),
+                    gate_reasons=pr.gate_reasons,
+                    gate_since=pr.gate_since,
                     collaborator=pr.collaborator,
                     runtime=pr.runtime,
                     process_fix=pr.process_fix,
@@ -522,6 +551,16 @@ class LandingWorld:
             drain_requested=tuple(sorted(self.drain_requested)),
             load1=self.load1,
             available_engines=self.available_engines,
+            **(
+                {"update_no_new_commits": self.update_no_new_commits}
+                if self.update_no_new_commits
+                else {}
+            ),
+            **(
+                {"shared_check_verdicts": self.shared_verdicts}
+                if self.shared_verdicts
+                else {}
+            ),
         )
 
     # ---------------------------------------------------------------- actions
@@ -565,12 +604,24 @@ class LandingWorld:
             self._ev_worker_rerun({"pr": action.subject})
         elif kind is EnumLandingActionKind.UPDATE_BRANCH:
             pr = self.prs[action.subject]
-            if self.spec.get("update_branch_result") == "refused":
+            result = (
+                self.update_results.pop(0)
+                if self.update_results
+                else self.spec.get("update_branch_result", "clean")
+            )
+            if result == "no_new_commits":
+                self.update_no_new_commits.append(
+                    {
+                        "pr": pr.pr,
+                        "head_sha": sha(pr.pr, pr.head),
+                        "at": self.now,
+                    }
+                )
+                return
+            if result == "refused":
                 return
             self._new_head(pr, EnumLandingRefUpdateKind.FAST_FORWARD, self.now)
-            pr.merge_state = EnumLandingMergeState(
-                self.spec.get("update_branch_result", "clean")
-            )
+            pr.merge_state = EnumLandingMergeState(result)
         elif kind is EnumLandingActionKind.ELIGIBILITY_RERUN:
             self.eligibility_reruns[action.subject] += 1
         elif kind is EnumLandingActionKind.COMPANION_CLOSE:

@@ -101,6 +101,12 @@ class HandlerSessionPhaseOrchestrator:
                 if tick_outcome == "no_action" or outcome == "halt_dispatched":
                     tick_outcome = outcome
 
+        session_ids = tuple(
+            dict.fromkeys(
+                evaluation.session_id for evaluation in input_envelope.evaluations
+            )
+        )
+
         # Always emit tick-completed so consumers can confirm the orchestrator ran
         commands.append(
             ModelSessionPhaseCommand(
@@ -108,6 +114,7 @@ class HandlerSessionPhaseOrchestrator:
                 command_type=_CMD_TYPE_TICK_COMPLETED,
                 payload={
                     "correlation_id": str(correlation_id),
+                    "session_ids": list(session_ids),
                     "tick_outcome": tick_outcome,
                     "evaluation_count": len(input_envelope.evaluations),
                 },
@@ -116,6 +123,7 @@ class HandlerSessionPhaseOrchestrator:
 
         return ModelSessionPhaseOrchestratorResult(
             correlation_id=correlation_id,
+            session_ids=session_ids,
             commands=tuple(commands),
             tick_outcome=tick_outcome,
         )

@@ -70,7 +70,7 @@ def test_emitted_command_targets_antipattern_match_effect() -> None:
     req = _make_request(file_path="src/foo.py")
     result = handler.handle(req)
 
-    assert result.file_path == "src/foo.py"
+    assert result.validation_context.file_path == "src/foo.py"
 
 
 @pytest.mark.unit
@@ -80,7 +80,8 @@ def test_similarity_threshold_passed_through() -> None:
     req = _make_request(similarity_threshold=0.92)
     result = handler.handle(req)
 
-    assert result.similarity_threshold == pytest.approx(0.92)
+    assert result.min_similarity == pytest.approx(0.92)
+    assert result.validation_context.similarity_threshold == pytest.approx(0.92)
 
 
 @pytest.mark.unit
@@ -112,7 +113,7 @@ def test_enforcement_mode_passed_through() -> None:
     req = _make_request(enforcement_mode="advisory")
     result = handler.handle(req)
 
-    assert result.enforcement_mode == "advisory"
+    assert result.validation_context.enforcement_mode == "advisory"
 
 
 @pytest.mark.unit
@@ -122,4 +123,4 @@ def test_file_content_passed_through() -> None:
     req = _make_request(file_content=content)
     result = handler.handle(req)
 
-    assert result.file_content == content
+    assert result.code_text == content

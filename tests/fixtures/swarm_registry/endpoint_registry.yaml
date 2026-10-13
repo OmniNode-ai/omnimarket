@@ -1,0 +1,27 @@
+# Test fixture swarm endpoint registry (OMN-20935): two local endpoints on a
+# documentation-range address (RFC 5737). The suite points the swarm nodes at this file
+# instead of any deployment's registry.
+registry_schema_version: "1.0.0"
+endpoints:
+  - id: "example-chat-endpoint"
+    base_url: "http://192.0.2.10:8000/v1"
+    model_id: "example-chat-model"
+    endpoint_ref: "LLM_EXAMPLE_PRIMARY_URL"
+    provider: "vllm"
+    capabilities: [code_generation, structured_output, refactoring, analysis, reasoning, math, general]
+    context_window: 131072
+    context_window_source: "probe"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"
+  - id: "example-embedding-endpoint"
+    base_url: "http://192.0.2.10:8002/v1"
+    model_id: "example-embedding-model"
+    endpoint_ref: "LLM_EXAMPLE_EMBEDDINGS_URL"
+    provider: "vllm"
+    capabilities: [embeddings]
+    context_window: 8192
+    context_window_source: "probe"
+    cost_basis: "local"
+    health_check_path: "/health"
+    declared_by: "operator"

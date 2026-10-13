@@ -601,62 +601,15 @@ class TestOccOnlyReplay:
 
 
 # --------------------------------------------------------------------------- #
-# AC6: no new non-canonical file; the change lives in the node's own modules.
+# AC6: the repo-first implementation lives in the node's own gate modules.
 # --------------------------------------------------------------------------- #
-
-_NODE_DIR = Path(durable_evidence_gate.__file__).resolve().parents[1]
-_NODE_FILES = frozenset(
-    {
-        "__init__.py",
-        "__main__.py",
-        "contract.yaml",
-        "metadata.yaml",
-        "handlers/__init__.py",
-        "handlers/dod_evidence_local_source.py",
-        "handlers/handler_dod_evidence_github_effect.py",
-        "handlers/handler_dod_verify.py",
-        # OMN-20917: the S7 replay's handler, models and pure rules.
-        "handlers/handler_occ_replay.py",
-        "handlers/handler_runtime_sha_verify.py",
-        "models/__init__.py",
-        "models/model_ac_binding_retirement.py",
-        "models/model_ac_falsifier_command.py",
-        "models/model_dod_acceptance_summary.py",
-        "models/model_dod_contract_subject.py",
-        "models/model_dod_evidence_github_lookup.py",
-        "models/model_dod_verify_completed_event.py",
-        "models/model_dod_verify_start_command.py",
-        "models/model_dod_verify_state.py",
-        "models/model_durable_evidence_gate.py",
-        "models/model_occ_replay.py",
-        "models/model_occ_verdict_difference.py",
-        "services/__init__.py",
-        "services/ac_binding_retirements.py",
-        "services/ac_falsifier_checks.py",
-        "services/behavior_check_execution.py",
-        "services/check_proof_class.py",
-        "services/contract_subject.py",
-        "services/durable_evidence_gate.py",
-        "services/evidence_collector.py",
-        "services/occ_replay.py",
-        "services/occ_verdict_difference.py",
-        "services/receipt_bound_evidence.py",
-        "services/released_evidence.py",
-        "services/runtime_ops_readback.py",
-    }
-)
 
 
 @pytest.mark.unit
 class TestCanonicalShape:
-    def test_no_module_added_and_repo_first_lives_in_the_gate_modules(self) -> None:
-        present = frozenset(
-            str(p.relative_to(_NODE_DIR))
-            for p in _NODE_DIR.rglob("*")
-            if p.is_file() and p.suffix in {".py", ".yaml"}
-        )
-        assert present == _NODE_FILES
-
+    def test_repo_first_lives_in_the_gate_modules(self) -> None:
+        # This ticket constrains the repo-first gate's implementation, not
+        # unrelated verifier services added by later tickets (OMN-20864).
         gate_module = durable_evidence_gate.__name__
         model_module = ModelTicketMergedPr.__module__
         assert evaluate_repo_evidence.__module__ == gate_module

@@ -1,13 +1,25 @@
 # ruff: noqa: SIM115, E741, E402, T201
 """OMN-20032: turn the in-memory generation records into content rows (lab side) and candidate metadata lines (content-free).
-Only accepted local Qwen answers enter the pool; a run that failed its gate is not a candidate."""
+Only accepted local Qwen answers enter the pool; a run that failed its gate is not a candidate.
+
+Deployment facts come from the environment (OMN-20935): ONEX_TENANT_ID names the tenant the rows
+belong to (required), and MEM_TO_CONTENT_MODEL_SUFFIXES is an optional JSON object mapping
+"<overlay>|<backend>" (or "<overlay>|*" for any backend) to the suffix appended to the model name
+of a run served by a distinct host."""
 
 import csv
 import glob
 import hashlib
 import json
+import os
+import sys
 
-HOUSE = "820272f9-4aaf-5add-a2df-0af942852ab2"
+HOUSE = os.environ.get("ONEX_TENANT_ID", "").strip()
+if not HOUSE:
+    sys.exit(
+        "ONEX_TENANT_ID is not configured: set it to the tenant id the content rows belong to"
+    )
+SUFFIXES = json.loads(os.environ.get("MEM_TO_CONTENT_MODEL_SUFFIXES", "{}"))
 seen = set()
 content = []
 meta = []
@@ -32,10 +44,8 @@ for f in sorted(glob.glob("/tmp/omn20032/genmem_*.jsonl")):
         seen.add(cid)
         ov = d.get("overlay", "dev.local.bifrost.yaml")
         be = (d.get("backends") or [""])[-1]
-        host202 = ov == "dev.local202b.bifrost.yaml" or (
-            ov == "dev.local202.bifrost.yaml" and be == "local-heavy-reasoning"
-        )
-        d["model_name"] = d["model_name"] + ("@omnipc2-llamacpp" if host202 else "")
+        suffix = SUFFIXES.get(f"{ov}|{be}") or SUFFIXES.get(f"{ov}|*") or ""
+        d["model_name"] = d["model_name"] + suffix
         content.append(
             {
                 "correlation_id": cid,

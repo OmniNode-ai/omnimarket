@@ -39,11 +39,12 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
    moves (one more diagnosis attempt) or on a RELEASE row. Only a cause whose
    worker returned a decision, approval or credential blocker asks the operator,
    once, and its park ends on the RELEASE row alone.
-8. Product PRs: chain roots only (R3), update-branch once per head, a head
+8. Product PRs: chain roots only (R3), update-branch once per head (a typed
+   no-new-commits response permits one same-head retry after backoff), a head
    held at BLOCKED only by stale cancelled check copies refreshed once per
    head and at most ``max_stale_refreshes`` times per PR (then DEGRADED, no
    worker), blocked-outcome suppression by fingerprint (R8), one rerun per
-   head (R5),
+   head (R5), plus one per member head/check/green external verdict,
    the escalation ladder and parking (R1), the token (R6), pinned merge under a
    live lease (``PinMerge``), and dispatch in priority order (R4) under the
    worker pool, the per-repo cap, the load pause and the available engines
@@ -127,6 +128,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingPrFacts,
     ModelLandingRefUpdate,
     ModelLandingRerunRun,
+    ModelLandingSharedCheckVerdict,
     ModelLandingWorkerResult,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
@@ -140,6 +142,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     ModelLandingPrRecord,
     ModelLandingRebuildRecord,
     ModelLandingUncovered,
+    ModelLandingVerdictRerun,
 )
 
 _INVALID_REASON: dict[EnumLandingResultKind, EnumLandingOutcomeReason] = {
@@ -1207,6 +1210,8 @@ def _cause_candidate(t: _Tick, p: ModelLandingPrFacts) -> bool:
         stall = timedelta(minutes=t.facts.policy.wait_stall_minutes)
         if p.gate_since is None or t.now - p.gate_since <= stall:
             return False
+    if _shared_verdict_refs(t, p, t.record_of(p.pr)):
+        return False
     return not (
         p.red_class in RERUNNABLE_RED_CLASSES
         and p.head_sha not in t.record_of(p.pr).rerun_heads
@@ -1649,10 +1654,119 @@ def _brief_class(p: ModelLandingPrFacts, ladder: int) -> EnumLandingBriefClass |
     return None
 
 
+def _update_behind(t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord) -> bool:
+    """Update once per head, or retry one observed transient response after backoff.
+
+    True also means waiting for the backoff: that response is not a reason to
+    spend a worker. Unknown refusals retain the existing behind-worker path.
+    """
+    if p.merge_state is not EnumLandingMergeState.BEHIND:
+        return False
+    retry_at = None
+    if p.head_sha in rec.update_heads:
+        failures = [
+            f.at
+            for f in t.facts.update_no_new_commits
+            if f.pr == p.pr and f.head_sha == p.head_sha and f.at <= t.now
+        ]
+        if not failures:
+            return False
+        retry_at = max(failures)
+        if (
+            rec.update_no_new_commits_at is not None
+            and retry_at <= rec.update_no_new_commits_at
+        ) or t.now < retry_at + timedelta(seconds=t.facts.policy.update_retry_seconds):
+            return True
+    t.put_record(
+        p.pr,
+        update_heads=tuple(sorted({*rec.update_heads, p.head_sha})),
+        update_no_new_commits_at=retry_at,
+    )
+    t.emit(
+        ModelLandingAction(
+            kind=EnumLandingActionKind.UPDATE_BRANCH, subject=p.pr, head_sha=p.head_sha
+        )
+    )
+    return True
+
+
+def _shared_verdict_refs(
+    t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord
+) -> tuple[ModelLandingVerdictRerun, ...]:
+    """The newest green check verdicts not yet rerun on this member head."""
+    if p.ci is not EnumLandingCi.RED:
+        return ()
+    # A snapshot may contain verdict history: only its newest observation for
+    # a check counts, so a newer red verdict cannot revive an older green one.
+    newest: dict[str, ModelLandingSharedCheckVerdict] = {}
+    for verdict in t.facts.shared_check_verdicts:
+        if verdict.repo != repo_of(p.pr) or verdict.at > t.now:
+            continue
+        previous = newest.get(verdict.check)
+        rank = (verdict.at, not verdict.green, verdict.verdict_id)
+        if previous is None or rank > (
+            previous.at,
+            not previous.green,
+            previous.verdict_id,
+        ):
+            newest[verdict.check] = verdict
+    owed = [
+        ModelLandingVerdictRerun(
+            head_sha=p.head_sha, check=check, verdict_id=verdict.verdict_id
+        )
+        for check, verdict in sorted(newest.items())
+        if check in p.red_checks and verdict.green
+    ]
+    return tuple(ref for ref in owed if ref not in rec.verdict_reruns)
+
+
+def _shared_verdict_rerun(
+    t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord
+) -> bool:
+    """A green external verdict earns one rerun per (member head, check, verdict)."""
+    owed = _shared_verdict_refs(t, p, rec)
+    if not owed:
+        return False
+    t.put_record(
+        p.pr,
+        verdict_reruns=tuple(
+            sorted(
+                (*rec.verdict_reruns, *owed),
+                key=lambda ref: (ref.head_sha, ref.check, ref.verdict_id),
+            )
+        ),
+        rerun_heads=tuple(sorted({*rec.rerun_heads, p.head_sha})),
+    )
+    if not any(
+        a.kind is EnumLandingActionKind.RERUN
+        and a.subject == p.pr
+        and a.head_sha == p.head_sha
+        for a in (*t.actions, *t.observed)
+    ):
+        t.emit(
+            ModelLandingAction(
+                kind=EnumLandingActionKind.RERUN, subject=p.pr, head_sha=p.head_sha
+            )
+        )
+    return True
+
+
 def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
     if p.state is not EnumLandingPrState.OPEN:
         return
     suspensions = t.suspensions.get(p.pr, p.suspensions)
+    # An already armed green head owned by the controller still needs its
+    # strict-base refresh. Every other suspension, collaborator, parent or
+    # live lease retains its ordinary exclusion; ownership still gates merge.
+    if (
+        suspensions == (EnumLandingSuspension.OWNED,)
+        and p.ci is EnumLandingCi.GREEN
+        and p.auto_merge_head == p.head_sha
+        and not p.collaborator
+        and not p.open_parents
+        and p.pr not in t.leases
+    ):
+        _update_behind(t, p, t.record_of(p.pr))
     if suspensions or p.collaborator:
         t.skips[p.pr] = _held_reason(suspensions)
         return
@@ -1691,24 +1805,15 @@ def _product_pr(t: _Tick, p: ModelLandingPrFacts) -> None:
         ):
             _record(t, pr, None, EnumLandingOutcome.BLOCKED_ON)
         return
-    if (
-        p.merge_state is EnumLandingMergeState.BEHIND
-        and p.head_sha not in rec.update_heads
-    ):
-        t.put_record(pr, update_heads=(*rec.update_heads, p.head_sha))
-        t.emit(
-            ModelLandingAction(
-                kind=EnumLandingActionKind.UPDATE_BRANCH,
-                subject=pr,
-                head_sha=p.head_sha,
-            )
-        )
+    if _update_behind(t, p, rec):
         return
     if _mergeable(p):
         _merge(t, p)
         return
     if _stale_cancelled(p):
         _refresh_stale_cancelled(t, p, rec)
+        return
+    if _shared_verdict_rerun(t, p, rec):
         return
     suppressed = rec.outcome in BLOCKED_OUTCOMES and rec.blocker_fingerprint == fp
     if suppressed or parked:

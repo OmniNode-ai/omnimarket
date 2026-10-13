@@ -8,7 +8,7 @@
 Ground truth: ``node_aislop_sweep`` ``_HARDCODED_CONFIG_PATTERNS`` already encodes
 the invariant "a quoted ``http(s)://localhost`` or ``http(s)://127.0.0.1`` URL
 literal in source is a portability / config-leak bug" (an endpoint that only
-resolves on the author's box, never in CI / containers / the .201 server). It is
+resolves on the author's box, never in CI / containers / a remote server). It is
 an ADVISORY sweep, not a blocking pre-commit gate; CLAUDE.md "All URLs from
 contracts only" (epic OMN-12803) names the durable rule: every endpoint URL is
 resolved from a contract / routing authority, never a code literal. This corpus

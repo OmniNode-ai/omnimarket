@@ -11,7 +11,7 @@ protocol (the OMN-15905 defect class). So this file proves what nothing else can
 2. ``is_open`` is GENERATED from the two column groups and nothing can write it;
 3. the ``ON CONFLICT ... WHERE (at, row_id) <= EXCLUDED`` guard refuses an
    out-of-order redelivery IN SQL;
-4. a redelivered row is ``ON CONFLICT DO NOTHING`` on the log.
+4. a redelivered row only fills a previously NULL ledger sequence on the log.
 
 It SKIPS (never ERRORs) without a reachable database and provisions a throwaway
 schema so concurrent runs never collide. Signal: ``INTEGRATION_POSTGRES``.
@@ -138,6 +138,11 @@ async def _migrated(
         await connection.execute(
             MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
         )
+        await connection.execute(
+            (MIGRATION.parent / "0003_work_ledger_seq.sql")
+            .read_text()
+            .replace("omninode_internal.", f"{schema}.")
+        )
         writer = WorkLedgerProjectionWriter()
         writer._db = _ConnectionDb(connection, dsn)  # type: ignore[assignment]
         for name, sql in originals.items():
@@ -259,3 +264,79 @@ async def test_a_test_context_write_to_a_real_host_is_refused_without_system_exi
             f"SELECT count(*) FROM {schema}.work_ledger_rows"
         )
         assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_ledger_seq_replay_fills_null_and_never_overwrites() -> None:
+    async with _migrated() as (writer, connection, schema):
+        topic = EnumLedgerRowType.CLAIM.topic
+        for ledger_seq, expected in ((None, None), (7, 7), (99, 7), (None, 7)):
+            await writer.project_event(
+                topic, {"raw_row": CLAIM, "ledger_seq": ledger_seq}, _meta(topic)
+            )
+            stored = await connection.fetchval(
+                f"SELECT ledger_seq FROM {schema}.work_ledger_rows"
+            )
+            assert stored == expected
+        assert (
+            await connection.fetchval(f"SELECT count(*) FROM {schema}.work_ledger_rows")
+            == 1
+        )
+
+
+@pytest.mark.asyncio
+async def test_ledger_seq_window_presence_includes_rows_outside_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from omnimarket.handlers.work_ledger_seq_gap import PostgresWorkLedgerSeqReader
+    from omnimarket.nodes.node_work_ledger_seq_gap_effect import (
+        HandlerWorkLedgerSeqGap,
+    )
+    from omnimarket.nodes.node_work_ledger_seq_gap_effect.models import (
+        ModelWorkLedgerSeqGapRequest,
+    )
+
+    async with _migrated() as (_writer, connection, schema):
+        # The window spans seqs 2..5; seq 3 exists outside its timestamp bounds.
+        # Seq 4 is missing, seq 5 is duplicated, and an unsequenced row is newest.
+        for row_id, seq, timestamp in (
+            ("a", 1, "2026-10-07T12:00:00+00:00"),
+            ("b", 2, "2026-10-08T01:00:00+00:00"),
+            ("c", 3, "2026-10-07T12:00:00+00:00"),
+            ("d", 5, "2026-10-08T02:00:00+00:00"),
+            ("e", 5, "2026-10-07T12:00:00+00:00"),
+            ("f", None, "2026-10-08T03:00:00+00:00"),
+            ("g", 100, "2026-10-08T01:00:00+00:00"),
+        ):
+            await connection.execute(
+                f"""INSERT INTO {schema}.work_ledger_rows
+                    (row_id, ledger_id, row_ts, row_type, raw_row, projected_at, ledger_seq)
+                    VALUES ($1, $2, $3, 'STATUS', $1, $3, $4)""",
+                row_id,
+                "other-ledger" if row_id == "g" else "rolling-work-ledger",
+                datetime.fromisoformat(timestamp),
+                seq,
+            )
+        monkeypatch.setenv("WORK_LEDGER_SEQ_INTEGRATION_DSN", _dsn())
+        reader = PostgresWorkLedgerSeqReader(
+            "WORK_LEDGER_SEQ_INTEGRATION_DSN", f"{schema}.work_ledger_rows"
+        )
+        report = HandlerWorkLedgerSeqGap(reader).handle(
+            ModelWorkLedgerSeqGapRequest(
+                correlation_id=uuid4(),
+                since=datetime(2026, 10, 8, tzinfo=UTC),
+                until=datetime(2026, 10, 8, 23, 59, 59, tzinfo=UTC),
+            )
+        )
+        assert (report.from_seq, report.to_seq) == (2, 5)
+        assert report.first_missing_seq == 4
+        assert report.missing_count == 1
+        assert report.contiguous_through == 3
+        assert report.duplicate_seqs == (5,)
+        assert report.duplicate_count == 1
+        assert report.rows_with_seq == 4
+        assert report.rows_without_seq == 1
+        assert report.max_seq_row_ts == datetime(2026, 10, 8, 2, tzinfo=UTC)
+        assert report.newest_row_ts == datetime(2026, 10, 8, 3, tzinfo=UTC)

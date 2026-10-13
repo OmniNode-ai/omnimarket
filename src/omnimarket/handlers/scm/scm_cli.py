@@ -5,8 +5,10 @@
 A lane does GitHub work through this command and no ``gh`` verb:
 
 - **PR and CI state reads** (pr-view, pr-status, pr-checks, pr-list,
-  pr-merge-commit) are answered from the PR watcher's state file and the
-  canonical clones first, with zero GitHub requests. When neither can answer
+  pr-merge-commit, pr-heads) are answered from the PR watcher's state file and the
+  canonical clones first, with zero GitHub API requests (pr-heads makes one
+  ``git ls-remote`` over the git transport, as the canonical-clone refresh
+  does). When neither can answer
   (no record, or a non-terminal record older than eight minutes) the read goes
   to node_github_repo_gateway_effect over the bus. ``--source local`` never
   asks the bus; ``--source bus`` never reads locally.
@@ -61,6 +63,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import (
     ScmBusCaller,
 )
 from omnimarket.handlers.scm.handler_scm_local_state import (
+    CLONE_ROOT_ENV,
     HandlerScmLocalState,
     default_clone_path,
     default_watcher_state_path,
@@ -265,8 +268,12 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option("--run-id", type=int, default=None, help="run-view, run-download.")
     @click.option("--job-id", type=int, default=None, help="job-log.")
     @click.option("--artifact-id", type=int, default=None, help="run-download.")
-    @click.option("--branch", default=None)
-    @click.option("--head-sha", default=None, help="run-list: runs of this head.")
+    @click.option(
+        "--branch", default=None, help="run-list, branch-protection, pr-heads."
+    )
+    @click.option(
+        "--head-sha", default=None, help="run-list: runs of this head; pr-heads."
+    )
     @click.option("--workflow", default=None, help="run-list: a workflow file or id.")
     @click.option("--event", default=None, help="run-list: the triggering event.")
     @click.option("--status", default=None, help="run-list: the run status.")
@@ -290,7 +297,7 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--clone",
         type=click.Path(file_okay=False),
         default=None,
-        help="The repository's canonical clone (default $OMNI_HOME/<repo>).",
+        help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
     )
     @click.option("--timeout-s", type=float, default=60.0, show_default=True)
     def command(
@@ -316,6 +323,8 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
                     pr_number=number,
                     watcher_state_path=str(watcher) if watcher else None,
                     clone_path=str(clone_path) if clone_path else None,
+                    branch=_optional_str(fields.get("branch")),
+                    head_sha=_optional_str(fields.get("head_sha")),
                 )
             )
             if local.answered and local.source is not None:

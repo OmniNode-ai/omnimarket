@@ -16,6 +16,8 @@ UUID_PATTERN = re.compile(
 )
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CLOCK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+# A ledger stamp is zero-padded; strptime alone would also take 2026-10-6T3:0:0Z.
+STAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 class EnumCloseoutDecisionKind(StrEnum):
@@ -28,6 +30,8 @@ class EnumCloseoutDecisionKind(StrEnum):
     CHECK_IDENTITIES = "check_identities"
     SELECT_CANDIDATES = "select_candidates"
     DECIDE_TICKET = "decide_ticket"
+    COMPLETION = "completion"
+    GROUND_STATE = "ground_state"
 
 
 class EnumPrecheckVerdict(StrEnum):
@@ -52,6 +56,14 @@ class EnumReleasedState(StrEnum):
     MERGED_UNRELEASED = "merged-unreleased"
     INDETERMINATE = "indeterminate"
     NOT_APPLICABLE = "not-applicable"
+
+
+class EnumCloserHealth(StrEnum):
+    """The closer's health on the morning report: RED from the third zero-flip run on."""
+
+    GREEN = "GREEN"
+    RED = "RED"
+    UNKNOWN = "UNKNOWN"
 
 
 class EnumTicketDecision(StrEnum):
@@ -121,6 +133,49 @@ class ModelRotationRecord(BaseModel):
 
     id: str
     last_closeout_comment_at: str = ""
+
+
+class ModelRunUnmet(BaseModel):
+    """One unmet criterion of an open ticket, as the run summary carries it."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    reason: str
+
+
+class ModelRunOpenTicket(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    id: str = ""
+    unmet: list[ModelRunUnmet]
+
+
+class ModelRunRefusedBinding(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    refused: str
+
+
+class ModelRunFlipRefusal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    id: str = ""
+    detail: str = ""
+
+
+class ModelRunSummary(BaseModel):
+    """The closer's run summary, passed verbatim: fields completion does not count are ignored."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    run_key: str = Field(pattern=r"^[^\s|]+$", description="One ledger token.")
+    selected: list[str]
+    flipped: list[str]
+    open: list[ModelRunOpenTicket]
+    refused_bindings: list[ModelRunRefusedBinding]
+    flip_refused: list[ModelRunFlipRefusal] = Field(default_factory=list)
+    held_for_amendment: list[str]
+    deferred_count: int = Field(ge=0)
 
 
 class ModelSprintProject(BaseModel):
@@ -296,6 +351,10 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     records: list[ModelRotationRecord] | None = None
     text_state: str = ""
     max_candidates: int | None = Field(default=None, ge=1)
+    # completion (clock_utc is the completion stamp, ledger_rows the history; both shared
+    # with precheck)
+    run_summary: ModelRunSummary | None = None
+    report_ref: str = ""
 
     @model_validator(mode="after")
     def validate_fields_for_kind(self) -> Self:
@@ -320,6 +379,12 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
             EnumCloseoutDecisionKind.CHECK_IDENTITIES: (),
             EnumCloseoutDecisionKind.SELECT_CANDIDATES: ("records", "max_candidates"),
             EnumCloseoutDecisionKind.DECIDE_TICKET: ("ticket_id", "acs"),
+            EnumCloseoutDecisionKind.COMPLETION: (
+                "clock_utc",
+                "ledger_rows",
+                "run_summary",
+            ),
+            EnumCloseoutDecisionKind.GROUND_STATE: ("ledger_rows",),
         }
         optional: dict[EnumCloseoutDecisionKind, tuple[str, ...]] = {
             EnumCloseoutDecisionKind.PRECHECK: (
@@ -360,6 +425,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "run_key",
                 "text_sha",
             ),
+            EnumCloseoutDecisionKind.COMPLETION: ("report_ref",),
+            EnumCloseoutDecisionKind.GROUND_STATE: (),
         }
         for field in required[kind]:
             if getattr(self, field) is None:
@@ -374,7 +441,10 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 call_default_factory=True
             ):
                 raise ValueError(f"{kind.value} does not take {field}")
-        if kind is EnumCloseoutDecisionKind.PRECHECK:
+        if kind in (
+            EnumCloseoutDecisionKind.PRECHECK,
+            EnumCloseoutDecisionKind.COMPLETION,
+        ):
             assert self.clock_utc is not None
             try:
                 datetime.strptime(self.clock_utc, CLOCK_FORMAT)
@@ -382,6 +452,12 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 raise ValueError(
                     f"clock_utc must be {CLOCK_FORMAT}, got {self.clock_utc!r}"
                 ) from exc
+            if kind is EnumCloseoutDecisionKind.COMPLETION and not STAMP_PATTERN.match(
+                self.clock_utc
+            ):
+                raise ValueError(
+                    f"clock_utc must be a zero-padded ledger stamp, got {self.clock_utc!r}"
+                )
         if kind is EnumCloseoutDecisionKind.REPORT:
             if "|" in self.friction or "\n" in self.friction:
                 raise ValueError("friction is one ledger cell: no pipe and no newline")
@@ -454,3 +530,9 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     needs_amendment: bool | None = None
     signature: str | None = None
     comment_text: str | None = None
+    # completion and ground_state
+    completion_rows: list[str] | None = None
+    zero_flip_streak: int | None = None
+    top_deferral_reason: str | None = None
+    health: EnumCloserHealth | None = None
+    ground_state_row: str | None = None

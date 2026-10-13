@@ -348,6 +348,7 @@ def test_workspace_rejection_stops_agent_invocation(
                 "valid": False,
                 "resolved_path": "/refused",
                 "rejection_reason": "outside allowed roots",
+                "invoke_command": kwargs["payload"]["invoke_command"],
             }
         }
 

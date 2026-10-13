@@ -1,6 +1,6 @@
 name: node_pr_watch_orchestrator
 version: "1.0.1"
-description: "Native PR watch orchestrator with typed gh checks effect boundary."
+description: "Native PR watch orchestrator with typed GitHub REST checks effect boundary."
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -10,7 +10,7 @@ capabilities:
   full_runtime: true
   requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   side_effect_class: read_only
 dependencies:
   - "omnibase_core>=0.40.0"
