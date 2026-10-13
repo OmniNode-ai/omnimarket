@@ -4,12 +4,14 @@
 
 Every test resolves the backend from the COMMITTED routing contract, so a test
 that passes here proves the contract entry, not a fixture copy of it. The fake
-transport answers both the visibility read and the decision call and records
-every request, so "nothing was sent" is asserted, not inferred from a result.
+transport records every request and answers GitHub as an unauthenticated read
+of a private repository would (404), so "nothing was sent" and "GitHub was never
+asked" are asserted, not inferred from a result.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -45,8 +47,17 @@ _BACKEND = next(
     if b["backend_id"] == _BACKEND_ID
 )
 _FAKE_KEY = "fake-typesafe-key-for-tests"
-_PUBLIC = "OmniNode-ai/public-repo"
-_PRIVATE = "OmniNode-ai/private-repo"
+_CODE_REPO = "OmniNode-ai/code-repo"
+_PRIVATE = "OmniNode-ai/private-code-repo"
+_REFUSED_NAME = "refused-example"
+_REFUSED = f"OmniNode-ai/{_REFUSED_NAME}"
+#: The contract lists refused names as digests (the names themselves may not be
+#: spelled in this public repository). These are the two digests the ruling
+#: requires; the handler tests below inject a synthetic name's digest instead.
+_CONTRACT_REFUSED_DIGESTS = [
+    "sha256:f36f5806d0ce905afcc14a8e2a41c350226946fd20db41b26b31be7ef9be87f6",
+    "sha256:ee7bb71b3bbc91e6c49048c5db0adfa15910ce03e22abb48e5a8d3cd2dcae1c9",
+]
 
 
 class _Store:
@@ -60,22 +71,17 @@ class _Store:
 
 
 class _Recorder:
-    """Fake transport: GitHub visibility reads plus the decision endpoint."""
+    """Fake transport: the decision endpoint, and a GitHub that sees no repository."""
 
     def __init__(self, decision: httpx.Response | Exception | None = None) -> None:
         self.decision = decision
-        self.visibility_calls: list[httpx.Request] = []
+        self.github_calls: list[httpx.Request] = []
         self.decision_calls: list[httpx.Request] = []
-        self.visibility_error: Exception | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if url.startswith(f"{GITHUB_REST_URL}/repos/"):
-            self.visibility_calls.append(request)
-            if self.visibility_error is not None:
-                raise self.visibility_error
-            if url.endswith(_PUBLIC):
-                return httpx.Response(200, json={"private": False})
+            self.github_calls.append(request)
             return httpx.Response(404, json={"message": "Not Found"})
         if url == _BACKEND["endpoint_url"]:
             self.decision_calls.append(request)
@@ -84,6 +90,10 @@ class _Recorder:
             assert self.decision is not None
             return self.decision
         raise AssertionError(f"unexpected request to {url}")
+
+
+def _digest(name: str) -> str:
+    return "sha256:" + hashlib.sha256(name.lower().encode("utf-8")).hexdigest()
 
 
 def _handler(
@@ -95,11 +105,12 @@ def _handler(
         secret_store=cast(ProtocolSecretStore, _Store(values)),
         bifrost_config_path=_BIFROST,
         bifrost_overlay_path=tmp / "no-overlay.yaml",
+        refused_repositories=(_digest(_REFUSED_NAME),),
     )
 
 
 def _choice(
-    repo: str | None = _PUBLIC, *, incumbent_answer: str | None = "infrastructure"
+    repo: str | None = _CODE_REPO, *, incumbent_answer: str | None = "infrastructure"
 ) -> ModelTypedDecisionRequest:
     return ModelTypedDecisionRequest(
         correlation_id=uuid4(),
@@ -175,41 +186,87 @@ def test_the_model_decides_and_the_request_is_built_from_the_routing_contract(
 
 
 @pytest.mark.unit
-def test_public_is_admitted_and_private_is_refused_in_the_same_run(
+def test_a_private_code_repository_reaches_the_decision_backend(
     tmp_path: Path,
 ) -> None:
-    """Positive control: a refuse-everything bug cannot pass this test."""
+    """RULING 2026-10-13T18:34:53Z: every repository except the refused ones."""
     recorder = _Recorder(_choice_answer("change", 0.95))
     handler = _handler(recorder, tmp=tmp_path)
 
-    admitted = handler.handle(_choice(_PUBLIC))
-    refused = handler.handle(_choice(_PRIVATE))
+    admitted = handler.handle(_choice(_PRIVATE))
 
     assert admitted.decided_by is EnumTypedDecisionDecider.MODEL
-    assert refused.decided_by is EnumTypedDecisionDecider.INCUMBENT_REFUSED
-    assert refused.reason is EnumTypedDecisionReason.REPOSITORY_NOT_PUBLIC
-    assert refused.answer == "infrastructure"
-    assert len(recorder.visibility_calls) == 2
-    # Exactly one decision call: the public one. The private request sent nothing.
+    assert admitted.answer == "change"
     assert len(recorder.decision_calls) == 1
-    # No GitHub token resolves from this store, so the read is anonymous. With a
-    # token the read is authenticated and still admits only ``private: false``
-    # (test_visibility_guard.py).
-    assert all("Authorization" not in c.headers for c in recorder.visibility_calls)
+    # The visibility read is gone: GitHub is never asked what a repository is.
+    assert recorder.github_calls == []
 
 
 @pytest.mark.unit
-def test_a_visibility_resolution_failure_is_a_refusal_and_sends_nothing(
+@pytest.mark.parametrize(
+    "repo",
+    [
+        _REFUSED,
+        f"omninode-ai/{_REFUSED_NAME.upper()}",
+        f"some-fork/{_REFUSED_NAME.title()}",
+    ],
+)
+def test_a_refused_repository_is_refused_and_sends_nothing(
+    tmp_path: Path, repo: str
+) -> None:
+    recorder = _Recorder(_choice_answer("change", 0.95))
+    handler = _handler(recorder, tmp=tmp_path)
+
+    refused = handler.handle(_choice(repo))
+    admitted = handler.handle(_choice(_PRIVATE))
+
+    assert refused.decided_by is EnumTypedDecisionDecider.INCUMBENT_REFUSED
+    assert refused.reason is EnumTypedDecisionReason.REPOSITORY_REFUSED
+    assert refused.answer == "infrastructure"
+    # Positive control: the same handler admits a code repository in the same run.
+    assert admitted.decided_by is EnumTypedDecisionDecider.MODEL
+    assert len(recorder.decision_calls) == 1
+    assert recorder.github_calls == []
+
+
+@pytest.mark.unit
+def test_a_repository_that_only_contains_a_refused_name_is_admitted(
     tmp_path: Path,
 ) -> None:
     recorder = _Recorder(_choice_answer("change", 0.95))
-    recorder.visibility_error = httpx.ConnectTimeout("timed out")
 
-    result = _handler(recorder, tmp=tmp_path).handle(_choice())
+    result = _handler(recorder, tmp=tmp_path).handle(
+        _choice(f"OmniNode-ai/{_REFUSED_NAME}-tools")
+    )
 
-    assert result.decided_by is EnumTypedDecisionDecider.INCUMBENT_REFUSED
-    assert result.reason is EnumTypedDecisionReason.REPOSITORY_VISIBILITY_UNRESOLVED
-    assert recorder.decision_calls == []
+    assert result.decided_by is EnumTypedDecisionDecider.MODEL
+    assert len(recorder.decision_calls) == 1
+
+
+@pytest.mark.unit
+def test_the_contract_refuses_by_digest_and_has_no_public_requirement(
+    tmp_path: Path,
+) -> None:
+    """Without an injected list the handler reads the committed contract."""
+    scoping = _CONTRACT["work_unit_scoping"]
+
+    assert scoping["refused_repositories"] == _CONTRACT_REFUSED_DIGESTS
+    assert "require_public_repository" not in scoping
+    assert "GITHUB_TOKEN" not in _CONTRACT.get("secrets", {})
+
+    recorder = _Recorder(_choice_answer("change", 0.95))
+    handler = HandlerTypedDecision(
+        transport=httpx.MockTransport(recorder),
+        secret_store=cast(
+            ProtocolSecretStore, _Store({_BACKEND["secret_ref"]: _FAKE_KEY})
+        ),
+        bifrost_config_path=_BIFROST,
+        bifrost_overlay_path=tmp_path / "no-overlay.yaml",
+    )
+    # The contract's own list is loaded: a synthetic name is admitted by it.
+    assert (
+        handler.handle(_choice(_REFUSED)).decided_by is EnumTypedDecisionDecider.MODEL
+    )
 
 
 @pytest.mark.unit
@@ -221,7 +278,7 @@ def test_no_repository_attribution_is_refused_with_no_network_call(
     result = _handler(recorder, tmp=tmp_path).handle(_choice(None))
 
     assert result.reason is EnumTypedDecisionReason.NO_REPOSITORY_ATTRIBUTION
-    assert recorder.visibility_calls == []
+    assert recorder.github_calls == []
     assert recorder.decision_calls == []
 
 
@@ -256,16 +313,16 @@ def test_a_blind_low_probability_answer_has_no_answer(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_a_blind_private_repository_request_has_no_answer(tmp_path: Path) -> None:
+def test_a_blind_refused_repository_request_has_no_answer(tmp_path: Path) -> None:
     recorder = _Recorder()
 
     result = _handler(recorder, tmp=tmp_path).handle(
-        _choice(_PRIVATE, incumbent_answer=None)
+        _choice(_REFUSED, incumbent_answer=None)
     )
 
     assert result.decided_by is EnumTypedDecisionDecider.NO_ANSWER
     assert result.answer is None
-    assert result.reason is EnumTypedDecisionReason.REPOSITORY_NOT_PUBLIC
+    assert result.reason is EnumTypedDecisionReason.REPOSITORY_REFUSED
     assert result.model_answer is None
     assert recorder.decision_calls == []
 
@@ -430,7 +487,7 @@ def test_a_noul_answer_maps_to_true_or_false_with_its_own_probability(
     )
     request = ModelTypedDecisionRequest(
         correlation_id=uuid4(),
-        work_unit_repository=_PUBLIC,
+        work_unit_repository=_CODE_REPO,
         state="The retry succeeded on the same head with no change.",
         kind=EnumTypedDecisionKind.NOUL,
         instructions="Did the change under review cause the failure?",
@@ -469,7 +526,7 @@ def test_a_score_answer_is_its_most_probable_level(tmp_path: Path) -> None:
     )
     request = ModelTypedDecisionRequest(
         correlation_id=uuid4(),
-        work_unit_repository=_PUBLIC,
+        work_unit_repository=_CODE_REPO,
         state={"finding": "SQL built by string concatenation from request input"},
         kind=EnumTypedDecisionKind.SCORE,
         instructions="How severe is this review finding?",
@@ -512,7 +569,7 @@ def test_no_endpoint_model_or_key_literal_lives_in_the_node_source() -> None:
 def test_a_request_that_does_not_fit_its_kind_is_rejected() -> None:
     base: dict[str, Any] = {
         "correlation_id": uuid4(),
-        "work_unit_repository": _PUBLIC,
+        "work_unit_repository": _CODE_REPO,
         "state": "x",
         "instructions": "q",
     }

@@ -614,9 +614,9 @@ backends:
   # text-generation chain of responders can never select it (the same
   # pinned-by-id pattern as cloud-gemini-judge above). The only caller is
   # node_typed_decision_effect, whose contract pins this backend_id and which
-  # refuses any work unit that does not belong to a public repository before
-  # this endpoint is called (the typed-decision evaluation plan,
-  # sections 4 and 5, Task 8).
+  # refuses any work unit that names no repository or names a repository on its
+  # refused list before this endpoint is called (the typed-decision evaluation
+  # plan, sections 4 and 5, Task 8).
   #
   # The key is `llm.typesafe.api_key`, resolved at the effect boundary through
   # the canonical secret-store resolver exactly as cloud-glm's llm.glm.api_key

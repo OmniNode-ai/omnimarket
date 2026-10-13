@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20106"
+title: "The typed-decision node accepts private repositories except those on its refused list"
+summary: "node_typed_decision_effect replaces its public-repository requirement with a refused-repositories list in its contract and no longer reads GitHub for repository visibility. A work unit for a private code repository reaches the decision backend; one for a repository on the refused list is refused before any call. The list holds SHA-256 digests of the two refused names, because the public-repo hygiene gate bars those names from tracked files."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-refused-list-replaces-public-guard"
+    statement: "The typed-decision effect admits every attributed repository except those on the contract's refused_repositories list, and makes no GitHub visibility read."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a typed decision for a private code repository reaches Jev and one for a repository on the contract's refused list is refused -- falsifier: uv run pytest tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision.py -q -p no:randomly --no-cov -n 0 -k 'private_code_repository or refused' fails against the old public-repository guard"
+evidence_requirements:
+  - kind: "tests"
+    description: "The typed-decision handler tests and the shadow golden chain pass."
+    command: "uv run pytest tests/unit/nodes/node_typed_decision_effect tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20106-ac1-private-accepted"
+    description: "A request for a private code repository reaches the decision backend and GitHub is never read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision.py -q -p no:randomly --no-cov -n 0 -k private_code_repository"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20106-ac1-refused-repository"
+    description: "A repository on the refused list, in any case and under any owner, is refused and nothing is sent; the contract declares the list as two digests and no public-repository requirement."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision.py -q -p no:randomly --no-cov -n 0 -k 'refused or no_public_requirement'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

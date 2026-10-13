@@ -589,5 +589,5 @@ not_offered:
       text-generation rung: no routing rule selects it and a tenant overlay row
       would mint a chat route to an endpoint that does not serve chat. It is
       reached only through node_typed_decision_effect, on the platform's own
-      evaluation, behind a public-repository-only refusal.
+      evaluation, behind a refused-repository list.
     ticket: OMN-19432
