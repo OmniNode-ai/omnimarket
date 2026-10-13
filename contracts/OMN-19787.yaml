@@ -115,4 +115,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/handlers/handler_ground_truth_label.py?ref=fe339700221568188bea801d332e2014c88c9187 --jq .content | base64 -d | grep -c 'class HandlerGroundTruthLabel'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC5"]
