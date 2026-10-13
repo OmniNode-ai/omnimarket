@@ -207,9 +207,8 @@ class TestTheRegistryCannotDriftFromTheChain:
             # form is how `response_non_empty` and `task_completed` stayed
             # out of the registry while this test reported parity: the arm
             # was invisible on BOTH sides, so the two gaps cancelled.
-            # A membership test against a NAME (`check in
-            # _UNEVALUATED_DETERMINISTIC_CHECKS`) is deliberately not read
-            # here -- that is the skip set, not an executing arm.
+            # A membership test against a NAME (`check in <some set>`) is
+            # deliberately not read here -- a named set is not an arm.
             if isinstance(op, ast.In) and isinstance(right, ast.Tuple | ast.List):
                 for element in right.elts:
                     if isinstance(element, ast.Constant) and isinstance(

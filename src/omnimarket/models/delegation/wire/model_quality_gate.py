@@ -62,11 +62,10 @@ SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 # distinct from checks that can only refute one. Every other check the gate
 # runs is a pre-filter or a grounding check: it can show an answer is wrong
 # (unparseable, a refusal, a number the input does not hold) and can never show
-# it is right. ``passes_existing_tests`` executes the delegated artifact against
-# its acceptance tests; it is the only such check the contract names, and no
-# executor is wired for it in the gate today (OMN-13850), so it is always
-# skipped. That is the honest state the property below reports: a score of 1.0
-# today is the fraction of refutation checks an answer survived, not a proof.
+# it is right. ``passes_existing_tests`` is the only such check the contract
+# names. The gate evaluates it from a ModelNamedTestRun when the caller supplies
+# one and skips it otherwise (OMN-21076). Without an executed verifying pass,
+# a score of 1.0 is the fraction of refutation checks an answer survived.
 SCORE_VERIFYING_CHECKS: frozenset[str] = frozenset({"passes_existing_tests"})
 
 # Why a score reads unverified, as the tokens ``score_unverified_because``
@@ -223,10 +222,10 @@ class ModelQualityGateResult(BaseModel):
     skipped_checks: tuple[str, ...] = Field(
         default=(),
         description=(
-            "Deterministic DoD checks that were NOT evaluated because no "
-            "acceptance-command executor is wired for them (OMN-13850). Recorded "
-            "as durable evidence of the unevaluated status; excluded from the "
-            "deterministic passed/total fraction so a check with no executor "
+            "DoD checks that were NOT evaluated because the evidence they need, "
+            "such as a named-test run or a grounding source, was not supplied. "
+            "Recorded as durable evidence of the unevaluated status; excluded "
+            "from the passed/total fraction so a check without its evidence "
             "cannot report a phantom 'passed'."
         ),
     )
