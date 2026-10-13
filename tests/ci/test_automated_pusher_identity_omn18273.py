@@ -78,6 +78,7 @@ RUN_TRAILER = "Onex-Run:"
 # (workflow file, job id) pairs whose pushes must carry the App identity.
 IN_SCOPE: tuple[tuple[str, str], ...] = (
     ("occ-behavior-proof-backfill.yml", "backfill"),
+    ("omniclaude-pin-bump.yml", "bump"),
 )
 
 # (workflow file, job id) pairs that push a TAG rather than a branch. A tag is a

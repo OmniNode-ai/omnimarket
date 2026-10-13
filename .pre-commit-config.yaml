@@ -1501,6 +1501,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20001: an omniclaude release reaches omnimarket as a pin bump PR (ruling
+      # 2026-10-01T21:43:10Z (3)). Check-only. SYNC with the ci.yml lint step
+      # "Omniclaude release notice (OMN-20001)".
+      - id: omniclaude-release-notice
+        name: Omniclaude release notice opens a pin bump PR (OMN-20001)
+        language: system
+        entry: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_omniclaude_pin_bump_compute/.*|tests/ci/test_omniclaude_release_notice_omn20001\.py|\.github/workflows/omniclaude-pin-bump\.yml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20730: the red CI triage model passes its design config, each property
       # fails on a one-knob mutation, the TLC results match the committed model,
       # configs and outputs, and VERDICT.txt approves the model's digest.

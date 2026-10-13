@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-20001: the consumer half of the producer-release notice.
+#
+# Operator ruling 2026-10-01T21:43:10Z (3): a producer change that extends a
+# cross-repo contract notifies its consumer, and the consumer's update is raised
+# as a PR in the consumer repo that lands through the consumer's own checks.
+# omniclaude's release workflow dispatches `omniclaude-release` here with the
+# released version. This job moves the one omniclaude pin in ci.yml to that
+# version's tag through node_omniclaude_pin_bump_compute and opens the PR. The
+# Event Registry Drift job and its integration step then run against the new
+# tag in that PR, so the pin moves only when the omniclaude-coupled tests pass.
+#
+# The bump node refuses a release candidate, a version that is not ahead of the
+# pin, and a ci.yml whose omniclaude reads do not sit at one release tag; a
+# refusal fails this job red and opens no PR.
+#
+# Trust boundary: repository_dispatch and workflow_dispatch both run the default
+# branch's copy of this file. The version reaches the shell through an env var,
+# never through ${{ }} interpolation into the script.
+#
+# Guarded by tests/ci/test_omniclaude_release_notice_omn20001.py (lint job step
+# "Omniclaude release notice (OMN-20001)" and pre-commit hook
+# 'omniclaude-release-notice').
+
+name: Omniclaude pin bump
+
+on:
+  repository_dispatch:
+    types: [omniclaude-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released omniclaude version, X.Y.Z"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omniclaude-pin-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Open the omniclaude pin bump PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Mint onexbot-occ-writer app token
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Move the omniclaude pin, or refuse
+        id: bump
+        env:
+          RELEASED_VERSION: ${{ github.event.client_payload.version || inputs.version }}
+        run: |
+          set -euo pipefail
+          RESULT="$(uv run python -m omnimarket.nodes.node_omniclaude_pin_bump_compute \
+            --ci-yml .github/workflows/ci.yml --version "$RELEASED_VERSION")"
+          echo "$RESULT"
+          TAG="$(printf '%s' "$RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["new_tag"])')"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "branch=automation/omn-20001-omniclaude-pin-${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pin bump PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          BRANCH: ${{ steps.bump.outputs.branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "307849072+onexbot-occ-writer[bot]@users.noreply.github.com"
+          if ! OPEN_HEADS="$(gh pr list --repo "$REPO" --base dev --state open \
+            --limit 100 --json headRefName --jq '.[].headRefName')"; then
+            echo "::error::could not list open PRs; refusing to open a pin bump that may duplicate one in flight."
+            exit 1
+          fi
+          if printf '%s\n' "$OPEN_HEADS" | grep -qxF "$BRANCH"; then
+            echo "A pin bump PR to ${TAG} is already open -- not opening another."
+            exit 0
+          fi
+          git checkout -b "$BRANCH"
+          git add .github/workflows/ci.yml
+          # Provenance trailers (OMN-18273): the commit names the run that made it.
+          git commit \
+            -m "chore(OMN-20001): move the omniclaude pin to ${TAG}" \
+            -m "Ticket: OMN-20001" \
+            --trailer "Onex-Workflow: ${GITHUB_WORKFLOW}" \
+            --trailer "Onex-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          git push origin "refs/heads/${BRANCH}"
+          gh pr create --repo "$REPO" --base dev --head "$BRANCH" \
+            --title "chore(OMN-20001): move the omniclaude pin to ${TAG}" \
+            --body "$(printf '%s\n' \
+              "## Summary" \
+              "" \
+              "omniclaude released ${TAG}. This PR moves the one omniclaude pin in ci.yml to that tag (operator ruling 2026-10-01T21:43:10Z (3): the consumer update is a PR that lands through the consumer's own checks)." \
+              "" \
+              "The Event Registry Drift job and its integration step run against ${TAG} in this PR; if they are red, the registry entries for the new omniclaude events belong in this PR." \
+              "" \
+              "Triggered by ${RUN_URL}")"

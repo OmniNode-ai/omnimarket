@@ -23,6 +23,19 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: the two OMN-13146 tests are present and uninverted -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k omn13146_tests_guarded fails at the merge base
+  - id: "req-producer-release-notice"
+    statement: |-
+      An omniclaude release reaches omnimarket as a pin bump PR that lands through omnimarket's own checks (ruling 2026-10-01T21:43:10Z (3)), and the bump refuses a release candidate, a backwards version and a split pin.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the pin bump node refuses a planted violation (release candidate, branch name, version not ahead of the pin, disagreeing pins, loose pin, no pin) and moves every omniclaude read otherwise -- falsifier: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k bump_refuses fails when the forward-only refusal is removed
+      - id: "AC6"
+        statement: |-
+          AC6: the omniclaude-pin-bump workflow runs on the omniclaude-release dispatch, moves the pin through the bump node and opens a PR against dev under the App identity -- falsifier: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k workflow_receives_notice fails when the trigger or the node call is removed
+      - id: "AC7"
+        statement: |-
+          AC7: the check runs in the required lint job and a pre-commit hook -- falsifier: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k notice_wired fails when the lint step or the hook is removed
 evidence_requirements:
   - kind: "tests"
     description: "The drift check reads omniclaude at the pinned rev; dev moving with the pin unmoved stays green, moving the pin changes the verdict."
@@ -36,6 +49,15 @@ evidence_requirements:
   - kind: "tests"
     description: "The two OMN-13146 tests are present, enabled, assert their original polarity, and run in the Event Registry Drift job."
     command: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k omn13146_tests_guarded"
+  - kind: "tests"
+    description: "The bump node moves every omniclaude read to the new tag and refuses each planted violation."
+    command: "uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k bump_refuses"
+  - kind: "tests"
+    description: "The pin bump workflow runs on the omniclaude-release dispatch and opens the PR through the bump node."
+    command: "uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k workflow_receives_notice"
+  - kind: "tests"
+    description: "The release notice check runs in the lint job and a pre-commit hook."
+    command: "uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k notice_wired"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -73,3 +95,27 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k omn13146_tests_guarded"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20001-bump-refuses"
+    description: "The bump node moves every omniclaude read to the new tag and refuses each planted violation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k bump_refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20001-workflow-receives-notice"
+    description: "The pin bump workflow runs on the omniclaude-release dispatch and opens the PR through the bump node."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k workflow_receives_notice"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20001-notice-wired"
+    description: "The release notice check runs in the lint job and a pre-commit hook."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov -k notice_wired"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]

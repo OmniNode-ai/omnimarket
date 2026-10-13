@@ -1,0 +1,22 @@
+name: node_omniclaude_pin_bump_compute
+version: "1.0.0"
+description: "Moves the omniclaude pin in ci.yml to a released version, or refuses (OMN-20001)."
+pack: ci
+node_role: compute
+display_name: "Omniclaude Pin Bump Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_omniclaude_pin_bump_compute: "omnimarket.nodes.node_omniclaude_pin_bump_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ci", "pin", "release-notice", "OMN-20001"]

@@ -536,6 +536,12 @@ jobs:
       # 'omniclaude-pin-drift'.
       - name: Event registry drift reads the pinned omniclaude (OMN-20001)
         run: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+      # OMN-20001: an omniclaude release reaches omnimarket as a pin bump PR (ruling
+      # 2026-10-01T21:43:10Z (3)); the bump node refuses a release candidate, a
+      # backwards version and a split pin. SYNC with pre-commit hook
+      # 'omniclaude-release-notice'.
+      - name: Omniclaude release notice (OMN-20001)
+        run: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
       # OMN-20730: the red CI triage model (formal/ci_red_triage) passes its design
       # config, each property fails on a one-knob mutation, the results match the
       # committed model, configs and outputs, and the verdict approves the model's
