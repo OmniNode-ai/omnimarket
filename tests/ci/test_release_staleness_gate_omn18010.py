@@ -139,8 +139,7 @@ def test_absent_or_conditional_job_is_refused() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     jobs = list(workflow["jobs"])
     index = jobs.index("release-staleness")
-    assert jobs[index - 1] == "canonical-file-shape"
-    assert jobs[index + 1] == "ci-summary"
+    assert jobs.index("canonical-file-shape") < index < jobs.index("ci-summary")
     checkout = job["steps"][0]
     assert (
         checkout["uses"] == workflow["jobs"]["canonical-file-shape"]["steps"][0]["uses"]
@@ -163,13 +162,57 @@ def test_missing_or_skippable_ci_summary_registration_is_refused() -> None:
     try:
         spec.loader.exec_module(gate)
         assert JOB_DISPLAY_NAME in gate.STRICT_GATE_JOBS
-        assert gate.STRICT_GATE_JOBS[-2:] == (
-            "Canonical File Shape (OMN-20304)",
-            JOB_DISPLAY_NAME,
-        )
+        assert gate.STRICT_GATE_JOBS.index(
+            "Canonical File Shape (OMN-20304)"
+        ) < gate.STRICT_GATE_JOBS.index(JOB_DISPLAY_NAME)
+        assert gate.STRICT_GATE_JOBS.count(JOB_DISPLAY_NAME) == 1
         assert JOB_DISPLAY_NAME not in gate.SKIPPABLE_GATE_JOBS
     finally:
         sys.modules.pop(spec.name, None)
+
+
+def test_added_gates_do_not_displace_release_staleness_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    jobs: dict[str, Any] = {}
+    for name, job in workflow["jobs"].items():
+        if name == "release-staleness":
+            jobs["additional-before"] = {"name": "Additional before"}
+        jobs[name] = job
+        if name == "release-staleness":
+            jobs["additional-after"] = {"name": "Additional after"}
+    workflow["jobs"] = jobs
+    workflow_path = tmp_path / "ci.yml"
+    workflow_path.write_text(
+        yaml.safe_dump(workflow, sort_keys=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", workflow_path)
+    test_absent_or_conditional_job_is_refused()
+
+    summary_path = tmp_path / "ci_summary_gate.py"
+    summary_path.write_text(
+        CI_SUMMARY_GATE.read_text(encoding="utf-8")
+        + '\nSTRICT_GATE_JOBS += ("Additional gate",)\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys.modules[__name__], "CI_SUMMARY_GATE", summary_path)
+    test_missing_or_skippable_ci_summary_registration_is_refused()
+
+
+@pytest.mark.parametrize("field", ["if", "needs", "continue-on-error"])
+def test_added_gates_do_not_hide_a_conditional_release_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    workflow["jobs"]["release-staleness"][field] = "false"
+    workflow_path = tmp_path / "ci.yml"
+    workflow_path.write_text(
+        yaml.safe_dump(workflow, sort_keys=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", workflow_path)
+    with pytest.raises(AssertionError):
+        test_absent_or_conditional_job_is_refused()
 
 
 @pytest.mark.parametrize("path", ["src/a.py", "pyproject.toml", "uv.lock"])

@@ -368,8 +368,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # writer, dispatched once per consumed reducer output by runtime
     # auto-wiring; the reducer's pure fold is a separate node and does NOT
     # declare the capability.
+    # OMN-20802: the runtime dispatches this writer once; its definition-B
+    # fold, HandlerProjectionAutomationLiveness, has no dispatch declaration.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
+        "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "MeteringSummaryProjectionWriter",
