@@ -387,6 +387,7 @@ class AdapterBusAdrGrading:
         extraction: ModelAdrExtractionSummary,
         source_summary: str,
         correlation_id: str,
+        grader_model_key: str,
     ) -> ModelAdrGradingScores:
         result = await self._client.request(
             ModelGradingRequest(
@@ -395,6 +396,7 @@ class AdapterBusAdrGrading:
                 source_document=source_summary,
                 correlation_id=str(uuid4()),
                 model_key_under_test=extraction.model_key,
+                grader_model_key=grader_model_key,
             ),
             ModelGradingResult,
         )

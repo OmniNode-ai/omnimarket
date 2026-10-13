@@ -33,6 +33,14 @@ class ModelGradingRequest(BaseModel):
         ...,
         description="Short key identifying the extraction model being graded.",
     )
+    grader_model_key: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Model key the grader calls for this request. None = the grader "
+            "node's configured grader_model_key."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelGradingRequest"]

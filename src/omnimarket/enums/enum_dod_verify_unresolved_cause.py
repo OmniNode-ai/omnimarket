@@ -68,6 +68,13 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
     #: The owner/repo for the ticket could not be resolved at all. Same
     #: class as PR_LOOKUP_FAILED, one step earlier in the chain.
     REPO_LOOKUP_FAILED = "repo_lookup_failed"
+    #: OMN-20858. The live ticket whose criteria the contract is pinned to could
+    #: not be read (no credential, a transport error, a GraphQL error, no such
+    #: ticket), so no pinned binding can be compared with the text it was
+    #: accepted against. Deterministic in the verifier's reach to Linear, not in
+    #: the work: it is refused rather than guessed as "unchanged", and stays
+    #: non-retryable until a retry policy for it is considered.
+    TICKET_UNAVAILABLE = "ticket_unavailable"
     #: The cause could not be classified. Escalates to a human. It must
     #: never default to "retry" and must never read as healthy — an
     #: unclassified unresolved item is the state this taxonomy exists to

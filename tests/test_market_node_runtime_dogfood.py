@@ -310,10 +310,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # the writer calls in process, so it has no handler_routing: 17 -> 18.
     # node_work_ledger_delegation_mirror is hosted by the single ledger serve
     # process, not by a runtime, so it has no handler_routing: 18 -> 19.
+    # OMN-20541's node_work_ledger_seq_gap_effect is run by `python -m` and its
+    # reader is used in process by the branch claim check, so it has no bus route: 19 -> 20.
     # node_operator_capture_effect is hosted by the work-ledger serve process
     # on the ledger host (--operator-capture), not by a runtime, so it has no
-    # handler_routing: 19 -> 20.
-    assert summary["skipped"] == 20
+    # handler_routing: 20 -> 21.
+    assert summary["skipped"] == 21
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
