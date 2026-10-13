@@ -364,6 +364,11 @@ class TestRegisterTenantKey:
                 provider = "openrouter"
                 plan = None
                 model = request.model
+                # OMN-20991: the response also carries the expiry and its warning.
+                expires_at = None
+                expiry_warning = None
+                # OMN-21012: and the lab host the key is bound to.
+                bound_host = None
 
             return _Response()
 

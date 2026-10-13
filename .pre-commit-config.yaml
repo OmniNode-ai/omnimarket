@@ -844,17 +844,29 @@ repos:
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
         stages: [pre-commit]
 
+      # OMN-20844: bring-your-own-key customers choose their OpenRouter model;
+      # registration without a chosen model is refused and nothing is stored.
+      # Check-only; same command as the `BYOK Customer Chooses Model` CI job.
+      - id: byok-customer-chooses-model
+        name: BYOK customers choose their OpenRouter model
+        language: system
+        entry: uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly
+        pass_filenames: false
+        files: ^(src/omnimarket/(cli/cli_secret|routing/byok_model_discovery|projection/credential_publisher)\.py|src/omnimarket/configs/byok_provider_backends\.v1\.yaml|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_delegate_skill_orchestrator)/.*|tests/test_omn20844_chosen_model_never_re_aimed\.py|tests/unit/cli/test_omn20844_openrouter_model_choice\.py|tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844\.py)$
+        stages: [pre-commit]
+
       # OMN-20287: no new deployment fact (backend, endpoint, model name, secret
       # ref, provider, tier or per-class order) in the packaged routing configs.
-      # Routing decisions belong in a deployment overlay. Same entry point as
-      # the `Deployment Fact Gate` CI job; here the commit being made is judged
-      # against HEAD, which is the shrink-only baseline.
+      # OMN-20601: nor a new code path that chooses a route, so any python under
+      # src/omnimarket triggers it. Routing decisions belong in a deployment
+      # overlay. Same entry point as the `Deployment Fact Gate` CI job; here the
+      # commit being made is judged against HEAD, which is the shrink-only baseline.
       - id: deployment-fact-gate
         name: No new deployment fact in packaged routing configs
         language: system
         entry: uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect
         pass_filenames: false
-        files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/nodes/node_deployment_fact_gate_effect/.*)$
+        files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/.*\.py)$
         stages: [pre-commit]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
@@ -1408,6 +1420,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20910: a review voter's model is declared only in the contract
+      # overlay. Refuses any vars.*MODEL* reference and any model id literal in
+      # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
+      # comes from the overlay (OMN-20910)".
+      - id: review-voter-model-from-overlay
+        name: Review voter model comes from the overlay (OMN-20910)
+        language: system
+        entry: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+        files: ^(\.github/workflows/[^/]+\.ya?ml|tests/ci/test_hostile_reviewer_voters_overlay_omn20910\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
       # lint step "No Anthropic key value in a workflow (OMN-20967)".
       - id: anthropic-key-prefix-workflows
@@ -1427,6 +1451,69 @@ repos:
         language: system
         entry: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/node_dod_verify/|tests/unit/nodes/node_dod_verify/(conftest|test_omn_20838_dod_verify_reads_local)\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20890: no timed parks. A stuck cause stays live, is retried when
+      # the base head moves, and files one ticket on first stick. SYNC with
+      # the ci.yml lint step "Landing decision park ladder (OMN-20890)".
+      - id: landing-decision-park-ladder
+        name: Landing decision park ladder (OMN-20890)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_pr_landing_decision_compute/|tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20032: node_dod_verify refuses a contract whose acceptance criteria
+      # are only partly bound. Check-only. SYNC with the ci.yml lint step
+      # "dod_verify refuses partly bound criteria (OMN-20032)".
+      - id: dod-verify-every-criterion-bound
+        name: dod_verify refuses partly bound criteria (OMN-20032)
+        language: system
+        entry: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_every_criterion_bound\.py$|tests/unit/nodes/node_dod_verify/omn_20858_ticket_reader\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20001: the event registry drift check reads omniclaude at the pinned
+      # rev, a pin move needs the integration step, both drift directions stay
+      # strict, and the two OMN-13146 tests stay present and uninverted.
+      # Check-only. SYNC with the ci.yml lint step "Event registry drift reads the
+      # pinned omniclaude (OMN-20001)".
+      - id: omniclaude-pin-drift
+        name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        language: system
+        entry: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/validators/event_registry_drift\.py|tests/validators/test_event_registry_drift\.py|tests/ci/test_omniclaude_pin_drift_omn20001\.py|\.github/workflows/ci\.yml|scripts/ci/ci_summary_gate\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20601: routing decisions come from overlays, never from omnimarket code.
+      # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
+      # precedence and routing-in-code ratchet (OMN-20601)".
+      - id: routing-sources-omn20601
+        name: Routing sources, overlay precedence and routing-in-code ratchet (OMN-20601)
+        language: system
+        entry: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/.*\.py|src/omnimarket/(configs/.*|model_policy\.yaml|data/model_registry/.*)|tests/test_routing_sources_omn20601\.py|tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601\.py|tests/fixtures/routing_sources/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: ticket-contract-prerequisite
+        name: Ticket contract at pushed head (OMN-20864)
+        language: system
+        entry: uv run --frozen python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect
+        fail_fast: true
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ticket-contract-prerequisite-regression
+        name: Ticket contract push and PR-create controls (OMN-20864)
+        language: system
+        entry: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_ticket_contract_prerequisite_effect/.*|src/omnimarket/nodes/(node_dod_verify/services/contract_prerequisite\.py|node_github_repo_write_effect/.*)|tests/ci/(test_ticket_contract_prerequisite_omn20864\.py|fixtures/ticket_contract_refusal_omn20864\.json)|\.github/workflows/ci\.yml|contracts/OMN-20864\.yaml|pyproject\.toml|tests/nodes/node_ticket_contract_prerequisite_effect/.*|tests/ci/test_pipeline_observability_export_closure_omn20864\.py|src/omnimarket/nodes/node_(emit_daemon|event_emit_effect)/contract\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 

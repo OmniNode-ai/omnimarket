@@ -1344,6 +1344,9 @@ class HandlerDelegateSkill:
                 ),
             )
         except asyncio.CancelledError:
+            progress.finalize_run_steps(
+                "runtime_shutdown", "runtime shut down during the run"
+            )
             # OMN-20117: the runtime is shutting down under this run (a
             # redeploy, restart or stop). The runtime drains running dispatches
             # first and cancels the ones still running while its producer is
@@ -1401,6 +1404,10 @@ class HandlerDelegateSkill:
             # run 37977092319 lost all of it and its receipt named no backend,
             # model, key source or attempt.
             cancelled_stage = progress.cancelled_stage or progress.stage
+            progress.finalize_run_steps(
+                "timeout",
+                f"handler execution budget expired at stage={cancelled_stage}",
+            )
             return delegate_skill_terminal_from_response(
                 _response_from_result(
                     request,
@@ -1423,6 +1430,10 @@ class HandlerDelegateSkill:
                 )
             )
         except Exception as exc:
+            failure_cause = resolve_terminal_failure_cause((), error_message=str(exc))
+            progress.finalize_run_steps(
+                "unknown" if failure_cause is None else failure_cause.value, str(exc)
+            )
             return ModelDelegateSkillFailed(
                 status="failed",
                 correlation_id=request.correlation_id,
@@ -1438,9 +1449,7 @@ class HandlerDelegateSkill:
                 # must carry the FAILED class identity. Returning the base
                 # response here routed hard dispatch failures onto the SUCCESS
                 # terminal by map-miss fallback.
-                terminal_failure_cause=resolve_terminal_failure_cause(
-                    (), error_message=str(exc)
-                ),
+                terminal_failure_cause=failure_cause,
                 budget_evidence=budget_evidence,
             )
 

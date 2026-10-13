@@ -66,7 +66,6 @@ allowlist:
   - "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch:PrPolishDispatchAdapter"
   - "omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue:GitHubMergeQueueAdapter"
   - "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.adapter_git_worktree:GitWorktreeAdapter"
-  - "omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator:GitHubCliPrChecksClient"
   - "omnimarket.nodes.node_process_watchdog.handlers.check_daemon_health:DaemonHealthCheckTarget"
   - "omnimarket.nodes.node_process_watchdog.handlers.checktargets_production:EmitDaemonCheckTarget"
   - "omnimarket.nodes.node_projection_baselines.handlers.handler_baselines:BaselinesProjectionRunner"

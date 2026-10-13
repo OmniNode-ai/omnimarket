@@ -34,6 +34,26 @@ def test_checked_in_inventory_is_source_derived_and_current() -> None:
     assert generator.main(["--check"]) == 0
 
 
+def test_automation_liveness_relations_are_owned_and_source_created() -> None:
+    payload = _load_generator().build_inventory()
+    expected = {
+        "automation_liveness_state",
+        "automation_run_history",
+        "automation_alarm_episodes",
+    }
+    rows = {row["name"]: row for row in payload["relations"] if row["name"] in expected}
+    assert set(rows) == expected
+    for row in rows.values():
+        assert row["kind"] == "table"
+        assert row["classification_status"] == "classified"
+        assert row["owner_declaration"] == "node_projection_automation_liveness"
+        assert row["domain"] == "OMNINODE_INTERNAL"
+        assert row["authoritative_sources"] == [
+            "src/omnimarket/nodes/node_projection_automation_liveness/migrations/"
+            "0000_create_automation_liveness.sql"
+        ]
+
+
 def test_node_db_table_census_requires_exact_typed_locations() -> None:
     generator = _load_generator()
 
@@ -423,7 +443,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # the same PR = 96.
     # +1 for OMN-20613's delegation_budget_applied_events, declared and created
     # in the same PR = 97.
-    assert census["source_created_tables"] == 97
+    # +1 for OMN-19987's run_trace, declared and created in the same PR = 98.
+    # +2 for OMN-20604 M2: node-owned lab_job_state and lab_job_transitions,
+    # with their CREATE migration and ownership declarations together = 100.
+    # +3 for OMN-20802: state, run history and alarm episode tables = 103.
+    assert census["source_created_tables"] == 103
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -589,7 +613,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-20576's alert_channel_liveness_verdicts = 104.
     # +1 for OMN-20578 (delegation_routing_feedback) = 105.
     # +1 for OMN-20613 (delegation_budget_applied_events) = 106.
-    assert census["source_declared_tables"] == 106
+    # +1 for OMN-19987 (run_trace) = 107.
+    # +2 for OMN-20604 M2: both lab-job read models land with their CREATE = 109.
+    # +3 for OMN-20802: the same tables declared beside their migration = 112.
+    assert census["source_declared_tables"] == 112
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

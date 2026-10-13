@@ -5,6 +5,9 @@
 # Ticket: OMN-8912 | DGM-Phase6 (OMN-9734): thin caller — validator lives in omniclaude.
 # OMN-20074: the cited ticket's deploy evidence is read from this repository's
 # contracts/OMN-<n>.yaml at the pull request head, not from change control.
+# OMN-20413: the cited ticket is read from the pull request title as well as its
+# body, the way repo-evidence / dod-verify reads it, so a PR whose title names
+# its ticket is not refused for not repeating that ticket in its body.
 #
 # Required status check: "deploy-gate"
 # Must pass before merging to main on all repos with runtime code.
@@ -34,8 +37,9 @@ jobs:
       # the same repo-owned contract repo-evidence / dod-verify reads:
       # contracts/OMN-<n>.yaml at the pull request head. No change control
       # tree is checked out, so a companion's evidence there does not count.
-      # The validator (the pinned composite action below, its falsifiability
-      # rule and grandfather snapshot) is unchanged; only the source moved.
+      # The validator (omniclaude's deploy-gate validator at the pin below, its
+      # falsifiability rule and grandfather snapshot) is unchanged; only the
+      # source moved.
       - name: Checkout the pull request head's contracts
         if: github.event_name != 'merge_group'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
@@ -51,14 +55,57 @@ jobs:
         run: |
           echo "::notice::deploy-gate: merge_group event - skipped (validated on PR branch)."
 
+      # OMN-20413: the pinned omniclaude action reads only the PR body for the
+      # cited ticket, so a PR whose title names it (the source repo-evidence /
+      # dod-verify reads) was refused with "cites no OMN-XXXX ticket". The same
+      # validator, at the same pin and in the same default report mode, is run
+      # here with the title and the body. The title and body come from the event
+      # through env, never interpolated into the script.
+      - name: Checkout the pinned deploy-gate validator
+        if: github.event_name != 'merge_group'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: 61761f04a8c8edfb810bd261bb82ed60b8bcad2d  # v0.27.0, the deploy-gate action's pin
+          path: .deploy-gate-validator
+          persist-credentials: false
+          sparse-checkout: /.github/actions/deploy-gate/
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        if: github.event_name != 'merge_group'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+
       - name: Run deploy gate
         id: deploy_gate
         if: github.event_name != 'merge_group'
-        uses: OmniNode-ai/omniclaude/.github/actions/deploy-gate@61761f04a8c8edfb810bd261bb82ed60b8bcad2d # v0.27.0
-        with:
-          pr-number: ${{ github.event.pull_request.number }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          contracts-dir: .pr-head/contracts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          CONTRACTS_DIR: .pr-head/contracts
+          VALIDATOR: .deploy-gate-validator/.github/actions/deploy-gate/validate_pr_deploy_required.py
+        run: |
+          set -euo pipefail
+          python -m pip install pyyaml
+
+          if ! changed_files="$(gh pr diff "$PR_NUMBER" --name-only 2>/tmp/deploy-gate-gh-diff.err | tr '\n' ' ')"; then
+            base_ref="${GITHUB_BASE_REF:-main}"
+            echo "::notice::gh pr diff failed; falling back to local git diff against origin/${base_ref}"
+            cat /tmp/deploy-gate-gh-diff.err || true
+            git fetch origin "$base_ref" --no-tags
+            changed_files="$(git diff --name-only "origin/${base_ref}" HEAD | tr '\n' ' ')"
+          fi
+          pr_body="$(gh pr view "$PR_NUMBER" --json body -q '.body')"
+
+          python "$VALIDATOR" \
+            --changed-files "$changed_files" \
+            --pr-body "$(printf '%s\n\n%s' "$PR_TITLE" "$pr_body")" \
+            --contracts-dir "$CONTRACTS_DIR" \
+            --repository "$GITHUB_REPOSITORY"
 
       - name: Name the contract source on failure
         if: failure() && steps.deploy_gate.outcome == 'failure'

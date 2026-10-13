@@ -814,6 +814,7 @@ def test_pr_heads_without_a_clone_is_unanswered_locally(
     bus = FakeBus()
     _install(monkeypatch, bus)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    monkeypatch.delenv("ONEX_SCM_CLONE_ROOT", raising=False)
     result = CliRunner().invoke(
         scm_cli.scm_group,
         [

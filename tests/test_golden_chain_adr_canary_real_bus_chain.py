@@ -73,8 +73,9 @@ _NODES_ROOT = Path("src/omnimarket/nodes")
 
 
 class _DeterministicAdrInferenceBridge:
-    def __init__(self) -> None:
+    def __init__(self, grader_key: str = "opus") -> None:
         self.calls: list[str] = []
+        self._grader_key = grader_key
 
     async def infer(
         self,
@@ -88,7 +89,7 @@ class _DeterministicAdrInferenceBridge:
         protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
         self.calls.append(model_key)
-        if model_key == "opus":
+        if model_key == self._grader_key:
             return json.dumps(
                 {
                     "recall": 0.91,
@@ -343,7 +344,12 @@ async def _kernel_shaped_bus_container(
     return container
 
 
-def _write_fixture_manifest(tmp_path: Path) -> tuple[Path, Path]:
+def _write_fixture_manifest(
+    tmp_path: Path,
+    *,
+    model_key: str = "deterministic-local",
+    model_external: bool = False,
+) -> tuple[Path, Path]:
     source_root = tmp_path / "fixture_repo"
     docs_dir = source_root / "docs"
     docs_dir.mkdir(parents=True)
@@ -381,10 +387,10 @@ def _write_fixture_manifest(tmp_path: Path) -> tuple[Path, Path]:
                         ),
                         "models": [
                             {
-                                "key": "deterministic-local",
+                                "key": model_key,
                                 "provider": "local",
                                 "model_id": "fake-deterministic-adr-extractor",
-                                "external": False,
+                                "external": model_external,
                             }
                         ],
                     }
@@ -441,7 +447,7 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
     tmp_path: Path,
 ) -> None:
     source_root, manifest_path = _write_fixture_manifest(tmp_path)
-    inference_bridge = _DeterministicAdrInferenceBridge()
+    inference_bridge = _DeterministicAdrInferenceBridge(grader_key="qwen3-coder")
 
     await event_bus.start()
     unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
@@ -456,6 +462,7 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
                 output_dir=str(tmp_path / "runs"),
                 workspace_root=str(source_root),
                 model_subset=["deterministic-local"],
+                grader_model_key="qwen3-coder",
                 resume_run_id="OMN-10724-real-chain-proof",
             )
         )
@@ -471,7 +478,12 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
     assert len(report.model_scores) == 1
     assert report.model_scores[0].model_key == "deterministic-local"
     assert report.model_scores[0].avg_recall == 0.91
-    assert inference_bridge.calls == ["adr_segmentation", "deterministic-local", "opus"]
+    assert inference_bridge.calls == [
+        "adr_segmentation",
+        "deterministic-local",
+        "qwen3-coder",
+    ]
+    assert "opus" not in inference_bridge.calls
 
     evidence_dir = Path(report.evidence_dir)
     evidence_json = evidence_dir / "event-bus-adr" / "deterministic-local.json"
@@ -593,3 +605,173 @@ def test_contract_declares_adr_document_ingestion_completed_topic() -> None:
         "onex.evt.omnimarket.adr-document-ingestion-completed.v1"
         in contract["event_bus"]["publish_topics"]
     )
+
+
+_STAGE_COMMAND_NODES = [
+    ("node_adr_document_ingestion_effect", "requested", "completed"),
+    ("node_adr_segmentation_llm_effect", "requested", "completed"),
+    ("node_adr_decision_extraction_llm_effect", "requested", "completed"),
+    ("node_adr_extraction_grader_llm_effect", "requested", "completed"),
+    ("node_adr_draft_generation_compute", "start", "completed"),
+]
+
+
+async def _assert_no_stage_command_was_published(event_bus: EventBusInmemory) -> None:
+    for node_name, request_fragment, completed_fragment in _STAGE_COMMAND_NODES:
+        request_topic, completed_topic = _node_topics(
+            node_name,
+            request_fragment=request_fragment,
+            completed_fragment=completed_fragment,
+        )
+        assert await event_bus.get_event_history(topic=request_topic) == []
+        assert await event_bus.get_event_history(topic=completed_topic) == []
+
+
+async def test_grader_key_named_by_the_request_is_the_key_the_grader_calls(
+    event_bus: EventBusInmemory,
+    tmp_path: Path,
+) -> None:
+    """The request's grader key reaches the grading call; the contract default does not."""
+    source_root, manifest_path = _write_fixture_manifest(tmp_path)
+    inference_bridge = _DeterministicAdrInferenceBridge(grader_key="deepseek-r1")
+
+    await event_bus.start()
+    unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
+    try:
+        handler = HandlerCanaryOrchestrator(
+            await _kernel_shaped_bus_container(event_bus)
+        )
+        report = await handler.handle(
+            ModelCanaryCommandPayload(
+                manifest_path=str(manifest_path),
+                output_dir=str(tmp_path / "runs"),
+                workspace_root=str(source_root),
+                model_subset=["deterministic-local"],
+                grader_model_key="deepseek-r1",
+                resume_run_id="grader-key-from-request",
+            )
+        )
+    finally:
+        for unsubscribe in unsubscribers:
+            await unsubscribe()
+        await event_bus.close()
+
+    assert report.success is True
+    assert report.model_scores[0].avg_recall == 0.91
+    assert inference_bridge.calls[-1] == "deepseek-r1"
+    assert "opus" not in inference_bridge.calls
+
+
+async def test_default_opus_grader_refuses_before_any_inference_call(
+    event_bus: EventBusInmemory,
+    tmp_path: Path,
+) -> None:
+    """The contract's default grader key is a paid provider; a run on it must refuse."""
+    source_root, manifest_path = _write_fixture_manifest(tmp_path)
+    inference_bridge = _DeterministicAdrInferenceBridge()
+
+    await event_bus.start()
+    unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
+    try:
+        handler = HandlerCanaryOrchestrator(
+            await _kernel_shaped_bus_container(event_bus)
+        )
+        report = await handler.handle(
+            ModelCanaryCommandPayload(
+                manifest_path=str(manifest_path),
+                output_dir=str(tmp_path / "runs"),
+                workspace_root=str(source_root),
+                model_subset=["deterministic-local"],
+                resume_run_id="external-grader-refused",
+            )
+        )
+        await _assert_no_stage_command_was_published(event_bus)
+    finally:
+        for unsubscribe in unsubscribers:
+            await unsubscribe()
+        await event_bus.close()
+
+    assert report.success is False
+    assert report.error_message is not None
+    assert "grader_model_key 'opus'" in report.error_message
+    assert "external provider" in report.error_message
+    assert inference_bridge.calls == []
+    assert report.scorecard_path is None
+    assert not Path(report.evidence_dir).exists()
+
+
+async def test_run_whose_only_model_is_external_refuses_before_any_inference_call(
+    event_bus: EventBusInmemory,
+    tmp_path: Path,
+) -> None:
+    source_root, manifest_path = _write_fixture_manifest(
+        tmp_path, model_key="glm", model_external=True
+    )
+    inference_bridge = _DeterministicAdrInferenceBridge(grader_key="qwen3-coder")
+
+    await event_bus.start()
+    unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
+    try:
+        handler = HandlerCanaryOrchestrator(
+            await _kernel_shaped_bus_container(event_bus)
+        )
+        report = await handler.handle(
+            ModelCanaryCommandPayload(
+                manifest_path=str(manifest_path),
+                output_dir=str(tmp_path / "runs"),
+                workspace_root=str(source_root),
+                grader_model_key="qwen3-coder",
+                resume_run_id="external-model-refused",
+            )
+        )
+        await _assert_no_stage_command_was_published(event_bus)
+    finally:
+        for unsubscribe in unsubscribers:
+            await unsubscribe()
+        await event_bus.close()
+
+    assert report.success is False
+    assert report.error_message is not None
+    assert "glm" in report.error_message
+    assert "external provider" in report.error_message
+    assert inference_bridge.calls == []
+    assert report.scorecard_path is None
+    assert not Path(report.evidence_dir).exists()
+
+
+async def test_manifest_key_that_only_reaches_a_vendor_route_refuses_even_if_declared_local(
+    event_bus: EventBusInmemory,
+    tmp_path: Path,
+) -> None:
+    """A manifest's own external=false cannot launder a vendor-routed key."""
+    source_root, manifest_path = _write_fixture_manifest(
+        tmp_path, model_key="openrouter/qwen/qwen3-coder:free", model_external=False
+    )
+    inference_bridge = _DeterministicAdrInferenceBridge(grader_key="qwen3-coder")
+
+    await event_bus.start()
+    unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
+    try:
+        handler = HandlerCanaryOrchestrator(
+            await _kernel_shaped_bus_container(event_bus)
+        )
+        report = await handler.handle(
+            ModelCanaryCommandPayload(
+                manifest_path=str(manifest_path),
+                output_dir=str(tmp_path / "runs"),
+                workspace_root=str(source_root),
+                grader_model_key="qwen3-coder",
+                resume_run_id="vendor-route-refused",
+            )
+        )
+        await _assert_no_stage_command_was_published(event_bus)
+    finally:
+        for unsubscribe in unsubscribers:
+            await unsubscribe()
+        await event_bus.close()
+
+    assert report.success is False
+    assert report.error_message is not None
+    assert "openrouter/qwen/qwen3-coder:free" in report.error_message
+    assert inference_bridge.calls == []
+    assert report.scorecard_path is None

@@ -19,6 +19,7 @@ class EnumAutopilotPhaseStatus(StrEnum):
     HALT = "halt"
     SKIPPED = "skipped"
     NOT_RUN = "not_run"
+    TIMEOUT = "timeout"
 
 
 class EnumAutopilotCycleStatus(StrEnum):
@@ -46,7 +47,7 @@ class ModelAutopilotPhaseResult(BaseModel):
     )
     halt_reason: str = Field(
         default="",
-        description="Non-empty only when status=halt.",
+        description="Non-empty when the phase halted the run (status=halt, or a timeout at a gate with halt authority).",
     )
 
 

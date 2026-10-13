@@ -6,13 +6,15 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import tomllib
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
 import yaml
+from pydantic import BaseModel
 
 from omnimarket.adapters.codex.local_runtime_dispatch import _resolve_node_route
 
@@ -118,6 +120,45 @@ def _native_non_addressable_check(contract: dict[str, Any]) -> tuple[bool, str]:
     return False, f"{node_type or 'unknown'} nodes must be command-addressable"
 
 
+def _local_invocation_check(contract: dict[str, Any]) -> tuple[bool, str]:
+    """Validate the typed local invocation declared outside bus dispatch."""
+    metadata = contract.get("metadata")
+    if not isinstance(metadata, dict) or metadata.get("transport_type") != "local":
+        return False, ""
+    try:
+        trigger = contract["runtime_dispatch"]["external_trigger"]
+        if not isinstance(trigger, str) or not trigger.strip():
+            raise ValueError("local invocation lacks an external trigger")
+        event_bus = contract["event_bus"]
+        if event_bus != {"subscribe_topics": [], "publish_topics": []}:
+            raise ValueError("local invocation must declare empty bus topics")
+        if contract["descriptor"]["runtime_profiles"] != []:
+            raise ValueError("local invocation cannot claim a deployed runtime profile")
+        handler = contract["handler"]
+        handler_type = getattr(
+            importlib.import_module(handler["module"]), handler["class"]
+        )
+        models = []
+        for key in ("input_model", "output_model"):
+            module, _, name = handler[key].rpartition(".")
+            model = getattr(importlib.import_module(module), name)
+            if not isinstance(model, type) or not issubclass(model, BaseModel):
+                raise ValueError(f"local {key} is not a typed model")
+            models.append(model)
+        method = handler_type.handle
+        hints = get_type_hints(method)
+        if (
+            hints.get("request") is not models[0]
+            or hints.get("return") is not models[1]
+        ):
+            raise ValueError(
+                "local handler does not implement its declared request/result"
+            )
+    except Exception as exc:
+        return True, str(exc)
+    return True, ""
+
+
 def build_report() -> dict[str, Any]:
     nodes = _node_dirs()
     entries = _load_entry_points()
@@ -126,6 +167,7 @@ def build_report() -> dict[str, Any]:
 
     routable: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
+    local: list[dict[str, str]] = []
     failures: list[dict[str, str]] = []
     buckets: Counter[str] = Counter()
 
@@ -136,6 +178,21 @@ def build_report() -> dict[str, Any]:
             else f"node_{command_name.replace('-', '_')}"
         )
         contract = _contract_for(node_name) if node_name in node_set else {}
+        is_local, local_error = _local_invocation_check(contract)
+        if is_local:
+            if local_error:
+                buckets["invalid_local_invocation"] += 1
+                failures.append(
+                    {
+                        "command_name": command_name,
+                        "node_name": node_name,
+                        "bucket": "invalid_local_invocation",
+                        "error": local_error,
+                    }
+                )
+            else:
+                local.append({"command_name": command_name, "node_name": node_name})
+            continue
         if contract and not _runtime_addressable(contract):
             runtime_dispatch = contract.get("runtime_dispatch") or {}
             reason = ""
@@ -211,10 +268,12 @@ def build_report() -> dict[str, Any]:
             "dangling_entry_points": sorted(entry_set - node_set),
             "routable": len(routable),
             "skipped": len(skipped),
+            "local_invokable": len(local),
             "failed": len(failures),
             "failure_buckets": dict(sorted(buckets.items())),
         },
         "routable": routable,
+        "local_invokable": local,
         "skipped": skipped,
         "failures": failures,
     }
@@ -239,6 +298,8 @@ def main() -> int:
             "market-node-runtime-dogfood: "
             f"{summary['routable']} routable / {summary['entry_points']} entry points"
         )
+        if summary["local_invokable"]:
+            print(f"  local_invokable: {summary['local_invokable']}")
         if summary["skipped"]:
             print(f"  skipped_non_addressable: {summary['skipped']}")
         for bucket, count in summary["failure_buckets"].items():

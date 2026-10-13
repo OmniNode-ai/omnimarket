@@ -102,6 +102,29 @@ def test_recorded_terminal_reaches_the_judge_as_a_render_request(
     assert payload["model_name"] not in batch.prompt
 
 
+def test_a_liveness_probe_terminal_is_excluded_not_dead_lettered() -> None:
+    """The dev lane dead-lettered every liveness probe: 'every item is a probe: nothing to judge'.
+
+    The probe text and correlation id are those of a dead letter read off the dev broker
+    (``onex.dlq.omnibase-infra.commands.v1``, 2026-10-12, 10:26Z).
+    """
+    probe_id = "fc4bed58-4df0-4606-b023-9398900a9e5a"
+    payload = {
+        **_recorded()[PLAIN],
+        "correlation_id": probe_id,
+        "task_type": "research",
+        "prompt_text": "reply with the single word: ok",
+        "response": "ok",
+    }
+    decoded = _contract_input_model().model_validate(payload)
+
+    request = HandlerDelegationAcceptanceJudgeRequest().handle(decoded)
+    result = HandlerDelegationAcceptanceJudge().handle(request)
+
+    assert result.batches == ()
+    assert result.excluded_probe_ids == (probe_id,)
+
+
 def test_every_publish_time_enrichment_field_decodes() -> None:
     """The emit effect's whole enrichment set, from its own code, is accepted."""
     bare = {

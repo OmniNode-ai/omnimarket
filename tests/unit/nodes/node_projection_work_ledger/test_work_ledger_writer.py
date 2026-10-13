@@ -127,7 +127,7 @@ def test_a_claim_message_writes_the_log_row_and_opens_the_entity() -> None:
     assert (db.connected, db.closed) == (1, 1)
     sqls = [s for s, _ in db.statements]
     assert "work_ledger_rows" in sqls[0]
-    assert "DO NOTHING" in sqls[0]
+    assert "DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq" in sqls[0]
     assert "work_ledger_state" in sqls[1]
     assert "opened_at" in sqls[1]
     assert db.statements[1][1][0] == "claim:alpha"
@@ -178,3 +178,37 @@ def test_the_pure_handler_is_reachable_through_the_runtime_adapters_own_helper()
     }
     result = _invoke_handle_method(HandlerProjectionWorkLedger().handle, payload)
     assert result.ops[0].entity_key == "claim:alpha"
+
+
+@pytest.mark.parametrize("ledger_seq", [None, 17])
+def test_ledger_seq_writer_binds_and_only_fills_null(ledger_seq: int | None) -> None:
+    db = _FakeDb()
+    _writer(db).handle(
+        {
+            "raw_row": CLAIM,
+            "_topic": EnumLedgerRowType.CLAIM.topic,
+            "ledger_seq": ledger_seq,
+        }
+    )
+    sql, args = db.statements[0]
+    assert "projected_at, ledger_seq)" in sql
+    assert "$10)" in sql
+    assert "ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq" in sql
+    assert (
+        "WHERE omninode_internal.work_ledger_rows.ledger_seq IS NULL "
+        "AND EXCLUDED.ledger_seq IS NOT NULL"
+    ) in sql
+    assert len(args) == 10
+    assert args[9] == ledger_seq
+    assert args[6] == CLAIM
+    assert db.locks == [("work-ledger:rolling-work-ledger",)]
+
+
+def test_ledger_seq_migration_is_idempotent_and_nonunique() -> None:
+    sql = (_NODE / "migrations/0003_work_ledger_seq.sql").read_text()
+    ddl = "\n".join(line for line in sql.splitlines() if not line.startswith("--"))
+    assert "ADD COLUMN IF NOT EXISTS ledger_seq BIGINT" in ddl
+    assert "CREATE INDEX IF NOT EXISTS idx_work_ledger_rows_seq" in ddl
+    assert "(ledger_id, ledger_seq)" in ddl
+    assert "WHERE ledger_seq IS NOT NULL" in ddl
+    assert "UNIQUE" not in ddl.upper()

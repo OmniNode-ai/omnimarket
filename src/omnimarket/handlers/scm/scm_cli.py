@@ -63,6 +63,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import (
     ScmBusCaller,
 )
 from omnimarket.handlers.scm.handler_scm_local_state import (
+    CLONE_ROOT_ENV,
     HandlerScmLocalState,
     default_clone_path,
     default_watcher_state_path,
@@ -296,7 +297,7 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--clone",
         type=click.Path(file_okay=False),
         default=None,
-        help="The repository's canonical clone (default $OMNI_HOME/<repo>).",
+        help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
     )
     @click.option("--timeout-s", type=float, default=60.0, show_default=True)
     def command(

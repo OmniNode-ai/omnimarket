@@ -435,7 +435,9 @@ class TestEvidenceCollector:
         )
         assert len(results) == 1
         assert results[0].status == EnumEvidenceCheckStatus.FAILED
-        assert "does not exist" in (results[0].message or "").lower()
+        assert results[0].message == (
+            "pull request cites OMN-NOPE but carries no contracts/OMN-NOPE.yaml"
+        )
 
     def test_empty_dod_evidence(self, tmp_path: Path) -> None:
         """Contract with no dod_evidence -> single SKIPPED result."""
@@ -1867,8 +1869,13 @@ class TestHandlerWithCollector:
         assert state.status == EnumDodVerifyStatus.VERIFIED
         assert state.verified_count == 1
 
-    def test_handler_no_contract_skipped(self) -> None:
+    def test_handler_no_contract_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Handler returns SKIPPED when contract can't be found."""
+        # Missing-contract behavior is independent of the host's OCC clone.
+        monkeypatch.setattr(EvidenceCollector, "_resolve_occ_root", lambda _self: None)
+        monkeypatch.setattr(
+            EvidenceCollector, "_find_contract", lambda _self, _ticket: None
+        )
         handler = HandlerDodVerify()
         result = handler.handle(
             {

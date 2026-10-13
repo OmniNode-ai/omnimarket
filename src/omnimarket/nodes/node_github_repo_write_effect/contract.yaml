@@ -9,9 +9,9 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -27,6 +27,10 @@ description: >
   idempotency key writes nothing twice. pr_close is refused (claim_not_held)
   unless the requesting lane and run hold a live claim on the PR in
   node_pr_claim_registry_effect.
+  Before creating an M4 pull request, the cited ticket contracts are read at
+  the branch head and checked through node_dod_verify's static prerequisites.
+  Missing or invalid evidence is refused with contract_required, naming the
+  contract file. A moved head during preflight is refused with head_moved.
 
 input_model:
   name: ModelRepoWriteRequest

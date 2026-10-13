@@ -27,6 +27,16 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: a cause whose blocker is classed as needing a decision, approval or credential still produces exactly one operator question -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k park_operator_only_needs (omnimarket)
+  - id: "req-omn20890-wired"
+    statement: |-
+      The park-ladder tests run in the pre-commit hook and in the required lint job, so the ruling cannot regress unseen.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the landing-decision-park-ladder pre-commit hook and the Landing decision park ladder step of the ci.yml lint job both run the park-ladder test file -- falsifier: uv run pre-commit run landing-decision-park-ladder --all-files (omnimarket)
+      - id: "AC6"
+        statement: |-
+          AC6: the park-ladder tests fail when a parked cause is no longer retried on the base head moving -- falsifier: make _base_moved return False in a scratch copy and run the park-ladder test file (omnimarket)
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC4: the park-ladder tests of the landing decision node."
@@ -76,3 +86,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q -p no:randomly -k omn20890_park_ladder_checks_name_the_causes_test_file"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20890-ac5-hook-and-ci-step"
+    description: "AC5: regression tests require the pre-commit hook and the required lint step to run the full causes test file, including the retry tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -p no:randomly -k park_ladder_wiring"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20890-ac6-negative-control"
+    description: "AC6: the wiring tests require both enforcement commands to run the full causes file; the retry tests reject a cause that does not retry when the base head moves. The selector exercises both wiring and retry behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -p no:randomly -k 'park_ladder_wiring or park_retry_on_base_head'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

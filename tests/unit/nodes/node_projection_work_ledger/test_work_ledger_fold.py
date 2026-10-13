@@ -148,3 +148,24 @@ def test_the_fold_carries_the_extra_fields_the_bus_adds() -> None:
 def test_ops_enum_values() -> None:
     assert {o.value for o in EnumWorkLedgerStateOp} == {"open", "close"}
     assert issubclass(ModelLedgerRowEventBase, object)
+
+
+@pytest.mark.parametrize("ledger_seq", [None, 1, 42])
+def test_ledger_seq_fold_request_passes_judge_sequence(ledger_seq: int | None) -> None:
+    request = ModelWorkLedgerFoldRequest(raw_row=CLAIM_A, ledger_seq=ledger_seq)
+    assert request.ledger_seq == ledger_seq
+    assert fold_row(request).row.ledger_seq == ledger_seq
+
+
+def test_ledger_seq_absent_is_none() -> None:
+    request = ModelWorkLedgerFoldRequest(raw_row=CLAIM_A)
+    assert request.ledger_seq is None
+    assert fold_row(request).row.ledger_seq is None
+
+
+@pytest.mark.parametrize("ledger_seq", [0, -1])
+def test_ledger_seq_nonpositive_is_rejected(ledger_seq: int) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ModelWorkLedgerFoldRequest(raw_row=CLAIM_A, ledger_seq=ledger_seq)

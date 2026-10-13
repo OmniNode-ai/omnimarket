@@ -2205,6 +2205,19 @@ def sibling_backend_available_in_tier(
     return selected.backend_ref
 
 
+def resolve_task_class_tier_order(task_type: str) -> tuple[str, ...]:
+    """The tier names ``task_type`` may be routed to, in escalation order.
+
+    Public routing-authority surface: the SAME order ``next_eligible_tier`` walks
+    (the task class's closed ``escalation_policy.tier_order``, or the config
+    declaration order when it declares none). Read-only: a caller may show it,
+    and must not route from it.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    return tuple(tier.name for tier in _tier_order_from_contract(_get_config(), entry))
+
+
 def resolve_task_class_max_escalations(task_type: str) -> int | None:
     """Resolve ``escalation_policy.max_escalations`` for ``task_type`` (OMN-13849).
 
@@ -3244,6 +3257,7 @@ __all__: list[str] = [
     "resolve_task_class_dod_resolution",
     "resolve_task_class_max_escalations",
     "resolve_task_class_response_contract",
+    "resolve_task_class_tier_order",
     "shipped_house_credential_refs",
     "sibling_backend_available_in_tier",
     "tier_for_backend",

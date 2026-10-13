@@ -2,17 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Validate, deduplicate and append ledger rows; no bus code (OMN-20275)."""
 
-import base64
-import binascii
 import re
 import socket
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Literal
-
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
@@ -53,7 +48,7 @@ class HandlerWorkLedgerAppendEffect:
         *,
         retry_sleep_s: float = 0.1,
         sleep: Callable[[float], None] = time.sleep,
-        public_keys: Mapping[str, Ed25519PublicKey] | None = None,
+        writer_principals: Iterable[str] | None = None,
         operator_principal: str | None = None,
     ) -> None:
         self._runner = runner
@@ -64,7 +59,11 @@ class HandlerWorkLedgerAppendEffect:
         self._host = host_name or socket.gethostname().split(".", 1)[0]
         self._retry_sleep_s = retry_sleep_s
         self._sleep = sleep
-        self._public_keys = dict(public_keys or {})
+        # The operator principal is a known writer too: the serve process appends
+        # the lab and delegation terminals it mirrors as that principal.
+        self._writer_principals = frozenset(writer_principals or ()) | (
+            {operator_principal} if operator_principal else set()
+        )
         self._operator_principal = operator_principal
 
     @property
@@ -90,7 +89,10 @@ class HandlerWorkLedgerAppendEffect:
         return self._reader
 
     def handle(
-        self, request: ModelWorkLedgerAppendRequest
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        *,
+        writer_principal: str | None = None,
     ) -> ModelWorkLedgerAppendReceipt:
         started = time.monotonic()
         authenticated_principal: str | None = None
@@ -112,28 +114,19 @@ class HandlerWorkLedgerAppendEffect:
                 principal=authenticated_principal,
             )
 
-        # Lane, host, principal and all row text are signed together. The issuer's
-        # verification keys and operator identity come from the serve process,
-        # never from the command or its bus envelope (OMN-20282).
-        key = self._public_keys.get(request.principal or "")
-        if key is None or request.signature is None:
+        if writer_principal is None:
             return receipt(
                 EnumWorkLedgerAppendStatus.REFUSED,
                 65,
-                "unsigned or unknown principal: configure an issuer-recorded signing identity",
+                "unattributed: no broker principal produced this command; publish on your principal's writer topic",
             )
-        try:
-            key.verify(
-                base64.b64decode(request.signature, validate=True),
-                request.signing_bytes(),
-            )
-        except (InvalidSignature, ValueError, binascii.Error):
+        if writer_principal not in self._writer_principals:
             return receipt(
                 EnumWorkLedgerAppendStatus.REFUSED,
                 65,
-                "request signature does not verify",
+                f"unknown writer principal {writer_principal}",
             )
-        authenticated_principal = request.principal
+        authenticated_principal = writer_principal
 
         rows: list[str] = []
         invalid_continuation = False
@@ -287,7 +280,7 @@ def terminal_refused(
         requested_by_lane=request.requested_by_lane,
         requesting_host=request.requesting_host,
         ledger_host=receipt.ledger_host,
-        principal=request.principal,
+        principal=receipt.principal,
         exit_code=receipt.exit_code,
         reason=receipt.message,
         terminal_lanes=tuple(dict.fromkeys(lanes)),

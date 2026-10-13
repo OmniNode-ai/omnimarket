@@ -104,6 +104,25 @@ _GLM_CONTEXT_WINDOW: Final[int] = 128_000
 
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 120.0
 
+_OPENROUTER_KEY_PREFIX: Final[str] = "openrouter/"
+
+# The keys whose route is an operator-configured ``LLM_*_URL`` endpoint. These
+# are the only keys that cannot reach a vendor API; every other key is either a
+# vendor route (``glm``, ``openrouter/*``) or resolves to nothing.
+LOCAL_ENDPOINT_MODEL_KEYS: Final[frozenset[str]] = frozenset(
+    key for key, _url_env, _model_env in _MODEL_KEY_REGISTRY
+)
+
+
+def is_local_endpoint_model_key(model_key: str) -> bool:
+    """Whether ``model_key`` routes to an operator-configured ``LLM_*_URL`` endpoint."""
+    return model_key in LOCAL_ENDPOINT_MODEL_KEYS
+
+
+def is_vendor_routed_model_key(model_key: str) -> bool:
+    """Whether ``model_key`` is a key the bridge registers only against a vendor API."""
+    return model_key == _GLM_MODEL_KEY or model_key.startswith(_OPENROUTER_KEY_PREFIX)
+
 
 def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     """Return a ``ModelInferenceBridgeConfig`` populated from env vars.
@@ -308,7 +327,7 @@ def _register_openrouter_models(
         if model.availability != EnumModelAvailability.AVAILABLE:
             continue
 
-        key = f"openrouter/{model.model_id}"
+        key = f"{_OPENROUTER_KEY_PREFIX}{model.model_id}"
         model_configs[key] = {
             "base_url": base_url,
             "model_id": model.model_id,
@@ -324,6 +343,9 @@ def _register_openrouter_models(
 
 
 __all__: list[str] = [
+    "LOCAL_ENDPOINT_MODEL_KEYS",
+    "is_local_endpoint_model_key",
+    "is_vendor_routed_model_key",
     "load_inference_bridge_config_from_env",
     "load_inference_bridge_config_from_env_async",
     "resolve_bifrost_backend",

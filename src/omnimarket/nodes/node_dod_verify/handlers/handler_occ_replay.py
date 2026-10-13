@@ -693,6 +693,9 @@ class HandlerOccReplay:
         }
         env["OMNI_HOME"] = str(home)
         env["DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"] = "1"
+        # OMN-20858: a merged head is not verified against its ticket's criteria
+        # as they read today.
+        env["DOD_VERIFY_HISTORICAL_REPLAY"] = "1"
         result_path = stem.with_suffix(".json")
         try:
             proc = subprocess.run(

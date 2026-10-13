@@ -181,6 +181,7 @@ async def test_orchestrator_output_feeds_publisher_input(
             manifest_path=str(manifest_path),
             output_dir=str(tmp_path / "runs"),
             workspace_root=str(tmp_path),
+            grader_model_key="qwen3-coder",
         )
     )
 

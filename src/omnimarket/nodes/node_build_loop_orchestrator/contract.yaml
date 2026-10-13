@@ -60,11 +60,14 @@ handler_routing:
       description: "Build-loop start command."
     - topic: onex.evt.omnimarket.overseer-verifier-completed.v1
       message_category: event
-      operation: build_loop_orchestrator
+      operation: overseer_verification_fact
+      event_model:
+        name: ModelOverseerVerificationFact
+        module: omnimarket.nodes.node_build_loop_orchestrator.models.model_overseer_verification_fact
       handler:
-        name: HandlerBuildLoopOrchestrator
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
-      description: "Overseer verification fact (_topic_overseer_verification_completed branch)."
+        name: HandlerOverseerVerificationFact
+        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_overseer_verification_fact
+      description: "Overseer verification fact: consumed and acknowledged. The VERIFYING wait inside HandlerBuildLoopOrchestrator acts on it; this route starts no cycle and returns no result."
 
 
 descriptor:

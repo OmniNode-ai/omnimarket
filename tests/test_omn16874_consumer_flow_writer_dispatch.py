@@ -295,6 +295,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # it would be dispatched by nobody. Its node's pure fold,
     # HandlerProjectionPrLanding, does NOT declare the capability.
     #
+    # LabJobProjectionWriter (OMN-20604 M2) is the only writer of
+    # lab_job_state and lab_job_transitions, dispatched once per transitioned
+    # event by runtime auto-wiring. Its pure fold, HandlerProjectionLabJob,
+    # does NOT declare the capability; there is no dedicated deployment.
+    #
     # SessionContentProjectionWriter (OMN-19550) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed
     # content record by the runtime auto-wiring, and it has no dedicated writer
@@ -341,6 +346,12 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # ProviderQuotaProjectionWriter (OMN-20154) is the quota-state writer,
     # dispatched once per consumed provider-quota observation.
     #
+    # RunTraceProjectionWriter (OMN-19987) follows, on the same reviewed terms.
+    # It is the only writer of run_trace, dispatched once per consumed run-step
+    # event by the runtime auto-wiring, with no dedicated writer deployment, so
+    # undeclared it would be dispatched by nobody. Its node's pure fold,
+    # HandlerProjectionRunTrace, does NOT declare the capability.
+    #
     # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed usage
     # record by the runtime auto-wiring, and it has no dedicated writer
@@ -357,8 +368,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # writer, dispatched once per consumed reducer output by runtime
     # auto-wiring; the reducer's pure fold is a separate node and does NOT
     # declare the capability.
+    # OMN-20802: the runtime dispatches this writer once; its definition-B
+    # fold, HandlerProjectionAutomationLiveness, has no dispatch declaration.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
+        "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "MeteringSummaryProjectionWriter",
@@ -373,6 +387,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LabLaneHealthProjectionWriter",
         "LabProofReceiptsProjectionWriter",
         "PrLandingProjectionWriter",
+        "LabJobProjectionWriter",
         "PrStateProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
@@ -382,6 +397,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "WorktreeReconcileProjectionWriter",
         "UsageByModelDayProjectionWriter",
         "HandlerRoutingFeedbackWriter",
+        "RunTraceProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

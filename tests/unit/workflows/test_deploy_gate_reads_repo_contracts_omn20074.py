@@ -26,7 +26,9 @@ ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy-gate.yml"
 pytestmark = pytest.mark.unit
 
-DEPLOY_GATE_ACTION = "OmniNode-ai/omniclaude/.github/actions/deploy-gate@"
+VALIDATOR_REPOSITORY = "OmniNode-ai/omniclaude"
+VALIDATOR_PIN = "61761f04a8c8edfb810bd261bb82ed60b8bcad2d"  # omniclaude v0.27.0
+VALIDATOR_FILE = ".github/actions/deploy-gate/validate_pr_deploy_required.py"
 PR_HEAD_SHA = "${{ github.event.pull_request.head.sha }}"
 CHANGE_CONTROL_MARKERS = (
     "onex_change_control",
@@ -46,11 +48,19 @@ def _steps() -> list[dict[str, Any]]:
 
 
 def _gate_step() -> dict[str, Any]:
-    gates = [
-        s for s in _steps() if str(s.get("uses", "")).startswith(DEPLOY_GATE_ACTION)
-    ]
+    gates = [s for s in _steps() if s.get("id") == "deploy_gate"]
     assert len(gates) == 1, gates
     return gates[0]
+
+
+def _validator_checkout() -> dict[str, Any]:
+    checkouts = [
+        s
+        for s in _steps()
+        if (s.get("with") or {}).get("repository") == VALIDATOR_REPOSITORY
+    ]
+    assert len(checkouts) == 1, checkouts
+    return checkouts[0]
 
 
 def _head_contracts_checkout() -> dict[str, Any]:
@@ -87,7 +97,7 @@ def test_head_checkout_is_the_repo_itself_and_carries_contracts() -> None:
 def test_validator_reads_the_pr_head_contracts_dir() -> None:
     """The contracts-dir handed to the validator is the PR head's contracts/."""
     head_path = _head_contracts_checkout()["with"]["path"]
-    contracts_dir = _gate_step()["with"]["contracts-dir"]
+    contracts_dir = _gate_step()["env"]["CONTRACTS_DIR"]
     assert contracts_dir == f"{head_path}/contracts", contracts_dir
 
 
@@ -101,6 +111,9 @@ def test_head_checkout_runs_before_the_gate_on_every_pr_event() -> None:
 
 def test_validator_strictness_is_the_pinned_action() -> None:
     """Same validator and same mode as before the cut-over: only the source moved."""
+    checkout = _validator_checkout()["with"]
+    assert checkout["ref"] == VALIDATOR_PIN, checkout
     gate = _gate_step()
-    assert gate["uses"].startswith(DEPLOY_GATE_ACTION)
-    assert "falsifiability-mode" not in gate["with"], gate["with"]
+    assert gate["env"]["VALIDATOR"] == f"{checkout['path']}/{VALIDATOR_FILE}"
+    assert "DEPLOY_GATE_FALSIFIABILITY" not in gate["env"], gate["env"]
+    assert "DEPLOY_GATE_FALSIFIABILITY" not in WORKFLOW.read_text()

@@ -138,6 +138,10 @@ _MAX_CANDIDATES = 10
 _EVIDENCE_ID_RE = re.compile(
     r"dod-(?P<slug>.+?)-pr-(?P<number>\d+)(?:-[A-Za-z0-9_.]+)*"
 )
+_EVIDENCE_ID_PREFIX = "dod-"
+# No receipt directory name exceeds this, and the lazy slug match backtracks
+# quadratically on a long adversarial id, so a longer id is never parsed.
+_MAX_EVIDENCE_ID_LENGTH = 255
 
 # An evidence id added to a contract file: ``+  - id: "dod-…-pr-<n>"`` in a patch.
 _ADDED_EVIDENCE_ID_RE = re.compile(
@@ -315,15 +319,24 @@ def companion_may_cover_pr(
     names that PR, under the full ``<owner>-<repo>`` slug or the bare repo name;
     reading such an id as unreadable deferred every PR on the ticket (OMN-20074).
 
+    OMN-20899: hand-authored ids carry a descriptive suffix after the number
+    and a slug that is not always the full repo slug (``omnibase-core``,
+    ``omn20885-omniclaude``). An id naming another PR number names another PR.
+    An id naming this PR's number covers it unless its slug is the full
+    ``<owner>-<repo>`` slug of a different repo; any shorter slug might be this
+    repo, so it covers.
+
     Fails toward deferring (``True``) whenever coverage cannot be read: no ids
-    found, or a contract file entry with no ``patch`` (GitHub omits it for a
-    large diff) and no receipt directory. A needless defer is recoverable on the
-    next ``synchronize``; a wrong mint over a hand-authored companion is not.
+    found, a ``dod-`` id that names no PR number, or a contract file entry with
+    no ``patch`` (GitHub omits it for a large diff) and no receipt directory. A
+    needless defer is recoverable on the next ``synchronize``; a wrong mint over
+    a hand-authored companion is not.
     """
     subjects = {
-        (_slug_key(repo.replace("/", "-")), pr_number),
-        (_slug_key(repo.rsplit("/", 1)[-1]), pr_number),
+        _slug_key(repo.replace("/", "-")),
+        _slug_key(repo.rsplit("/", 1)[-1]),
     }
+    owner_prefix = f"{_slug_key(repo.split('/', 1)[0])}-"
     contract_path = f"contracts/{ticket_id}.yaml"
     receipt_prefix = f"drift/dod_receipts/{ticket_id}/"
     evidence_ids: set[str] = set()
@@ -341,14 +354,26 @@ def companion_may_cover_pr(
                 added = _ADDED_EVIDENCE_ID_RE.match(line)
                 if added:
                     evidence_ids.add(added.group("id"))
-    covered: set[tuple[str, int]] = set()
+    named: list[tuple[str, int]] = []
     for evidence_id in evidence_ids:
-        match = _EVIDENCE_ID_RE.fullmatch(evidence_id)
-        if match:
-            covered.add((_slug_key(match.group("slug")), int(match.group("number"))))
-    if not covered:
+        if not evidence_id.startswith(_EVIDENCE_ID_PREFIX):
+            continue
+        match = (
+            _EVIDENCE_ID_RE.fullmatch(evidence_id)
+            if len(evidence_id) <= _MAX_EVIDENCE_ID_LENGTH
+            else None
+        )
+        if match is None:
+            return True  # a dod id naming no PR could be this PR's evidence
+        named.append((_slug_key(match.group("slug")), int(match.group("number"))))
+    if not named:
         return True
-    return bool(subjects & covered)
+    for slug, number in named:
+        if number != pr_number:
+            continue  # evidence for another PR
+        if slug in subjects or not slug.startswith(owner_prefix):
+            return True
+    return False
 
 
 def _slug_key(slug: str) -> str:

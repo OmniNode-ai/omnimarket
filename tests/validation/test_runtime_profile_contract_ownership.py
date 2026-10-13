@@ -177,7 +177,7 @@ def test_runtime_profile_lane_assignments_post_omn_12982_batch1() -> None:
     intelligence_orchestrator = _load_contract(
         NODES_ROOT / "node_intelligence_orchestrator" / "contract.yaml"
     )
-    # node_adr_canary_orchestrator: canary (registered, unchanged)
+    # node_adr_canary_orchestrator: canary + effects (both registered)
     adr_canary_orchestrator = _load_contract(
         NODES_ROOT / "node_adr_canary_orchestrator" / "contract.yaml"
     )
@@ -188,9 +188,10 @@ def test_runtime_profile_lane_assignments_post_omn_12982_batch1() -> None:
     # intelligence orchestrator now correctly runs in main lane
     assert _owned_by_runtime_profile(intelligence_orchestrator, "main")
     assert _runtime_profiles(intelligence_orchestrator) == ("main",)
-    # canary orchestrator still runs in isolated canary lane, not main
+    # canary orchestrator runs in the canary demo lane and the effects lane (the
+    # dev lane starts no canary runtime), never in main
     assert not _owned_by_runtime_profile(adr_canary_orchestrator, "main")
-    assert _runtime_profiles(adr_canary_orchestrator) == ("canary",)
+    assert _runtime_profiles(adr_canary_orchestrator) == ("canary", "effects")
 
 
 def test_pr_review_orchestrator_runs_in_effects_lane() -> None:

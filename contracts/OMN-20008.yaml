@@ -21,15 +21,35 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: Every run row shows its basis, `measured` or `estimated`, from the stored provenance rather than a default -- falsifier: a row whose basis is absent or hardcoded
+  - id: "req-sibling-census-pin"
+    statement: |-
+      The runtime rebuild trigger must pin omnibase_infra's reusable at a recorded commit carrying cb5c0cfd7 (#4900, OMN-20934), which fetches the private lane census for sibling lab-pass receipts. This is a requirement of the release path and not an acceptance criterion of this ticket (ruling of 2026-10-13T06:59:27Z on OMN-20008), so it carries no criterion label. The caller's full-SHA pin is recorded as carrying the sibling census fetch -- falsifier: uv run pytest tests/ci/test_rebuild_trigger_pin_sibling_census_omn20008.py -q fails, including when the pin is reverted to 04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc. This workflow-only bump triggers no rebuild; runtime proof is the next omnimarket runtime merge's sibling receipt carrying lane_sync ok.
+  - id: "req-savings-share-of-the-baseline-served"
+    statement: |-
+      metering-summary.v1 serves savings as a share of the baseline, savings_usd over counterfactual_usd, and serves nothing when either is unknown or the counterfactual is zero, so the Savings card can show the percentage line without doing money arithmetic in the browser. The criterion below is transcribed from the ticket body; this repository proves its omnimarket half, the fold test.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: The Savings card shows "N% below the <baseline> baseline (modelled)" from the served `savings_pct_of_counterfactual`, never "verified", and no line when it is not served -- falsifier: the omnidash vitest and the omnimarket fold test
 evidence_requirements:
   - kind: "tests"
     description: "The savings-overview exposure serves estimated_run_count and unknown_run_count after the existing columns."
     command: "uv run pytest tests/unit/projection/test_projection_discovery.py -q -k test_savings_reducer_exposes_cost_savings_overview_snapshot"
+  - kind: "tests"
+    description: "The metering-summary fold computes and serves savings_pct_of_counterfactual, null when it cannot be known, on a new and on an old local store."
+    command: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20008_savings_pct_of_counterfactual.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20008-ac5-sibling-census-pin"
+    description: "The runtime rebuild trigger pin carries omnibase_infra#4900 (OMN-20934), fetching the private census needed by sibling lab-pass receipts after artifact 11768686435 failed lane_sync with census unreadable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_rebuild_trigger_pin_sibling_census_omn20008.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20008-ac4-served-excluded-counts"
     description: "The savings-overview exposure serves estimated_run_count and unknown_run_count, appended after tenant_id, so the excluded runs are counted beside the measured total."
     source: "manual"
@@ -89,3 +109,11 @@ dod_evidence:
           ' "$HOME/savings.json"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20008-ac5-served-savings-share"
+    description: "AC5's omnimarket half, the fold test. The metering-summary fold serves savings_pct_of_counterfactual as savings_usd over counterfactual_usd to the millionth, null when either is unknown or the counterfactual is zero, negative when spend is above the baseline; the exposure declares the column, migration 0004 adds it nullable with no default, and an old local store gains it once and keeps its rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20008_savings_pct_of_counterfactual.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

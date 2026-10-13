@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21032"
+title: "Merge sweep run refuses an unconfigured request before loading any facts"
+summary: >-
+  HandlerMergeSweepRun checks the request before any stage runs. state_path,
+  ledger_path and floors_path must be non-empty; a dispatching request also needs
+  lane, parent, ticket, model, runner_script and brief_dir. An empty or
+  whitespace-only setting gives ok=false with a reason naming the empty fields,
+  and no lane is started. A request with dispatch false needs no lane settings.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-request-configured"
+    statement: "A merge sweep run request with empty settings is refused by name before facts load or a lane starts."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A request with empty state_path, ledger_path and floors_path returns ok=false with the reason
+          "request not configured: state_path, ledger_path, floors_path are empty", no plan and no outcomes,
+          and the runner is never started -- falsifier: uv run pytest
+          tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -k
+          unconfigured_request fails at the merge base with "state file unreadable"
+      - id: "AC2"
+        statement: >-
+          AC2: A dispatching request with an empty runner_script and brief_dir is refused with a reason naming
+          them before any lane starts -- falsifier: the same test file -k dispatching_request_with_no_runner
+          fails at the merge base, where the request reached the runner
+      - id: "AC3"
+        statement: >-
+          AC3: A request with dispatch false and empty lane settings still plans and starts nothing, while the
+          same request with dispatch true is refused naming the lane settings -- falsifier: the same test file
+          -k dry_request_needs_no_runner fails at the merge base, where the dispatching request is not refused
+evidence_requirements:
+  - kind: "tests"
+    description: "Unconfigured requests are refused by name; a dry request still plans."
+    command: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21032-ac1-unconfigured-reads"
+    description: "Empty read paths give ok=false naming state_path, ledger_path and floors_path; no plan, no outcomes, no runner start."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q -n 0 -k unconfigured_request"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21032-ac2-unconfigured-dispatch"
+    description: "A dispatching request with empty runner_script and brief_dir is refused naming both, and the runner is never started."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q -n 0 -k dispatching_request_with_no_runner"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21032-ac3-dry-request"
+    description: "A dry request with empty lane settings plans and starts nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py -q -n 0 -k dry_request_needs_no_runner"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21032-deploy-probe"
+    description: "Deploy probe: the run handler read from GitHub at the checked-out commit contains the request check added by this PR. A head without that check fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merge_sweep_orchestrator/handlers/handler_merge_sweep_run.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def unset_fields'"

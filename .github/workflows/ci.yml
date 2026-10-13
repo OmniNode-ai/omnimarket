@@ -491,9 +491,25 @@ jobs:
       # OMN-21002: paired with the imperative-contract-guard-caller hook.
       - name: Imperative guard caller regression (OMN-21002)
         run: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+      # OMN-20910: paired with the review-voter-model-from-overlay hook.
+      - name: Review voter model comes from the overlay (OMN-20910)
+        run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
       # OMN-20967: paired with the anthropic-key-prefix-workflows hook.
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
+
+      # Paired with ticket-contract-prerequisite-regression (pre-commit).
+      - name: Ticket contract authoring refusal controls (OMN-20864)
+        run: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
+
+      # The checkout has full history, so read the actual PR head, not the
+      # synthetic merge tree. Paired with ticket-contract-prerequisite (pre-push).
+      - name: Ticket contract prerequisite at PR head (OMN-20864)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: uv run python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect --head "$PR_HEAD" --title "$PR_TITLE"
 
       # OMN-20838: dod_verify reads PR and commit facts from the canonical
       # clone and the PR watcher's state; this fails when its read layer spawns
@@ -501,6 +517,26 @@ jobs:
       # 'dod-verify-local-reads-guard'.
       - name: dod_verify local reads guard (OMN-20838)
         run: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
+      # OMN-20890: paired with the landing-decision-park-ladder hook.
+      - name: Landing decision park ladder (OMN-20890)
+        run: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
+      # OMN-20032: node_dod_verify refuses a contract whose acceptance criteria are
+      # only partly bound (ruling 2026-10-10T11:04:11Z). SYNC with pre-commit hook
+      # 'dod-verify-every-criterion-bound'.
+      - name: dod_verify refuses partly bound criteria (OMN-20032)
+        run: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+      # OMN-20001: the drift check reads omniclaude at the pin, a pin move needs the
+      # integration step, both drift directions stay strict, and the two OMN-13146
+      # tests stay present and uninverted. SYNC with pre-commit hook
+      # 'omniclaude-pin-drift'.
+      - name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+      # OMN-20601: routing decisions come from overlays, never from omnimarket code
+      # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
+      # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
+      # 'routing-sources-omn20601'.
+      - name: Routing sources, overlay precedence and routing-in-code ratchet (OMN-20601)
+        run: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
@@ -1935,6 +1971,12 @@ jobs:
         run: uv sync --locked
       - name: Validate event registry drift
         run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
+      # OMN-20001: a pin move merges only with the omniclaude-coupled tests passing
+      # against the new version. This job is "Event Registry Drift" in CI Summary's
+      # strict set and clones omniclaude at the one pin, so moving the literal above
+      # makes this step run against the new version in the same PR.
+      - name: Integration suite against the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov
 
   # ============================================================================
   # RUNTIME SWEEP GATE (OMN-8611)
@@ -3116,7 +3158,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.70
+          ref: v0.38.71
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
@@ -3500,6 +3542,28 @@ jobs:
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
               python -m omnibase_core.validators.canonical_file_shape --head HEAD
           fi
+
+  # OMN-20844: bring-your-own-key customers choose their OpenRouter model; the
+  # system never picks one. Names the tests that guard it so the generic split
+  # `test` job's selection cannot silently drop them. Same command as the
+  # `byok-customer-chooses-model` pre-commit hook. Unconditional (no `if:`, no
+  # `needs:`); registered in ci_summary_gate.py STRICT_GATE_JOBS.
+  byok-customer-chooses-model:
+    name: BYOK Customer Chooses Model (OMN-20844)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - name: Run the customer-chooses-model tests
+        run: >-
+          uv run pytest
+          tests/unit/cli/test_omn20844_openrouter_model_choice.py
+          tests/test_omn20844_chosen_model_never_re_aimed.py
+          tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py
+          -q -p no:randomly
 
   # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
   # option (b) of the addendum's section 11 question 2 (B3): enforce release

@@ -51,6 +51,10 @@ def dispatch_stage(stage: DispatchStage) -> Iterator[None]:
         # Carry that stage through outer scopes and any subsequent cleanup.
         previous_stage = progress.stage
         raise
+    except Exception:
+        if progress.failed_stage is None:
+            progress.failed_stage = progress.stage
+        raise
     finally:
         progress.stage = previous_stage
 

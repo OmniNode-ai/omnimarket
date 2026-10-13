@@ -98,6 +98,16 @@ class ModelCanaryCommandPayload(BaseModel):
         default=False,
         description="Allow LLM calls to external (non-local) providers.",
     )
+    grader_model_key: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Model key the extraction grader calls for this run. None = the "
+            "contract's grader_model_key default, which is a paid provider: "
+            "without allow_external_providers a run that grades must name a "
+            "lab-hosted key here or it is refused."
+        ),
+    )
 
     @field_validator("scoped_files")
     @classmethod

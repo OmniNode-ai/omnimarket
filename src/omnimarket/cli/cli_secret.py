@@ -34,20 +34,41 @@ import asyncio
 import fcntl
 import json
 import os
+import socket
 import sqlite3
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
 from typing import Any, cast
 
 import click
+import yaml
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
+    CapturedSecretReaderNotConfiguredError,
+    HandlerCapturedSecretResolve,
+    reader_for_this_machine,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request import (
+    ModelCapturedSecretResolveRequest,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
+    EnumCapturedSecretResolveOutcome,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
+    HandlerCapturedSecretStore,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
+    ModelCapturedSecretStoreRequest,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -77,6 +98,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_revoked,
 )
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
@@ -377,6 +399,83 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     return None
 
 
+#: OMN-21012. The lab host table is a deployment fact kept outside this
+#: repository, named by ONEX_LAB_RUN_HOSTS (the variable ``onex delegate`` and
+#: the lab placement read). Without it this machine is off the lab and a key
+#: is registered with no host binding.
+_LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
+#: A remote lane declares its host because its namespace may not carry the
+#: host's own name (the same two variables ``onex delegate`` reads).
+_LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
+
+
+def _lab_host_table() -> Path | None:
+    """The lab host table this machine reads, or ``None`` off the lab."""
+    configured = os.environ.get(_LAB_HOSTS_ENV, "").strip()
+    return Path(configured) if configured else None
+
+
+def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
+    """Each row's ``(name, target)``, or a refusal naming the table."""
+    try:
+        document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise click.ClickException(
+            f"the lab host table {table} could not be read ({exc}); nothing was stored."
+        ) from exc
+    rows = document.get("hosts") if isinstance(document, dict) else None
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and row.get("name") for row in rows
+    ):
+        raise click.ClickException(
+            f"the lab host table {table} has no hosts with a name; nothing was stored."
+        )
+    return [(str(row["name"]), str(row.get("target") or "")) for row in rows]
+
+
+def _resolve_bound_host(declared: str | None) -> str | None:
+    """The lab host a registered key is bound to (OMN-21012), or ``None``.
+
+    Operator ruling 2026-10-11T17:58:45Z: each Claude account's key is bound to
+    the machine the account lives on. ``--host`` names that machine and must be
+    a row of the lab host table. Without it, the registering machine's own row
+    is used: the declared lane host first, else the short hostname matched to a
+    row's name or target. Off the lab (no table), or on a machine no row names,
+    the key is unbound and usable from any host, as before.
+    """
+    table = _lab_host_table()
+    if declared is not None:
+        host = declared.strip()
+        if table is None:
+            raise click.ClickException(
+                f"--host {declared!r} cannot be checked: there is no lab host table "
+                f"on this machine (set {_LAB_HOSTS_ENV}); nothing was stored."
+            )
+        names = [name for name, _target in _lab_host_rows(table)]
+        if host not in names:
+            raise click.ClickException(
+                f"--host {declared!r} is not a host in the lab host table "
+                f"({', '.join(names)}); nothing was stored."
+            )
+        return host
+    if table is None:
+        return None
+    rows = _lab_host_rows(table)
+    row_names = {name for name, _target in rows}
+    for env in _LANE_HOST_ENVS:
+        lane_host = os.environ.get(env, "").strip()
+        if lane_host:
+            if lane_host not in row_names:
+                raise click.ClickException(
+                    f"{env}={lane_host!r} is not a host in the lab host table; "
+                    "pass --host or fix the declaration. Nothing was stored."
+                )
+            return lane_host
+    hostname = socket.gethostname().split(".")[0]
+    matches = [name for name, target in rows if hostname in (name, target)]
+    return matches[0] if len(matches) == 1 else None
+
+
 @secret_group.command("register-tenant-key")
 @click.argument("provider")
 @click.option("--tenant", required=True, help="Tenant that owns this provider key.")
@@ -388,16 +487,39 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     default=None,
     help="The model this key runs, checked against the provider's list for it.",
 )
+@click.option(
+    "--expires",
+    default=None,
+    metavar="YYYY-MM-DD",
+    help=(
+        "The date the key expires, as set where it was created (UTC). Company "
+        "keys all expire on January 1; any other date is stored with a warning."
+    ),
+)
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "The lab host whose Claude account owns this key (a lab host table row, "
+        "e.g. h201). Work sent from that host is the only work that spends it. "
+        "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
+        "the lab the key is unbound."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
     name: str | None,
     plan: str | None,
     model_option: str | None,
+    expires: str | None,
+    host: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    expires_at = _parse_expires(expires)
+    bound_host = _resolve_bound_host(host)
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -408,6 +530,8 @@ def register_tenant_key(
             key_value=SecretStr(value),
             plan=plan,
             model=model_option,
+            expires_at=expires_at,
+            bound_host=bound_host,
         )
         response = asyncio.run(
             register_inference_credential(
@@ -427,6 +551,9 @@ def register_tenant_key(
     except (
         CredentialStoreError,
         CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -438,7 +565,33 @@ def register_tenant_key(
     }
     if response.model is not None:
         shown["model"] = response.model
+    if response.expires_at is not None:
+        shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    if response.expiry_warning is not None:
+        shown["expiry_warning"] = response.expiry_warning.value
+    if response.bound_host is not None:
+        shown["bound_host"] = response.bound_host
     click.echo(json.dumps(shown))
+
+
+def _parse_expires(expires: str | None) -> datetime | None:
+    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
+
+    Read before the key, so a typo costs nothing: the value is never read from
+    stdin and nothing is stored.
+    """
+    if expires is None:
+        return None
+    try:
+        day = date.fromisoformat(expires.strip())
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
+            "nothing was stored."
+        ) from exc
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 #: Credential events a failed fold could not apply, kept beside the store until
@@ -788,6 +941,72 @@ def delete_secret_value(secret_ref: str) -> None:
     if result.route_withdrawn:
         click.echo(f"Withdrew your {result.provider} route key with it.")
     _fold_credential_events(result, store.db_path)
+
+
+@secret_group.command("store-captured")
+@click.option(
+    "--session",
+    default="onex-secret-store-captured",
+    show_default=True,
+    help="Recorded as the stored secret's capturing session.",
+)
+def store_captured(session: str) -> None:
+    """Store one value in the captured-secret namespace and print its reference.
+
+    OMN-20926. The same write the content-capture producer makes for a secret
+    its scrub detects, as the writer identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``). The value
+    is read from stdin, or a hidden prompt on a terminal, never from argv.
+    Prints the outcome and the reference, never the value.
+    """
+    value = _read_value("the value to store")
+    if not value:
+        raise click.ClickException("no value was given; nothing was stored.")
+    result = HandlerCapturedSecretStore(onex_home=Path.home() / ".onex").handle(
+        ModelCapturedSecretStoreRequest(
+            value=SecretStr(value), session_id=session, captured_at=datetime.now(UTC)
+        )
+    )
+    click.echo(
+        f"{result.outcome.value}: {result.reference or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.reference is None:
+        raise SystemExit(1)
+
+
+@secret_group.command("check-captured")
+@click.argument("reference")
+@click.option(
+    "--accessor",
+    default="onex-secret-check-captured",
+    show_default=True,
+    help="Who is asking, for the access log. Not an authorization claim.",
+)
+def check_captured(reference: str, accessor: str) -> None:
+    """Check that a captured secret REFERENCE resolves through the store.
+
+    OMN-20926. Resolves as the reader identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``), logged by
+    the store and by the resolver. Prints the outcome and the store key, NEVER
+    the value; exits non-zero unless the reference resolved.
+    """
+    try:
+        request = ModelCapturedSecretResolveRequest(
+            reference=reference, accessor=accessor
+        )
+        reader = reader_for_this_machine(Path.home() / ".onex")
+    except (CapturedSecretReaderNotConfiguredError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from None
+    except ModelOnexError as exc:  # a credentials.json refusal: names keys only
+        raise click.ClickException(exc.message) from None
+    result = HandlerCapturedSecretResolve(store=reader).handle(request)
+    click.echo(
+        f"{result.outcome.value}: {result.store_key or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.outcome is not EnumCapturedSecretResolveOutcome.RESOLVED:
+        raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------

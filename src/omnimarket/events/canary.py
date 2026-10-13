@@ -71,9 +71,13 @@ class ModelCanaryReport(BaseModel):
         ...,
         description="Absolute path to the evidence bundle directory for this run.",
     )
-    scorecard_path: str = Field(
-        ...,
-        description="Absolute path to the generated scorecard.md file.",
+    scorecard_path: str | None = Field(
+        default=None,
+        description=(
+            "Absolute path to the generated scorecard.md file. None when the run "
+            "stopped before it wrote one (a refusal or an early failure): a path "
+            "that names no file is never reported."
+        ),
     )
 
     dry_run: bool = Field(default=False)

@@ -22,6 +22,14 @@ descriptor:
   timeout_ms: 500
 
 inputs:
+  session_id:
+    type: str
+    required: true
+    description: Session the phase belongs to; carried through to the evaluated event
+  correlation_id:
+    type: uuid
+    required: true
+    description: One id for every event of a tick; carried through to the evaluated event
   phase_name:
     type: str
     required: true
@@ -48,6 +56,14 @@ inputs:
       When elapsed_pct >= halt_threshold_pct the action is halt_required.
 
 outputs:
+  session_id:
+    type: str
+  correlation_id:
+    type: uuid
+  phase_name:
+    type: str
+  elapsed_seconds:
+    type: float
   action:
     type: str
     enum: [no_action, budget_warning, transition_required, halt_required]
