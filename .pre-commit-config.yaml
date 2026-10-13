@@ -1441,6 +1441,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20032: node_dod_verify refuses a contract whose acceptance criteria
+      # are only partly bound. Check-only. SYNC with the ci.yml lint step
+      # "dod_verify refuses partly bound criteria (OMN-20032)".
+      - id: dod-verify-every-criterion-bound
+        name: dod_verify refuses partly bound criteria (OMN-20032)
+        language: system
+        entry: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_every_criterion_bound\.py$|tests/unit/nodes/node_dod_verify/omn_20858_ticket_reader\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
         language: system
