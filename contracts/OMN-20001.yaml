@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20001"
+title: "The event registry drift check reads omniclaude at the pinned rev, and four properties of it are guarded"
+summary: "Unit N1 of the unenforced-rulings plan. The Event Registry Drift check read whatever omniclaude commit a sibling checkout sat at; it now reads the tag pinned in ci.yml through git, so omniclaude dev moving leaves it unchanged. The pin move, both drift directions and the two OMN-13146 tests are guarded by tests/ci/test_omniclaude_pin_drift_omn20001.py, run as a named step in the lint job and a check-only pre-commit hook."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-drift-check-pinned-and-guarded"
+    statement: |-
+      The event registry drift check reads omniclaude at the revision pinned in ci.yml, and its pin, strictness and OMN-13146 tests are guarded by a test that runs in the required lint job and a pre-commit hook.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omniclaude dev moving with an unmoved pin leaves the drift check green -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k drift_reads_pinned_rev fails at the merge base
+      - id: "AC2"
+        statement: |-
+          AC2: the pin moves only after the integration suite passes against the new version -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k pin_move_requires_integration fails at the merge base
+      - id: "AC3"
+        statement: |-
+          AC3: one mutation per direction turns the production drift check red -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k drift_strict_both_directions fails at the merge base
+      - id: "AC4"
+        statement: |-
+          AC4: the two OMN-13146 tests are present and uninverted -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k omn13146_tests_guarded fails at the merge base
+evidence_requirements:
+  - kind: "tests"
+    description: "The drift check reads omniclaude at the pinned rev; dev moving with the pin unmoved stays green, moving the pin changes the verdict."
+    command: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k drift_reads_pinned_rev"
+  - kind: "tests"
+    description: "ci.yml reads omniclaude at one pin, the Event Registry Drift job runs the omniclaude-coupled tests at it, and the reading gates sit in CI Summary's strict set."
+    command: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k pin_move_requires_integration"
+  - kind: "tests"
+    description: "A source-ahead and a registry-ahead mutation each turn the production drift check red, there is no consumer-ahead tolerance, and the guard runs in the lint job and a pre-commit hook."
+    command: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k drift_strict_both_directions"
+  - kind: "tests"
+    description: "The two OMN-13146 tests are present, enabled, assert their original polarity, and run in the Event Registry Drift job."
+    command: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k omn13146_tests_guarded"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20001-drift-reads-pinned-rev"
+    description: "The drift check reads omniclaude at the pinned rev; dev moving with the pin unmoved stays green, moving the pin changes the verdict."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k drift_reads_pinned_rev"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20001-pin-move-requires-integration"
+    description: "ci.yml reads omniclaude at one pin, the Event Registry Drift job runs the omniclaude-coupled tests at it, and the reading gates sit in CI Summary's strict set."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k pin_move_requires_integration"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20001-drift-strict-both-directions"
+    description: "A source-ahead and a registry-ahead mutation each turn the production drift check red, there is no consumer-ahead tolerance, and the guard runs in the lint job and a pre-commit hook."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k drift_strict_both_directions"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20001-omn13146-tests-guarded"
+    description: "The two OMN-13146 tests are present, enabled, assert their original polarity, and run in the Event Registry Drift job."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov -k omn13146_tests_guarded"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
