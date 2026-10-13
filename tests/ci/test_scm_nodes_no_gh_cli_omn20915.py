@@ -28,6 +28,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 pytestmark = pytest.mark.unit
 
@@ -209,3 +210,19 @@ def test_moved_nodes_are_registered_entry_points() -> None:
     for name in _REQUIRED_FAMILY:
         assert registered.get(name) == f"omnimarket.nodes.{name}", name
         assert (_NODES_ROOT / name / "contract.yaml").is_file(), name
+
+
+_SCAN_COMMAND = "pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py"
+
+
+def test_scan_is_wired_as_hook_and_lint_step() -> None:
+    config = yaml.safe_load((_REPO_ROOT / ".pre-commit-config.yaml").read_text())
+    hooks = {
+        hook["id"]: hook for repo in config["repos"] for hook in repo.get("hooks", [])
+    }
+    assert _SCAN_COMMAND in hooks["scm-nodes-no-gh-cli"]["entry"]
+    workflow = yaml.safe_load(
+        (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    )
+    lint_runs = [step.get("run", "") for step in workflow["jobs"]["lint"]["steps"]]
+    assert any(_SCAN_COMMAND in run for run in lint_runs)
