@@ -66,11 +66,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_host_reconcile_class3_import_drift.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC6"]
-  - id: "dod-omn20865-ac6-deploy-import-drift"
-    description: "Deploy probe for AC6: reads the host-reconcile compute handler from GitHub at the checked-out commit and requires its IMPORT_DRIFT return literal, absent at the merge base. Runtime readout after the omnimarket deploy: node_host_reconcile_compute returning IMPORT_DRIFT for a stale installed copy on a lab host, with the installed and expected revisions, exit_code 2 and stamp_floor false."
-    source: "manual"
-    checks:
+      # Deploy probe: the handler at the checked-out commit carries the IMPORT_DRIFT
+      # return literal, absent at the merge base. Runtime readout after the omnimarket
+      # deploy: node_host_reconcile_compute returning IMPORT_DRIFT for a stale installed
+      # copy on a lab host, with the installed and expected revisions, exit_code 2 and
+      # stamp_floor false.
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_reconcile_compute/handlers/handler_host_reconcile_compute.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cF 'return "IMPORT_DRIFT", ('
