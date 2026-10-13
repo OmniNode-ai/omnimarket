@@ -36,9 +36,6 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 from omnimarket.validators.event_registry_drift import (
     main as drift_main,
 )
-from omnimarket.validators.event_registry_drift import (
-    read_pinned_omniclaude_rev,
-)
 from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
 
 pytestmark = pytest.mark.unit
@@ -247,6 +244,10 @@ def test_drift_reads_pinned_rev_missing_tag_never_falls_back_to_head(
 
 
 def test_drift_reads_pinned_rev_pin_is_the_ci_clone_tag() -> None:
+    from omnimarket.validators.event_registry_drift import (
+        read_pinned_omniclaude_rev,
+    )
+
     pin = read_pinned_omniclaude_rev(REPO_ROOT)
     assert re.fullmatch(r"v\d+\.\d+\.\d+", pin), pin
     assert f"--branch {pin} " in CI_WORKFLOW.read_text()
@@ -420,6 +421,39 @@ def test_drift_strict_both_directions_ci_job_passes_no_tolerance_flag() -> None:
     assert all("tolerate" not in str(s["run"]) for s in drift_steps)
 
 
+def _precommit_hook(hook_id: str) -> dict[str, Any]:
+    config = yaml.safe_load((REPO_ROOT / ".pre-commit-config.yaml").read_text())
+    hooks = [
+        hook
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook.get("id") == hook_id
+    ]
+    assert len(hooks) == 1, f"expected one {hook_id!r} hook, found {len(hooks)}"
+    return hooks[0]
+
+
+def _lint_step_runs(name: str) -> str:
+    steps = _load_workflow()["jobs"]["lint"]["steps"]
+    matches = [s for s in steps if s.get("name") == name]
+    assert len(matches) == 1, f"expected one lint step {name!r}, found {len(matches)}"
+    return str(matches[0]["run"])
+
+
+GUARD_STEP = "Event registry drift reads the pinned omniclaude (OMN-20001)"
+GUARD_HOOK = "omniclaude-pin-drift"
+
+
+def test_drift_strict_both_directions_is_wired_into_lint_and_precommit() -> None:
+    assert "tests/ci/test_omniclaude_pin_drift_omn20001.py" in _lint_step_runs(
+        GUARD_STEP
+    )
+    hook = _precommit_hook(GUARD_HOOK)
+    assert "tests/ci/test_omniclaude_pin_drift_omn20001.py" in hook["entry"]
+    assert hook["stages"] == ["pre-commit"]
+    assert hook["pass_filenames"] is False
+
+
 # =============================================================================
 # AC4: the two OMN-13146 tests are present and uninverted
 # =============================================================================
@@ -489,6 +523,15 @@ def omn13146_violations(source: str) -> list[str]:
 
 def test_omn13146_tests_guarded_live_file_holds() -> None:
     assert omn13146_violations(DRIFT_TEST_FILE.read_text()) == []
+
+
+def test_omn13146_tests_guarded_are_run_by_the_drift_job_against_the_pin() -> None:
+    steps = _load_workflow()["jobs"][DRIFT_JOB]["steps"]
+    runs = [str(s.get("run", "")) for s in steps]
+    assert any(
+        "tests/validators/test_event_registry_drift.py" in run and "pytest" in run
+        for run in runs
+    ), "the OMN-13146 tests must run in the Event Registry Drift job"
 
 
 def test_omn13146_tests_guarded_flags_an_inverted_polarity() -> None:
