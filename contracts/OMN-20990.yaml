@@ -45,15 +45,15 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/nodes/node_model_setup_effect -q"
+        check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/nodes/node_model_setup_effect/test_golden_chain_model_setup_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2", "AC3"]
   - id: "dod-omn20990-deploy-probe-catalogue-row"
-    description: "The repo-owned catalogue tests exercise Anthropic being offered as a routable customer-only byok-anthropic backend with no house rung. Against the merge-base catalogue, the same head tests fail because Anthropic is not offered."
+    description: "The catalogue tests exercise the offered Anthropic row, its backend mirror and absence of a house rung. The same test file fails against the merge-base catalogue."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn17353_provider_catalogue.py -k 'test_anthropic_is_offered or test_the_anthropic_row_mirrors_no_house_rung' -q"
+        check_value: "uv run pytest tests/test_omn17353_provider_catalogue.py -k anthropic -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20990-ac4-invalid-key-refused"

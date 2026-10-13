@@ -38,7 +38,7 @@ import sqlite3
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
 from typing import Any, cast
@@ -96,6 +96,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_revoked,
 )
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
@@ -407,16 +408,27 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     default=None,
     help="The model this key runs, checked against the provider's list for it.",
 )
+@click.option(
+    "--expires",
+    default=None,
+    metavar="YYYY-MM-DD",
+    help=(
+        "The date the key expires, as set where it was created (UTC). Company "
+        "keys all expire on January 1; any other date is stored with a warning."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
     name: str | None,
     plan: str | None,
     model_option: str | None,
+    expires: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    expires_at = _parse_expires(expires)
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -427,6 +439,7 @@ def register_tenant_key(
             key_value=SecretStr(value),
             plan=plan,
             model=model_option,
+            expires_at=expires_at,
         )
         response = asyncio.run(
             register_inference_credential(
@@ -446,6 +459,9 @@ def register_tenant_key(
     except (
         CredentialStoreError,
         CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -457,7 +473,31 @@ def register_tenant_key(
     }
     if response.model is not None:
         shown["model"] = response.model
+    if response.expires_at is not None:
+        shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    if response.expiry_warning is not None:
+        shown["expiry_warning"] = response.expiry_warning.value
     click.echo(json.dumps(shown))
+
+
+def _parse_expires(expires: str | None) -> datetime | None:
+    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
+
+    Read before the key, so a typo costs nothing: the value is never read from
+    stdin and nothing is stored.
+    """
+    if expires is None:
+        return None
+    try:
+        day = date.fromisoformat(expires.strip())
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
+            "nothing was stored."
+        ) from exc
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 #: Credential events a failed fold could not apply, kept beside the store until

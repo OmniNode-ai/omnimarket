@@ -7,14 +7,23 @@ a real database or broker.
 
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
     HandlerTenantCredentialsProjectionRunner,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    CREDENTIALS_TABLE,
+    apply_credential_registered,
+)
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
@@ -114,6 +123,8 @@ class TestCredentialRegistered:
             "openrouter",
             # OMN-19985: fingerprint and set_at; a hosted event sends neither.
             None,
+            None,
+            # OMN-20991: expires_at; an event without one stores none.
             None,
         )
 
@@ -324,6 +335,8 @@ class TestHandleDefBEntrypoint:
             # OMN-19985: fingerprint and set_at; a hosted event sends neither.
             None,
             None,
+            # OMN-20991: expires_at; an event without one stores none.
+            None,
         )
 
     def test_handle_defaults_topic_to_the_first_subscribed_topic(
@@ -345,3 +358,73 @@ class TestHandleDefBEntrypoint:
         assert (
             "INSERT INTO tenant_inference_credentials" in _credential_call(mock_db)[0]
         )
+
+
+# ---------------------------------------------------------------------------
+# OMN-20991: the key's expiry date reaches the catalog and the exposure.
+# ---------------------------------------------------------------------------
+
+_NODE_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "src/omnimarket/nodes/node_projection_tenant_credentials"
+)
+_EXPIRY_MIGRATION = _NODE_DIR / "migrations/0006_tenant_credentials_expires_at.sql"
+
+
+class TestExpiresAt:
+    @pytest.mark.asyncio
+    async def test_credential_registered_writes_expires_at(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        data = {
+            "tenant_id": "omninode",
+            "provider": "anthropic",
+            "name": "pool-key-1",
+            "api_key_ref": "cred_omninode_anthropic_" + "b" * 32,
+            "metadata": {},
+            "expires_at": "2027-01-01T00:00:00+00:00",
+        }
+        assert await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
+        args = _credential_call(mock_db)
+        sql = str(args[0])
+        assert "expires_at" in sql
+        # COALESCE: a re-delivery without the field never erases a stored date.
+        assert "COALESCE(EXCLUDED.expires_at" in sql
+        assert args[-1] == datetime(2027, 1, 1, tzinfo=UTC)
+
+    def test_expires_at_migration_adds_one_nullable_column_and_nothing_else(
+        self,
+    ) -> None:
+        body = "\n".join(
+            line
+            for line in _EXPIRY_MIGRATION.read_text().splitlines()
+            if not line.lstrip().startswith("--")
+        )
+        statements = [
+            re.sub(r"\s+", " ", s).strip().upper() for s in body.split(";") if s.strip()
+        ]
+        assert statements == [
+            "ALTER TABLE TENANT_INFERENCE_CREDENTIALS ADD COLUMN IF NOT EXISTS EXPIRES_AT TIMESTAMPTZ"
+        ]
+
+    def test_snapshot_exposure_lists_expires_at(self) -> None:
+        contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
+        assert "expires_at" in contract["projection_api"]["columns"]
+
+    def test_sqlite_store_writes_expires_at(self, tmp_path: Path) -> None:
+        db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
+        ref = "cred_localinstall_anthropic_" + "c" * 32
+        event = {
+            "tenant_id": "localinstall",
+            "provider": "anthropic",
+            "name": "llm.anthropic.api_key",
+            "api_key_ref": ref,
+            "expires_at": "2027-01-01T00:00:00+00:00",
+        }
+        apply_credential_registered(event, db)
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["expires_at"] == "2027-01-01T00:00:00+00:00"
+        # A re-delivery without the field keeps the stored date.
+        apply_credential_registered({**event, "expires_at": None}, db)
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["expires_at"] == "2027-01-01T00:00:00+00:00"

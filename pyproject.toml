@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.312"
+version = "0.4.313"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -551,6 +551,7 @@ node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
 node_work_ledger_seq_gap_effect = "omnimarket.nodes.node_work_ledger_seq_gap_effect"
 node_projection_alert_channel_liveness = "omnimarket.nodes.node_projection_alert_channel_liveness"
+node_projection_automation_liveness = "omnimarket.nodes.node_projection_automation_liveness"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
@@ -635,6 +636,7 @@ node_operator_capture_effect = "omnimarket.nodes.node_operator_capture_effect"
 # and declares no handler_routing.
 node_lab_job_reducer = "omnimarket.nodes.node_lab_job_reducer"
 node_lab_job_submit_effect = "omnimarket.nodes.node_lab_job_submit_effect"
+node_projection_lab_job = "omnimarket.nodes.node_projection_lab_job"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
