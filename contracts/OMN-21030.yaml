@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21030"
+title: "The PR handoff orchestrator takes pr-state-observed.v1 with the emit transport's enrichment"
+summary: >-
+  ModelPrHandoffObservationIngress refused every observation on
+  onex.evt.omnimarket.pr-state-observed.v1 with extra_forbidden on the emit
+  transport's enrichment keys (actor, lane, emitted_at and the rest), so each
+  one was dead-lettered. The ingress now keeps only its declared fields before
+  validation, like pr_state_event_from_wire, and still refuses a mismatched
+  handoff_key.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-handoff-ingress-transported-payload"
+    statement: "Every contract-routed subscriber of pr-state-observed.v1 accepts the transported payload, and the handoff ingress keeps refusing a mismatched handoff_key."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: ModelPrHandoffObservationIngress validates a pr-state-observed payload carrying the emit transport's enrichment keys, on schema version 1 and 2 -- falsifier: uv run pytest tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py -k transported fails with extra_forbidden at the merge base
+      - id: "AC2"
+        statement: >-
+          AC2: A payload whose handoff_key differs from the one derived from repo and pr_number is still refused -- falsifier: uv run pytest tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py -k mismatched_handoff_key
+evidence_requirements:
+  - kind: "tests"
+    description: "Transported payloads are accepted by every routed subscriber; a mismatched handoff_key is refused."
+    command: "uv run pytest tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21030-ac1-transported-payload"
+    description: "The handoff ingress and every contract-routed subscriber of the topic accept the transported payload; these tests fail at the merge base with the dead letter's extra_forbidden keys."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py -q -k transported"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21030-ac2-mismatched-handoff-key"
+    description: "A payload whose handoff_key differs from the derived key is still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py -q -k mismatched_handoff_key"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21030-deploy-probe"
+    description: "Deploy probe: the handoff ingress model read from GitHub at the checked-out commit filters the payload to its declared fields. The merge base filters only the version 2 fields, so the probe fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_handoff_orchestrator/models/model_pr_handoff_observation_ingress.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'if k in cls.model_fields'"

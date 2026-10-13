@@ -72,6 +72,7 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
 
     def __init__(self, response: str | Exception) -> None:
         self._response = response
+        self.model_keys: list[str] = []
 
     async def infer(
         self,
@@ -83,6 +84,7 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
         response_format: ModelInferenceJsonObjectResponseFormat | None = None,
         protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
+        self.model_keys.append(model_key)
         if isinstance(self._response, Exception):
             raise self._response
         return self._response
@@ -280,3 +282,116 @@ def test_grading_result_scores_must_be_in_range() -> None:
             fidelity=0.9,
             format_compliance=1.0,
         )
+
+
+# ---------------------------------------------------------------------------
+# Grader key and default bridge: which route the grading call takes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_request_grader_key_takes_the_grading_call_and_its_evidence() -> None:
+    bridge = _MockBridge(_GOOD_RESPONSE)
+    handler = HandlerExtractionGrader(inference_bridge=bridge, grader_model_key="opus")
+
+    result = await handler.handle(_make_request(grader_model_key="deepseek-r1"))
+
+    assert bridge.model_keys == ["deepseek-r1"]
+    assert result.llm_call_evidence is not None
+    assert result.llm_call_evidence.grader_model_key == "deepseek-r1"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_configured_grader_key_applies_when_the_request_names_none() -> None:
+    bridge = _MockBridge(_GOOD_RESPONSE)
+    handler = HandlerExtractionGrader(
+        inference_bridge=bridge, grader_model_key="qwen3-coder"
+    )
+
+    await handler.handle(_make_request())
+
+    assert bridge.model_keys == ["qwen3-coder"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_default_bridge_routes_a_lab_key_to_its_configured_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No injected bridge: the key must resolve from the LLM_*_URL routes.
+
+    The handler used to build its default bridge from an empty route table, so
+    every key raised ``Unknown model_key`` before any request left the process
+    and a deployed runtime could never grade.
+    """
+    import omnimarket.inference.bridge_config_loader as loader
+    from omnimarket.inference.adapter_inference_bridge import AdapterInferenceBridge
+
+    async def _no_credential(
+        api_key_ref: str | None, *, store: object = None, required: bool = True
+    ) -> None:
+        return None
+
+    for env_name in (
+        "LLM_CODER_URL",
+        "LLM_CODER_FAST_URL",
+        "LLM_DEEPSEEK_R1_URL",
+        "LLM_QWEN3_NEXT_URL",
+    ):
+        monkeypatch.delenv(env_name, raising=False)
+    monkeypatch.setattr(loader, "resolve_api_key_async", _no_credential)
+    monkeypatch.setenv("LLM_CODER_URL", "http://lab-endpoint.invalid:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "lab-coder-model")
+
+    seen: list[tuple[str, str, str]] = []
+
+    async def _fake_http(
+        self: AdapterInferenceBridge,
+        model_key: str,
+        cfg: dict[str, object],
+        *_args: object,
+    ) -> str:
+        seen.append((model_key, str(cfg["base_url"]), str(cfg["model_id"])))
+        return _GOOD_RESPONSE
+
+    monkeypatch.setattr(AdapterInferenceBridge, "_call_http_model", _fake_http)
+
+    handler = HandlerExtractionGrader(grader_model_key="qwen3-coder")
+    result = await handler.handle(_make_request())
+
+    assert result.success is True, result.error_message
+    assert seen == [
+        ("qwen3-coder", "http://lab-endpoint.invalid:8000", "lab-coder-model")
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_default_bridge_makes_no_call_for_an_unregistered_paid_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import omnimarket.inference.bridge_config_loader as loader
+    from omnimarket.inference.adapter_inference_bridge import AdapterInferenceBridge
+
+    async def _no_credential(
+        api_key_ref: str | None, *, store: object = None, required: bool = True
+    ) -> None:
+        return None
+
+    monkeypatch.setattr(loader, "resolve_api_key_async", _no_credential)
+    monkeypatch.setenv("LLM_CODER_URL", "http://lab-endpoint.invalid:8000")
+    monkeypatch.setenv("LLM_CODER_MODEL_NAME", "lab-coder-model")
+
+    async def _must_not_call(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("an unregistered key reached the HTTP transport")
+
+    monkeypatch.setattr(AdapterInferenceBridge, "_call_http_model", _must_not_call)
+
+    handler = HandlerExtractionGrader()  # contract default key: opus
+    result = await handler.handle(_make_request())
+
+    assert result.success is False
+    assert result.error_code == "GRADER_LLM_CALL_FAILED"
+    assert "Unknown model_key: 'opus'" in (result.error_message or "")

@@ -1408,6 +1408,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
+      # lint step "No Anthropic key value in a workflow (OMN-20967)".
+      - id: anthropic-key-prefix-workflows
+        name: No Anthropic key value in a workflow (OMN-20967)
+        language: system
+        entry: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
+        files: ^(\.github/workflows/|tests/ci/test_anthropic_key_prefix_workflows_omn20967\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20838: dod_verify's read layer reads the canonical clone and the
       # PR watcher's state; the guard fails when it spawns gh for a read a local
       # source holds. SYNC with the ci.yml lint step "dod_verify local reads
@@ -1417,6 +1427,45 @@ repos:
         language: system
         entry: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/node_dod_verify/|tests/unit/nodes/node_dod_verify/(conftest|test_omn_20838_dod_verify_reads_local)\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20890: no timed parks. A stuck cause stays live, is retried when
+      # the base head moves, and files one ticket on first stick. SYNC with
+      # the ci.yml lint step "Landing decision park ladder (OMN-20890)".
+      - id: landing-decision-park-ladder
+        name: Landing decision park ladder (OMN-20890)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_pr_landing_decision_compute/|tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20032: node_dod_verify refuses a contract whose acceptance criteria
+      # are only partly bound. Check-only. SYNC with the ci.yml lint step
+      # "dod_verify refuses partly bound criteria (OMN-20032)".
+      - id: dod-verify-every-criterion-bound
+        name: dod_verify refuses partly bound criteria (OMN-20032)
+        language: system
+        entry: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_every_criterion_bound\.py$|tests/unit/nodes/node_dod_verify/omn_20858_ticket_reader\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: ticket-contract-prerequisite
+        name: Ticket contract at pushed head (OMN-20864)
+        language: system
+        entry: uv run --frozen python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect
+        fail_fast: true
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ticket-contract-prerequisite-regression
+        name: Ticket contract push and PR-create controls (OMN-20864)
+        language: system
+        entry: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_ticket_contract_prerequisite_effect/.*|src/omnimarket/nodes/(node_dod_verify/services/contract_prerequisite\.py|node_github_repo_write_effect/.*)|tests/ci/(test_ticket_contract_prerequisite_omn20864\.py|fixtures/ticket_contract_refusal_omn20864\.json)|\.github/workflows/ci\.yml|contracts/OMN-20864\.yaml|pyproject\.toml|tests/nodes/node_ticket_contract_prerequisite_effect/.*|tests/ci/test_pipeline_observability_export_closure_omn20864\.py|src/omnimarket/nodes/node_(emit_daemon|event_emit_effect)/contract\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 

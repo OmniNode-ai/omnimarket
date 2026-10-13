@@ -215,6 +215,11 @@ compatibility_publish_topics:
   - onex.evt.omniintelligence.llm-call-completed.v1
 
 externally_consumed_topics:
+  # Pipeline observability exports owned by omniclaude's shared pipeline event
+  # models. external_publish_topics declares domain ownership; this block also
+  # declares that the exported signals leave the internal node graph.
+  - onex.evt.omniclaude.budget-cap-hit.v1
+  - onex.evt.omniclaude.circuit-breaker-tripped.v1
   # This node's own terminal events -- genuinely new (verified absent from
   # both registries/topics.yaml and the omniclaude-generated EVENT_REGISTRY
   # at PR time). Hook wiring (OMN-14317) and shadow-mode parity (R9,

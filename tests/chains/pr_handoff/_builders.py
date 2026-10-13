@@ -20,7 +20,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import BaseModel
 
@@ -212,9 +211,6 @@ class RealLedger:
     lost: int = 0
     ledger: InMemoryLedgerFile = field(default_factory=InMemoryLedgerFile)
     requests: list[ModelWorkLedgerAppendRequest] = field(default_factory=list)
-    signing_key: Ed25519PrivateKey = field(
-        default_factory=Ed25519PrivateKey.generate, repr=False
-    )
 
     async def append(
         self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float
@@ -225,8 +221,8 @@ class RealLedger:
             runner=self.ledger,
             reader=self.ledger,
             host_name="h200",
-            public_keys={"chain-test": self.signing_key.public_key()},
-        ).handle(request.signed("chain-test", self.signing_key))
+            writer_principals=["chain-test"],
+        ).handle(request, writer_principal="chain-test")
         if self.lost:
             self.lost -= 1
             return None

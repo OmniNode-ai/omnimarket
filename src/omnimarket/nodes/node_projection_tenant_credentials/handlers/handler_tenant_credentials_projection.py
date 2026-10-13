@@ -265,17 +265,19 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             f"""
             INSERT INTO {self._table_credentials} (
               api_key_ref, tenant_id, name, provider, created_at,
-              fingerprint, set_at
+              fingerprint, set_at, expires_at
             ) VALUES (
-              $1, $2, $3, $4, NOW(), $5, $6
+              $1, $2, $3, $4, NOW(), $5, $6, $7
             )
             ON CONFLICT (api_key_ref) DO UPDATE SET
               tenant_id = EXCLUDED.tenant_id,
               name = EXCLUDED.name,
               provider = EXCLUDED.provider,
               fingerprint = COALESCE(EXCLUDED.fingerprint, {self._table_credentials}.fingerprint),
-              set_at = COALESCE(EXCLUDED.set_at, {self._table_credentials}.set_at)
-            RETURNING api_key_ref, tenant_id, name, provider, created_at, revoked_at
+              set_at = COALESCE(EXCLUDED.set_at, {self._table_credentials}.set_at),
+              expires_at = COALESCE(EXCLUDED.expires_at, {self._table_credentials}.expires_at)
+            RETURNING api_key_ref, tenant_id, name, provider, created_at, revoked_at,
+              expires_at
             """,
             str(api_key_ref),
             str(tenant_id),
@@ -285,6 +287,8 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             # and COALESCE keeps a stored value rather than erasing it.
             _optional_text(data.get("fingerprint")),
             _optional_timestamp(data.get("set_at")),
+            # OMN-20991: the key's expiry, so routing can skip a lapsed key.
+            _optional_timestamp(data.get("expires_at")),
             # OMN-15919: bind app.tenant_id to the tenant this statement
             # actually names. The adapter previously derived the GUC on its
             # own from resolve_read_tenant(None) -- a second resolver that

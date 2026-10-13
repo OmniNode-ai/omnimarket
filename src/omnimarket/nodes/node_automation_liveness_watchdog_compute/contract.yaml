@@ -1,0 +1,82 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_automation_liveness_watchdog_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-20806. The automation-liveness watchdog's pure half. Given the liveness
+  overlay, one folded fact record per declared process, the host observers'
+  heartbeats, the bus facts, the open trigger expectations, the undeclared
+  processes the observers reported, the watchdog state carried from the
+  previous evaluation and the evaluation time, it returns one verdict per
+  process (EnumLivenessState and a reason), the verdict events for the
+  verdicts that changed, the alarm episodes opened, raised in severity and
+  cleared, and the state to carry into the next evaluation.
+
+  The planted self-test runs first through the same evaluator: a planted
+  contract that evaluates wrong voids the evaluation and opens
+  WATCHDOG_SELFTEST_FAILED at once. A silent host observer folds the MISSED
+  verdicts of its host into one HOST_SILENT; a host whose observer is alive
+  keeps every per-process verdict. The external dead-man is
+  EXTERNAL_DEADMAN_SILENT after two hours with no completed run.
+
+  The effect half (state store, outbox, delivery, the ledger record, the
+  external mirror) ticks this node and is a separate node.
+
+input_model: omnimarket.nodes.node_automation_liveness_watchdog_compute.models.model_automation_liveness_watchdog.ModelAutomationLivenessWatchdogRequest
+output_model: omnimarket.nodes.node_automation_liveness_watchdog_compute.models.model_automation_liveness_watchdog.ModelAutomationLivenessWatchdogResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evaluate
+      handler:
+        name: HandlerAutomationLivenessWatchdog
+        module: omnimarket.nodes.node_automation_liveness_watchdog_compute.handlers.handler_automation_liveness_watchdog
+      event_model:
+        name: ModelAutomationLivenessWatchdogRequest
+        module: omnimarket.nodes.node_automation_liveness_watchdog_compute.models.model_automation_liveness_watchdog
+
+handler:
+  module: omnimarket.nodes.node_automation_liveness_watchdog_compute.handlers.handler_automation_liveness_watchdog
+  class: HandlerAutomationLivenessWatchdog
+  input_model: omnimarket.nodes.node_automation_liveness_watchdog_compute.models.model_automation_liveness_watchdog.ModelAutomationLivenessWatchdogRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  # Pure: the effect performs every read and write, so this node needs no
+  # effects runtime, no database handle and no broker credential of its own.
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.automation-liveness-watchdog-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.automation-liveness-watchdog-evaluate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.automation-liveness-watchdog-evaluated.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-liveness-watchdog-evaluate-requested.v1
+
+# The effect half consumes the evaluated result and publishes the seam's
+# verdict, alarm and heartbeat events; it is a later node.
+externally_consumed_topics:
+  - onex.evt.omnimarket.automation-liveness-watchdog-evaluated.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: automation-liveness verdicts, episodes, hysteresis and the planted self-test"
+  author: "OmniNode Platform Team"
+  created: "2026-10-12"
+  tags:
+    - "compute"
+    - "liveness"
+    - "watchdog"
+    - "deterministic"

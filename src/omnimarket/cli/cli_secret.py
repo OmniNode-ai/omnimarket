@@ -38,16 +38,35 @@ import sqlite3
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
 from typing import Any, cast
 
 import click
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
+    CapturedSecretReaderNotConfiguredError,
+    HandlerCapturedSecretResolve,
+    reader_for_this_machine,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request import (
+    ModelCapturedSecretResolveRequest,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
+    EnumCapturedSecretResolveOutcome,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
+    HandlerCapturedSecretStore,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
+    ModelCapturedSecretStoreRequest,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -77,6 +96,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_revoked,
 )
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
@@ -388,16 +408,27 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     default=None,
     help="The model this key runs, checked against the provider's list for it.",
 )
+@click.option(
+    "--expires",
+    default=None,
+    metavar="YYYY-MM-DD",
+    help=(
+        "The date the key expires, as set where it was created (UTC). Company "
+        "keys all expire on January 1; any other date is stored with a warning."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
     name: str | None,
     plan: str | None,
     model_option: str | None,
+    expires: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    expires_at = _parse_expires(expires)
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -408,6 +439,7 @@ def register_tenant_key(
             key_value=SecretStr(value),
             plan=plan,
             model=model_option,
+            expires_at=expires_at,
         )
         response = asyncio.run(
             register_inference_credential(
@@ -427,6 +459,9 @@ def register_tenant_key(
     except (
         CredentialStoreError,
         CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -438,7 +473,31 @@ def register_tenant_key(
     }
     if response.model is not None:
         shown["model"] = response.model
+    if response.expires_at is not None:
+        shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    if response.expiry_warning is not None:
+        shown["expiry_warning"] = response.expiry_warning.value
     click.echo(json.dumps(shown))
+
+
+def _parse_expires(expires: str | None) -> datetime | None:
+    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
+
+    Read before the key, so a typo costs nothing: the value is never read from
+    stdin and nothing is stored.
+    """
+    if expires is None:
+        return None
+    try:
+        day = date.fromisoformat(expires.strip())
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
+            "nothing was stored."
+        ) from exc
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 #: Credential events a failed fold could not apply, kept beside the store until
@@ -788,6 +847,72 @@ def delete_secret_value(secret_ref: str) -> None:
     if result.route_withdrawn:
         click.echo(f"Withdrew your {result.provider} route key with it.")
     _fold_credential_events(result, store.db_path)
+
+
+@secret_group.command("store-captured")
+@click.option(
+    "--session",
+    default="onex-secret-store-captured",
+    show_default=True,
+    help="Recorded as the stored secret's capturing session.",
+)
+def store_captured(session: str) -> None:
+    """Store one value in the captured-secret namespace and print its reference.
+
+    OMN-20926. The same write the content-capture producer makes for a secret
+    its scrub detects, as the writer identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``). The value
+    is read from stdin, or a hidden prompt on a terminal, never from argv.
+    Prints the outcome and the reference, never the value.
+    """
+    value = _read_value("the value to store")
+    if not value:
+        raise click.ClickException("no value was given; nothing was stored.")
+    result = HandlerCapturedSecretStore(onex_home=Path.home() / ".onex").handle(
+        ModelCapturedSecretStoreRequest(
+            value=SecretStr(value), session_id=session, captured_at=datetime.now(UTC)
+        )
+    )
+    click.echo(
+        f"{result.outcome.value}: {result.reference or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.reference is None:
+        raise SystemExit(1)
+
+
+@secret_group.command("check-captured")
+@click.argument("reference")
+@click.option(
+    "--accessor",
+    default="onex-secret-check-captured",
+    show_default=True,
+    help="Who is asking, for the access log. Not an authorization claim.",
+)
+def check_captured(reference: str, accessor: str) -> None:
+    """Check that a captured secret REFERENCE resolves through the store.
+
+    OMN-20926. Resolves as the reader identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``), logged by
+    the store and by the resolver. Prints the outcome and the store key, NEVER
+    the value; exits non-zero unless the reference resolved.
+    """
+    try:
+        request = ModelCapturedSecretResolveRequest(
+            reference=reference, accessor=accessor
+        )
+        reader = reader_for_this_machine(Path.home() / ".onex")
+    except (CapturedSecretReaderNotConfiguredError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from None
+    except ModelOnexError as exc:  # a credentials.json refusal: names keys only
+        raise click.ClickException(exc.message) from None
+    result = HandlerCapturedSecretResolve(store=reader).handle(request)
+    click.echo(
+        f"{result.outcome.value}: {result.store_key or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.outcome is not EnumCapturedSecretResolveOutcome.RESOLVED:
+        raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------

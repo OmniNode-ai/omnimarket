@@ -1,12 +1,12 @@
 from omnimarket.nodes.node_pr_watch_orchestrator.handlers.handler_pr_watch_orchestrator import (
-    GitHubCliPrChecksClient,
+    HandlerPrChecksGithubRest,
     HandlerPrWatchOrchestrator,
     PrChecksClientError,
     ProtocolPrChecksClient,
 )
 
 __all__ = [
-    "GitHubCliPrChecksClient",
+    "HandlerPrChecksGithubRest",
     "HandlerPrWatchOrchestrator",
     "PrChecksClientError",
     "ProtocolPrChecksClient",

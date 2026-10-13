@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,6 +25,9 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.enums.enum_credential_expiry_warning import (
+    EnumCredentialExpiryWarning,
+)
 from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
@@ -34,6 +38,7 @@ from omnimarket.projection.credential_publisher import (
     ModelInferenceCredentialCreateRequest,
     ModelInferenceCredentialResponse,
     ModelInferenceCredentialRevokeResponse,
+    credential_expiry_warning,
     mint_api_key_ref,
     register_inference_credential,
     revoke_inference_credential,
@@ -145,6 +150,8 @@ def test_credential_registered_event_never_carries_a_secret_field() -> None:
         "metadata",
         "fingerprint",
         "set_at",
+        # OMN-20991: the key's expiry date, so routing can skip a lapsed key.
+        "expires_at",
     }
     assert set(ModelCredentialRegisteredEvent.model_fields) == allowed_fields
 
@@ -378,3 +385,98 @@ async def test_revoke_retry_succeeds_when_secret_already_absent() -> None:
     assert resp.status == "revocation-published"
     secret_store.delete_secret.assert_awaited_once_with("cred_t1_openrouter_abc")
     event_bus.publish_envelope.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# OMN-20991: every key carries an expiry, and a non-January-1 date is flagged.
+# ---------------------------------------------------------------------------
+
+_JAN_1 = datetime(2099, 1, 1, tzinfo=UTC)
+
+
+def test_create_request_expires_at_refuses_a_naive_timestamp() -> None:
+    with pytest.raises(ValidationError, match="timezone"):
+        _make_request(expires_at=datetime(2099, 1, 1))
+
+
+def test_create_request_expires_at_refuses_a_past_date() -> None:
+    with pytest.raises(ValidationError, match="already passed"):
+        _make_request(expires_at=datetime(2001, 1, 1, tzinfo=UTC))
+
+
+@pytest.mark.asyncio
+async def test_register_refused_expires_at_stores_nothing() -> None:
+    """The refusal happens at request validation, before the store is touched."""
+    secret_store = AsyncMock()
+    with pytest.raises(ValidationError):
+        await register_inference_credential(
+            _make_request(expires_at=datetime(2001, 1, 1, tzinfo=UTC)),
+            tenant_id="tenant-42",
+            secret_store=secret_store,
+            event_bus=AsyncMock(spec=EventBusKafka),
+        )
+    secret_store.set_secret.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_register_carries_expires_at_on_the_event_and_the_response() -> None:
+    event_bus = AsyncMock(spec=EventBusKafka)
+    resp = await register_inference_credential(
+        _make_request(expires_at=_JAN_1),
+        tenant_id="tenant-42",
+        secret_store=AsyncMock(),
+        event_bus=event_bus,
+    )
+    assert resp.expires_at == _JAN_1
+    payload = event_bus.publish_envelope.await_args.args[0].payload
+    assert payload.expires_at == _JAN_1
+    assert (
+        _SECRET_VALUE
+        not in event_bus.publish_envelope.await_args.args[0].model_dump_json()
+    )
+
+
+@pytest.mark.parametrize(
+    ("expires_at", "expected"),
+    [
+        (_JAN_1, None),
+        # Midnight Eastern on January 1 is still January 1 in UTC.
+        (datetime(2099, 1, 1, 0, 0, tzinfo=timezone(timedelta(hours=-5))), None),
+        (
+            datetime(2099, 3, 1, tzinfo=UTC),
+            EnumCredentialExpiryWarning.EXPIRY_NOT_JANUARY_1,
+        ),
+        (
+            datetime(2098, 12, 31, tzinfo=UTC),
+            EnumCredentialExpiryWarning.EXPIRY_NOT_JANUARY_1,
+        ),
+        (None, EnumCredentialExpiryWarning.EXPIRY_ABSENT),
+    ],
+)
+def test_expiry_warning_codes(
+    expires_at: datetime | None, expected: EnumCredentialExpiryWarning | None
+) -> None:
+    assert credential_expiry_warning(expires_at) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("expires_at", "expected"),
+    [
+        (_JAN_1, None),
+        (datetime(2099, 6, 30, tzinfo=UTC), "EXPIRY_NOT_JANUARY_1"),
+        (None, "EXPIRY_ABSENT"),
+    ],
+)
+async def test_register_response_carries_the_expiry_warning(
+    expires_at: datetime | None, expected: str | None
+) -> None:
+    resp = await register_inference_credential(
+        _make_request(expires_at=expires_at),
+        tenant_id="tenant-42",
+        secret_store=AsyncMock(),
+        event_bus=AsyncMock(spec=EventBusKafka),
+    )
+    assert resp.expiry_warning == expected
+    # A warning never blocks the key: it is stored and published either way.
+    assert resp.api_key_ref.startswith("cred_tenant-42_openrouter_")

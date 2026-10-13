@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProjectionNotMaterializedError
@@ -44,22 +43,19 @@ class _Ledger:
         return ModelAppendCommandResult(exit_code=0, stdout="appended", stderr="")
 
 
-_KEY = Ed25519PrivateKey.generate()
-
-
 def _host(bus: EventBusInmemory, ledger: _Ledger) -> WorkLedgerAppendHost:
-    # The serve process signs mirrored rows as its operator identity.
+    # The serve process attributes mirrored rows to its operator principal.
     return WorkLedgerAppendHost(
         bus,
         HandlerWorkLedgerAppendEffect(
             ledger,
             ledger,
             "ledger-host",
-            public_keys={"operator": _KEY.public_key()},
+            writer_principals=["operator"],
             operator_principal="operator",
         ),
-        mirror_principal="operator",
-        mirror_signing_key=_KEY,
+        writer_principals=["operator"],
+        operator_principal="operator",
     )
 
 

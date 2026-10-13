@@ -1,0 +1,37 @@
+schema_version: 1.0.0
+ticket_id: OMN-21039
+title: Hybrid codegen events are published by the runtime
+summary: The orchestrator returns one bare event model per phase, the outcome reducer declares published_events and keeps its retained state at class level, and the LLM codegen effect builds its default inference bridge from the local-coder backend. A runtime-boot test wires the seven factory contracts on an in-memory bus.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-hybrid-codegen-chain-publishes
+    statement: A hybrid codegen start command runs through every phase on the runtime wiring and ends with a completed event on the start's correlation id.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the factory chain publishes one event per hop and completes, and validation or type-check failures complete as rejected with no file written -- falsifier: tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py fails when the orchestrator returns a sequence, the reducer contract drops published_events, or the reducer state is per instance (uv run pytest on that file)'
+evidence_requirements:
+  - kind: tests
+    description: Runtime-boot test of the seven factory contracts on an in-memory bus.
+    command: uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21039-ac1-runtime-boot-chain
+    description: The wired factory chain completes, publishes once per hop, and rejects failed validation and type checks.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py -q
+    binds_ac:
+      - AC1
+  - id: dod-omn21039-deploy-probe
+    description: 'Deploy probe: the outcome reducer contract read from GitHub at the checked-out commit declares the published_events map this PR adds. A head without it fails the probe.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_codegen_outcome_reducer/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "^published_events:"'
+        cwd: ${OMNI_HOME}/omnimarket

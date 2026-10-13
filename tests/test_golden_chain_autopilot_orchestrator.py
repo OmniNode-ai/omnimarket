@@ -1,22 +1,34 @@
 # SPDX-License-Identifier: MIT
 """Golden chain tests for node_autopilot_orchestrator.
 
-Verifies the 4-phase FSM: start command -> A -> B -> C -> D -> COMPLETE,
-circuit breaker, Phase C halt authority, and EventBusInmemory wiring.
+Verifies the 4-phase FSM on the in-memory bus: start command -> A -> B -> C -> D
+-> COMPLETE with every phase advancing on its downstream result event, Phase C
+halt authority, the circuit breaker, and the FSM surface against the contract.
+Per-event behaviour (timeouts, ignored events, payload shapes) lives in
+test_autopilot_orchestrator_phase_advance.py.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
+from typing import Any
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator import (
+    AutopilotRunStore,
     EnumAutopilotFsmState,
     HandlerAutopilotOrchestrator,
+    _PipelineState,
+)
+from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_downstream_event import (
+    ModelAislopSweepCompletedEvent,
+    ModelPlatformDiagnosticsCompletedEvent,
+    ModelPrLifecycleCompletedEvent,
 )
 from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (
     EnumAutopilotCycleStatus,
@@ -26,128 +38,87 @@ from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_start_c
     ModelAutopilotStartCommand,
 )
 
-CMD_TOPIC = "onex.cmd.omnimarket.autopilot-orchestrator-start.v1"
 PHASE_TOPIC = "onex.evt.omnimarket.autopilot-orchestrator-phase-transition.v1"
 COMPLETED_TOPIC = "onex.evt.omnimarket.autopilot-orchestrator-completed.v1"
+START_TOPICS = (
+    "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1",
+    "onex.cmd.omnimarket.platform-diagnostics-start.v1",
+    "onex.cmd.omnimarket.aislop-sweep-start.v1",
+)
 
 
-def _make_command(
-    dry_run: bool = False,
-    mode: str = "close-out",
-) -> ModelAutopilotStartCommand:
-    return ModelAutopilotStartCommand(
-        correlation_id=uuid4(),
-        mode=mode,
-        dry_run=dry_run,
+def _make_command(dry_run: bool = False) -> ModelAutopilotStartCommand:
+    return ModelAutopilotStartCommand(correlation_id=uuid4(), dry_run=dry_run)
+
+
+async def _run_chain(
+    bus: EventBusInmemory, command: ModelAutopilotStartCommand
+) -> HandlerAutopilotOrchestrator:
+    """Start a run and answer each phase the way its downstream node would."""
+    await bus.start()
+    handler = HandlerAutopilotOrchestrator(event_bus=bus, run_store=AutopilotRunStore())
+    cid = command.correlation_id
+    await handler.handle(command)
+    await handler.handle(
+        ModelPrLifecycleCompletedEvent(correlation_id=cid, final_state="COMPLETE")
     )
+    await handler.handle(
+        ModelPlatformDiagnosticsCompletedEvent(
+            correlation_id=cid, overall_status="PASS"
+        )
+    )
+    await handler.handle(
+        ModelAislopSweepCompletedEvent(correlation_id=cid, status="clean")
+    )
+    return handler
+
+
+async def _envelopes(bus: EventBusInmemory, topic: str) -> list[dict[str, Any]]:
+    return [json.loads(m.value) for m in await bus.get_event_history(topic=topic)]
 
 
 @pytest.mark.unit
 class TestAutopilotOrchestratorGoldenChain:
     """Golden chain: start command -> 4 phases -> COMPLETE."""
 
-    async def test_with_started_bus_all_phases_complete(
+    async def test_chain_completes_with_every_phase_answered(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """With a started event_bus, all 4 phases succeed and pipeline completes."""
-        await event_bus.start()
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
         command = _make_command()
+        await _run_chain(event_bus, command)
 
-        result = await handler.handle(command)
+        (terminal,) = await _envelopes(event_bus, COMPLETED_TOPIC)
+        result = terminal["payload"]
+        assert result["overall_status"] == EnumAutopilotCycleStatus.COMPLETE
+        # A is skipped (no downstream node); B, C, D passed on their result events.
+        assert result["phase_a"]["status"] == EnumAutopilotPhaseStatus.SKIPPED
+        assert result["phases_completed"] == 3
+        assert result["phases_failed"] == 0
+        assert result["halt_reason"] == ""
 
-        assert result.overall_status == EnumAutopilotCycleStatus.COMPLETE
-        assert result.phases_completed == 4
-        assert result.phases_failed == 0
-        assert result.halt_reason == ""
+        # IDLE->A, A->B, B->C, C->D, D->COMPLETE
+        assert len(await _envelopes(event_bus, PHASE_TOPIC)) == 5
 
-        await event_bus.close()
-
-    async def test_with_event_bus_all_phases_pass(
+    async def test_dry_run_propagates_to_every_start_command(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """With event_bus wired, all 4 phases publish and return pass."""
-        await event_bus.start()
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
+        await _run_chain(event_bus, _make_command(dry_run=True))
+
+        for topic in START_TOPICS:
+            (envelope,) = await _envelopes(event_bus, topic)
+            assert envelope["payload"]["dry_run"] is True
+
+    async def test_correlation_id_in_every_publish(
+        self, event_bus: EventBusInmemory
+    ) -> None:
         command = _make_command()
-
-        result = await handler.handle(command)
-
-        assert result.overall_status == EnumAutopilotCycleStatus.COMPLETE
-        assert result.phases_completed == 4
-        assert result.phases_failed == 0
-        assert result.halt_reason == ""
-
-        # Phase transition events published (IDLE->A, A->B, B->C, C->D, D->COMPLETE = 5)
-        history = await event_bus.get_event_history(topic=PHASE_TOPIC)
-        assert len(history) >= 4
-
-        await event_bus.close()
-
-    async def test_dry_run_propagates_to_payloads(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """dry_run flag propagates to all dispatch payloads (inside the envelope)."""
-        await event_bus.start()
-        captured_envelopes: list[dict[str, object]] = []
-
-        original_publish = event_bus.publish
-
-        async def recording_publish(topic: str, key: object, value: bytes) -> None:
-            with contextlib.suppress(Exception):
-                captured_envelopes.append(json.loads(value))
-            await original_publish(topic=topic, key=key, value=value)
-
-        event_bus.publish = recording_publish  # type: ignore[method-assign]
-
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
-        command = _make_command(dry_run=True)
-
-        await handler.handle(command)
-
-        # OMN-9215: payloads are now wrapped — inspect envelope.payload.
-        inner_payloads = [
-            env["payload"]
-            for env in captured_envelopes
-            if isinstance(env.get("payload"), dict) and "dry_run" in env["payload"]  # type: ignore[operator]
-        ]
-        assert inner_payloads, "expected at least one envelope carrying dry_run"
-        assert all(p["dry_run"] is True for p in inner_payloads)
-
-        await event_bus.close()
-
-    async def test_correlation_id_in_all_payloads(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """correlation_id propagates into every dispatch envelope and payload."""
-        await event_bus.start()
-        captured_envelopes: list[dict[str, object]] = []
-
-        original_publish = event_bus.publish
-
-        async def recording_publish(topic: str, key: object, value: bytes) -> None:
-            with contextlib.suppress(Exception):
-                captured_envelopes.append(json.loads(value))
-            await original_publish(topic=topic, key=key, value=value)
-
-        event_bus.publish = recording_publish  # type: ignore[method-assign]
-
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
-        command = _make_command()
-
-        await handler.handle(command)
+        await _run_chain(event_bus, command)
 
         cid = str(command.correlation_id)
-        # OMN-9215: correlation_id lives both on the envelope and in the
-        # inner payload dict.
-        for env in captured_envelopes:
-            if env.get("correlation_id") is not None:
+        for topic in (*START_TOPICS, PHASE_TOPIC, COMPLETED_TOPIC):
+            for env in await _envelopes(event_bus, topic):
                 assert env["correlation_id"] == cid
-            inner = env.get("payload")
-            if isinstance(inner, dict) and "correlation_id" in inner:
-                assert inner["correlation_id"] == cid
-
-        await event_bus.close()
+                assert env["payload"]["correlation_id"] == cid
 
     async def test_publishes_are_model_event_envelopes(
         self, event_bus: EventBusInmemory
@@ -155,169 +126,126 @@ class TestAutopilotOrchestratorGoldenChain:
         """OMN-9215: every publish must produce a valid ModelEventEnvelope.
 
         The consumer-side auto-wiring callback validates every inbound message
-        via ``ModelEventEnvelope[object].model_validate(...)`` before dispatch
-        (omnibase_infra.runtime.auto_wiring.handler_wiring._make_event_bus_callback).
-        Bare-payload publishes fail validation with ``payload: Field required``
-        and the target handler never runs — the regression that caused every
-        merge_sweep tick to time out at 15m.
+        via ``ModelEventEnvelope[object].model_validate(...)`` before dispatch.
+        A bare-payload publish fails validation with ``payload: Field required``
+        and the target handler never runs.
         """
-        from omnibase_core.models.events.model_event_envelope import (
-            ModelEventEnvelope,
+        command = _make_command()
+        await _run_chain(event_bus, command)
+
+        seen = 0
+        for topic in (*START_TOPICS, PHASE_TOPIC, COMPLETED_TOPIC):
+            for data in await _envelopes(event_bus, topic):
+                envelope = ModelEventEnvelope[object].model_validate(data)
+                assert envelope.payload is not None
+                assert envelope.correlation_id == command.correlation_id
+                assert envelope.event_type is not None
+                seen += 1
+        assert seen >= 8
+
+    async def test_phase_a_skipped_does_not_halt(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """Phase A has no downstream node; it neither blocks nor counts as a failure."""
+        command = _make_command()
+        await _run_chain(event_bus, command)
+
+        (terminal,) = await _envelopes(event_bus, COMPLETED_TOPIC)
+        assert (
+            terminal["payload"]["phase_a"]["status"] == EnumAutopilotPhaseStatus.SKIPPED
+        )
+        assert (
+            terminal["payload"]["overall_status"] == EnumAutopilotCycleStatus.COMPLETE
         )
 
+    async def test_phase_c_fail_halts_and_phase_d_is_not_run(
+        self, event_bus: EventBusInmemory
+    ) -> None:
         await event_bus.start()
-        captured: list[bytes] = []
-
-        original_publish = event_bus.publish
-
-        async def recording_publish(topic: str, key: object, value: bytes) -> None:
-            captured.append(value)
-            await original_publish(topic=topic, key=key, value=value)
-
-        event_bus.publish = recording_publish  # type: ignore[method-assign]
-
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
+        handler = HandlerAutopilotOrchestrator(
+            event_bus=event_bus, run_store=AutopilotRunStore()
+        )
         command = _make_command()
-
+        cid = command.correlation_id
         await handler.handle(command)
-
-        assert captured, "handler should have published at least one message"
-        for raw in captured:
-            data = json.loads(raw)
-            # Round-trip through ModelEventEnvelope — exactly what the
-            # consumer-side auto-wiring callback does.
-            envelope = ModelEventEnvelope[object].model_validate(data)
-            assert envelope.payload is not None, (
-                "envelope.payload must be present — bare-payload publish "
-                "would fail ModelEventEnvelope validation (OMN-9215)"
+        await handler.handle(
+            ModelPrLifecycleCompletedEvent(correlation_id=cid, final_state="COMPLETE")
+        )
+        await handler.handle(
+            ModelPlatformDiagnosticsCompletedEvent(
+                correlation_id=cid, overall_status="FAIL"
             )
-            assert envelope.correlation_id == command.correlation_id
-            assert envelope.event_type is not None
-
-        await event_bus.close()
-
-    async def test_phase_results_not_run_when_halted_at_c(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """When Phase C halts, Phase D is not_run."""
-        # Build a handler that overrides _run_phase_c to return HALT
-        handler = HandlerAutopilotOrchestrator(event_bus=None)
-        command = _make_command()
-
-        from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (
-            ModelAutopilotPhaseResult,
         )
 
-        async def _halt_phase_c(
-            cmd: ModelAutopilotStartCommand,
-        ) -> ModelAutopilotPhaseResult:
-            return ModelAutopilotPhaseResult(
-                phase_id="C",
-                status=EnumAutopilotPhaseStatus.HALT,
-                detail="simulated infra gate failure",
-                halt_reason="postgres unreachable",
-            )
+        (terminal,) = await _envelopes(event_bus, COMPLETED_TOPIC)
+        result = terminal["payload"]
+        assert result["overall_status"] == EnumAutopilotCycleStatus.HALTED
+        assert result["halt_reason"] != ""
+        assert result["phase_c"]["status"] == EnumAutopilotPhaseStatus.HALT
+        assert result["phase_d"]["status"] == EnumAutopilotPhaseStatus.NOT_RUN
 
-        handler._run_phase_c = _halt_phase_c  # type: ignore[method-assign]
-
-        result = await handler.handle(command)
-
-        assert result.overall_status == EnumAutopilotCycleStatus.HALTED
-        assert result.halt_reason != ""
-        assert result.phase_c.status == EnumAutopilotPhaseStatus.HALT
-        # Phase D was never reached
-        assert result.phase_d.status == EnumAutopilotPhaseStatus.NOT_RUN
-
-    async def test_circuit_breaker_after_3_consecutive_failures(
+    async def test_start_publish_failure_at_infra_gate_halts(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """3 consecutive phase failures trip the circuit breaker -> FAILED."""
-        handler = HandlerAutopilotOrchestrator(event_bus=None)
-        command = _make_command()
+        """A dispatch the gate could not even publish is a halt, not a pass."""
+        await event_bus.start()
+        original = event_bus.publish
 
-        from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (
-            ModelAutopilotPhaseResult,
+        async def failing_publish(topic: str, key: object, value: bytes) -> None:
+            if topic == "onex.cmd.omnimarket.platform-diagnostics-start.v1":
+                raise RuntimeError("broker down")
+            await original(topic=topic, key=key, value=value)
+
+        event_bus.publish = failing_publish  # type: ignore[method-assign]
+        handler = HandlerAutopilotOrchestrator(
+            event_bus=event_bus, run_store=AutopilotRunStore()
+        )
+        command = _make_command()
+        await handler.handle(command)
+        await handler.handle(
+            ModelPrLifecycleCompletedEvent(
+                correlation_id=command.correlation_id, final_state="COMPLETE"
+            )
         )
 
-        async def _fail_phase(
-            cmd: ModelAutopilotStartCommand,
-        ) -> ModelAutopilotPhaseResult:
-            return ModelAutopilotPhaseResult(
-                phase_id="X",
-                status=EnumAutopilotPhaseStatus.FAIL,
-                detail="simulated failure",
-            )
+        (terminal,) = await _envelopes(event_bus, COMPLETED_TOPIC)
+        assert terminal["payload"]["overall_status"] == EnumAutopilotCycleStatus.HALTED
+        assert "broker down" in terminal["payload"]["halt_reason"]
 
-        handler._run_phase_a = _fail_phase  # type: ignore[method-assign]
-        handler._run_phase_b = _fail_phase  # type: ignore[method-assign]
-        handler._run_phase_c = _fail_phase  # type: ignore[method-assign]
-
-        result = await handler.handle(command)
-
+    async def test_circuit_breaker_trips_at_three_consecutive_failures(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        handler = HandlerAutopilotOrchestrator(
+            event_bus=event_bus, run_store=AutopilotRunStore()
+        )
+        state = _PipelineState(consecutive_failures=2)
+        assert handler._circuit_breaker_tripped(state) is False
+        state.consecutive_failures = 3
+        assert handler._circuit_breaker_tripped(state) is True
+        state.fsm = EnumAutopilotFsmState.FAILED
+        result = handler._build_result(state, uuid4())
         assert result.overall_status == EnumAutopilotCycleStatus.CIRCUIT_BREAKER
-        assert result.consecutive_failures >= 3
-
-    async def test_phase_a_pass_does_not_halt(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """Phase A success (non-halting) allows pipeline to continue to COMPLETE."""
-        await event_bus.start()
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
-        command = _make_command()
-
-        result = await handler.handle(command)
-
-        # Phase A publishes and passes; pipeline still completes
-        assert result.overall_status == EnumAutopilotCycleStatus.COMPLETE
-        assert result.phase_a.status == EnumAutopilotPhaseStatus.PASS
-
-        await event_bus.close()
-
-    async def test_phase_d_halt_stops_pipeline(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """Phase D halt (dod hard gate) stops after D -> HALTED."""
-        await event_bus.start()
-        handler = HandlerAutopilotOrchestrator(event_bus=event_bus)
-        command = _make_command()
-
-        from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (
-            ModelAutopilotPhaseResult,
-        )
-
-        async def _halt_phase_d(
-            cmd: ModelAutopilotStartCommand,
-        ) -> ModelAutopilotPhaseResult:
-            return ModelAutopilotPhaseResult(
-                phase_id="D",
-                status=EnumAutopilotPhaseStatus.HALT,
-                detail="dod sweep returned FAIL",
-                halt_reason="dod FAIL: 3 tickets with incomplete evidence",
-            )
-
-        handler._run_phase_d = _halt_phase_d  # type: ignore[method-assign]
-
-        result = await handler.handle(command)
-
-        assert result.overall_status == EnumAutopilotCycleStatus.HALTED
-        assert "Phase D" in result.halt_reason
-        assert result.phase_d.status == EnumAutopilotPhaseStatus.HALT
 
 
 @pytest.mark.unit
 def test_fsm_state_enum_matches_contract_declared_states() -> None:
     """EnumAutopilotFsmState must expose exactly the eight contract.yaml
-    fsm.states members (IDLE, PHASE_A_WORKTREE, PHASE_B_MERGE_SWEEP,
+    state_machine states (IDLE, PHASE_A_WORKTREE, PHASE_B_MERGE_SWEEP,
     PHASE_C_INFRA_GATE, PHASE_D_QUALITY_SWEEPS, COMPLETE, HALTED, FAILED) —
-    pins the runtime FSM surface against contract drift (OMN-15833
-    state-coverage close-out; COMPLETE/HALTED were already covered via
-    EnumAutopilotCycleStatus identifier matches above, IDLE/PHASE_A_WORKTREE/
-    PHASE_B_MERGE_SWEEP/PHASE_C_INFRA_GATE/PHASE_D_QUALITY_SWEEPS/FAILED were
-    not). All eight states are already exercised at runtime by the
-    golden-chain tests above (happy path IDLE->A->B->C->D->COMPLETE,
-    Phase C/D halt ->HALTED, circuit-breaker ->FAILED); this closes the gap
-    where no test file ever referenced the FSM state literals themselves."""
+    pins the runtime FSM surface against contract drift. The golden chain above
+    reaches IDLE -> A -> B -> C -> D -> COMPLETE, halts at C, and the breaker
+    test reaches FAILED."""
+    from pathlib import Path
+
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parent.parent
+            / "src/omnimarket/nodes/node_autopilot_orchestrator/contract.yaml"
+        ).read_text()
+    )
+    declared = {s["state_name"] for s in contract["state_machine"]["states"]}
     observed = {member.value for member in EnumAutopilotFsmState}
+    assert observed == declared
     assert observed == {
         EnumAutopilotFsmState.IDLE,
         EnumAutopilotFsmState.PHASE_A_WORKTREE,

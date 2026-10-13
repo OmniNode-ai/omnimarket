@@ -8,25 +8,74 @@ node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Orchestrates semantic antipattern validation. Receives a file validation request,
-  emits a ModelAntipatternMatchCommand for node_antipattern_match_effect (Qdrant
-  similarity lookup), and routes matches to node_semantic_antipattern_classifier_compute
-  for deterministic violation classification.
+  Orchestrates semantic antipattern validation over the event bus in three hops.
+  A file validation request becomes a ModelAntipatternMatchCommand for
+  node_antipattern_match_effect (Qdrant similarity lookup); the effect's response
+  becomes a ModelAntipatternClassifyCommand for
+  node_semantic_antipattern_classifier_compute (deterministic violation
+  classification); the classifier's result becomes the terminal
+  ModelAntipatternValidatedEvent. The file and policy ride on each command as
+  validation_context and come back on each answer, so the orchestrator keeps no
+  state between hops.
 
 handler:
   module: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator
   class: HandlerAntipatternValidatorOrchestrator
   input_model: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_validator_request.ModelAntipatternValidatorRequest
 
+# Mixed-category contract: the start topic is a command, the two answers are events.
+# message_category is explicit on every entry (OMN-18013, OMN-14608); without it a
+# topic can match zero routes and be consumed and committed with nothing handled.
+# Each entry has its own operation and event_model (one local-ingress alias and one
+# input model per route).
 handler_routing:
+  routing_strategy: topic_match
   handlers:
     - operation: "validate_semantic_antipatterns"
+      topic: onex.cmd.omnimarket.antipattern-validate.v1
+      message_category: command
       handler_class: "HandlerAntipatternValidatorOrchestrator"
       handler_module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator"
       handler:
         name: "HandlerAntipatternValidatorOrchestrator"
         module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_validator_orchestrator"
+      event_model:
+        name: ModelAntipatternValidatorRequest
+        module: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_validator_request
+    - operation: "dispatch_antipattern_matches"
+      topic: onex.evt.omnimarket.antipattern-match-response.v1
+      message_category: event
+      handler_class: "HandlerAntipatternMatchResponseDispatch"
+      handler_module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_match_response_dispatch"
+      handler:
+        name: "HandlerAntipatternMatchResponseDispatch"
+        module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_match_response_dispatch"
+      event_model:
+        name: ModelAntipatternMatchResult
+        module: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_match_result
+    - operation: "emit_antipattern_validated"
+      topic: onex.evt.omnimarket.antipattern-classified.v1
+      message_category: event
+      handler_class: "HandlerAntipatternClassifiedEmit"
+      handler_module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_classified_emit"
+      handler:
+        name: "HandlerAntipatternClassifiedEmit"
+        module: "omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.handlers.handler_antipattern_classified_emit"
+      event_model:
+        name: ModelAntipatternClassifiedResult
+        module: omnimarket.nodes.node_semantic_antipattern_validator_orchestrator.models.model_antipattern_classified_result
   default_handler: HandlerAntipatternValidatorOrchestrator
+
+# def-B publish routing: the topic for each returned model is resolved from its class
+# through this class -> topic map (short class name, Model prefix stripped), so no
+# topic string lives in a handler.
+published_events:
+  - event_type: AntipatternMatchCommand
+    topic: onex.cmd.omnimarket.antipattern-match-requested.v1
+  - event_type: AntipatternClassifyCommand
+    topic: onex.cmd.omnimarket.antipattern-classify.v1
+  - event_type: AntipatternValidatedEvent
+    topic: onex.evt.omnimarket.antipattern-validated.v1
 
 descriptor:
   node_archetype: orchestrator
@@ -47,10 +96,21 @@ terminal_event: onex.evt.omnimarket.antipattern-validated.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.antipattern-validate.v1
+    - onex.evt.omnimarket.antipattern-match-response.v1
+    - onex.evt.omnimarket.antipattern-classified.v1
   publish_topics:
     - onex.cmd.omnimarket.antipattern-match-requested.v1
+    - onex.cmd.omnimarket.antipattern-classify.v1
+    - onex.evt.omnimarket.antipattern-validated.v1
   dlq_topics:
     - onex.dlq.omnimarket.antipattern-validate.v1
+
+externally_consumed_topics:
+  # Published here, consumed by node_antipattern_match_effect,
+  # node_semantic_antipattern_classifier_compute and readers of the verdict.
+  - onex.cmd.omnimarket.antipattern-match-requested.v1
+  - onex.cmd.omnimarket.antipattern-classify.v1
+  - onex.evt.omnimarket.antipattern-validated.v1
 
 metadata:
   transport_type: kafka

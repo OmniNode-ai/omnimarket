@@ -5,7 +5,8 @@
 The PR watcher already reads every open PR and its CI on each tick and writes
 the result to its state file (``$ONEX_PR_WATCHER_STATE``, else
 ``$OMNI_HOME/.claude_scratch/pr-watcher/state.json``). The canonical clones
-hold every merged commit. A lane's PR and CI state read is answered from those
+(``$ONEX_SCM_CLONE_ROOT/<repo name>``, else under ``$OMNI_HOME``) hold every
+merged commit. A lane's PR and CI state read is answered from those
 two before any bus call, with zero GitHub requests.
 
 Freshness is the rule ``pr_state_local.py`` and node_dod_verify's local source
@@ -48,6 +49,8 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
 logger = logging.getLogger(__name__)
 
 WATCHER_STATE_ENV: Final[str] = "ONEX_PR_WATCHER_STATE"
+# The directory holding one canonical clone per repository name.
+CLONE_ROOT_ENV: Final[str] = "ONEX_SCM_CLONE_ROOT"
 WATCHER_SCHEMA: Final[int] = 1
 WATCHER_MAX_AGE: Final[timedelta] = timedelta(minutes=8)
 _TERMINAL_STATES: Final[frozenset[str]] = frozenset({"MERGED", "CLOSED"})
@@ -91,11 +94,16 @@ def default_watcher_state_path() -> Path | None:
 
 
 def default_clone_path(repo: str) -> Path | None:
-    """``$OMNI_HOME/<repo name>`` when it is a git checkout."""
-    registry_root = os.environ.get("OMNI_HOME")
-    if not registry_root:
+    """``$ONEX_SCM_CLONE_ROOT/<repo name>`` when it is a git checkout.
+
+    A declared root is the only root read: one that holds no clone of the repo
+    answers None and never falls through. A host that declares none resolves
+    the clone under ``$OMNI_HOME``, which the command's help does not name.
+    """
+    root = os.environ.get(CLONE_ROOT_ENV) or os.environ.get("OMNI_HOME")
+    if not root:
         return None
-    clone = Path(registry_root) / repo.split("/", 1)[1]
+    clone = Path(root) / repo.split("/", 1)[1]
     return clone if (clone / ".git").exists() else None
 
 
@@ -518,6 +526,7 @@ class HandlerScmLocalState:
 
 
 __all__: list[str] = [
+    "CLONE_ROOT_ENV",
     "WATCHER_MAX_AGE",
     "HandlerScmLocalState",
     "default_clone_path",

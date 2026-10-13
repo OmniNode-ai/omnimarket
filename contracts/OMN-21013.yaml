@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21013"
+title: "DoD verification refuses a missing sibling checkout and prepares replay sibling trees"
+summary: >-
+  Missing sibling cwd checkouts, including no-checkout clones, carry the named
+  sibling_checkout_missing refusal. The replay prepares read-only sibling trees
+  from head source, action or checkout pins, otherwise default-branch history at
+  merge time. The ticket's path note resolves the legacy test path in AC1 and AC3
+  to tests/unit/nodes/node_dod_verify/test_evidence_collector.py. AC2's replay
+  half is bound here; its repo-evidence half is bound in omnibase_core's own
+  contracts/OMN-21013.yaml by lane occ-ret-corecwd-i9-8e80.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-sibling-cwd"
+    statement: "Declared sibling cwd inputs must be provisioned or refused with a named missing-checkout cause."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A contract check whose declared cwd names a sibling repository missing from OMNI_HOME produces a named refusal (not status=failed with a free-text cwd error) -- falsifier: uv run pytest tests/test_dod_verify_evidence_collector.py -k sibling_cwd in omnimarket, a fixture with cwd ${OMNI_HOME}/omnibase_core and no such directory must yield the named code
+      - id: "AC2"
+        statement: >-
+          AC2: The repo-evidence dod-verify path and the occ-difference replay provide the declared sibling checkout, so omniintelligence#1051's head verifies as OCC admitted it -- falsifier: node_dod_verify run for OMN-20965 at omniintelligence#1051's merge head on a lab host, with only omniintelligence cloned before the run, passes AC2; with the sibling provisioning disabled (positive control) it yields the AC1 code
+      - id: "AC3"
+        statement: >-
+          AC3: A check whose cwd is the PR's own repository behaves exactly as before -- falsifier: the existing tests in tests/test_dod_verify_evidence_collector.py that cover cwd resolution pass unchanged
+evidence_requirements:
+  - kind: "tests"
+    description: "Named missing-checkout refusal and unchanged cwd resolution."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -n 0 -k cwd"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21013-ac1-sibling-cwd"
+    description: "Absent and no-checkout sibling fixtures yield sibling_checkout_missing for command and test_passes checks."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -n 0 -k sibling_cwd_missing"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21013-replay-sibling-cwd"
+    description: "Proves the replay half of AC2: with only the PR repository in the replay home, HandlerOccReplay provisions the pinned sibling and the hosted verifier admits the head; disabling provisioning yields sibling_checkout_missing. Head and merge-base control use the same sibling revision. Source/action/checkout pins, conflicts, history and read-only trees are covered. The repo-evidence half is bound separately in omnibase_core's contracts/OMN-21013.yaml by lane occ-ret-corecwd-i9-8e80."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -n 0 -k sibling_cwd_replay"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21013-ac3-cwd"
+    description: "The pre-existing cwd tests pass unchanged; replay setup preserves own-repository root and nested cwd success and failure results, contents and permissions, without provisioning the own tree. The replay setup regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -n 0 -k 'cwd and not sibling'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21013-deploy-probe"
+    description: "Deploy probe: the replay handler read from GitHub at the checked-out commit contains the sibling provisioning function added by this PR. A head without that function fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^    def _prepare_sibling_checkouts'"

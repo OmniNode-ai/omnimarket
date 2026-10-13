@@ -26,6 +26,9 @@ class ModelSessionPhaseOrchestratorResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID
+    session_ids: tuple[str, ...] = Field(
+        default=(), description="Sessions whose evaluations this tick routed."
+    )
     commands: tuple[ModelSessionPhaseCommand, ...] = Field(
         default=(), description="Commands emitted to the event bus."
     )

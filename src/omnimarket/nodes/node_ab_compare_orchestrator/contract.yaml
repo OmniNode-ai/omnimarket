@@ -9,6 +9,7 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Fans out inference requests to N models declared in models_registry.yaml.
   Skips models with unreachable endpoints or missing API keys.
+  Refuses a requested model the registry does not declare, without an inference request.
   Collects results, calculates cost from registry pricing, emits comparison.
 
 handler_routing:
@@ -60,7 +61,7 @@ outputs:
     description: "Per-model cost/speed/quality rows sorted by cost ascending"
   status:
     type: str
-    description: "COMPLETED or PARTIAL (some models skipped)"
+    description: "COMPLETED, PARTIAL (some models skipped, refused or errored), FAILED (every model errored) or REFUSED (no requested model is declared in the registry)"
 
 terminal_event: onex.evt.omnimarket.ab-compare-completed.v1
 

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_captured_secret_store_effect
+version: "1.0.0"
+description: "Stores a secret found in captured content in the secret store, create-only, and returns the reference that names it; never returns or logs the value"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_captured_secret_store_effect: "omnimarket.nodes.node_captured_secret_store_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["secret", "capture", "redaction", "effect"]
+pack: "capture"
+display_name: "Captured Secret Store Effect"
+node_role: "effect"
