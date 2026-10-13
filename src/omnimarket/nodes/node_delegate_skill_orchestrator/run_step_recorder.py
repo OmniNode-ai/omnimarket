@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from pathlib import Path
@@ -41,6 +42,15 @@ logger = logging.getLogger(__name__)
 
 # A step's free text is a short explanation, not a transcript.
 _REASON_LIMIT = 500
+
+
+@dataclass(frozen=True)
+class _PendingStep:
+    kind: EnumRunStepKind
+    started_at: datetime
+    started: float
+    backend_id: str
+    model_id: str | None
 
 
 class ProtocolRunStepPublisher(Protocol):
@@ -98,6 +108,7 @@ class RunStepRecorder:
         self._last_failed_sequence: int | None = None
         self._last_failure_cause: str | None = None
         self._terminated = False
+        self._pending: _PendingStep | None = None
 
     # --- the steps a run can take -------------------------------------------
 
@@ -143,10 +154,11 @@ class RunStepRecorder:
         started_at: datetime,
         duration_ms: int | None,
         backend_id: str,
-        model_id: str,
+        model_id: str | None,
         failure_cause: str | None = None,
         reason: str | None = None,
     ) -> int:
+        self._pending = None
         self._calls += 1
         return self._record(
             EnumRunStepKind.PROVIDER_CALL,
@@ -167,12 +179,19 @@ class RunStepRecorder:
     def quality_gate(
         self,
         *,
-        answered_at: datetime,
+        answered_at: datetime | None = None,
         backend_id: str,
         failure_cause: str | None = None,
         reason: str | None = None,
     ) -> int:
         """The gate's verdict on the latest call; timed from the provider's answer."""
+        if answered_at is None:
+            answered_at = (
+                self._pending.started_at
+                if self._pending is not None
+                else datetime.now(UTC)
+            )
+        self._pending = None
         elapsed = datetime.now(UTC) - answered_at
         return self._record(
             EnumRunStepKind.QUALITY_GATE,
@@ -187,6 +206,75 @@ class RunStepRecorder:
             backend_id=backend_id,
             attempt_number=self._calls or None,
             reason=reason,
+        )
+
+    def begin_provider_call(
+        self, *, started_at: datetime, backend_id: str, model_id: str
+    ) -> None:
+        self._pending = _PendingStep(
+            EnumRunStepKind.PROVIDER_CALL,
+            started_at,
+            time.monotonic(),
+            backend_id,
+            model_id,
+        )
+
+    def begin_quality_gate(self, *, backend_id: str) -> None:
+        self._pending = _PendingStep(
+            EnumRunStepKind.QUALITY_GATE,
+            datetime.now(UTC),
+            time.monotonic(),
+            backend_id,
+            None,
+        )
+
+    def interrupt(
+        self,
+        cause: str,
+        reason: str,
+        *,
+        prior_calls: Sequence[tuple[str, str, str]] = (),
+        interrupted_model: str | None = None,
+        provider_call_in_flight: bool = True,
+    ) -> None:
+        """Finish the interrupted step and this same recorder's run once."""
+        if self._terminated:
+            return
+        pending = self._pending
+        if pending is not None and pending.kind is EnumRunStepKind.PROVIDER_CALL:
+            for model, failure, detail in prior_calls:
+                self.provider_call(
+                    started_at=pending.started_at,
+                    duration_ms=None,
+                    backend_id=pending.backend_id,
+                    model_id=model,
+                    failure_cause=failure,
+                    reason=detail,
+                )
+            if provider_call_in_flight:
+                self.provider_call(
+                    started_at=pending.started_at,
+                    duration_ms=max(
+                        0, int((time.monotonic() - pending.started) * 1000)
+                    ),
+                    backend_id=pending.backend_id,
+                    model_id=interrupted_model or pending.model_id,
+                    failure_cause=cause,
+                    reason=reason,
+                )
+        elif pending is not None:
+            self.quality_gate(
+                answered_at=pending.started_at,
+                backend_id=pending.backend_id,
+                failure_cause=cause,
+                reason=reason,
+            )
+        self.terminal(
+            succeeded=False,
+            backend_id=None if pending is None else pending.backend_id,
+            model_id=interrupted_model
+            or (None if pending is None else pending.model_id),
+            failure_cause=cause,
         )
 
     def terminal(

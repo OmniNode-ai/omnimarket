@@ -52,7 +52,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -626,6 +626,49 @@ def _route_candidates(task_type: str, excluded_tiers: set[str]) -> tuple[str, ..
         logger.warning("tier order unreadable for task_type=%s", task_type)
         return ()
     return tuple(tier for tier in ladder if tier not in excluded_tiers)
+
+
+def _record_run_step_calls(
+    recorder: RunStepRecorder | None,
+    backend: ModelResolvedDelegationBackend,
+    result: ModelLlmDelegationCallResult,
+    started_at: datetime,
+    duration_ms: int,
+) -> None:
+    """Keep every completed provider call before entering the quality gate."""
+    if recorder is None:
+        return
+    for earlier in result.earlier_model_attempts:
+        recorder.provider_call(
+            started_at=started_at,
+            duration_ms=None,
+            backend_id=backend.backend_id,
+            model_id=earlier.model_id,
+            failure_cause=earlier.failure_class.value,
+            reason=earlier.error_message,
+        )
+    progress = current_dispatch_progress.get()
+    model_id = result.served_model_id
+    if model_id is None and progress is not None and progress.in_flight_calls:
+        model_id = progress.in_flight_calls[-1].model_id
+    if model_id is None and not result.earlier_model_attempts:
+        model_id = backend.model_id
+    recorder.provider_call(
+        started_at=started_at,
+        duration_ms=duration_ms,
+        backend_id=backend.backend_id,
+        model_id=model_id,
+        failure_cause=(
+            None
+            if result.success
+            else (
+                result.failure_class.value
+                if result.failure_class is not None
+                else "provider_call_failed"
+            )
+        ),
+        reason=result.error_message or None,
+    )
 
 
 def _is_local_ladder_rung(backend_id: str) -> bool:
@@ -1298,6 +1341,36 @@ class LocalDelegationDispatchPort:
             publisher=self._run_step_publisher,
             store=self._evidence_db,
         )
+        progress = current_dispatch_progress.get()
+        if progress is not None:
+
+            def finalize_trace(cause: str, reason: str) -> None:
+                observations = [] if progress is None else progress.in_flight_calls
+                run_steps.interrupt(
+                    cause,
+                    reason,
+                    prior_calls=[
+                        (
+                            call.model_id,
+                            call.failure_class.value
+                            if call.failure_class is not None
+                            else "unknown",
+                            call.error_message,
+                        )
+                        for call in observations
+                        if call.phase == "finished" and call.success is False
+                    ],
+                    interrupted_model=None
+                    if not observations
+                    else observations[-1].model_id,
+                    # A finished call followed by model discovery has no
+                    # provider in flight. Preserve its failure without making
+                    # the handler's interruption into an invented second call.
+                    provider_call_in_flight=not observations
+                    or observations[-1].phase == "started",
+                )
+
+            progress.bind_run_step_finalizer(finalize_trace)
         run_steps.request(task_type=task_type)
 
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
@@ -1591,8 +1664,6 @@ class LocalDelegationDispatchPort:
             if progress is not None:
                 progress.escalation_count = escalation_count
                 progress.cost_usd = float(cumulative_cost_usd)
-            call_started_at = datetime.now(UTC)
-            call_started = time.monotonic()
             attempt_outcome = await self._run_single_attempt(
                 backend=backend,
                 prompt=prompt,
@@ -1610,6 +1681,7 @@ class LocalDelegationDispatchPort:
                 system_prompt=system_prompt,
                 temperature=temperature,
                 response_format=response_format,
+                run_steps=run_steps,
             )
             _settle_in_flight_attempt(progress, attempt_outcome)
 
@@ -1649,36 +1721,6 @@ class LocalDelegationDispatchPort:
                     transport_failure_message = ""
                     transport_is_failure = False
             self._deliver_quota_observation(transport_result, quota_observations)
-
-            # OMN-19987: the call as a step. Its duration is the provider's own
-            # latency when it reported one, else the time this attempt took.
-            call_duration_ms = transport_result.latency_ms or int(
-                (time.monotonic() - call_started) * 1000
-            )
-            if not transport_is_failure:
-                for earlier_call in transport_result.earlier_model_attempts:
-                    run_steps.provider_call(
-                        started_at=call_started_at,
-                        duration_ms=None,
-                        backend_id=backend.backend_id,
-                        model_id=earlier_call.model_id,
-                        failure_cause=earlier_call.failure_class.value,
-                        reason=earlier_call.error_message,
-                    )
-            run_steps.provider_call(
-                started_at=call_started_at,
-                duration_ms=call_duration_ms,
-                backend_id=backend.backend_id,
-                model_id=transport_result.served_model_id or backend.model_id,
-                failure_cause=(
-                    None
-                    if not transport_is_failure
-                    else transport_failure_class.value
-                    if transport_failure_class is not None
-                    else "provider_call_failed"
-                ),
-                reason=transport_failure_message or None,
-            )
 
             if transport_is_failure:
                 current_tier = _routing_tier_name(backend)
@@ -2091,7 +2133,6 @@ class LocalDelegationDispatchPort:
             )
             # OMN-19987: the gate's verdict on that call, timed from the answer.
             run_steps.quality_gate(
-                answered_at=call_started_at + timedelta(milliseconds=call_duration_ms),
                 backend_id=backend.backend_id,
                 failure_cause=(
                     None
@@ -2927,6 +2968,7 @@ class LocalDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        run_steps: RunStepRecorder | None = None,
     ) -> _AttemptOutcome:
         """Run one resolve->effect->gate attempt for ``backend``.
 
@@ -3180,6 +3222,14 @@ class LocalDelegationDispatchPort:
         dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
         progress = current_dispatch_progress.get()
         _start_in_flight_attempt(progress, backend)
+        call_started_at = datetime.now(UTC)
+        call_started = time.monotonic()
+        if run_steps is not None:
+            run_steps.begin_provider_call(
+                started_at=call_started_at,
+                backend_id=backend.backend_id,
+                model_id=backend.model_id,
+            )
         try:
             with dispatch_stage("inference"):
                 if self._effect_process_boundary:
@@ -3218,6 +3268,13 @@ class LocalDelegationDispatchPort:
                 error_message=failure_message,
                 endpoint_healthy=False,
             )
+            _record_run_step_calls(
+                run_steps,
+                backend,
+                timeout_result,
+                call_started_at,
+                max(0, int((time.monotonic() - call_started) * 1000)),
+            )
             return _AttemptOutcome(
                 result=None,
                 gate_result=None,
@@ -3227,6 +3284,13 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
+        _record_run_step_calls(
+            run_steps,
+            backend,
+            result,
+            call_started_at,
+            result.latency_ms or max(0, int((time.monotonic() - call_started) * 1000)),
+        )
         if not result.success:
             return _AttemptOutcome(
                 result=result,
@@ -3237,6 +3301,8 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
+        if run_steps is not None:
+            run_steps.begin_quality_gate(backend_id=backend.backend_id)
         raw_content = result.content or ""
         # OMN-19525: a request that declared a single-word or exact-literal
         # answer ("Reply with exactly the word READY") may have its bare reply
