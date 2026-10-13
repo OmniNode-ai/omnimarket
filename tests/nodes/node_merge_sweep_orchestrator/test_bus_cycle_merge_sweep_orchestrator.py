@@ -112,6 +112,10 @@ async def test_scheduled_ticks_request_and_complete_one_sweep_per_window(
         "model",
     ):
         monkeypatch.setenv(f"MERGE_SWEEP_{field.upper()}", str(getattr(request, field)))
+    for field in ("fleet", "non_product_repos"):
+        monkeypatch.setenv(
+            f"MERGE_SWEEP_{field.upper()}", ",".join(getattr(request, field))
+        )
     monkeypatch.setenv("MERGE_SWEEP_DISPATCH", "false")
     # The opening tick and its successor, twice. Only the opening ticks may request a run.
     now = dt.datetime.fromisoformat(request.now.replace("Z", "+00:00"))

@@ -36,6 +36,7 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
+    ModelScmLocalVerb,
     ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
@@ -146,6 +147,33 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="workflow_dispatch",
         replaces="gh workflow run",
+    ),
+)
+
+#: Verbs no node contract has an operation for: answered from the canonical
+#: clones and the watcher state alone. The measured gh read refusals they
+#: replace (the shared call log) are PR commit lists, file contents, one commit
+#: and one commit's check runs.
+SCM_LOCAL_VERBS: Final[tuple[ModelScmLocalVerb, ...]] = (
+    ModelScmLocalVerb(
+        verb="pr-commits",
+        read=EnumScmLocalRead.PR_COMMITS,
+        replaces="gh api repos/<o>/<r>/pulls/<n>/commits",
+    ),
+    ModelScmLocalVerb(
+        verb="file-read",
+        read=EnumScmLocalRead.FILE_CONTENTS,
+        replaces="gh api repos/<o>/<r>/contents/<path>",
+    ),
+    ModelScmLocalVerb(
+        verb="commit-view",
+        read=EnumScmLocalRead.COMMIT_VIEW,
+        replaces="gh api repos/<o>/<r>/commits/<ref>",
+    ),
+    ModelScmLocalVerb(
+        verb="commit-checks",
+        read=EnumScmLocalRead.COMMIT_CHECKS,
+        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
     ),
 )
 
@@ -317,6 +345,7 @@ class ScmBusCaller:
 
 __all__: list[str] = [
     "LANDING_CONTROLLER",
+    "SCM_LOCAL_VERBS",
     "SCM_REFUSED_VERBS",
     "SCM_VERBS",
     "ScmBusCaller",

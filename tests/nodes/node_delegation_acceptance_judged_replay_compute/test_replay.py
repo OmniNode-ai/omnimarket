@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,9 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_origin import (
+    EnumAcceptanceOrigin,
+)
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_publish_status import (
     EnumAcceptancePublishStatus,
 )
@@ -95,6 +99,57 @@ def test_replay_events_deterministic_byte_identical() -> None:
     one = handler.handle(_request()).model_dump_json()
     two = handler.handle(_request()).model_dump_json()
     assert one == two
+
+
+# sha256 of the four sample-run events' JSON joined by newlines, computed with the replay
+# as it was before the origin amendment (so before origin and eval_run_id existed).
+PRE_AMENDMENT_SAMPLE_RUN_SHA256 = (
+    "f146a630df3b5325fb41243d7b9fe7ee32ac4f8993ce7c4a7e12be71a4f87e22"
+)
+ORIGIN_FIELDS = {"origin", "eval_run_id"}
+
+
+def test_origin_committed_run_replays_byte_identical_apart_from_the_origin_fields() -> (
+    None
+):
+    result = HandlerDelegationAcceptanceJudgedReplay().handle(_request())
+    unchanged = "\n".join(
+        e.model_dump_json(exclude=ORIGIN_FIELDS) for e in result.events
+    )
+    assert hashlib.sha256(unchanged.encode()).hexdigest() == (
+        PRE_AMENDMENT_SAMPLE_RUN_SHA256
+    )
+
+
+def test_origin_pre_amendment_run_replays_as_live_by_the_requests_default() -> None:
+    request = _request()
+    assert request.origin is EnumAcceptanceOrigin.LIVE
+    assert request.eval_run_id is None
+    result = HandlerDelegationAcceptanceJudgedReplay().handle(request)
+    assert {(e.origin, e.eval_run_id) for e in result.events} == {
+        (EnumAcceptanceOrigin.LIVE, None)
+    }
+
+
+def test_origin_eval_run_replays_with_its_eval_run_id_and_the_same_event_ids() -> None:
+    live = HandlerDelegationAcceptanceJudgedReplay().handle(_request())
+    evaluated = HandlerDelegationAcceptanceJudgedReplay().handle(
+        _request(origin="eval", eval_run_id="eval-run-1")
+    )
+    assert {(e.origin, e.eval_run_id) for e in evaluated.events} == {
+        (EnumAcceptanceOrigin.EVAL, "eval-run-1")
+    }
+    assert [e.event_id for e in evaluated.events] == [e.event_id for e in live.events]
+
+
+def test_origin_replay_request_refuses_eval_without_eval_run_id() -> None:
+    with pytest.raises(ValueError, match="eval_run_id"):
+        _request(origin="eval")
+
+
+def test_origin_replay_request_refuses_live_with_an_eval_run_id() -> None:
+    with pytest.raises(ValueError, match="eval_run_id"):
+        _request(eval_run_id="eval-run-1")
 
 
 def test_replay_refuses_a_model_with_no_tier() -> None:

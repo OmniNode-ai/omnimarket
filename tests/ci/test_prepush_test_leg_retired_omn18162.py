@@ -71,7 +71,11 @@ RETIRED_HOOK_ID = "prepush-smart-tests"
 
 # The pre-push stage after OMN-18162, by hook id, in file order. The plan
 # records the pre-change count for this repo as 2 (type check, smart tests).
-EXPECTED_PRE_PUSH_HOOK_IDS: tuple[str, ...] = ("mypy-type-check",)
+# The ticket contract check (OMN-20864) is a non-test pre-push hook.
+EXPECTED_PRE_PUSH_HOOK_IDS: tuple[str, ...] = (
+    "ticket-contract-prerequisite",
+    "mypy-type-check",
+)
 
 # Tokens that mean "this hook runs a test runner". Matched against a hook's
 # resolved command surface -- its entry, plus the script that entry names when

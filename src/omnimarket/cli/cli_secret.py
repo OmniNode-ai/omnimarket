@@ -34,20 +34,41 @@ import asyncio
 import fcntl
 import json
 import os
+import socket
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import click
+import yaml
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
+    CapturedSecretReaderNotConfiguredError,
+    HandlerCapturedSecretResolve,
+    reader_for_this_machine,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request import (
+    ModelCapturedSecretResolveRequest,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
+    EnumCapturedSecretResolveOutcome,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
+    HandlerCapturedSecretStore,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
+    ModelCapturedSecretStoreRequest,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -77,6 +98,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_revoked,
 )
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
@@ -316,6 +338,27 @@ def _resolve_model(
     return discovery.model
 
 
+def _model_chosen_by(
+    provider: str | None,
+    plan: str | None,
+    model: str | None,
+    model_option: str | None,
+) -> Literal["customer", "catalogue"] | None:
+    """OMN-21078: record the chooser, including a prompted customer choice."""
+    if model is None:
+        return None
+    backend = (
+        resolve_byok_provider_backend(provider, plan=plan)
+        if provider is not None
+        else None
+    )
+    if model_option is not None or (
+        backend is not None and backend.customer_chooses_model
+    ):
+        return "customer"
+    return "catalogue"
+
+
 def _stdin_is_tty() -> bool:
     return sys.stdin is not None and sys.stdin.isatty()
 
@@ -377,6 +420,83 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     return None
 
 
+#: OMN-21012. The lab host table is a deployment fact kept outside this
+#: repository, named by ONEX_LAB_RUN_HOSTS (the variable ``onex delegate`` and
+#: the lab placement read). Without it this machine is off the lab and a key
+#: is registered with no host binding.
+_LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
+#: A remote lane declares its host because its namespace may not carry the
+#: host's own name (the same two variables ``onex delegate`` reads).
+_LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
+
+
+def _lab_host_table() -> Path | None:
+    """The lab host table this machine reads, or ``None`` off the lab."""
+    configured = os.environ.get(_LAB_HOSTS_ENV, "").strip()
+    return Path(configured) if configured else None
+
+
+def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
+    """Each row's ``(name, target)``, or a refusal naming the table."""
+    try:
+        document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise click.ClickException(
+            f"the lab host table {table} could not be read ({exc}); nothing was stored."
+        ) from exc
+    rows = document.get("hosts") if isinstance(document, dict) else None
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and row.get("name") for row in rows
+    ):
+        raise click.ClickException(
+            f"the lab host table {table} has no hosts with a name; nothing was stored."
+        )
+    return [(str(row["name"]), str(row.get("target") or "")) for row in rows]
+
+
+def _resolve_bound_host(declared: str | None) -> str | None:
+    """The lab host a registered key is bound to (OMN-21012), or ``None``.
+
+    Operator ruling 2026-10-11T17:58:45Z: each Claude account's key is bound to
+    the machine the account lives on. ``--host`` names that machine and must be
+    a row of the lab host table. Without it, the registering machine's own row
+    is used: the declared lane host first, else the short hostname matched to a
+    row's name or target. Off the lab (no table), or on a machine no row names,
+    the key is unbound and usable from any host, as before.
+    """
+    table = _lab_host_table()
+    if declared is not None:
+        host = declared.strip()
+        if table is None:
+            raise click.ClickException(
+                f"--host {declared!r} cannot be checked: there is no lab host table "
+                f"on this machine (set {_LAB_HOSTS_ENV}); nothing was stored."
+            )
+        names = [name for name, _target in _lab_host_rows(table)]
+        if host not in names:
+            raise click.ClickException(
+                f"--host {declared!r} is not a host in the lab host table "
+                f"({', '.join(names)}); nothing was stored."
+            )
+        return host
+    if table is None:
+        return None
+    rows = _lab_host_rows(table)
+    row_names = {name for name, _target in rows}
+    for env in _LANE_HOST_ENVS:
+        lane_host = os.environ.get(env, "").strip()
+        if lane_host:
+            if lane_host not in row_names:
+                raise click.ClickException(
+                    f"{env}={lane_host!r} is not a host in the lab host table; "
+                    "pass --host or fix the declaration. Nothing was stored."
+                )
+            return lane_host
+    hostname = socket.gethostname().split(".")[0]
+    matches = [name for name, target in rows if hostname in (name, target)]
+    return matches[0] if len(matches) == 1 else None
+
+
 @secret_group.command("register-tenant-key")
 @click.argument("provider")
 @click.option("--tenant", required=True, help="Tenant that owns this provider key.")
@@ -388,16 +508,39 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     default=None,
     help="The model this key runs, checked against the provider's list for it.",
 )
+@click.option(
+    "--expires",
+    default=None,
+    metavar="YYYY-MM-DD",
+    help=(
+        "The date the key expires, as set where it was created (UTC). Company "
+        "keys all expire on January 1; any other date is stored with a warning."
+    ),
+)
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "The lab host whose Claude account owns this key (a lab host table row, "
+        "e.g. h201). Work sent from that host is the only work that spends it. "
+        "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
+        "the lab the key is unbound."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
     name: str | None,
     plan: str | None,
     model_option: str | None,
+    expires: str | None,
+    host: str | None,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    expires_at = _parse_expires(expires)
+    bound_host = _resolve_bound_host(host)
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -408,6 +551,8 @@ def register_tenant_key(
             key_value=SecretStr(value),
             plan=plan,
             model=model_option,
+            expires_at=expires_at,
+            bound_host=bound_host,
         )
         response = asyncio.run(
             register_inference_credential(
@@ -427,6 +572,9 @@ def register_tenant_key(
     except (
         CredentialStoreError,
         CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -438,7 +586,65 @@ def register_tenant_key(
     }
     if response.model is not None:
         shown["model"] = response.model
+    if response.expires_at is not None:
+        shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    if response.expiry_warning is not None:
+        shown["expiry_warning"] = response.expiry_warning.value
+    if response.bound_host is not None:
+        shown["bound_host"] = response.bound_host
+    _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
+
+
+def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
+    """Catalogue the key on this machine too (OMN-21014).
+
+    The value is in this machine's store; the credential-registered event goes
+    to the bus for the central catalog. The host's own review gateway reads its
+    keys from this machine's catalog, so the same row is folded into the local
+    store the value lives beside, the way ``onex secret set`` folds its events.
+    The fold is an idempotent upsert by reference; no value is written.
+    """
+    store = _tenant_key_store()
+    payload: dict[str, object] = {
+        "tenant_id": tenant,
+        "provider": response.provider,
+        "name": response.name,
+        "api_key_ref": response.api_key_ref,
+        "metadata": {},
+        "expires_at": None
+        if response.expires_at is None
+        else response.expires_at.astimezone(UTC).isoformat(),
+        "bound_host": response.bound_host,
+    }
+    try:
+        apply_credential_registered(payload, SqliteDatabaseAdapter(store.db_path))
+    except sqlite3.Error as error:
+        raise click.ClickException(
+            f"the key was stored as {response.api_key_ref}, but this machine's "
+            f"catalog could not record it ({type(error).__name__}); the review "
+            "gateway on this host will not see it until it is registered again."
+        ) from None
+
+
+def _parse_expires(expires: str | None) -> datetime | None:
+    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
+
+    Read before the key, so a typo costs nothing: the value is never read from
+    stdin and nothing is stored.
+    """
+    if expires is None:
+        return None
+    try:
+        day = date.fromisoformat(expires.strip())
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
+            "nothing was stored."
+        ) from exc
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 #: Credential events a failed fold could not apply, kept beside the store until
@@ -716,6 +922,7 @@ def store_secret_value(
         if provider is not None
         else None
     )
+    model_chosen_by = _model_chosen_by(provider, plan, model, model_option)
     # OMN-19985: the local secret store effect stores the key and, for a provider
     # key, registers it under a freshly minted route ref (replacing any earlier
     # one for this provider, one key each) and returns the credential events.
@@ -728,6 +935,7 @@ def store_secret_value(
                 force=force,
                 plan=plan,
                 model=model,
+                model_chosen_by=model_chosen_by,
             )
         )
     except LocalSecretStoreRefusedError as refusal:
@@ -788,6 +996,72 @@ def delete_secret_value(secret_ref: str) -> None:
     if result.route_withdrawn:
         click.echo(f"Withdrew your {result.provider} route key with it.")
     _fold_credential_events(result, store.db_path)
+
+
+@secret_group.command("store-captured")
+@click.option(
+    "--session",
+    default="onex-secret-store-captured",
+    show_default=True,
+    help="Recorded as the stored secret's capturing session.",
+)
+def store_captured(session: str) -> None:
+    """Store one value in the captured-secret namespace and print its reference.
+
+    OMN-20926. The same write the content-capture producer makes for a secret
+    its scrub detects, as the writer identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``). The value
+    is read from stdin, or a hidden prompt on a terminal, never from argv.
+    Prints the outcome and the reference, never the value.
+    """
+    value = _read_value("the value to store")
+    if not value:
+        raise click.ClickException("no value was given; nothing was stored.")
+    result = HandlerCapturedSecretStore(onex_home=Path.home() / ".onex").handle(
+        ModelCapturedSecretStoreRequest(
+            value=SecretStr(value), session_id=session, captured_at=datetime.now(UTC)
+        )
+    )
+    click.echo(
+        f"{result.outcome.value}: {result.reference or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.reference is None:
+        raise SystemExit(1)
+
+
+@secret_group.command("check-captured")
+@click.argument("reference")
+@click.option(
+    "--accessor",
+    default="onex-secret-check-captured",
+    show_default=True,
+    help="Who is asking, for the access log. Not an authorization claim.",
+)
+def check_captured(reference: str, accessor: str) -> None:
+    """Check that a captured secret REFERENCE resolves through the store.
+
+    OMN-20926. Resolves as the reader identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``), logged by
+    the store and by the resolver. Prints the outcome and the store key, NEVER
+    the value; exits non-zero unless the reference resolved.
+    """
+    try:
+        request = ModelCapturedSecretResolveRequest(
+            reference=reference, accessor=accessor
+        )
+        reader = reader_for_this_machine(Path.home() / ".onex")
+    except (CapturedSecretReaderNotConfiguredError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from None
+    except ModelOnexError as exc:  # a credentials.json refusal: names keys only
+        raise click.ClickException(exc.message) from None
+    result = HandlerCapturedSecretResolve(store=reader).handle(request)
+    click.echo(
+        f"{result.outcome.value}: {result.store_key or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.outcome is not EnumCapturedSecretResolveOutcome.RESOLVED:
+        raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -977,3 +1251,155 @@ def remove_model(provider: str) -> None:
         raise click.ClickException(f"no {_MODEL_LABELS[name]} key is stored.")
     delete_secret_value(f"llm.{name}.api_key")
     handler.handle(ModelModelSetupRequest(operation="forget", provider=name))
+
+
+#: OMN-21014: the review a dry run plans. It carries no sampling fields: the
+#: plan shows the gateway's own temperature and default max_tokens.
+_REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
+    "messages": [
+        {"role": "system", "content": "You are a hostile code reviewer."},
+        {"role": "user", "content": "Dry run: no diff is sent."},
+    ],
+}
+
+
+@models_group.command("review-gateway")
+@click.option(
+    "--tenant",
+    required=True,
+    help="The tenant whose catalogued keys the gateway spends.",
+)
+@click.option(
+    "--model",
+    "model_option",
+    required=True,
+    help="The Claude model every review runs on, e.g. claude-sonnet-5-5.",
+)
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "This machine's lab host table row (ONEX_LAB_RUN_HOSTS); only keys bound "
+        "to it are spent. Defaults to this machine's row."
+    ),
+)
+@click.option(
+    "--bind",
+    default="127.0.0.1:8140",
+    show_default=True,
+    help="host:port the voter endpoint listens on.",
+)
+@click.option(
+    "--privacy-overlay",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="ONEX_REVIEW_GATEWAY_PRIVACY_OVERLAY",
+    required=True,
+    help=(
+        "A YAML file supplied by whoever runs the gateway, whose "
+        "cloud_review_refused_repositories list names the repositories whose "
+        "diffs never go to a cloud model. The gateway refuses to start without "
+        "a non-empty list."
+    ),
+)
+@click.option(
+    "--repository",
+    default=None,
+    help="The review's metadata.repository, used only by --dry-run.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Plan one review (the key it would use, the body it would send) and exit.",
+)
+def review_gateway(
+    tenant: str,
+    model_option: str,
+    host: str | None,
+    bind: str,
+    privacy_overlay: Path,
+    repository: str | None,
+    dry_run: bool,
+) -> None:
+    """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+        run_dry,
+    )
+    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+        ModelClaudeReviewGatewayRequest,
+    )
+
+    try:
+        overlay = yaml.safe_load(privacy_overlay.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        raise click.ClickException(
+            "the privacy overlay must be a readable YAML mapping."
+        ) from None
+    refused = (
+        overlay.get("cloud_review_refused_repositories")
+        if isinstance(overlay, Mapping)
+        else None
+    )
+    if (
+        not isinstance(refused, list)
+        or not refused
+        or any(not isinstance(name, str) or not name.strip() for name in refused)
+    ):
+        raise click.ClickException(
+            "the privacy overlay must be a YAML mapping with a non-empty "
+            "cloud_review_refused_repositories list of non-empty strings."
+        )
+    cloud_refused_repositories = tuple(name.strip() for name in refused)
+
+    bound_host = _resolve_bound_host(host)
+    if bound_host is None:
+        raise click.ClickException(
+            "the review gateway needs this machine's lab host: pass --host or set "
+            "ONEX_LAB_RUN_HOSTS to the lab host table."
+        )
+    bind_host, _, bind_port = bind.rpartition(":")
+    backend = resolve_byok_provider_backend("anthropic")
+    if backend is None:
+        raise click.ClickException(
+            "the provider catalogue offers no anthropic backend."
+        )
+    try:
+        request = ModelClaudeReviewGatewayRequest(
+            host=bound_host,
+            tenant_id=tenant,
+            model=model_option,
+            cloud_refused_repositories=cloud_refused_repositories,
+            bind_host=bind_host or "127.0.0.1",
+            bind_port=int(bind_port),
+            dry_run=dry_run,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise click.ClickException(
+            f"review-gateway refused its options: {exc}"
+        ) from None
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+        HandlerLlmDelegationCall,
+    )
+
+    store = _tenant_key_store()
+    handler = HandlerClaudeReviewGateway(
+        catalog=SqliteDatabaseAdapter(store.db_path),
+        key_values=store,
+        # The one sanctioned model caller (OMN-20295); it resolves the key's
+        # value through the secret store at its own boundary.
+        call=HandlerLlmDelegationCall(),
+        endpoint_url=backend.endpoint_url,
+    )
+    if dry_run:
+        payload = _REVIEW_GATEWAY_DRY_RUN_PAYLOAD.copy()
+        if repository is not None:
+            payload["metadata"] = {"repository": repository}
+        plan = run_dry(handler, request, payload)
+        click.echo(json.dumps(plan.model_dump(mode="json"), sort_keys=True))
+        return
+    click.echo(
+        f"onex models review-gateway: http://{request.bind_host}:{request.bind_port}"
+        f"/v1/chat/completions (host {bound_host}, model {model_option}, "
+        f"{len(cloud_refused_repositories)} repositories refused cloud review)"
+    )
+    asyncio.run(handler.handle(request))

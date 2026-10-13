@@ -15,6 +15,12 @@ from omnimarket.events import ModelDelegationAcceptanceJudgedEvent
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
     EnumAcceptanceFailureClass,
 )
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_origin import (
+    EnumAcceptanceOrigin,
+)
+from omnimarket.models.delegation_acceptance_judge.model_delegation_acceptance_judged_event import (
+    judged_acceptance_event_id_for,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -43,6 +49,8 @@ def payload() -> dict[str, Any]:
         "quality": 1,
         "failure_class": EnumAcceptanceFailureClass.BROKEN_CODE,
         "judged_at": datetime(2026, 10, 2, tzinfo=UTC),
+        "origin": EnumAcceptanceOrigin.LIVE,
+        "eval_run_id": None,
     }
 
 
@@ -169,3 +177,75 @@ def test_judged_acceptance_event_schema_topic() -> None:
     assert DELEGATION_ACCEPTANCE_JUDGED_TOPIC_V1 == (
         "onex.evt.omnimarket.delegation-acceptance-judged.v1"
     )
+
+
+def test_origin_is_required_and_never_defaulted(payload: dict[str, Any]) -> None:
+    del payload["origin"]
+    with pytest.raises(ValidationError, match="origin"):
+        ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+
+
+@pytest.mark.parametrize("value", [None, "", "replay", "LIVE", "probe"])
+def test_origin_is_closed_to_live_and_eval(
+    payload: dict[str, Any], value: object
+) -> None:
+    payload["origin"] = value
+    with pytest.raises(ValidationError, match="origin"):
+        ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+
+
+def test_origin_eval_requires_eval_run_id(payload: dict[str, Any]) -> None:
+    payload.update(origin="eval", eval_run_id=None)
+    with pytest.raises(ValidationError, match="eval_run_id"):
+        ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_origin_eval_refuses_an_empty_eval_run_id(
+    payload: dict[str, Any], value: str
+) -> None:
+    payload.update(origin="eval", eval_run_id=value)
+    with pytest.raises(ValidationError, match="eval_run_id"):
+        ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+
+
+@pytest.mark.parametrize("value", ["eval-run-1", ""])
+def test_origin_live_refuses_any_eval_run_id(
+    payload: dict[str, Any], value: str
+) -> None:
+    payload.update(origin="live", eval_run_id=value)
+    with pytest.raises(ValidationError, match="eval_run_id"):
+        ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+
+
+def test_origin_eval_with_eval_run_id_round_trips(payload: dict[str, Any]) -> None:
+    payload.update(origin="eval", eval_run_id="eval-run-1")
+    event = ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+    assert event.origin is EnumAcceptanceOrigin.EVAL
+    assert event.eval_run_id == "eval-run-1"
+    assert (
+        ModelDelegationAcceptanceJudgedEvent.model_validate_json(
+            event.model_dump_json()
+        )
+        == event
+    )
+
+
+def test_origin_does_not_change_event_id(payload: dict[str, Any]) -> None:
+    live = ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+    payload.update(origin="eval", eval_run_id="eval-run-1")
+    evaluated = ModelDelegationAcceptanceJudgedEvent.model_validate(payload)
+    assert live.event_id == evaluated.event_id
+    assert live.event_id == judged_acceptance_event_id_for(
+        live.judge_run_id, live.correlation_id
+    )
+
+
+def test_origin_pre_amendment_payload_is_refused_not_mapped_to_live(
+    payload: dict[str, Any],
+) -> None:
+    pre_amendment = {
+        k: v for k, v in payload.items() if k not in {"origin", "eval_run_id"}
+    }
+    with pytest.raises(ValidationError, match="origin"):
+        ModelDelegationAcceptanceJudgedEvent.model_validate(pre_amendment)

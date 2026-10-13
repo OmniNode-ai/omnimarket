@@ -27,7 +27,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_inference_intent as bus_effect,
 )
 from omnimarket.routing import byok_model_discovery as discovery
-from tests.test_omn19205_c29_byok_throttle_re_resolve import KEY, REF, _openrouter
+from tests.test_omn19205_c29_byok_throttle_re_resolve import (
+    KEY,
+    REF,
+    _openrouter,
+    _ref_is_catalogue_picked,
+)
 from tests.test_omn19205_c29_throttle_crosses_family import (
     GEMMA,
     GEMMA_MOE,
@@ -46,6 +51,7 @@ from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
 pytestmark = pytest.mark.unit
 
 _SHARED_AUTOUSE_FIXTURE = _isolated_effects
+_CATALOGUE_PICKED_CREDENTIAL = _ref_is_catalogue_picked
 
 HOUSE_REF = "llm.openrouter.api_key"
 

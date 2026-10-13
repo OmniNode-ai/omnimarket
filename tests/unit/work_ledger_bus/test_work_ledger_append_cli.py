@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """CLI JSON receipts and exit codes with a stubbed bus (OMN-20275)."""
 
+from __future__ import annotations
+
 import asyncio
-import base64
 import contextlib
 import fcntl
 import json
@@ -15,13 +16,14 @@ from uuid import uuid4
 
 import pytest
 from click.testing import CliRunner
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop import lane_bus
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import BusKind, LabRunBusError
+from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
+    BusLaneLedgerAppender as LabFillBusLaneLedgerAppender,
+)
 from omnimarket.nodes.node_pr_handoff_ledger_effect.handlers.handler_pr_handoff_ledger_effect import (
     BusLaneLedgerAppender,
 )
@@ -43,36 +45,9 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def signing_identity(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> Ed25519PrivateKey:
-    key = Ed25519PrivateKey.generate()
-    key_path = tmp_path / "signing-key.pem"
-    key_path.write_bytes(
-        key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
-    )
-    records_path = tmp_path / "issuer-records.json"
-    records_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "public_keys": {
-                    "operator": base64.b64encode(
-                        key.public_key().public_bytes_raw()
-                    ).decode("ascii"),
-                },
-            }
-        )
-    )
-    monkeypatch.setenv("ONEX_WORK_LEDGER_PRINCIPAL", "operator")
-    monkeypatch.setenv("ONEX_WORK_LEDGER_SIGNING_KEY_FILE", str(key_path))
-    monkeypatch.setenv("ONEX_WORK_LEDGER_PRINCIPAL_RECORDS", str(records_path))
+def writer_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONEX_WORK_LEDGER_WRITER_PRINCIPALS", "operator")
     monkeypatch.setenv("ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL", "operator")
-    return key
 
 
 @pytest.mark.parametrize(
@@ -94,7 +69,6 @@ def test_append_exit_codes_and_one_json_line(
     status: str,
     command_code: int,
     expected: int,
-    signing_identity: Ed25519PrivateKey,
 ) -> None:
     opened_args: list[dict[str, object]] = []
     requests: list[ModelWorkLedgerAppendRequest] = []
@@ -118,7 +92,10 @@ def test_append_exit_codes_and_one_json_line(
         yield EventBusInmemory(environment="local", group="cli-test")
 
     class Caller:
-        def __init__(self, bus: ProtocolLabRunBus) -> None:
+        def __init__(self, bus: ProtocolLabRunBus, *, principal: str) -> None:
+            assert principal == "lane-principal"
+
+        async def start(self) -> None:
             pass
 
         async def append(
@@ -142,6 +119,7 @@ def test_append_exit_codes_and_one_json_line(
             stopped.append(True)
 
     monkeypatch.setattr(cli, "open_lab_run_bus", open_bus)
+    monkeypatch.setattr(cli, "bound_lane_principal", lambda: "lane-principal")
     monkeypatch.setattr(cli, "WorkLedgerAppendCaller", Caller)
     result = CliRunner().invoke(
         cli.work_ledger_group,
@@ -189,11 +167,6 @@ def test_append_exit_codes_and_one_json_line(
     assert requests[0].requested_by_lane == "request-lane"
     assert requests[0].requesting_host == "lab-host"
     assert requests[0].requested_at.tzinfo is not None
-    assert requests[0].principal == "operator"
-    signing_identity.public_key().verify(
-        base64.b64decode(requests[0].signature),
-        requests[0].signing_bytes(),
-    )
     assert stopped == [True]
 
 
@@ -206,7 +179,10 @@ def test_append_reads_rows_file_and_defaults_to_60_seconds(
     timeouts: list[float] = []
 
     class Caller:
-        def __init__(self, bus: ProtocolLabRunBus) -> None:
+        def __init__(self, bus: ProtocolLabRunBus, *, principal: str) -> None:
+            assert principal == "operator"
+
+        async def start(self) -> None:
             pass
 
         async def append(
@@ -219,13 +195,25 @@ def test_append_reads_rows_file_and_defaults_to_60_seconds(
         async def stop(self) -> None:
             pass
 
+    @contextlib.asynccontextmanager
+    async def open_bus(**kwargs: object) -> AsyncIterator[ProtocolLabRunBus]:
+        yield EventBusInmemory(environment="local", group="cli-test")
+
+    monkeypatch.setattr(cli, "open_lab_run_bus", open_bus)
     monkeypatch.setattr(cli, "WorkLedgerAppendCaller", Caller)
+
+    def forbidden_principal() -> str:
+        pytest.fail("the in-memory caller must use its explicit principal")
+
+    monkeypatch.setattr(cli, "bound_lane_principal", forbidden_principal)
     result = CliRunner().invoke(
         cli.work_ledger_group,
         [
             "append",
             "--bus",
             "inmemory",
+            "--principal",
+            "operator",
             "--lane",
             "lab",
             "--host",
@@ -239,6 +227,43 @@ def test_append_reads_rows_file_and_defaults_to_60_seconds(
     assert result.exit_code == 75
     assert requests[0].rows == "exact rows\n"
     assert timeouts == [60.0]
+
+
+def test_append_without_bound_broker_login_exits_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+
+    @contextlib.asynccontextmanager
+    async def open_bus(**kwargs: object) -> AsyncIterator[ProtocolLabRunBus]:
+        bus = EventBusInmemory(environment="local", group="cli-test")
+        await bus.start()
+        try:
+            yield bus
+        finally:
+            await bus.close()
+            closed.append(True)
+
+    monkeypatch.setattr(cli, "open_lab_run_bus", open_bus)
+    result = CliRunner().invoke(
+        cli.work_ledger_group,
+        [
+            "append",
+            "--bus",
+            "kafka",
+            "--lane",
+            "lab",
+            "--host",
+            "host",
+            "--request-id",
+            str(uuid4()),
+        ],
+        input="rows",
+    )
+    assert result.exit_code == 69, result.output
+    assert result.stdout == ""
+    assert "this lane resolves no broker login" in result.stderr
+    assert closed == [True]
 
 
 @pytest.mark.parametrize("argv", ["", "   ", "'unterminated"])
@@ -287,10 +312,13 @@ def test_serve_refuses_while_another_serve_holds_the_ledger_lock(
     assert "holds" in result.output
 
 
-def test_signed_cli_request_round_trips_through_host_and_local_append(
+@pytest.mark.parametrize(
+    "appender_type", [BusLaneLedgerAppender, LabFillBusLaneLedgerAppender]
+)
+def test_broker_attributed_cli_request_round_trips_through_host_and_local_append(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    signing_identity: Ed25519PrivateKey,
+    appender_type: type[BusLaneLedgerAppender] | type[LabFillBusLaneLedgerAppender],
 ) -> None:
     ledger = tmp_path / "ledger.md"
     ledger.write_text("# Ledger\n")
@@ -307,7 +335,7 @@ def test_signed_cli_request_round_trips_through_host_and_local_append(
         ),
         LocalLedgerFile(ledger),
         "test-ledger-host",
-        public_keys={"operator": signing_identity.public_key()},
+        writer_principals=["operator"],
         operator_principal="operator",
     )
 
@@ -315,7 +343,7 @@ def test_signed_cli_request_round_trips_through_host_and_local_append(
     async def open_bus(**kwargs: object) -> AsyncIterator[ProtocolLabRunBus]:
         bus = EventBusInmemory(environment="local", group="principal-proof")
         await bus.start()
-        host = WorkLedgerAppendHost(bus, handler)
+        host = WorkLedgerAppendHost(bus, handler, writer_principals=["operator"])
         await host.start()
         try:
             yield bus
@@ -324,12 +352,15 @@ def test_signed_cli_request_round_trips_through_host_and_local_append(
             await bus.close()
 
     monkeypatch.setattr(cli, "open_lab_run_bus", open_bus)
+    monkeypatch.setattr(lane_bus, "open_lab_run_bus", open_bus)
     request_id = uuid4()
     rows = f"2026-10-01T12:00:00Z | OPERATOR-CONSENT | req={request_id} | test authority\n  continuation"
     argv = [
         "append",
         "--bus",
         "inmemory",
+        "--principal",
+        "operator",
         "--lane",
         "lab",
         "--host",
@@ -352,9 +383,8 @@ def test_signed_cli_request_round_trips_through_host_and_local_append(
     assert second.exit_code == 0, second.output
     assert json.loads(second.stdout)["status"] == "duplicate"
     assert ledger.read_bytes() == before
-    # The existing production handoff adapter constructs requests in process;
-    # it must use the same issuer identity rather than send an unsigned request.
-    monkeypatch.setattr(lane_bus, "open_lab_run_bus", open_bus)
+    # The production handoff adapter selects its writer from the resolved login.
+    monkeypatch.setattr(lane_bus, "bound_lane_principal", lambda: "operator")
     handoff_id = uuid4()
     handoff_request = ModelWorkLedgerAppendRequest(
         request_id=handoff_id,
@@ -364,7 +394,7 @@ def test_signed_cli_request_round_trips_through_host_and_local_append(
         requested_at=datetime.now(UTC),
     )
     handoff_receipt = asyncio.run(
-        BusLaneLedgerAppender("dev", tmp_path).append(handoff_request, timeout_s=2)
+        appender_type("dev", tmp_path).append(handoff_request, timeout_s=2)
     )
     assert handoff_receipt is not None
     assert handoff_receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
@@ -372,38 +402,52 @@ def test_signed_cli_request_round_trips_through_host_and_local_append(
     assert " | principal=operator | " in ledger.read_text().splitlines()[-1]
 
 
-@pytest.mark.parametrize(
-    "env_name", ["ONEX_WORK_LEDGER_PRINCIPAL", "ONEX_WORK_LEDGER_SIGNING_KEY_FILE"]
-)
-def test_append_requires_identity_before_opening_bus(
-    monkeypatch: pytest.MonkeyPatch,
-    env_name: str,
-) -> None:
-    monkeypatch.delenv(env_name)
-
-    def forbidden_bus(**kwargs: object) -> None:
-        pytest.fail("bus must not open without signing configuration")
-
-    monkeypatch.setattr(cli, "open_lab_run_bus", forbidden_bus)
+def test_append_rejects_payload_principal_for_kafka() -> None:
     result = CliRunner().invoke(
         work_ledger_group,
-        ["append", "--lane", "lab", "--host", "host", "--request-id", str(uuid4())],
+        [
+            "append",
+            "--bus",
+            "kafka",
+            "--principal",
+            "x",
+            "--lane",
+            "lab",
+            "--host",
+            "host",
+            "--request-id",
+            str(uuid4()),
+        ],
         input="rows",
     )
     assert result.exit_code == 2
-    assert "append requires" in result.stderr
+    assert "the broker login is the writer identity" in result.stderr
 
 
-@pytest.mark.parametrize(
-    "env_name",
-    ["ONEX_WORK_LEDGER_PRINCIPAL_RECORDS", "ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL"],
-)
-def test_serve_requires_issuer_records_and_operator_identity(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    env_name: str,
+def test_append_requires_principal_for_inmemory() -> None:
+    result = CliRunner().invoke(
+        work_ledger_group,
+        [
+            "append",
+            "--bus",
+            "inmemory",
+            "--lane",
+            "lab",
+            "--host",
+            "host",
+            "--request-id",
+            str(uuid4()),
+        ],
+        input="rows",
+    )
+    assert result.exit_code == 2
+    assert "requires --principal" in result.stderr
+
+
+def test_serve_requires_writer_principal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.delenv(env_name)
+    monkeypatch.delenv("ONEX_WORK_LEDGER_WRITER_PRINCIPALS")
     result = CliRunner().invoke(
         work_ledger_group,
         [
@@ -417,14 +461,12 @@ def test_serve_requires_issuer_records_and_operator_identity(
         ],
     )
     assert result.exit_code == 2
-    assert "serve requires" in result.stderr
+    assert "serve requires at least one --writer-principal" in result.stderr
     assert not (tmp_path / "ledger.md.work-ledger-serve.lock").exists()
 
 
-def test_serve_requires_operator_in_issuer_records(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setenv("ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL", "unregistered")
+@pytest.mark.parametrize("option", ["--writer-principal", "--operator-principal"])
+def test_serve_rejects_invalid_principal(tmp_path: Path, option: str) -> None:
     result = CliRunner().invoke(
         work_ledger_group,
         [
@@ -435,7 +477,82 @@ def test_serve_requires_operator_in_issuer_records(
             str(tmp_path / "ledger.md"),
             "--append-command",
             "true",
+            option,
+            "Bad.Name",
         ],
     )
     assert result.exit_code == 2
-    assert "issuer public key record" in result.stderr
+    assert "invalid writer principal" in result.stderr
+
+
+def test_writer_principal_callback_flattens_env_and_repeated_values() -> None:
+    assert cli._writer_principals(
+        None, None, ("dev-one,dev-two", "dev-three dev-four")
+    ) == ("dev-one", "dev-two", "dev-three", "dev-four")
+
+
+@pytest.mark.parametrize(
+    ("environment", "arguments", "expected"),
+    [
+        (
+            "dev-one,dev-two\ndev-three dev-four",
+            [],
+            ("dev-one", "dev-two", "dev-three", "dev-four"),
+        ),
+        (
+            None,
+            [
+                "--writer-principal",
+                "dev-one,dev-two",
+                "--writer-principal",
+                "dev-three",
+            ],
+            ("dev-one", "dev-two", "dev-three"),
+        ),
+    ],
+)
+def test_serve_resolves_writer_list_and_optional_operator(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    environment: str | None,
+    arguments: list[str],
+    expected: tuple[str, ...],
+) -> None:
+    if environment is None:
+        monkeypatch.delenv("ONEX_WORK_LEDGER_WRITER_PRINCIPALS")
+    else:
+        monkeypatch.setenv("ONEX_WORK_LEDGER_WRITER_PRINCIPALS", environment)
+    monkeypatch.delenv("ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL")
+    identities: list[tuple[tuple[str, ...], str | None]] = []
+
+    def handler(*args: object, **kwargs: object) -> HandlerWorkLedgerAppendEffect:
+        identities.append((kwargs["writer_principals"], kwargs["operator_principal"]))
+        return HandlerWorkLedgerAppendEffect()
+
+    class UnavailableBus:
+        async def __aenter__(self) -> ProtocolLabRunBus:
+            raise LabRunBusError("bus unavailable after handler configuration")
+
+        async def __aexit__(self, *exc: object) -> None:
+            pass
+
+    def unavailable(**kwargs: object) -> UnavailableBus:
+        return UnavailableBus()
+
+    monkeypatch.setattr(cli, "HandlerWorkLedgerAppendEffect", handler)
+    monkeypatch.setattr(cli, "open_lab_run_bus", unavailable)
+    result = CliRunner().invoke(
+        work_ledger_group,
+        [
+            "serve",
+            "--host-name",
+            "ledger",
+            "--ledger",
+            str(tmp_path / "ledger.md"),
+            "--append-command",
+            "true",
+            *arguments,
+        ],
+    )
+    assert result.exit_code == 69, result.output
+    assert identities == [(expected, None)]

@@ -1,41 +1,105 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-19970"
-title: "Fixture provenance labels survive the runtime projection seam"
-summary: "The dev-seed handler tags payload and envelope with data_source=fixture, the delegation projection reads provenance through envelope_data_source before writing, and every delegation_events row exposure declares data_source."
+title: "A reusable dev and demo seed node publishes labelled fixture events through the normal producers"
+summary: "The dev-seed node publishes a declared, versioned fixture set with data_source=fixture on payload and envelope; the delegation projection keeps the label on every row and every row exposure, re-seeding upserts the same rows, and measured savings exclude fixture rows by default."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-fixture-label-survives-runtime-seam"
-    statement: "A fixture row seeded through the runtime path keeps its fixture label in storage and in every delegation row exposure, and fixture savings stay out of the measured total."
+    statement: "A fixture row seeded through the runtime path keeps its fixture label in storage and in every delegation row exposure, re-seeding writes no new row, and fixture savings stay out of the measured total."
     acceptance:
       - id: "AC1"
-        statement: "Replaying the seed through the runtime keeps fixture labels and the measured total unchanged -- falsifier: uv run pytest tests/test_omn19970_dev_seed.py -q -k runtime_seed_replay"
+        statement: "AC1: Seeding twice leaves the same rows (deterministic event ids, UPSERT) -- falsifier: the node test run with uv run pytest counts more rows after the second seed"
       - id: "AC2"
-        statement: "Every delegation row exposure declares fixture provenance and the label reaches each exposure -- falsifier: uv run pytest tests/test_omn19970_dev_seed.py -q -k 'delegation_row_exposure or each_delegation_exposure'"
+        statement: "AC2: A mixed store's measured savings total equals the real rows' total, fixtures excluded by default -- falsifier: the mixed-store pytest includes a fixture row in the sum"
+      - id: "AC3"
+        statement: "AC3: Every fixture row carries the fixture label through to the exposure rows -- falsifier: the lab-step exposure read returns a fixture row without `data_source: fixture`"
 evidence_requirements:
   - kind: "tests"
-    description: "Runtime seed replay and exposure provenance tests."
-    command: "uv run pytest tests/test_omn19970_dev_seed.py -q"
+    description: "Seed replay, mixed-store savings and exposure provenance tests."
+    command: "uv run pytest tests/test_omn19970_dev_seed.py tests/test_omn19970_fixture_data_source_real_postgres.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-runtime-seed-replay-keeps-labels"
-    description: "Runtime seed replay keeps fixture labels and the measured total."
+  - id: "dod-omn19970-ac1-seeding-twice-same-rows"
+    description: "AC1: a second seed, through the store and through the runtime handler, leaves the same rows, every one labelled fixture."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn19970_dev_seed.py -q -k runtime_seed_replay"
+        check_value: "uv run pytest tests/test_omn19970_dev_seed.py::test_seeding_twice_leaves_the_same_rows_all_labelled_fixture tests/test_omn19970_dev_seed.py::test_runtime_seed_replay_keeps_fixture_labels_and_measured_total -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-every-exposure-declares-provenance"
-    description: "Every delegation row exposure declares data_source and receives the fixture label."
+  - id: "dod-omn19970-ac2-measured-savings-exclude-fixtures"
+    description: "AC2: in a store holding real and fixture rows, the measured savings and run count equal the real rows' (SQLite metering and the Overview metering exposure), and fixtures count only when asked."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn19970_dev_seed.py -q -k 'delegation_row_exposure or each_delegation_exposure'"
+        check_value: "uv run pytest tests/test_omn19970_dev_seed.py::test_runtime_seed_replay_keeps_fixture_labels_and_measured_total tests/test_omn19970_dev_seed.py::test_metering_excludes_fixture_rows_unless_asked tests/test_omn19970_dev_seed.py::test_overview_measured_savings_are_unchanged_by_seeding -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn19970-ac2-postgres-summary-no-fixtures"
+    description: "AC2 on PostgreSQL: after a runtime seed replay into a mixed store, the delegation summary view keeps fixture savings out of totalSavingsUsd."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19970_dev_seed.py::test_runtime_seed_replay_keeps_fixture_labels_and_measured_total tests/test_omn19970_fixture_data_source_real_postgres.py::test_summary_view_keeps_fixture_savings_out_of_the_measured_total -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19970-ac3-label-reaches-exposure-rows"
+    description: "AC3, in process: runtime-seeded fixture rows reach every delegation row exposure labelled fixture, through the projection read handler and the dashboard read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19970_dev_seed.py::test_runtime_seed_fixture_label_reaches_dashboard_read tests/test_omn19970_dev_seed.py::test_fixture_label_reaches_each_delegation_exposure -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19970-ac3-label-reaches-postgres-rows"
+    description: "AC3, in process on PostgreSQL: the seed's wire messages and a kernel-shaped replay land in delegation_events labelled fixture through the standalone runner seam, and the exposure read returns them labelled."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19970_fixture_data_source_real_postgres.py::test_seed_wire_messages_land_labelled_through_the_runner_seam tests/test_omn19970_fixture_data_source_real_postgres.py::test_kernel_seed_replay_reaches_labelled_postgres_exposure -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19970-ac3-lab-exposure-read"
+    description: "AC3, the lab step: reads the dev lane's projection API for every fixture correlation id of the declared fixture set, on every delegation_events exposure the API serves (the Runs exposure is required), and fails when a fixture row comes back without data_source fixture or a fixture id returns no row. The API is ONEX_LAB_PROJECTION_API, else port 3002 on the host of KAFKA_BOOTSTRAP_SERVERS. Read-only; the lane must have been seeded with onex seed --bus kafka --lane dev --tenant <house tenant uuid>. It carries no binds_ac only because the hosted repo-evidence control never runs a local_done_gate item, at the head or at the control; the local Done gate executes it in the same verdict as the AC3 bindings above."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          broker="${KAFKA_BOOTSTRAP_SERVERS:?set ONEX_LAB_PROJECTION_API, or KAFKA_BOOTSTRAP_SERVERS to a broker on the dev lane host}"
+          LAB_PROJECTION_API="${ONEX_LAB_PROJECTION_API:-http://${broker%%:*}:3002}" uv run --frozen python - <<'PROBE'
+          import json, os, urllib.parse, urllib.request
+          from omnimarket.nodes.node_dev_seed_effect.handlers.handler_dev_seed import HandlerDevSeed
+          from omnimarket.nodes.node_dev_seed_effect.models.model_dev_seed_request import ModelDevSeedRequest
+          from omnimarket.projection.discovery import build_projection_topic_map
+          from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+          api = os.environ["LAB_PROJECTION_API"].rstrip("/")
+          def get(path, **query):
+              with urllib.request.urlopen(f"{api}{path}?{urllib.parse.urlencode(query)}", timeout=30) as resp:
+                  return json.load(resp)
+          ids = HandlerDevSeed().handle(ModelDevSeedRequest()).correlation_ids
+          exposures = sorted(t for t, c in build_projection_topic_map().items() if c.table == "delegation_events")
+          served = set(get("/health")["served_topics"])
+          read = [t for t in exposures if t in served]
+          assert ids and "onex.snapshot.projection.delegation.decisions.v1" in read, (len(ids), read)
+          bad, missing, rows_read = [], [], 0
+          for topic in read:
+              for cid in ids:
+                  rows = [r for r in get(f"/projection/{topic}", tenant=str(HOUSE_TENANT_UUID), correlation_id=cid).get("rows", []) if r.get("correlation_id") == cid]
+                  rows_read += len(rows)
+                  missing += [] if rows else [(topic, cid)]
+                  bad += [(topic, cid, r.get("data_source")) for r in rows if r.get("data_source") != "fixture"]
+          overview = get("/projection/onex.snapshot.projection.delegation.summary.v1", tenant=str(HOUSE_TENANT_UUID))["rows"][0]
+          print(f"api={api} fixture_ids={len(ids)} exposures_read={read} not_served={sorted(set(exposures) - served)}")
+          print(f"rows_read={rows_read} without_fixture_label={len(bad)} missing={len(missing)} overview_fixtureDelegations={overview.get('fixtureDelegations')} overview_fixtureSavingsUsd={overview.get('fixtureSavingsUsd')}")
+          for b in bad[:10]: print("UNLABELLED", *b)
+          for m in missing[:10]: print("MISSING", *m)
+          raise SystemExit(1 if bad or missing else 0)
+          PROBE
+        cwd: "${OMNI_HOME}/omnimarket"

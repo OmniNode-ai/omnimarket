@@ -46,6 +46,9 @@ config:
       ledger_path: "${env.MERGE_SWEEP_LEDGER_PATH}"
       floors_path: "${env.MERGE_SWEEP_FLOORS_PATH}"
       ticks_path: "${env.MERGE_SWEEP_TICKS_PATH}"
+      # The repositories, comma-separated: the overlay names them, never this contract.
+      fleet: "${env.MERGE_SWEEP_FLEET}"
+      non_product_repos: "${env.MERGE_SWEEP_NON_PRODUCT_REPOS:}"
       now: ""
       lane: "${env.MERGE_SWEEP_LANE}"
       parent: "${env.MERGE_SWEEP_PARENT}"

@@ -275,6 +275,31 @@ _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS = (
     + "END",
 )
 
+# OMN-19987: one row per step of one delegation run. The key is the step
+# sequence the delegate orchestrator assigned; it is the run's only order. Rows
+# are written once and never updated, so the insert rowid is the cursor.
+_RUN_TRACE_DDL = """
+CREATE TABLE IF NOT EXISTS run_trace (
+    projection_cursor INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    step_sequence INTEGER NOT NULL CHECK (step_sequence >= 1),
+    step_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    duration_ms INTEGER,
+    outcome TEXT NOT NULL,
+    failure_cause TEXT,
+    backend_id TEXT,
+    model_id TEXT,
+    attempt_number INTEGER,
+    reason TEXT,
+    candidates TEXT NOT NULL DEFAULT '[]',
+    failing_step_sequence INTEGER,
+    updated_at TEXT NOT NULL,
+    UNIQUE (tenant_id, correlation_id, step_sequence)
+)
+"""
+
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
     tenant_id TEXT NOT NULL,
@@ -295,6 +320,7 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     counterfactual_usd TEXT,
     savings_usd TEXT,
     savings_per_measured_run_usd TEXT,
+    savings_pct_of_counterfactual TEXT,
     compression_ratio TEXT,
     cache_hit_rate TEXT,
     runs_cache_answered INTEGER,
@@ -304,6 +330,94 @@ CREATE TABLE IF NOT EXISTS metering_summary (
 _METERING_SUMMARY_INDEX_DDL = """
 CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key
 ON metering_summary (tenant_id, window_kind, window_start, baseline_model)
+"""
+
+# OMN-20802: the local half of the automation-liveness projection's three
+# relations, declared beside the Postgres schema
+# (node_projection_automation_liveness/migrations/0000_create_automation_liveness.sql).
+# Same columns; timestamps are ISO text, booleans integers. The *_key columns are
+# the exposures' cursors, unique per row.
+_AUTOMATION_LIVENESS_STATE_DDL = """
+CREATE TABLE IF NOT EXISTS automation_liveness_state (
+    process_key TEXT NOT NULL,
+    process_id TEXT NOT NULL,
+    host TEXT NOT NULL,
+    declared_at TEXT,
+    process_state TEXT,
+    contract_digest TEXT,
+    last_run_at TEXT,
+    last_outcome TEXT,
+    last_work_at TEXT,
+    last_did_work_count INTEGER,
+    last_demand_count INTEGER,
+    failures_in_window INTEGER NOT NULL DEFAULT 0,
+    consecutive_idle_with_demand INTEGER NOT NULL DEFAULT 0,
+    last_heartbeat_at TEXT,
+    last_progress_at TEXT,
+    progress_counter INTEGER,
+    open_run_started_at TEXT,
+    verdict TEXT,
+    verdict_reason TEXT,
+    verdict_state TEXT,
+    verdict_since TEXT,
+    verdict_evaluated_at TEXT,
+    open_episode_id TEXT,
+    projected_at TEXT NOT NULL,
+    PRIMARY KEY (process_key)
+)
+"""
+_AUTOMATION_RUN_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS automation_run_history (
+    run_key TEXT NOT NULL,
+    process_id TEXT NOT NULL,
+    host TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    outcome TEXT,
+    exit_code INTEGER,
+    did_work_count INTEGER,
+    demand_count INTEGER,
+    unseen_runs INTEGER NOT NULL DEFAULT 0,
+    work_unit TEXT,
+    evidence_ref TEXT NOT NULL,
+    emitter TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    contract_digest TEXT NOT NULL,
+    projected_at TEXT NOT NULL,
+    PRIMARY KEY (run_key)
+)
+"""
+_AUTOMATION_ALARM_EPISODES_DDL = """
+CREATE TABLE IF NOT EXISTS automation_alarm_episodes (
+    episode_id TEXT NOT NULL,
+    process_id TEXT,
+    host TEXT,
+    verdict TEXT,
+    state TEXT,
+    reason TEXT,
+    severity TEXT,
+    opened_at TEXT,
+    delivery_due_at TEXT,
+    evidence_ref TEXT,
+    action TEXT,
+    cleared_at TEXT,
+    last_attempt_at TEXT,
+    last_attempt_route TEXT,
+    last_attempt_delivered INTEGER,
+    last_attempt_failure TEXT,
+    delivered_at TEXT,
+    delivery_route TEXT,
+    delivery_ref TEXT,
+    recorded_at TEXT,
+    ledger_line TEXT,
+    recorded_by TEXT,
+    last_recorded_at TEXT,
+    last_ledger_line TEXT,
+    projected_at TEXT NOT NULL,
+    PRIMARY KEY (episode_id)
+)
 """
 
 # OMN-19968: the local half of the tenant BYOK credential projection's two
@@ -321,7 +435,9 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     created_at  TEXT NOT NULL,
     revoked_at  TEXT,
     fingerprint TEXT,
-    set_at      TEXT
+    set_at      TEXT,
+    expires_at  TEXT,
+    bound_host  TEXT
 )
 """
 
@@ -330,6 +446,10 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
 _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
     "fingerprint": None,
     "set_at": None,
+    # 0006 (OMN-20991): the key's expiry date.
+    "expires_at": None,
+    # 0007 (OMN-21012): the lab host the key is bound to.
+    "bound_host": None,
 }
 
 _DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
@@ -419,6 +539,13 @@ _METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("cache_hit_rate", "TEXT"),
     ("runs_cache_answered", "INTEGER"),
 )
+# OMN-20008: metering_summary's savings share of the baseline, the counterpart
+# of migration 0004. Its own step, not a fourth entry above: a store that has
+# already recorded the OMN-20226 step would never run that step again.
+_METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
+_METERING_SUMMARY_SAVINGS_PCT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("savings_pct_of_counterfactual", "TEXT"),
+)
 _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
     ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
@@ -499,12 +626,16 @@ class SqliteDatabaseAdapter:
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_DDL)
+        conn.execute(_RUN_TRACE_DDL)
         conn.execute(_METERING_SUMMARY_DDL)
         conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
         conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
         conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
+        conn.execute(_AUTOMATION_LIVENESS_STATE_DDL)
+        conn.execute(_AUTOMATION_RUN_HISTORY_DDL)
+        conn.execute(_AUTOMATION_ALARM_EPISODES_DDL)
         conn.commit()
         self._ensure_columns(
             conn,
@@ -646,6 +777,14 @@ class SqliteDatabaseAdapter:
                     "created the delegation savings view",
                 )
             )
+        if not cls._store_step_recorded(conn, _METERING_SUMMARY_SAVINGS_PCT_STEP):
+            pending.append(
+                (
+                    _METERING_SUMMARY_SAVINGS_PCT_STEP,
+                    cls._add_metering_summary_savings_pct_column,
+                    "added the metering-summary savings share column",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -711,8 +850,21 @@ class SqliteDatabaseAdapter:
         store, whose table already has them, and two first opens that race both
         add nothing twice.
         """
+        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_ADDED_COLUMNS)
+
+    @classmethod
+    def _add_metering_summary_savings_pct_column(cls, conn: sqlite3.Connection) -> None:
+        """OMN-20008: give a store written before it metering_summary's
+        savings_pct_of_counterfactual column, run once per store as a store step."""
+        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_SAVINGS_PCT_COLUMNS)
+
+    @classmethod
+    def _add_metering_summary_columns(
+        cls, conn: sqlite3.Connection, columns: tuple[tuple[str, str], ...]
+    ) -> None:
+        """Add each column metering_summary lacks, nullable with no default."""
         existing = cls._existing_columns(conn, "metering_summary")
-        for column, declaration in _METERING_SUMMARY_ADDED_COLUMNS:
+        for column, declaration in columns:
             if column not in existing:
                 conn.execute(
                     f"ALTER TABLE metering_summary ADD COLUMN {column} {declaration}"

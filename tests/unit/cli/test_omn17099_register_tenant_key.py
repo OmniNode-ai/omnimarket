@@ -15,11 +15,18 @@ from click.testing import CliRunner
 from omnimarket.cli import cli_secret
 from omnimarket.events.topics import CREDENTIAL_REGISTERED_TOPIC_V1
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    CREDENTIALS_TABLE,
+    apply_credential_registered,
+)
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     register_inference_credential,
 )
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from omnimarket.routing import byok_model_discovery
 from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
@@ -58,6 +65,14 @@ def intake(
     monkeypatch.setattr(cli_secret, "_tenant_key_store", lambda: store)
     monkeypatch.setattr(cli_secret, "_tenant_key_event_bus", lambda: bus)
     monkeypatch.setattr(cli_secret, "_stdin_is_tty", lambda: False)
+    # OMN-21012: off the lab, so no lab host table binds the key to a host.
+    for name in (
+        "ONEX_LAB_RUN_HOSTS",
+        "OMNI_HOME",
+        "ONEX_LANE_HOST",
+        "ONEX_REMOTE_LANE_HOST",
+    ):
+        monkeypatch.delenv(name, raising=False)
     return store, bus
 
 
@@ -80,6 +95,8 @@ def test_registers_the_value_and_publishes_only_the_reference(
         "provider": "glm",
         "plan": "general_api",
         "tenant": _TENANT,
+        # OMN-20991: no --expires, so nothing can alert before the key lapses.
+        "expiry_warning": "EXPIRY_ABSENT",
     }
     assert asyncio.run(store.get_secret(ref)) == _VALUE
     assert _VALUE not in result.output
@@ -103,6 +120,8 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "name",
         "plan",
         "model_option",
+        "expires",
+        "host",
     }
     assert all(not getattr(parameter, "envvar", None) for parameter in command.params)
 
@@ -238,3 +257,154 @@ def test_detection_only_plan_is_refused_before_storing(
     assert _VALUE not in result.output
     assert asyncio.run(store.list_keys()) == []
     assert bus.events == []
+
+
+# ---------------------------------------------------------------------------
+# OMN-20991: --expires records the key's expiry and flags a non-January-1 date.
+# ---------------------------------------------------------------------------
+
+
+def _register_with_expiry(expires: str) -> Any:
+    return CliRunner().invoke(
+        cli_secret.secret_group,
+        [
+            "register-tenant-key",
+            "glm",
+            "--tenant",
+            _TENANT,
+            "--plan",
+            "general_api",
+            "--expires",
+            expires,
+        ],
+        input=f"{_VALUE}\n",
+    )
+
+
+def test_register_tenant_key_expires_january_1_prints_no_warning(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+) -> None:
+    _store, bus = intake
+    result = _register_with_expiry("2099-01-01")
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert output["expires_at"] == "2099-01-01T00:00:00Z"
+    assert "expiry_warning" not in output
+    assert _VALUE not in result.output
+    payload = json.loads(bus.events[0][0])["payload"]
+    assert payload["expires_at"].startswith("2099-01-01T00:00:00")
+
+
+def test_register_tenant_key_expires_other_date_warns_and_still_stores(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+) -> None:
+    store, _bus = intake
+    result = _register_with_expiry("2099-03-15")
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert output["expiry_warning"] == "EXPIRY_NOT_JANUARY_1"
+    assert asyncio.run(store.get_secret(output["api_key_ref"])) == _VALUE
+    assert _VALUE not in result.output
+
+
+@pytest.mark.parametrize("bad", ["2099-13-01", "January 1", "2001-01-01"])
+def test_register_tenant_key_expires_refuses_a_bad_or_past_date_and_stores_nothing(
+    intake: tuple[LocalByokCredentialStore, FakeBus], bad: str
+) -> None:
+    store, bus = intake
+    result = _register_with_expiry(bad)
+    assert result.exit_code != 0
+    assert "nothing was stored" in result.output
+    assert _VALUE not in result.output
+    assert bus.events == []
+    assert asyncio.run(store.list_keys()) == []
+
+
+def test_register_tenant_key_expires_with_a_refused_key_ends_cleanly_and_stores_nothing(
+    intake: tuple[LocalByokCredentialStore, FakeBus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A key the provider refuses is a typed refusal, not a traceback.
+
+    Seen on the lab for OMN-20991: register-tenant-key with an invalid Anthropic
+    key raised CredentialKeyRefusedError out of the command as a traceback.
+    """
+    store, bus = intake
+
+    async def refuse(request: Any, **_kwargs: Any) -> Any:
+        raise CredentialKeyRefusedError(
+            request.provider,
+            "auth_failed",
+            "PROVIDER_AUTH_FAILED (HTTP 401): glm refused that key.",
+        )
+
+    monkeypatch.setattr(cli_secret, "register_inference_credential", refuse)
+    result = _register_with_expiry("2099-01-01")
+    assert result.exit_code == 1
+    assert "PROVIDER_AUTH_FAILED" in result.output
+    assert "Traceback" not in result.output
+    assert _VALUE not in result.output
+    assert bus.events == []
+    assert asyncio.run(store.list_keys()) == []
+
+
+@pytest.mark.parametrize(
+    ("expires", "warning"),
+    [("2099-01-01", None), ("2099-03-15", "EXPIRY_NOT_JANUARY_1")],
+)
+def test_register_tenant_key_anthropic_expires_reaches_the_catalog(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    expires: str,
+    warning: str | None,
+) -> None:
+    """The Anthropic model-list path and expiry survive the same registration."""
+    store, bus = intake
+    calls: list[str] = []
+
+    def models(
+        *, url: str, extra_headers: dict[str, str], **_kwargs: Any
+    ) -> dict[str, Any]:
+        calls.append(url)
+        assert url == "https://api.anthropic.com/v1/models"
+        assert extra_headers["x-api-key"] == _VALUE
+        assert "Authorization" not in extra_headers
+        return {"data": [{"id": "claude-haiku-5-5"}]}
+
+    monkeypatch.setattr(byok_model_discovery, "get_models_json", models)
+    result = CliRunner().invoke(
+        cli_secret.secret_group,
+        [
+            "register-tenant-key",
+            "anthropic",
+            "--tenant",
+            _TENANT,
+            "--expires",
+            expires,
+        ],
+        input=f"{_VALUE}\n",
+    )
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert len(calls) == 1
+    assert output["provider"] == "anthropic"
+    assert output["model"] == "claude-haiku-5-5"
+    assert output["expires_at"] == f"{expires}T00:00:00Z"
+    assert output.get("expiry_warning") == warning
+    assert asyncio.run(store.get_secret(output["api_key_ref"])) == _VALUE
+    assert _VALUE not in result.output
+    assert len(bus.events) == 1
+    event_json, topic, _key = bus.events[0]
+    assert topic == CREDENTIAL_REGISTERED_TOPIC_V1
+    assert _VALUE not in event_json
+    payload = json.loads(event_json)["payload"]
+    assert payload["metadata"]["model"] == "claude-haiku-5-5"
+    assert payload["expires_at"].startswith(f"{expires}T00:00:00")
+    db = SqliteDatabaseAdapter(tmp_path / "catalog.sqlite")
+    apply_credential_registered(payload, db)
+    [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": output["api_key_ref"]})
+    assert row["provider"] == "anthropic"
+    assert row["expires_at"] == payload["expires_at"]
+    apply_credential_registered({**payload, "expires_at": None}, db)
+    [redelivered] = db.query(CREDENTIALS_TABLE, {"api_key_ref": output["api_key_ref"]})
+    assert redelivered["expires_at"] == payload["expires_at"]

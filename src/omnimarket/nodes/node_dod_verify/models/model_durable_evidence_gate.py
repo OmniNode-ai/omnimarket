@@ -55,6 +55,12 @@ class EnumDurableEvidenceCheck(StrEnum):
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
     DEFECT_PREVENTION_GATE = "defect_prevention_gate"
     DONE_CLASS_LABEL = "done_class_label"
+    # OMN-20858: the verdict names the revision of the ticket's criteria it was
+    # computed against; the Done transition re-reads the ticket and refuses a
+    # verdict whose revision is no longer the live one. Run only when the caller
+    # carries a verdict revision, so a gate invocation that predates the field
+    # is unchanged.
+    CRITERIA_REVISION_CURRENT = "criteria_revision_current"
 
 
 class EnumDefectLabel(StrEnum):

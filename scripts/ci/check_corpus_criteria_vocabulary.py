@@ -32,9 +32,10 @@ red rather than invisible:
    ``dod_deterministic`` (``handler_quality_gate.delta``), so an
    allowlisted-but-heuristic-only name -- the shape ``sub_tasks_verified`` had
    before OMN-15196 retired it -- reaches the gate as an unsupported
-   DETERMINISTIC check and hard-fails the response as MALFORMED; and a check in
-   ``_UNEVALUATED_DETERMINISTIC_CHECKS`` (``passes_existing_tests``) is dropped
-   from the scored fraction entirely, so declaring it asserts nothing at all.
+   DETERMINISTIC check and hard-fails the response as MALFORMED; and a check
+   whose evidence the corpus row does not carry (``passes_existing_tests`` with
+   no named-test run, OMN-21076) is skipped and dropped from the scored
+   fraction, so declaring it asserts nothing at all.
    Both are found by RUNNING each criterion through the real gate and reading its
    own per-rule receipt, rather than by keeping a list here of which names have
    executors -- a list is the thing that drifts.

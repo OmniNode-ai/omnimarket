@@ -10,8 +10,8 @@ class resolves to the right publish **topic** via the contract's ``published_eve
 ``handle(envelope)`` produced, this IS the def-B == envelope routing-equivalence
 proof (OMN-14403 §4). The rejection branches emit a terminal completed.
 
-Definition B (OMN-14355): the handler takes a bare typed payload and returns a
-tuple of bare typed models — no ``ModelEventEnvelope``, no ``event_type`` on the
+Definition B (OMN-14355): the handler takes a bare typed payload and returns one
+bare typed model — no ``ModelEventEnvelope``, no ``event_type`` on the
 handler side. The topic lives in the contract, resolved here exactly as the
 applier does (``removeprefix('Model')`` then published_events lookup).
 """
@@ -88,9 +88,8 @@ def _state(source: str = "", contract_yaml: str = "") -> ModelCodegenPipelineSta
 
 def _handle(payload: BaseModel) -> tuple[str, BaseModel]:
     """Drive one phase; return the single emitted (resolved-topic, payload-model)."""
-    output = HandlerHybridCodegenOrchestrator().handle(payload)
-    assert len(output) == 1
-    model = output[0]
+    model = HandlerHybridCodegenOrchestrator().handle(payload)
+    assert isinstance(model, BaseModel)
     return _resolve_topic(model), model
 
 

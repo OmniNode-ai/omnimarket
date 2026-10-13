@@ -12,6 +12,10 @@ A lane does GitHub work through this command and no ``gh`` verb:
   (no record, or a non-terminal record older than eight minutes) the read goes
   to node_github_repo_gateway_effect over the bus. ``--source local`` never
   asks the bus; ``--source bus`` never reads locally.
+- **Clone-only reads** (pr-commits, file-read, commit-view, commit-checks) have
+  no node operation: they are answered from the canonical clone and the watcher
+  state, and a read they cannot answer exits 3 with the reason, never reaching
+  the bus or GitHub.
 - **Other reads** (pr-review, pr-ticket, branch-protection, run-list, run-view,
   job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
@@ -58,11 +62,13 @@ from omnimarket.delegated_test_loop.lane_bus import (
     open_lab_run_bus,
 )
 from omnimarket.handlers.scm.handler_scm_dispatch import (
+    SCM_LOCAL_VERBS,
     SCM_REFUSED_VERBS,
     SCM_VERBS,
     ScmBusCaller,
 )
 from omnimarket.handlers.scm.handler_scm_local_state import (
+    CLONE_ROOT_ENV,
     HandlerScmLocalState,
     default_clone_path,
     default_watcher_state_path,
@@ -72,7 +78,9 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmAnswer,
+    ModelScmLocalAnswer,
     ModelScmLocalReadRequest,
+    ModelScmLocalVerb,
     ModelScmVerb,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
@@ -236,6 +244,9 @@ def verbs_command() -> None:
         json.dumps(
             {
                 "served": [spec.model_dump(mode="json") for spec in SCM_VERBS],
+                "served_local_only": [
+                    local.model_dump(mode="json") for local in SCM_LOCAL_VERBS
+                ],
                 "refused": [
                     refused.model_dump(mode="json") for refused in SCM_REFUSED_VERBS
                 ],
@@ -296,7 +307,7 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--clone",
         type=click.Path(file_okay=False),
         default=None,
-        help="The repository's canonical clone (default $OMNI_HOME/<repo>).",
+        help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
     )
     @click.option("--timeout-s", type=float, default=60.0, show_default=True)
     def command(
@@ -361,6 +372,98 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         sys.exit(_call_bus(spec, repo, request, correlation_id, bus_opts, timeout_s))
 
     return click.command(spec.verb, help=f"Replaces `{spec.replaces}`.")(command)
+
+
+# ------------------------------------------------------- clone-only reads
+
+# The options each clone-only verb takes, beyond the target and the common ones.
+_LOCAL_OPTIONS: Final[dict[EnumScmLocalRead, tuple[str, ...]]] = {
+    EnumScmLocalRead.PR_COMMITS: (),
+    EnumScmLocalRead.FILE_CONTENTS: ("path", "ref", "max_bytes"),
+    EnumScmLocalRead.COMMIT_VIEW: ("ref",),
+    EnumScmLocalRead.COMMIT_CHECKS: ("sha",),
+}
+_LOCAL_OPTION_DECORATORS: Final[
+    dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
+] = {
+    "path": click.option("--path", required=True, help="A file or directory."),
+    "ref": click.option(
+        "--ref",
+        default=None,
+        help="A branch, tag or commit (file-read default: the default branch).",
+    ),
+    "max_bytes": click.option(
+        "--max-bytes", type=int, default=262144, show_default=True
+    ),
+    "sha": click.option(
+        "--sha", required=True, help="The head commit, whole or abbreviated."
+    ),
+}
+
+
+def _local_command(spec: ModelScmLocalVerb) -> click.Command:
+    pr_scoped = spec.read is EnumScmLocalRead.PR_COMMITS
+    ref_required = spec.read is EnumScmLocalRead.COMMIT_VIEW
+
+    def command(
+        target: str,
+        watcher_state: str | None,
+        clone: str | None,
+        **fields: object,
+    ) -> None:
+        repo, number = _target(target, pr=pr_scoped)
+        if ref_required and fields.get("ref") is None:
+            raise click.UsageError("Missing option '--ref'.")
+        try:
+            request = ModelScmLocalReadRequest(
+                read=spec.read,
+                repo=repo,
+                pr_number=number,
+                watcher_state_path=str(
+                    watcher_state or default_watcher_state_path() or ""
+                )
+                or None,
+                clone_path=str(clone or default_clone_path(repo) or "") or None,
+                **{name: value for name, value in fields.items() if value is not None},
+            )
+        except ValidationError as exc:
+            raise click.UsageError(str(exc)) from exc
+        local = HandlerScmLocalState().handle(request)
+        if not local.answered or local.source is None:
+            click.echo(
+                f"local: {local.unanswered_reason} ({spec.verb} has no bus or "
+                f"GitHub fallback)",
+                err=True,
+            )
+            sys.exit(EXIT_LOCAL_UNANSWERED)
+        click.echo(
+            ModelScmLocalAnswer(
+                verb=spec.verb,
+                read=spec.read,
+                repo=repo,
+                source=local.source,
+                watcher_tick=local.watcher_tick,
+                result=local.result,
+            ).model_dump_json()
+        )
+
+    decorated: Callable[..., None] = command
+    for name in reversed(_LOCAL_OPTIONS[spec.read]):
+        decorated = _LOCAL_OPTION_DECORATORS[name](decorated)
+    decorated = click.option(
+        "--watcher-state",
+        type=click.Path(dir_okay=False),
+        default=None,
+        help="The PR watcher state file (default $ONEX_PR_WATCHER_STATE).",
+    )(decorated)
+    decorated = click.option(
+        "--clone",
+        type=click.Path(file_okay=False),
+        default=None,
+        help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
+    )(decorated)
+    decorated = click.argument("target")(decorated)
+    return click.command(spec.verb, help=f"Replaces `{spec.replaces}`.")(decorated)
 
 
 # ------------------------------------------------------------------ writes
@@ -561,6 +664,8 @@ for _spec in SCM_VERBS:
         if _spec.node is EnumScmNode.WRITE
         else _read_command(_spec)
     )
+for _local in SCM_LOCAL_VERBS:
+    scm_group.add_command(_local_command(_local))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 

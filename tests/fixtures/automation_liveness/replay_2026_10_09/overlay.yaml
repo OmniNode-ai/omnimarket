@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Replay fixture (OMN-20806): the six silent failures of 2026-10-09 that the
+# plan names as per-process positive controls, as neutral overlay entries.
+# The run timeline that goes with it is built in
+# tests/nodes/node_automation_liveness_watchdog_compute/replay_2026_10_09.py.
+schema_version: automation-liveness-overlay/v1
+processes:
+# The slot filler dispatched lanes and placed none (02:10Z to 03:50Z), then
+# read every candidate tier as unreadable (from 13:50Z).
+- process_id: host-a/slot-filler
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger: {kind: launchd-interval, native_id: com.example.slot-filler}
+  expected_interval_seconds: 600
+  alarm_deadline_seconds: 2400
+  max_runtime_seconds: 300
+  emitter: observer
+  run_record: per-run
+  evidence: {source: ledger_rows, locator: slot-filler STATUS rows, completion_record: placed and exit}
+  real_work: placed
+  demand: free_slots > 0 and eligible > 0
+  idle_runs_before_alarm: 3
+  positive_control: {kind: replay_fixture, ref: replay_2026_10_09/slot-filler}
+# The lane runner refused every lane (05:00Z to 05:43Z).
+- process_id: host-a/lane-runner
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger: {kind: launchd-interval, native_id: com.example.lane-runner}
+  expected_interval_seconds: 300
+  alarm_deadline_seconds: 1800
+  max_runtime_seconds: 240
+  emitter: observer
+  run_record: per-run
+  evidence: {source: receipts_file, locator: lane-runner/receipts.jsonl, completion_record: finished_at and exit_code}
+  real_work: placed
+  demand: queued > 0
+  positive_control: {kind: replay_fixture, ref: replay_2026_10_09/lane-runner}
+# The session tick stopped (23:42Z to 06:01Z).
+- process_id: session/orchestrator-tick
+  owner_repo: example-owner/example-repo
+  host: session
+  trigger: {kind: session-cron, native_id: orchestrator tick}
+  expected_interval_seconds: 1800
+  alarm_deadline_seconds: 6000
+  max_runtime_seconds: 900
+  emitter: observer
+  run_record: per-run
+  evidence: {source: heartbeat_file, locator: session/tick-heartbeat}
+  real_work: ticked
+  demand: landing controller live
+  positive_control: {kind: replay_fixture, ref: replay_2026_10_09/orchestrator-tick}
+# The dev runtime crash-looped with work waiting (10:16Z to 14:10Z).
+- process_id: host-b/dev-runtime
+  owner_repo: example-owner/example-repo
+  host: host-b
+  trigger: {kind: container, native_id: example-dev-runtime}
+  expected_interval_seconds: 60
+  alarm_deadline_seconds: 900
+  emitter: observer
+  run_record: per-run
+  evidence: {source: consumer_group, locator: example-dev-runtime group}
+  real_work: applied events
+  demand: consumer backlog > 0
+  positive_control: {kind: replay_fixture, ref: replay_2026_10_09/dev-runtime}
+# The merge that carried the fix was never redeployed (11:59Z to 13:49Z).
+- process_id: host-b/dev-redeploy
+  owner_repo: example-owner/example-repo
+  host: host-b
+  trigger: {kind: gh-event, native_id: runtime-affecting merge to dev}
+  alarm_deadline_seconds: 2400
+  max_runtime_seconds: 1800
+  emitter: observer
+  run_record: per-run
+  evidence: {source: workflow_runs, locator: dev deploy agent completions}
+  real_work: deployed
+  demand: none
+  correlation:
+    trigger_event: repo merged
+    answer_event: dev deploy completed
+    match_key: merge sha
+    answer_deadline_seconds: 1800
+  positive_control: {kind: replay_fixture, ref: replay_2026_10_09/dev-redeploy}

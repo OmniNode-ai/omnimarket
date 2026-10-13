@@ -81,3 +81,18 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/handlers/handler_source_control_github.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep '^class HandlerSourceControlGithub:' > /dev/null"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20912-ac2-registry-repositories-enforce"
+    description: "AC2: under the write effect's own contract mode, every registry repository performs a pr_edit and a claimed pr_close in enforce on the recorded fake transport, and in each one a moved head, a call under the quota floor and a close without a claim are refused before any mutation; a repository outside the OmniNode-ai owner row runs dry_run and sends nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -p no:randomly -k 'contract_mode or registry or pinned or owner'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20912-ac2-registry-enforce-deploy-probe"
+    description: "AC2 deploy probe: the write effect contract GitHub serves at the checked-out commit declares enforce for the OmniNode-ai owner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep '^    OmniNode-ai: enforce' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -25,6 +25,18 @@ lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule la
 (omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
 hold source is UNKNOWN and names no lane.
 
+OMN-17427 (2026-10-12): Codex headroom is read apart from Claude's. A host the lab host table lets run
+Codex (`codex_allowed`) gets a Codex reading from its newest placement reading (`codex=login/...`,
+`CODEX-LIMITED-UNTIL=`, its slots); a Claude-limited or Claude-auth-expired host with free Codex slots is a
+MISSING lab-headroom line naming them instead of "limited; no dispatch". The Claude marks never gate Codex
+and the `.codex-sandbox-<host>` marks (landing workers only) are not judged.
+
+OMN-20864 (2026-10-13, h202 read 3 free slots while placement refused it on swap traffic): when the caller
+sets `live_admission`, each host's free slots are the runner's live pool admission (`admission`), per engine,
+and the receipts, marks and parses decide nothing. A refused engine is named with its rule and the other engine
+keeps its slots; Claude and Codex lanes draw from one shared slot budget, so the pr-land fallback counts the
+host's slots once; a host the probe could not read is UNKNOWN.
+
 OMN-20851: a lane the ledger records as dispatched with no placement receipt for more than
 `unplaced_lane_alarm_minutes`, and a cross-host dispatch-venv divergence older than
 `venv_divergence_alarm_minutes`, are ALARM verdicts (typed in `alarms`, exit code 1), a younger one a NOTE;
@@ -43,7 +55,10 @@ from omnibase_core.types import JsonType
 from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
+    ModelCodexHeadroom,
+    ModelLabAdmission,
     ModelLabHeadroomFacts,
+    ModelLabHost,
     ModelLabMark,
     ModelLabReceipt,
     ModelThroughputTickRequest,
@@ -132,6 +147,7 @@ class Report:
     unknown: list[str] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
     alarms: list[ModelTickAlarmVerdict] = field(default_factory=list)
+    codex: list[ModelCodexHeadroom] = field(default_factory=list)
     # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
     floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -700,6 +716,7 @@ def report_floors(
 READING_REFUSALS = ("UNREADABLE(", "ADMISSION-REFUSED(", "LANE-REFUSED(")
 READING_WINDOW = timedelta(minutes=15)
 READING_FIELD_RE = re.compile(r"(?:[:,])([a-z_]+)=([^,]+)")
+CODEX_LIMITED_RE = re.compile(r",CODEX-LIMITED-UNTIL=([^,]+)")
 
 
 def _mark_until(mark: ModelLabMark) -> datetime | None:
@@ -736,6 +753,112 @@ def _receipt_summary(
     return running, latest
 
 
+def _cap_count(
+    host: ModelLabHost,
+    fields: dict[str, str],
+    running: dict[str, int],
+    placed: dict[str, int],
+) -> tuple[int, int]:
+    """(cap, running lanes) of a host from its reading's fields; KeyError/ValueError when the reading lacks
+    them. The snapshot precedes placement: markers and live receipts include that new lane, so max avoids
+    charging it twice and also counts landing workers in the same pool."""
+    cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
+    return cap, max(placed.get(host.name, 0), running.get(host.name, 0))
+
+
+def _free_slots(fields: dict[str, str], cap: int, count: int) -> int:
+    """Further lanes a host can take: its reading's slots, with the placed units the reading already counts."""
+    observed = int(fields["placed"])
+    return max(0, min(cap - count, int(fields["slots"]) + observed - count))
+
+
+def _codex_headroom(
+    host: ModelLabHost,
+    latest: dict[str, tuple[datetime, str]],
+    running: dict[str, int],
+    placed: dict[str, int],
+    now: datetime,
+) -> ModelCodexHeadroom | None:
+    """The host's Codex headroom from its newest placement reading, apart from Claude's: the reading names the
+    Codex login (`codex=login/<sandbox>`) and a Codex usage limit (`CODEX-LIMITED-UNTIL=`), and its slots are
+    the host's admission slots. None: the shared host table does not let this host run Codex. The sandbox word
+    is not judged: the `.codex-sandbox-<host>` marks gate landing workers only, and a Codex lane probes its
+    own sandbox before Codex starts."""
+    if not host.codex_allowed:
+        return None
+
+    def none(why: str, **cells: Any) -> ModelCodexHeadroom:
+        return ModelCodexHeadroom(host=host.name, free=0, refusal=why, **cells)
+
+    cached = latest.get(host.name)
+    if cached is None or not timedelta(0) <= now - cached[0] <= READING_WINDOW:
+        return none(
+            f"no placement reading in the last {READING_WINDOW.total_seconds() / 60:.0f} min"
+        )
+    reading = cached[1]
+    parse = host.parses.get(reading)
+    if any(reason in reading for reason in READING_REFUSALS):
+        return none("unhealthy placement reading")
+    if parse is None or not parse.parsed:
+        return none("unreadable placement reading")
+    fields = dict(READING_FIELD_RE.findall(reading))
+    login = fields.get("codex", "").partition("/")[0]
+    if login != "login":
+        return none("no Codex login" if login == "nologin" else "Codex login unread")
+    limited = CODEX_LIMITED_RE.search(reading)
+    if limited is not None:
+        try:
+            if parse_stamp(limited.group(1)) > now:
+                return none(f"Codex usage limit until {limited.group(1)}")
+        except ValueError:
+            return none("Codex usage limit mark unreadable")
+    try:
+        cap, count = _cap_count(host, fields, running, placed)
+        if parse.admission_refusal is not None:
+            return none(
+                f"admission refused: {parse.admission_refusal}", cap=cap, running=count
+            )
+        free = _free_slots(fields, cap, count)
+    except (KeyError, ValueError):
+        return none("incomplete placement reading")
+    if free == 0:
+        return none("no free Codex slots", cap=cap, running=count)
+    return ModelCodexHeadroom(host=host.name, free=free, cap=cap, running=count)
+
+
+def _claude_blocked_host(
+    rep: Report,
+    label: str,
+    host: ModelLabHost,
+    note: str,
+    blocked: str,
+    codex: ModelCodexHeadroom | None,
+) -> None:
+    """A host Claude lanes cannot use. Free Codex slots there are MISSING capacity (2026-10-12: the tick said
+    `limited until 22:01Z; no dispatch` all day over 11 free Codex slots); otherwise the host is a NOTE that
+    names why Codex cannot use it either."""
+    if codex is None:
+        rep.note(f"{label} | {note}; no dispatch")
+        return
+    claimed = codex.model_copy(update={"claude_blocked": blocked})
+    rep.codex.append(claimed)
+    if claimed.free:
+        rep.miss(
+            label,
+            f"{blocked}; codex free slots {claimed.free} "
+            f"(running lanes {claimed.running} of cap {claimed.cap})",
+            f"dispatch up to {claimed.free} Codex lanes (--model codex) to {host.name} through the "
+            "remote-lane runner; never pin to a host without headroom",
+        )
+    else:
+        rep.note(f"{label} | {note}; no dispatch (codex: {claimed.refusal})")
+
+
+LIVE_UNREAD_FIX = (
+    "rerun the tick; if the probe stays unreadable, read {host}'s live capacity with "
+    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a host that "
+    "cannot be read is a lab fault to name to the operator, never free and never full"
+)
 PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
 HOLD_SOURCE_FIX = (
     "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
@@ -760,6 +883,8 @@ def check_lab_headroom(
     if facts.placement_error is not None:
         rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
         return None
+    if facts.live_admission:
+        return _pr_land_fallback(rep, _check_live_admission(rep, facts), now, pr_land)
     free_lines: list[
         tuple[int, int]
     ] = []  # (index in rep.lines, free slots), host order
@@ -777,8 +902,13 @@ def check_lab_headroom(
             rep.note(f"{label} | limited mark unreadable; no dispatch")
             continue
         if until is not None and until > now:
-            rep.note(
-                f"{label} | limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}; no dispatch"
+            _claude_blocked_host(
+                rep,
+                label,
+                host,
+                f"limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                f"claude limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                _codex_headroom(host, latest, running, placed, now),
             )
             continue
         try:
@@ -789,8 +919,13 @@ def check_lab_headroom(
             rep.note(f"{label} | auth-expired mark unreadable; no dispatch")
             continue
         if auth_until is not None and auth_until > now:
-            rep.note(
-                f"{label} | claude auth expired since {host.auth_mark.at}; log in again; no dispatch"
+            _claude_blocked_host(
+                rep,
+                label,
+                host,
+                f"claude auth expired since {host.auth_mark.at}; log in again",
+                f"claude auth expired since {host.auth_mark.at}",
+                _codex_headroom(host, latest, running, placed, now),
             )
             continue
         cached = latest.get(host.name)
@@ -814,11 +949,11 @@ def check_lab_headroom(
             rep.note(f"{label} | unreadable placement reading; no dispatch")
             continue
         fields = dict(READING_FIELD_RE.findall(reading))
+        codex = _codex_headroom(host, latest, running, placed, now)
+        if codex is not None:
+            rep.codex.append(codex)
         try:
-            cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
-            # The snapshot precedes placement. Markers and live receipts include that new lane;
-            # max avoids charging it twice and also counts landing workers in the same pool.
-            count = max(placed.get(host.name, 0), running.get(host.name, 0))
+            cap, count = _cap_count(host, fields, running, placed)
         except (KeyError, ValueError):
             rep.note(f"{label} | incomplete placement reading; no dispatch")
             continue
@@ -829,8 +964,7 @@ def check_lab_headroom(
             )
             continue
         try:
-            observed = int(fields["placed"])
-            free = max(0, min(cap - count, int(fields["slots"]) + observed - count))
+            free = _free_slots(fields, cap, count)
         except (KeyError, ValueError):
             rep.note(f"{label} | incomplete placement reading; no dispatch")
             continue
@@ -844,6 +978,80 @@ def check_lab_headroom(
             )
         else:
             rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    return _pr_land_fallback(rep, free_lines, now, pr_land)
+
+
+def _live_fix(host: str, admission: ModelLabAdmission) -> str:
+    """The FIX of a host with admitted slots: only an admitted engine is named, and the engines share one budget."""
+    lanes = []
+    if admission.claude_slots:
+        lanes.append(f"up to {admission.claude_slots} Claude lanes")
+    if admission.codex_slots:
+        lanes.append(f"up to {admission.codex_slots} Codex lanes (--model codex)")
+    return (
+        f"dispatch {' or '.join(lanes)} to {host} through the remote-lane runner, sharing "
+        f"{admission.slots} slots; never pin to a host without headroom"
+    )
+
+
+def _check_live_admission(
+    rep: Report, facts: ModelLabHeadroomFacts
+) -> list[tuple[int, int]]:
+    """One finding per host from the runner's live admission (OMN-20864): free slots are what placement would
+    admit now, per engine, never the cap minus the lanes a receipt shows. A refused engine is named with the rule
+    that refused it and the other engine keeps its slots; a host the probe could not read is UNKNOWN. Returns
+    (index in rep.lines, free slots) of each MISSING line, host order."""
+    free_lines: list[tuple[int, int]] = []
+    for host in facts.hosts:
+        label = f"lab-headroom:{host.name}"
+        adm = host.admission
+        if adm is None or adm.probe_error is not None:
+            why = "no live admission reading" if adm is None else adm.probe_error
+            rep.unk(
+                label,
+                f"live admission probe unreadable ({why}): its capacity is unread",
+                LIVE_UNREAD_FIX.format(host=host.name),
+            )
+            continue
+        rep.codex.append(
+            ModelCodexHeadroom(
+                host=host.name,
+                free=adm.codex_slots,
+                cap=adm.cap,
+                running=adm.lanes,
+                refusal=None if adm.codex_slots else adm.codex_refusal,
+                claude_blocked=None if adm.claude_slots else adm.claude_refusal,
+            )
+        )
+        summary = (
+            f"running lanes {adm.lanes}, placed units {adm.placed} of cap {adm.cap}, "
+            f"free Claude slots {adm.claude_slots}, free Codex slots {adm.codex_slots} "
+            f"(shared slots {adm.slots})"
+        )
+        refused = "".join(
+            f"; {engine} refused: {reason}"
+            for engine, reason in (
+                ("Claude", adm.claude_refusal),
+                ("Codex", adm.codex_refusal),
+            )
+            if reason
+        )
+        free = max(adm.claude_slots, adm.codex_slots)
+        if free:
+            free_lines.append((len(rep.lines), free))
+            rep.miss(label, summary + refused, _live_fix(host.name, adm))
+        else:
+            rep.note(f"{label} | {summary}{refused}; no dispatch")
+    return free_lines
+
+
+def _pr_land_fallback(
+    rep: Report,
+    free_lines: list[tuple[int, int]],
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None,
+) -> ModelLabFillPrLandPlan | None:
+    """The idle-slot pr-land fallback over the free-slot lines (OMN-20864)."""
     if pr_land is None:
         return None
     plan = plan_pr_land_fallback(
@@ -1074,6 +1282,7 @@ class HandlerThroughputTickDecision:
             unknown=rep.unknown,
             checked=rep.checked,
             alarms=rep.alarms,
+            codex_headroom=rep.codex,
             exit_code=0
             if not rep.missing and not rep.unknown and not rep.alarms
             else 1,

@@ -15,9 +15,11 @@ description: >
   product merges against the per-repository floors, the landing controller's stall and
   its escalations, who owns each PR from the ledger claims, the newest-run class of each
   red PR, and the chain heads. The facts arrive gathered from the PR watcher's state by
-  node_merge_sweep_effect; nothing is read from GitHub. A fact the state does not hold is
-  named under unread and never read as a zero. A second operation is the claim-time
-  recheck a lane runs before it touches a PR.
+  node_merge_sweep_effect; nothing is read from GitHub. The fleet, the non-product
+  repositories and the out-of-scope rulings arrive as data on the request, never from code;
+  an out-of-scope repository's PRs are named and never read. A fact the state does not hold
+  is named under unread and never read as a zero. A second operation is the claim-time
+  recheck a lane runs before it touches a PR; the asking lane's own claim is not an owner.
 handler_routing:
   routing_strategy: operation_match
   handlers:

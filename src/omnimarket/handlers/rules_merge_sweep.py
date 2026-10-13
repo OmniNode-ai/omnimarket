@@ -11,33 +11,16 @@ clock; the time arrives as an argument. Each rule names the lesson it carries.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any
 
 # ---- shared ----------------------------------------------------------------------------------------
 
-# The repositories a sweep lane may work in. Anything else (omniweb, a parked repo) is skipped.
-FLEET_REPOS = frozenset(
-    {
-        "omnibase_core",
-        "omnibase_spi",
-        "omnibase_compat",
-        "omnibase_infra",
-        "omnibase_internal",
-        "omniclaude",
-        "omniclaude-internal",
-        "omnimarket",
-        "omnidash",
-        "omniintelligence",
-        "omninode_infra",
-    }
-)
-# Repositories whose merges are never product merges (lesson 1, RULING 2026-09-29T16:45:14Z).
-NON_PRODUCT_REPOS = frozenset(
-    {"knowledge-base-internal", "knowledge-base", "onex_change_control"}
-) | frozenset({"knowledge_base"})
+# Which repositories a sweep reads (its fleet), which of them a ruling put out of scope and whose
+# merges are never product merges are deployment facts: they arrive as data on each request, read by
+# the effect from the caller's scope file or overlay, never from a list in this module.
 DEFAULT_BRANCHES = frozenset({"dev", "main"})
 LOAD_PER_CORE_BAR = (
     1.0  # lesson 3: above this the lanes run on the lab only; none is withheld
@@ -124,11 +107,14 @@ def product_merges(
     floors: Mapping[str, float],
     now: str | datetime,
     window_min: int = 60,
+    *,
+    non_product: Collection[str],
 ) -> dict[str, Any]:
     """Count product merges in the window and name every floored repo under its floor.
 
     A merge whose file list was not read (``files`` None) never counts: an unread fact is not a zero
-    that happens to be convenient.
+    that happens to be convenient. A merge to a repository in ``non_product`` (lesson 1, RULING
+    2026-09-29T16:45:14Z) is never a product merge.
     """
     start = as_utc(now) - timedelta(minutes=window_min)
     excluded = {"non_product_repo": 0, "docs_only": 0, "files_unread": 0}
@@ -140,7 +126,7 @@ def product_merges(
             continue
         total += 1
         repo = str(m.get("repo"))
-        if repo in NON_PRODUCT_REPOS:
+        if repo in non_product:
             excluded["non_product_repo"] += 1
         elif m.get("files") is None:
             excluded["files_unread"] += 1
@@ -275,13 +261,17 @@ def claim_owner(
     last_push_at: str | None = None,
     dead_after_min: int = DEAD_AFTER_MIN,
     horizon_days: int = CLAIM_HORIZON_DAYS,
+    self_lane: str | None = None,
 ) -> dict[str, Any]:
     """Who owns ``pr`` now: ``none``, ``live`` (lane wrote or pushed within the bar) or ``stale``.
 
     A CLAIM names the PR by its ``pr=`` list or the PR's ticket by its ``ticket=`` field. It is closed
     by a later TERMINAL of its lane, a later row handing the PR off, a later CLAIM carrying
     ``supersedes-claim=<its ts>``, or ``closes-claim=`` / RELEASE ``re=<its ts>``. A stale owner is taken
-    over with ``supersedes-claim=<claim_ts>`` (session-resume semantics).
+    over with ``supersedes-claim=<claim_ts>`` (session-resume semantics). ``self_lane`` is the asking
+    lane: its own claims are not owners (the remote-lane runner writes a lane's CLAIM, with its ``pr=``
+    cells, before the lane starts, so its recheck would otherwise find itself); every other lane's
+    claim still counts.
     """
     t_now = as_utc(now)
     key = pr_key(pr)
@@ -298,7 +288,7 @@ def claim_owner(
             last_write[r["lane"]] = at
     open_claims = []
     for i, c in enumerate(rows):
-        if c["type"] != "CLAIM":
+        if c["type"] != "CLAIM" or (self_lane and c.get("lane") == self_lane):
             continue
         at = parse_ts(c["ts"])
         if at is None or at < horizon:

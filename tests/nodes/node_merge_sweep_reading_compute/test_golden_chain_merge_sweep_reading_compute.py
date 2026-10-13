@@ -71,6 +71,7 @@ def test_golden_chain_reads_a_sweep_then_rechecks_a_claim() -> None:
                 "now": "2026-10-09T12:10:00Z",
                 "load1": 2.0,
                 "cpus": 4,
+                "fleet": ["omnimarket"],
                 "floors": {"omnimarket": 1},
                 "ticks": [],
                 "ledger_lines": LEDGER,

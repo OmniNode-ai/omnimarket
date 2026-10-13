@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.antipattern import ModelAntipatternValidationContext
 from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match import (
     ModelAntipatternMatch,
 )
@@ -38,6 +39,10 @@ class ModelAntipatternMatchResponse(BaseModel):
     error_message: str | None = Field(
         default=None,
         description="Non-fatal error or warning message if partial results returned.",
+    )
+    validation_context: ModelAntipatternValidationContext | None = Field(
+        default=None,
+        description="Echoed unchanged from the request.",
     )
 
 

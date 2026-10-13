@@ -188,6 +188,17 @@ response_shape_directives:
     # already accepted the adverb, so a prompt saying the same thing with
     # `answer in` resolved correctly while one saying `reply with` did not.
     - "(?:answer|reply|respond) with (?:only )?(?:just )?(?:exactly )?one word"
+    # OMN-13967: a classification request declares its answer the same way a
+    # one-word request does, by naming the label as the whole reply. "Classify
+    # the sentiment ... Reply with only the label" resolved `unconstrained`, was
+    # graded against the prose rubric, and its correct one-token answer
+    # (`positive`) was refused as a single-word fragment. Each pattern needs a
+    # word that makes the label the WHOLE reply (only, just, exactly, or a
+    # closed set to pick from); "reply with the label and a justification"
+    # names a label too, so it is excluded by the lookahead and declares nothing.
+    - "(?:answer|reply|respond|output|return) with (?:only|just|exactly) (?:the |a |one |one single )?(?:single )?(?:label|category|class|classification|verdict)\\b(?!\\s+(?:and|plus|followed|then)\\b)"
+    - "(?:output|return|print) only (?:the |a |one )?(?:label|category|class|classification|verdict)\\b(?!\\s+(?:and|plus|followed|then)\\b)"
+    - "(?:answer|reply|respond) with (?:exactly )?one of[: ]"
   length_constrained:
     - "in one sentence"
     - "in a sentence or two"

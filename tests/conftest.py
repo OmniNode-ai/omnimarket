@@ -24,6 +24,23 @@ import pytest_asyncio
 
 from omnimarket.config.env_flags import env_flag
 
+# OMN-19987: the --refuse-skips option, for evidence checks that must not pass
+# when their proof skipped. Importing the hooks here loads them for every run.
+from tests.refuse_skips import (
+    pytest_addoption as pytest_addoption,
+)
+from tests.refuse_skips import (
+    pytest_sessionfinish as pytest_sessionfinish,
+)
+from tests.refuse_skips import (
+    pytest_terminal_summary as pytest_terminal_summary,
+)
+
+# pytest finds the three hooks above by their names on this module, and
+# tests/test_refuse_skips_omn19987.py reads them here; nothing in this file
+# calls them. Naming them as this module's exports says so to a static reader.
+__all__ = ["pytest_addoption", "pytest_sessionfinish", "pytest_terminal_summary"]
+
 # =============================================================================
 # Hermetic import guard (OMN-14420 / OMN-15019) — omnimarket-side
 # =============================================================================
@@ -366,6 +383,13 @@ def _isolate_unit_env(
 
     # Clear a lane shell's single-tenant fallback (OMN-17427, item 3 above).
     monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+
+    # No test reads a live Linear ticket (OMN-20858). The dod_verify criteria
+    # check reads the ticket through an injected reader; a collector built
+    # without one falls back to the Linear effect, which without a credential
+    # answers "unavailable" at once instead of sending a lane's key over the
+    # network. Tests of the effect set a fake key in their body.
+    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
 
     # Redirect node-generation-consumer replay state to an isolated tmp dir.
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))

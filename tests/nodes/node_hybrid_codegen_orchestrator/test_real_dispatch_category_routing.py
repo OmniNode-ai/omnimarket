@@ -136,19 +136,19 @@ def _resolve_emit_topic(model: BaseModel) -> str:
 
 
 class _DispatchProofAdapter:
-    """Adapt def-B tuple fan-out to the legacy dispatch proof surface."""
+    """Adapt the def-B single-model return to the legacy dispatch proof surface."""
 
     def __init__(self) -> None:
         self._inner = HandlerHybridCodegenOrchestrator()
 
     def handle(self, request: BaseModel) -> ModelHandlerOutput[None]:
-        events = tuple(
+        emitted = self._inner.handle(request)  # type: ignore[arg-type]
+        events = (
             ModelEventEnvelope(
                 payload=emitted,
                 correlation_id=uuid4(),
                 event_type=_resolve_emit_topic(emitted),
-            )
-            for emitted in self._inner.handle(request)  # type: ignore[arg-type]
+            ),
         )
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),

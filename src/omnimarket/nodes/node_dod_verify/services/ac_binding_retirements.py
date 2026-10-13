@@ -10,6 +10,9 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from omnimarket.enums.enum_ac_binding_retirement_reason import (
+    EnumAcBindingRetirementReason,
+)
 from omnimarket.nodes.node_dod_verify.models.model_ac_binding_retirement import (
     ModelAcBindingRetirement,
     ModelAcBindingRetirementResolution,
@@ -43,10 +46,16 @@ def _claimed_labels(item: Mapping[str, Any]) -> frozenset[str]:
 def resolve_retirements(dod_items: Sequence[Any]) -> ModelAcBindingRetirementResolution:
     """Validate all entries before withdrawing any claims; never alter the items.
 
-    The first occurrence of a target/label owns that pair. Later duplicate
-    entries are ignored, including when the first occurrence is refused.
+    The first well-formed occurrence of a target/label owns that pair. Later
+    duplicate entries are ignored, including when that occurrence is refused on
+    the facts. An untyped or invalid entry owns nothing (OMN-18406): it is merged
+    and immutable, so the typed entry appended to replace it must take effect.
     Conflicts are tested against the entire candidate set, so withdrawing a
     superseder refuses both entries, including mutual cycles and chains.
+
+    A ``no_longer_applicable`` entry for an independently accepted binding is
+    refused here and also listed in ``retired_if_absent``: only the criteria
+    check, which reads the live ticket, can tell that its criterion is gone.
     """
     by_id = {
         item["id"]: item
@@ -59,6 +68,7 @@ def resolve_retirements(dod_items: Sequence[Any]) -> ModelAcBindingRetirementRes
     }
     candidates: dict[tuple[str, str], tuple[int, ModelAcBindingRetirement]] = {}
     refusals: dict[int, str] = {}
+    retired_if_absent: list[ModelAcBindingRetirement] = []
     seen: set[tuple[str, str]] = set()
     order = 0
 
@@ -88,14 +98,8 @@ def resolve_retirements(dod_items: Sequence[Any]) -> ModelAcBindingRetirementRes
                 else "<unknown>"
             )
             pair = (target_id, _canonical_label(label))
-            if (
-                isinstance(raw, Mapping)
-                and isinstance(raw.get("item"), str)
-                and isinstance(raw.get("label"), str)
-            ):
-                if pair in seen:
-                    continue
-                seen.add(pair)
+            if pair in seen:
+                continue
             if isinstance(raw, Mapping) and "reason_kind" not in raw:
                 refuse(
                     index,
@@ -120,6 +124,7 @@ def resolve_retirements(dod_items: Sequence[Any]) -> ModelAcBindingRetirementRes
                     why = f"{'.'.join(map(str, error['loc']))}: {error['msg']}"
                 refuse(index, carrier_id, target_id, label, "RETIREMENT_INVALID", why)
                 continue
+            seen.add(pair)
             target = by_id.get(entry.item)
             code: str | None = None
             why = ""
@@ -133,8 +138,15 @@ def resolve_retirements(dod_items: Sequence[Any]) -> ModelAcBindingRetirementRes
             elif pair not in unaccepted and pair[1] in _record_labels(target):
                 code, why = (
                     "RETIREMENT_BINDING_ACCEPTED",
-                    "binding is independently accepted",
+                    "binding is independently accepted; only a criterion the "
+                    "live ticket no longer carries can retire it",
                 )
+                if (
+                    entry.reason_kind
+                    is EnumAcBindingRetirementReason.NO_LONGER_APPLICABLE
+                    and carrier_id != entry.item
+                ):
+                    retired_if_absent.append(entry)
             elif carrier_id == entry.item:
                 code, why = (
                     "RETIREMENT_SELF_CARRIED",
@@ -177,4 +189,5 @@ def resolve_retirements(dod_items: Sequence[Any]) -> ModelAcBindingRetirementRes
             entry for index, entry in candidates.values() if index not in refusals
         ),
         refused=tuple(refusals[index] for index in sorted(refusals)),
+        retired_if_absent=tuple(retired_if_absent),
     )

@@ -1,0 +1,26 @@
+name: node_claude_review_gateway_effect
+version: "0.1.0"
+description: "An OpenAI-compatible Hostile Review voter endpoint on one lab host that spends only the anthropic keys bound to that host, fill-first, and answers 503 when none can serve"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_claude_review_gateway_effect: "omnimarket.nodes.node_claude_review_gateway_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "fastapi>=0.100"
+  - "uvicorn>=0.20"
+  - "pydantic>=2.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["review", "voter", "gateway", "anthropic", "effect"]
+pack: "delegation"
+display_name: "Claude Review Gateway Effect"
+node_role: "effect"

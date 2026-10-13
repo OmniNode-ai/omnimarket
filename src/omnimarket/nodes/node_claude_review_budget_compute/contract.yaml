@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeClaudeReviewBudgetCompute
+#
+# The per-key budget of the Claude review voter as a pure definition-B compute:
+#
+#   handle(ModelClaudeReviewBudgetRequest) -> ModelClaudeReviewBudgetResult
+#
+# Given each key's cycle anchor and the calls it served, and the call about to be made (its counted prompt
+# tokens and its max_tokens), it prices the spend of each key's current cycle and the call's worst case from
+# the pricing manifest and answers the first key, in the order given, that can make the call and still keep
+# its reserve, or no key and why. The allowance, the reserve, the model and the cycle are the `budget` block
+# below, not literals in code. No clock (the time is in the request), no I/O, no model call.
+name: "node_claude_review_budget_compute"
+contract_name: "node_claude_review_budget_compute"
+node_name: "node_claude_review_budget_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B per-key budget for the Claude review voter: the fill-first
+  key whose cycle allowance, less its spend and the call's worst-case cost,
+  still holds its reserve, or none with a reason, so the gateway answers 503
+  and the voter falls through to its overflow endpoint.
+# Operator rulings 2026-10-12T04:56:59Z (Sonnet for the review voter) and
+# 2026-10-12T04:57:20Z (keep 10 USD per key unspent).
+budget:
+  model_id: "claude-sonnet-5-5"
+  allowance_usd: "200"
+  reserve_usd: "10"
+  cycle_months: 1
+  # The pricing manifest carries input and output prices only. A cache write
+  # and a cache read are priced as these multiples of the input price (the
+  # provider's published 5-minute cache write and cache read rates).
+  cache_write_input_multiplier: "1.25"
+  cache_read_input_multiplier: "0.1"
+input_model:
+  name: "ModelClaudeReviewBudgetRequest"
+  module: "omnimarket.nodes.node_claude_review_budget_compute.models.model_claude_review_budget"
+  description: "The time, the call's prompt tokens and max_tokens, and each key's cycle anchor and calls."
+output_model:
+  name: "ModelClaudeReviewBudgetResult"
+  module: "omnimarket.nodes.node_claude_review_budget_compute.models.model_claude_review_budget"
+  description: "The chosen key reference or none, the reason, the worst case and each key's cycle spend."
+handler:
+  module: "omnimarket.nodes.node_claude_review_budget_compute.handlers.handler_claude_review_budget"
+  class: "HandlerClaudeReviewBudget"
+  input_model: "omnimarket.nodes.node_claude_review_budget_compute.models.model_claude_review_budget.ModelClaudeReviewBudgetRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_claude_review_budget_compute.handlers.handler_claude_review_budget:HandlerClaudeReviewBudget"
+  handlers:
+    - operation: "claude_review_budget_decide"
+      handler:
+        name: "HandlerClaudeReviewBudget"
+        module: "omnimarket.nodes.node_claude_review_budget_compute.handlers.handler_claude_review_budget"
+# The review gateway asks before each upstream call; the decided event is what
+# a budget readback shows (each key's spend this cycle, and the key chosen).
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.claude-review-budget-decide-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.claude-review-budget-decided.v1"
+    failure: "onex.evt.omnimarket.claude-review-budget-decide-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.claude-review-budget-decided.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "The Claude review key that can afford a call and keep its reserve, or none and why."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-12"
+  tags:
+    - compute
+    - review
+    - claude
+    - budget
+    - pure

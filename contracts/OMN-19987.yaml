@@ -1,0 +1,101 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19987"
+title: "The run_trace migrations keep one tenant's steps out of another tenant's reads and writes"
+summary: "First of two steps. This change adds the three run_trace migrations and the declaration of who owns the table; the node that folds and writes run steps follows after an omnibase_infra release grants the table. What this step proves is the storage half of AC2: on a real Postgres, a session bound to one tenant neither reads nor writes another tenant's step, and a session with no tenant set reads and writes nothing. The fold-level proof of AC1 and of AC2 over a recorded chain arrives with the node."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19987-ac2-tenant-isolated-run-trace-table"
+    statement: |-
+      The run_trace table is keyed on tenant, run and step sequence, has row-level security enabled and forced under one tenant_isolation policy, and refuses at the database what the step model refuses.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: Another tenant's event mixed into that chain never appears -- falsifier: the same pytest finds it
+  - id: "req-omn19987-run-steps-fold-in-the-orchestrators-order"
+    statement: |-
+      The delegate orchestrator numbers each step of a run itself and publishes one step event per stage; node_projection_run_trace folds those events into rows keyed on tenant, correlation id and step sequence, so the stored order is the orchestrator's whatever order the events arrive in and whatever their timestamps say, and a step that names another tenant never joins the run. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A real recorded chain delivered shuffled, with two equal timestamps, projects to rows in the orchestrator's step order -- falsifier: the fold test run with uv run pytest gives a different order
+  - id: "req-omn19987-run-trace-exposure-declares-its-pending-reader"
+    statement: |-
+      The run-trace.v1 exposure is bus_backed and its only reader, the omnidash Workflow page, is still a draft, so the exposure declares a typed consumers: none whose reason names that reader; omnibase_infra's exposure-reader-coverage gate fails a standing opt-out once a reader exists, which forces the declaration out when the reader lands.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: The run-trace.v1 exposure passes the exposure-reader-coverage gate -- falsifier: the gate run against an omnibase_infra checkout reports the run-trace topic with code no_reader
+      - id: "AC4"
+        statement: |-
+          AC4: The declaration names omnidash#397 as the reader that replaces it -- falsifier: the contract test finds a consumers_reason that does not name omnidash#397
+evidence_requirements:
+  - kind: "tests"
+    description: "The fold stores a recorded chain in step order when it is delivered shuffled with two equal timestamps, and never stores another tenant's step under the run."
+    command: "uv run pytest tests/test_omn19987_run_trace.py -q"
+  - kind: "tests"
+    description: "The migration proof passes at the head against a real Postgres and fails at the merge base, where the three migration files do not exist."
+    command: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19987-ac2-run-trace-table-tenant-isolation"
+    description: "On a real Postgres the two migrations apply twice; row-level security is enabled and forced under the single tenant_isolation policy; a session bound to one tenant inserts its own step, is refused another tenant's step of the same run and reads only its own, with both tenants' rows present as the control; a session with no tenant set reads no row and is refused every insert. This is the storage half of AC2 only: the fold test that mixes another tenant's event into a recorded chain belongs to the node and is bound when the node lands."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19987-ac1-recorded-chain-step-order"
+    description: "The chain one real lab delegation emitted is delivered shuffled, and again reversed, with two steps sharing a timestamp; the fold and the store-neutral writer leave rows in the orchestrator's step sequence on a local store. Run on both recorded fixtures. The second check reads the same chain through the run-trace.v1 exposure, with another tenant's step mixed in; changing the exposure's declared order to the timestamp turns that check red while the store check stays green, which is why both are bound."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k 'test_a_shuffled_chain_with_two_equal_timestamps_stores_in_step_order or test_reversed_delivery_stores_in_step_order'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn19987_run_trace_served.py -q -k test_a_shuffled_chain_with_equal_timestamps_and_a_foreign_step_is_served_in_step_order"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19987-ac2-other-tenant-step-kept-out"
+    description: "The fold half of AC2, which the storage item above could not prove: a step carrying another tenant's id and the same correlation id is mixed into the chain, and the run's rows for the chain's tenant neither gain it nor are overwritten by it. The second check reads through the run-trace.v1 exposure as the other tenant and finds only that tenant's own step."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k test_another_tenants_step_never_joins_or_overwrites_the_run"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn19987_run_trace_served.py -q -k test_the_other_tenant_reads_only_its_own_step"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19987-ac2-storage-proof-no-skips"
+    description: "The storage-half proof of the item this one supersedes, together with the run-trace writer's own real-Postgres proof, run so that neither can pass without a database. The earlier item's command exits 0 when every test skips, which is what happens where no Postgres is provisioned (11 skipped, read on a host with no database password). This command adds --refuse-skips and the writer's proof (another tenant's step with the same run id and sequence neither joins nor overwrites this tenant's stored run): the run exits 1 unless all twenty-two tests ran against a real Postgres and passed. Before the writer exists its proof cannot be collected, so the command fails there. The earlier item and its receipts stay as they were merged."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn19987-ac2-run-trace-table-tenant-isolation"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py tests/test_omn19987_run_trace_real_postgres.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19987-ac3-ac4-pending-reader"
+    description: "The run-trace contract declares consumers: none with the reason 'reader pending in omnidash#397 (OMN-19987); remove when it lands' on its projection_api exposure. The check reads the contract and fails with a KeyError at the merge base, where the exposure declares neither field. The gate verdict itself is run against an omnibase_infra checkout and reported on the pull request, because that gate lives in omnibase_infra."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k test_exposure_declares_the_reader_that_replaces_its_opt_out"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
+  - id: "dod-omn19987-deploy-pending-reader"
+    description: "Read the published run-trace node contract at the checked-out commit. The probe requires the typed consumers: none declaration and the reason naming omnidash#397, so it fails on a revision without either field. This checks the published declaration; the projection's served rows are covered by the AC1 and AC2 tests above."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_run_trace/contract.yaml?ref=$(git rev-parse HEAD)"
+          --jq '.content | @base64d | contains("  consumers: none\n") and contains("reader pending in omnidash#397 (OMN-19987); remove when it lands")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"

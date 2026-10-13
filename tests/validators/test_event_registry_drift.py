@@ -29,6 +29,7 @@ from omnimarket.validators.event_registry_drift import (
     load_baseline,
     load_market_registrations,
     load_omniclaude_registrations,
+    read_pinned_omniclaude_rev,
     resolve_omniclaude_root,
     resolve_repo_root,
     topics_from_shapes,
@@ -432,13 +433,13 @@ def test_live_registries_have_no_unbaselined_drift() -> None:
     CI shard without the sibling checkout); the dedicated Event Registry Drift
     CI job clones omniclaude explicitly and always runs this assertion.
 
-    The comparison is against an UNPINNED sibling checkout, so the failure
-    message names it (OMN-17549 -- see the disposition block at the end of
-    ``scripts/validation/event_registry_drift_baseline.txt``). Before deciding
-    a reported drift is repo drift, check that the clone named below is at
-    omniclaude ``dev`` HEAD; a clone behind it reports live registrations as
-    registry-only, and baselining those would suppress a correct registration
-    on every host to silence one host's stale checkout.
+    The omniclaude side is read at the revision pinned in ``ci.yml`` (OMN-20001),
+    not at the sibling checkout's HEAD, so a checkout sitting behind or ahead of
+    omniclaude ``dev`` cannot change this verdict. The failure message still
+    names the checkout and the pinned revision it was read at (OMN-17549): a
+    reported drift is a drift between this repository and the pinned omniclaude,
+    to be resolved by moving the pin or the registry, never by baselining a topic
+    the pinned revision is merely too old to declare.
     """
     repo_root = resolve_repo_root()
     try:
@@ -460,8 +461,9 @@ def test_live_registries_have_no_unbaselined_drift() -> None:
         f"event_registry_only={sorted(report.structural_report.event_registry_only)}, "
         f"field_diffs={report.structural_report.field_diffs}. "
         "The omniclaude side of this comparison was read from "
-        f"{_describe_omniclaude_checkout(omniclaude_root)} -- confirm that "
-        "clone is at omniclaude dev HEAD before treating this as repo drift, "
-        "and do NOT baseline a topic that clone is merely too old to declare "
-        "(OMN-17549)."
+        f"{_describe_omniclaude_checkout(omniclaude_root)} at the pinned revision "
+        f"{read_pinned_omniclaude_rev(repo_root)!r} -- move the pin (after the "
+        "integration suite passes against the new version) or the registry, and "
+        "do NOT baseline a topic the pinned revision is merely too old to "
+        "declare (OMN-17549, OMN-20001)."
     )

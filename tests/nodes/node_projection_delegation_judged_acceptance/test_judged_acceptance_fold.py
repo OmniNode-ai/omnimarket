@@ -17,6 +17,9 @@ from omnimarket.events import ModelDelegationAcceptanceJudgedEvent
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
     EnumAcceptanceFailureClass,
 )
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_origin import (
+    EnumAcceptanceOrigin,
+)
 from omnimarket.nodes.node_projection_delegation_judged_acceptance.handlers import (
     handler_projection_delegation_judged_acceptance as fold_module,
 )
@@ -57,6 +60,8 @@ def _event(
     kappa: float = 0.65,
     rubric_version: str = "v1",
     tenant: UUID = TENANT,
+    origin: EnumAcceptanceOrigin = EnumAcceptanceOrigin.LIVE,
+    eval_run_id: str | None = None,
 ) -> ModelDelegationAcceptanceJudgedEvent:
     return ModelDelegationAcceptanceJudgedEvent(
         correlation_id=_call_id(index),
@@ -80,6 +85,8 @@ def _event(
         quality=quality,
         failure_class=FAILURE,
         judged_at=T0 + timedelta(days=1, seconds=judged_offset),
+        origin=origin,
+        eval_run_id=eval_run_id,
     )
 
 
@@ -310,6 +317,76 @@ def test_judged_acceptance_fold_tenants_do_not_mix() -> None:
 def test_judged_acceptance_fold_rubric_versions_make_separate_cells() -> None:
     events = _cell_events(15, 0) + _cell_events(15, 0, rubric_version="v2")
     assert sorted(r["rubric_version"] for r in _rows(_fold(events))) == ["v1", "v2"]
+
+
+def _eval_events(
+    accepts: int, rejects: int, run: str = "eval-run-1", **kw: Any
+) -> list[ModelDelegationAcceptanceJudgedEvent]:
+    return _cell_events(
+        accepts, rejects, origin=EnumAcceptanceOrigin.EVAL, eval_run_id=run, **kw
+    )
+
+
+def test_origin_live_and_eval_for_the_same_cell_never_pool() -> None:
+    # Same tenant, model, tier, task type, kind and rubric; the call ids repeat on purpose.
+    live = _cell_events(15, 0)
+    evaluated = _eval_events(0, 15)
+    rows = _rows(_fold(live + evaluated))
+    assert [(r["origin"], r["n"], r["accepts"]) for r in rows] == sorted(
+        [("live", 15, 15), ("eval", 15, 0)]
+    )
+    by_origin = {r["origin"]: r for r in rows}
+    assert by_origin["live"]["eval_run_id"] is None
+    assert by_origin["eval"]["eval_run_id"] == "eval-run-1"
+
+
+def test_origin_an_eval_verdict_never_displaces_a_live_verdict_for_the_same_call() -> (
+    None
+):
+    live = _cell_events(15, 0)
+    # A later eval verdict on the very same delegated calls, with a rejecting judgment.
+    evaluated = [
+        _event(
+            i,
+            accept=False,
+            quality=0,
+            judged_offset=60,
+            origin=EnumAcceptanceOrigin.EVAL,
+            eval_run_id="eval-run-1",
+        )
+        for i in range(15)
+    ]
+    result = _fold(live + evaluated)
+    by_origin = {c.origin: c for c in result.cells}
+    assert by_origin[EnumAcceptanceOrigin.LIVE].accepts == 15
+    assert by_origin[EnumAcceptanceOrigin.EVAL].accepts == 0
+    assert result.folded_verdict_count == 30
+
+
+def test_origin_two_eval_runs_make_separate_cells() -> None:
+    events = _eval_events(15, 0, run="eval-run-1") + _eval_events(
+        15, 0, run="eval-run-2", start=100
+    )
+    cells = _fold(events).cells
+    assert sorted(c.eval_run_id for c in cells if c.eval_run_id) == [
+        "eval-run-1",
+        "eval-run-2",
+    ]
+    assert all(c.n == 15 for c in cells)
+
+
+def test_origin_underpowered_is_counted_per_origin_not_across_them() -> None:
+    # 10 live + 10 eval is 20 verdicts for the cell, but neither origin reaches 15.
+    result = _fold(_cell_events(10, 0) + _eval_events(10, 0, start=100))
+    assert result.cells == ()
+    assert result.underpowered_cell_count == 2
+
+
+def test_origin_order_independent_across_origins() -> None:
+    events = _cell_events(15, 0) + _eval_events(5, 10, start=100)
+    forward = _rows(_fold(events))
+    assert forward == _rows(_fold(list(reversed(events))))
+    assert len(forward) == 2
 
 
 def test_judged_acceptance_fold_rows_come_out_in_cell_key_order() -> None:

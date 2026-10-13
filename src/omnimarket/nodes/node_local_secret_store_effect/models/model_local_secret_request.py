@@ -24,6 +24,7 @@ class ModelLocalSecretRequest(BaseModel):
     force: bool = False
     plan: str | None = None
     model: str | None = None
+    model_chosen_by: Literal["customer", "catalogue"] | None = None
 
 
 __all__ = ["ModelLocalSecretRequest"]

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """AC-M6: a claim whose TERMINAL is refused stops owning its PR at the lease TTL.
 
-On 2026-10-10 lane TERMINAL rows were refused (no signing principal) and the
+On 2026-10-10 lane TERMINAL rows were refused (no broker writer attribution) and the
 CLAIMs they would have closed stayed open, holding PRs away from the
 controller. The owner claim the bus path writes is a lease: the reducer stamps
 its expiry (``next_check_at``) from the TTL its contract declares, the owner
@@ -20,10 +20,13 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
-from omnimarket.delegated_test_loop.lab_run_bus import ProtocolBusMessage
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolBusMessage,
+    event_type_for,
+)
 from omnimarket.events.topics import CI_RED_TRIAGE_DECIDED_TOPIC_V1
 from omnimarket.lab_work.bus import _subscribe
 from omnimarket.models.ci_red_triage import (
@@ -124,7 +127,7 @@ class RecordingLedger:
 
 
 def terminal_append(
-    lane: str, *, signer: tuple[str, Ed25519PrivateKey] | None
+    lane: str, *, writer: str | None
 ) -> tuple[
     ModelWorkLedgerAppendReceipt,
     list[ModelWorkLedgerTerminalRefused],
@@ -132,15 +135,11 @@ def terminal_append(
 ]:
     """The lane's TERMINAL append through the ledger host on a bus."""
     ledger = RecordingLedger()
-    operator = Ed25519PrivateKey.generate()
-    keys = {"operator": operator.public_key()}
-    if signer is not None:
-        keys[signer[0]] = signer[1].public_key()
     handler = HandlerWorkLedgerAppendEffect(
         ledger,
         ledger,
         "ledger-host",
-        public_keys=keys,
+        writer_principals=["operator", "lane"],
         operator_principal="operator",
     )
     request_id = uuid4()
@@ -159,7 +158,9 @@ def terminal_append(
     async def run() -> ModelWorkLedgerAppendReceipt:
         bus = EventBusInmemory(environment="local", group="ac-m6")
         await bus.start()
-        host = WorkLedgerAppendHost(bus, handler)
+        host = WorkLedgerAppendHost(
+            bus, handler, writer_principals=["operator", "lane"]
+        )
         await host.start()
 
         async def on_refused(message: ProtocolBusMessage) -> None:
@@ -173,13 +174,33 @@ def terminal_append(
             "ac-m6-reader",
             "earliest",
         )
-        caller = (
-            WorkLedgerAppendCaller(bus)
-            if signer is None
-            else WorkLedgerAppendCaller(bus, principal=signer[0], signing_key=signer[1])
-        )
+        caller = WorkLedgerAppendCaller(bus, principal=writer or "lane")
         try:
-            return await caller.append(request, timeout_s=5)
+            if writer is not None:
+                return await caller.append(request, timeout_s=5)
+            receipts: asyncio.Queue[ModelWorkLedgerAppendReceipt] = asyncio.Queue()
+
+            async def on_receipt(message: ProtocolBusMessage) -> None:
+                receipts.put_nowait(
+                    ModelWorkLedgerAppendReceipt.model_validate(
+                        json.loads(message.value)["payload"]
+                    )
+                )
+
+            receipt_unsubscribe = await _subscribe(
+                bus, host.topics.success, on_receipt, "ac-m6-receipt", "latest"
+            )
+            try:
+                envelope = ModelEventEnvelope[dict[str, object]](
+                    payload=request.model_dump(mode="json"),
+                    event_type=event_type_for(host.topics.command),
+                )
+                await bus.publish(
+                    host.topics.command, None, envelope.model_dump_json().encode()
+                )
+                return await asyncio.wait_for(receipts.get(), timeout=5)
+            finally:
+                await receipt_unsubscribe()
         finally:
             await caller.stop()
             await unsubscribe()
@@ -196,9 +217,9 @@ def test_ac_m6_refused_terminal_claim_expires_past_ttl_and_unblocks_the_pr() -> 
     assert lane is not None
     ttl = contract_ttl()
 
-    receipt, refused, ledger = terminal_append(lane, signer=None)
+    receipt, refused, ledger = terminal_append(lane, writer=None)
 
-    # The TERMINAL is refused for want of a signing principal and never lands,
+    # The TERMINAL is refused for want of broker writer attribution and never lands,
     # so the CLAIM it would have closed is still open on the ledger.
     assert receipt.status is EnumWorkLedgerAppendStatus.REFUSED
     assert "TERMINAL" not in ledger.text
@@ -229,9 +250,8 @@ def test_live_claim_inside_its_ttl_still_owns_the_pr() -> None:
     assert inside.absorbing_cause(PR, (decided.owner_key,)) == decided.owner_key
 
 
-def test_signed_terminal_lands_and_emits_no_terminal_refused() -> None:
-    key = Ed25519PrivateKey.generate()
-    receipt, refused, ledger = terminal_append("ci-red-lane", signer=("lane", key))
+def test_attributed_terminal_lands_and_emits_no_terminal_refused() -> None:
+    receipt, refused, ledger = terminal_append("ci-red-lane", writer="lane")
     assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
     assert "| TERMINAL | principal=lane | lane=ci-red-lane |" in ledger.text
     assert refused == []

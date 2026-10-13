@@ -5,7 +5,8 @@
 ``fixtures/recorded_dispatch.json`` was recorded by running the real ``merge_sweep.js`` with its
 ``agent()`` calls scripted, over the lane plans of the recorded sweep (see
 ``node_merge_sweep_reading_compute``): each lane's runner exit codes were fed in order, and every
-brief it wrote, every runner command it ran and every wait it took was recorded. The test drives the
+brief it wrote, every runner command it ran and every wait it took was recorded. Its repository names
+carry the same placeholders as the recorded sweep, applied by that fixture's recorder. The test drives the
 same sweep through the nodes: the plan node caps the lanes and renders each brief, the effect node
 starts each lane through a scripted runner, and the plan node decides each retry.
 """
@@ -99,7 +100,13 @@ class ScriptedFiles:
 def _sweep(case: dict[str, Any]) -> dict[str, Any]:
     """Run one recorded sweep through the nodes; return what the workflow recorded."""
     args = case["args"]
-    reading = READING["scenarios"][case["scenario"]]["expected"]["reading"]
+    spec = READING["scenarios"][case["scenario"]]
+    # The script planned over its fleet less the scenario's out-of-scope rulings; the fleet arrives
+    # as data, so the reading carries it as its scope.
+    scope = sorted(
+        set(READING["repositories"]["fleet"]) - set(spec.get("out_of_scope", {}))
+    )
+    reading = {**spec["expected"]["reading"], "scope": scope}
     max_lanes = int(args["max_lanes"]) if "max_lanes" in args else None
     retries = int(args["retries"]) if "retries" in args else None
     wait_min = int(args["retry_wait_min"]) if "retry_wait_min" in args else None

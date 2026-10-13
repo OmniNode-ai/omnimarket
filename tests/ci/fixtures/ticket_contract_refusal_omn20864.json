@@ -1,0 +1,16 @@
+{
+  "_provenance": {
+    "source": "gh api repos/OmniNode-ai/omnibase_infra/actions/jobs/114107652556/logs",
+    "captured_utc": "2026-10-11T02:10:00Z",
+    "source_sha256": "c211b2b354042a86df8961257e82370248e5d2bee50b2993b4443df215afe276",
+    "note": "repo-evidence / dod-verify job log for omnibase_infra#4772 at head 5dbb4db622fd244ca49f874a7bba5c03456eaad7 (title cites OMN-18606), check run completed 2026-10-10T02:21:43Z as failure. The line is verbatim, log line 1846; the sha256 is of the full log."
+  },
+  "response": {
+    "pr": "OmniNode-ai/omnibase_infra#4772",
+    "head_sha": "5dbb4db622fd244ca49f874a7bba5c03456eaad7",
+    "job_id": 114107652556,
+    "context": "repo-evidence / dod-verify",
+    "pr_title": "chore(deps, OMN-18606): refresh the lane census snapshot [bot]",
+    "error_line": "2026-10-10T02:21:36.8899002Z ##[error]pull request cites OMN-18606 but carries no contracts/OMN-18606.yaml"
+  }
+}

@@ -7,7 +7,9 @@ A committed ``judgments.jsonl`` and its ``summary.json`` hold the verdicts of on
 ``ModelDelegationAcceptanceJudgedEvent``, with the primary judge's calibration taken from the
 summary and the delegated call's own time as the call time. It reads no file, calls no model and
 reads no clock: what a committed run does not record (tenant, tier of each model, the judge's
-model version, the rubric hash, the time of judgment) is named by the request.
+model version, the rubric hash, the time of judgment) is named by the request. So is the origin of
+its verdicts: a committed run from before the origin amendment replays as ``live`` through the
+request's default, and an eval run names ``eval`` and its ``eval_run_id``.
 
 The result is all of the run's events or none of them. An item with no tier for its model, no
 call time or no verdict from its primary judge, a repeated delegated call, a primary judge with no
@@ -140,6 +142,8 @@ class HandlerDelegationAcceptanceJudgedReplay:
                     quality=verdict.quality,
                     failure_class=verdict.failure_class,
                     judged_at=request.judged_at,
+                    origin=request.origin,
+                    eval_run_id=request.eval_run_id,
                 )
             )
         expected = sum(cell.n for cell in request.summary.matrix)

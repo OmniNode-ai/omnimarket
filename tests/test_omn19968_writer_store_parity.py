@@ -27,6 +27,7 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.models.model_delegation_run_step import ModelDelegationRunStep
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     ModelCounterfactualBaseline,
     ModelMeteringRecord,
@@ -44,6 +45,12 @@ from omnimarket.nodes.node_projection_metering_summary import (
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     store_rows,
+)
+from omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_trace import (
+    HandlerProjectionRunTrace,
+)
+from omnimarket.nodes.node_projection_run_trace.handlers.handler_run_trace_store import (
+    apply_run_step,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     CREDENTIALS_TABLE,
@@ -362,6 +369,8 @@ _METERING_MIGRATIONS = (
     "0002_metering_summary_savings_per_measured_run.sql",
     _NODES / "node_projection_metering_summary/migrations/"
     "0003_metering_summary_compression_and_cache_hit.sql",
+    _NODES / "node_projection_metering_summary/migrations/"
+    "0004_metering_summary_savings_pct.sql",
 )
 # Store-generated or wall-clock columns beyond ``_GENERATED``: never compared.
 _ALSO_GENERATED = frozenset({"ingested_at", "projection_cursor"})
@@ -452,7 +461,28 @@ def _write_metering(adapter: Any) -> None:
     )
 
 
+_RUN_TRACE_MIGRATION = (
+    _NODES / "node_projection_run_trace/migrations/0000_create_run_trace.sql"
+)
+_RUN_STEP_CHAIN = _ROOT / "tests/fixtures/omn19987/run_step_chain.json"
+
+
+def _write_run_trace(adapter: Any) -> None:
+    # Delivered reversed, then replayed: both stores must hold each step once.
+    fold = HandlerProjectionRunTrace()
+    chain = json.loads(_RUN_STEP_CHAIN.read_text(encoding="utf-8"))
+    for event in [*reversed(chain), *chain]:
+        apply_run_step(
+            fold.handle(ModelDelegationRunStep.model_validate(event)), adapter
+        )
+
+
 _STORE_CASES: dict[str, tuple[tuple[Path, ...], Any, tuple[str, ...]]] = {
+    "run_trace": (
+        (_RUN_TRACE_MIGRATION,),
+        _write_run_trace,
+        ("run_trace",),
+    ),
     "usage_by_model_day": (
         (_USAGE_MIGRATION, _USAGE_MEASURED_MIGRATION),
         _write_usage,
@@ -487,7 +517,11 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
         # The migration names ``public.``; keep the proof inside the throwaway schema.
         for migration in migrations:
             await admin.execute(
-                migration.read_text(encoding="utf-8").replace("public.", f"{schema}.")
+                migration.read_text(encoding="utf-8")
+                .replace("public.", f"{schema}.")
+                # A create migration may grant the cluster-scoped dashboard
+                # reader, which a throwaway database does not have.
+                .replace("TO app_dashboard", "TO CURRENT_USER")
             )
         postgres = PostgresSyncProjectionAdapter(_dsn(pg, schema))
         writer(postgres)

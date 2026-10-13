@@ -1,0 +1,11 @@
+-- OMN-20991: a credential row carries the date its provider key expires.
+--
+-- Company keys live in one pool under the OmniNode tenant and all expire on
+-- January 1 (operator ruling 2026-10-11T16:02:35Z). Routing skips a key past
+-- this date and one alert covers the pool before it lapses, so the date has to
+-- be on the row the router and the alert read.
+--
+-- Nullable with no default and no backfill: a row registered before this
+-- migration, or with no expiry submitted, is undated, and inventing a date
+-- would hide a key from the alert or retire a key that still works.
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;

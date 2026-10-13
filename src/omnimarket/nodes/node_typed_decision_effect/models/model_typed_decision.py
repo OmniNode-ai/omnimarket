@@ -49,8 +49,7 @@ class EnumTypedDecisionReason(StrEnum):
 
     # Refusals: decided before any call to the decision backend.
     NO_REPOSITORY_ATTRIBUTION = "no_repository_attribution"
-    REPOSITORY_NOT_PUBLIC = "repository_not_public"
-    REPOSITORY_VISIBILITY_UNRESOLVED = "repository_visibility_unresolved"
+    REPOSITORY_REFUSED = "repository_refused"
     BACKEND_UNRESOLVED = "backend_unresolved"
     CREDENTIAL_NOT_REGISTERED = "credential_not_registered"
     # Backend errors: the call was made and produced no usable answer.
@@ -71,9 +70,9 @@ class ModelTypedDecisionRequest(BaseModel):
         default=None,
         description=(
             "The ``owner/name`` repository the WORK UNIT belongs to, never the "
-            "repository the caller lives in. Its visibility is resolved live "
-            "at request time; a missing, private or unresolvable repository "
-            "is refused before any call to the decision backend."
+            "repository the caller lives in. A missing repository, or one on "
+            "the contract's refused list, is refused before any call to the "
+            "decision backend."
         ),
     )
     state: JsonValue = Field(
