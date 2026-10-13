@@ -41,19 +41,25 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn19987-ac1-recorded-chain-stores-in-step-order"
-    description: "The chain one real lab delegation emitted is delivered shuffled, and again reversed, with two steps sharing a timestamp; the fold and the store-neutral writer leave rows in the orchestrator's step sequence on a local store. Run on both recorded fixtures. Changing the store's order key to the timestamp turns it red."
+  - id: "dod-omn19987-ac1-recorded-chain-step-order"
+    description: "The chain one real lab delegation emitted is delivered shuffled, and again reversed, with two steps sharing a timestamp; the fold and the store-neutral writer leave rows in the orchestrator's step sequence on a local store. Run on both recorded fixtures. The second check reads the same chain through the run-trace.v1 exposure, with another tenant's step mixed in; changing the exposure's declared order to the timestamp turns that check red while the store check stays green, which is why both are bound."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k 'test_a_shuffled_chain_with_two_equal_timestamps_stores_in_step_order or test_reversed_delivery_stores_in_step_order'"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn19987_run_trace_served.py -q -k test_a_shuffled_chain_with_equal_timestamps_and_a_foreign_step_is_served_in_step_order"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn19987-ac2-another-tenants-step-never-joins-the-run"
-    description: "The fold half of AC2, which the storage item above could not prove: a step carrying another tenant's id and the same correlation id is mixed into the chain, and the run's rows for the chain's tenant neither gain it nor are overwritten by it."
+  - id: "dod-omn19987-ac2-other-tenant-step-kept-out"
+    description: "The fold half of AC2, which the storage item above could not prove: a step carrying another tenant's id and the same correlation id is mixed into the chain, and the run's rows for the chain's tenant neither gain it nor are overwritten by it. The second check reads through the run-trace.v1 exposure as the other tenant and finds only that tenant's own step."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k test_another_tenants_step_never_joins_or_overwrites_the_run"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn19987_run_trace_served.py -q -k test_the_other_tenant_reads_only_its_own_step"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
