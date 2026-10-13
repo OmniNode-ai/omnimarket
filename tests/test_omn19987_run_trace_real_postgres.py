@@ -39,6 +39,7 @@ from omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_
 )
 from omnimarket.nodes.node_projection_run_trace.handlers.handler_run_trace_writer import (
     _INSERT_STEP,
+    _SELECT_STORED_STEP,
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +121,46 @@ async def _insert(
 def _chain() -> list[dict[str, Any]]:
     chain: list[dict[str, Any]] = json.loads(_CHAIN.read_text(encoding="utf-8"))
     return chain
+
+
+@pytest.mark.integration
+async def test_real_postgres_a_redelivered_step_reads_back_the_stored_row_to_publish_again() -> (
+    None
+):
+    """The read the writer makes when a redelivery conflicts on the step's key.
+
+    A publish that failed after the insert committed is repaired by publishing
+    the stored row when the event comes back, so that read has to return the
+    row exactly as the insert returned it, whatever the redelivery carries.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await _fresh(conn, _SCHEMA)
+        event = _chain()[1]
+        first = await _insert(conn, _SCHEMA, event)
+        assert len(first) == 1
+        changed = {**event, "reason": "rewritten", "backend_id": "another-backend"}
+        assert await _insert(conn, _SCHEMA, changed) == []
+
+        step = HandlerProjectionRunTrace().handle(
+            ModelDelegationRunStep.model_validate(changed)
+        )
+        select = _scoped(_SELECT_STORED_STEP, _SCHEMA)
+        stored = await conn.fetch(
+            select, step.tenant_id, step.correlation_id, step.step_sequence
+        )
+        assert len(stored) == 1
+        assert dict(stored[0]) == dict(first[0])
+        assert stored[0]["reason"] == event["reason"]
+        assert stored[0]["backend_id"] == event["backend_id"]
+
+        never_stored = await conn.fetch(
+            select, step.tenant_id, step.correlation_id, step.step_sequence + 900
+        )
+        assert never_stored == []
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
 
 
 @pytest.mark.integration

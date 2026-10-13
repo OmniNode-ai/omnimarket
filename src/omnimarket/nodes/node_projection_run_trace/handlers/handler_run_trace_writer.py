@@ -25,7 +25,7 @@ from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 
 # A step is stored once. A redelivery conflicts on the key and returns no row,
-# so nothing is rewritten and no second delta is published.
+# so nothing is rewritten.
 _INSERT_STEP = """
     INSERT INTO public.run_trace (
         tenant_id, correlation_id, step_sequence, step_kind, started_at,
@@ -37,6 +37,18 @@ _INSERT_STEP = """
               duration_ms, outcome, failure_cause, backend_id, model_id,
               attempt_number, reason, candidates, failing_step_sequence,
               updated_at, projection_cursor
+"""
+
+# Read back the step a redelivery conflicted with. Each step is published once,
+# so a publish that failed after the insert committed is only ever repaired by
+# publishing the stored row again when the event comes back.
+_SELECT_STORED_STEP = """
+    SELECT tenant_id, correlation_id, step_sequence, step_kind, started_at,
+           duration_ms, outcome, failure_cause, backend_id, model_id,
+           attempt_number, reason, candidates, failing_step_sequence,
+           updated_at, projection_cursor
+    FROM public.run_trace
+    WHERE tenant_id = $1 AND correlation_id = $2 AND step_sequence = $3
 """
 
 
@@ -147,9 +159,21 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
                 json.dumps(list(step.candidates)),
                 step.failing_step_sequence,
             )
-            if not inserted:
-                return None
-            row = _wire_row(dict(inserted[0]))
+            if inserted:
+                row = _wire_row(dict(inserted[0]))
+            else:
+                # Already stored. Whether its delta ever went out is unknown
+                # here, so the stored fact (never this event's content) is
+                # published again; the delta is an upsert on the same key.
+                stored = await conn.fetch(
+                    _SELECT_STORED_STEP,
+                    step.tenant_id,
+                    step.correlation_id,
+                    step.step_sequence,
+                )
+                if not stored:
+                    return None
+                row = _wire_row(dict(stored[0]))
         if self._snapshot_exposure is not None:
             await self.publish_snapshot_delta(
                 self._snapshot_exposure,
@@ -163,7 +187,7 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
                 source_offset=meta.offset,
                 tenant_id=step.tenant_id,
             )
-        return row
+        return row if inserted else None
 
 
 __all__ = ["RunTraceProjectionWriter"]
