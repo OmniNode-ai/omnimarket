@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 import textwrap
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
@@ -188,6 +189,44 @@ def test_routing_sources_inventory_entries_are_well_formed() -> None:
         *inventory["not_routing_configs"],
     ):
         assert entry["reason"].strip(), f"not-routing entry without a reason: {entry}"
+
+
+def test_routing_sources_inventory_is_enforced_by_the_gate() -> None:
+    """The named lint step and the hook run the inventory cases, on every path a new source can arrive by."""
+    module = "tests/test_routing_sources_omn20601.py"
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
+    steps = [
+        step["run"]
+        for step in ci["jobs"]["lint"]["steps"]
+        if module in step.get("run", "")
+    ]
+    hooks = [
+        hook
+        for repo in yaml.safe_load(
+            (REPO_ROOT / ".pre-commit-config.yaml").read_text("utf-8")
+        )["repos"]
+        for hook in repo["hooks"]
+        if hook["id"] == "routing-sources-omn20601"
+    ]
+    assert len(steps) == 1, "the lint job runs the inventory cases in one named step"
+    assert len(hooks) == 1, "one pre-commit hook runs the inventory cases"
+    for command in (steps[0], hooks[0]["entry"]):
+        for flag in (" -k ", " -m "):
+            assert flag not in command, (
+                f"{command!r} deselects cases, so the inventory may not run"
+            )
+    inventory = _load_inventory()
+    scope = inventory["scan_scope"]
+    arrivals = [
+        "src/omnimarket/routing/new_route_source.py",
+        f"{scope['configs']}/new_routes.v1.yaml",
+        *scope["extra_files"],
+        *(f"{directory}/new_model.yaml" for directory in scope["extra_dirs"]),
+        _rel(INVENTORY_PATH, REPO_ROOT),
+    ]
+    files = re.compile(hooks[0]["files"])
+    unwatched = [path for path in arrivals if not files.search(path)]
+    assert not unwatched, f"the hook does not run on {unwatched}"
 
 
 # --- AC2: the overlay wins over every code default -----------------------------
