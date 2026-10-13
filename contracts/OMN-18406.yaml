@@ -25,6 +25,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_18406_retire_deleted_criterion.py -q -k \"ac1_retired_deleted_criterion or typed_retirement_appended_after_an_untyped or bound_only_to_the_retired_criterion\""
         cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn18406-unretired-deleted-criterion-refuses"
     description: "Lane AC2: the same contract without the retirement is still refused CRITERIA_DRIFT naming AC2 deleted and both items; a retirement of one claim of two still refuses naming the other; a criterion the requirements still declare is not retired; and a retirement of an accepted binding whose criterion the ticket still carries refuses with retired_live, while the same contract without it verifies."
     source: "manual"
@@ -32,6 +33,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_18406_retire_deleted_criterion.py -q -k \"ac2_deleted_criterion_without_retirement or claim_left_unretired or still_declared_by_the_contract or accepted_binding_of_a_live_criterion or verifies_without_that_retirement\""
         cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
   - id: "dod-omn18406-deploy-criterion-retirement"
     description: "Deploy probe against the explicitly selected runtime container. Its loaded criteria-drift code reports an unretired deleted AC2 as deleted, reports nothing once a supersedes_ac_binding entry retires the accepted AC2 binding, and reports retired_live when the ticket still carries AC2. The probe fails on a runtime without this change, whose loaded code still reports the retired AC2 as deleted. Recorded criterion text is used; this probe does not read Linear. Run only at the local Done gate, where the selected container is available."
     source: "manual"
