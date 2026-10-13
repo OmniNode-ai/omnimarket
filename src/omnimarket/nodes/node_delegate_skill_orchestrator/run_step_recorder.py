@@ -63,7 +63,8 @@ class ProtocolRunStepPublisher(Protocol):
         event_id: str,
         correlation_id: str | None = None,
         partition_key: str | None = None,
-    ) -> bool: ...
+    ) -> bool:
+        """Publish one event. The recorder reads no result; a raise is logged and the run goes on."""
 
 
 @cache

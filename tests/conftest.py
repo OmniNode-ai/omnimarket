@@ -36,6 +36,11 @@ from tests.refuse_skips import (
     pytest_terminal_summary as pytest_terminal_summary,
 )
 
+# pytest finds the three hooks above by their names on this module, and
+# tests/test_refuse_skips_omn19987.py reads them here; nothing in this file
+# calls them. Naming them as this module's exports says so to a static reader.
+__all__ = ["pytest_addoption", "pytest_sessionfinish", "pytest_terminal_summary"]
+
 # =============================================================================
 # Hermetic import guard (OMN-14420 / OMN-15019) — omnimarket-side
 # =============================================================================
