@@ -77,3 +77,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20915-scm-nodes-no-cli-wired"
+    description: "AC3 (omnimarket half): the check that keeps one GitHub I/O path in the source-control nodes is wired as the scm-nodes-no-gh-cli pre-commit hook and as a step of the ci.yml lint job. The test itself passes at the merge base because the source-control nodes are already clean, so it is evidence in the item above and carries no must-fail bound check; this item binds what the change adds, the hook and the lint step, which the merge base does not carry."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'id: scm-nodes-no-gh-cli' .pre-commit-config.yaml && grep -q 'pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py' .github/workflows/ci.yml"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
