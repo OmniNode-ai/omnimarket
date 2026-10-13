@@ -24,6 +24,18 @@ import pytest_asyncio
 
 from omnimarket.config.env_flags import env_flag
 
+# OMN-19987: the --refuse-skips option, for evidence checks that must not pass
+# when their proof skipped. Importing the hooks here loads them for every run.
+from tests.refuse_skips import (
+    pytest_addoption as pytest_addoption,
+)
+from tests.refuse_skips import (
+    pytest_sessionfinish as pytest_sessionfinish,
+)
+from tests.refuse_skips import (
+    pytest_terminal_summary as pytest_terminal_summary,
+)
+
 # =============================================================================
 # Hermetic import guard (OMN-14420 / OMN-15019) — omnimarket-side
 # =============================================================================
