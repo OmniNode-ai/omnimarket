@@ -3514,6 +3514,28 @@ jobs:
               python -m omnibase_core.validators.canonical_file_shape --head HEAD
           fi
 
+  # OMN-20844: bring-your-own-key customers choose their OpenRouter model; the
+  # system never picks one. Names the tests that guard it so the generic split
+  # `test` job's selection cannot silently drop them. Same command as the
+  # `byok-customer-chooses-model` pre-commit hook. Unconditional (no `if:`, no
+  # `needs:`); registered in ci_summary_gate.py STRICT_GATE_JOBS.
+  byok-customer-chooses-model:
+    name: BYOK Customer Chooses Model (OMN-20844)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - name: Run the customer-chooses-model tests
+        run: >-
+          uv run pytest
+          tests/unit/cli/test_omn20844_openrouter_model_choice.py
+          tests/test_omn20844_chosen_model_never_re_aimed.py
+          tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py
+          -q -p no:randomly
+
   # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
   # option (b) of the addendum's section 11 question 2 (B3): enforce release
   # debt only on the repository it measures, under its required CI Summary.
