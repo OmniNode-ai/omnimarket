@@ -96,11 +96,13 @@ def _resolved_refs(workflow_dir: Path) -> list[list[object]]:
 def _ref_diff(
     expected: list[list[object]], actual: list[list[object]]
 ) -> tuple[list[list[object]], list[list[object]]]:
-    """Return (missing, extra) rows, comparing file, action and resolved commit.
+    """Return missing uses and unrecognized pins, ignoring added uses of known pins.
 
     The line number is carried in each row for the message but is not compared: a
     step added above a ``uses:`` line moves it without changing what it runs, and a
     line-keyed golden failed every pull request once ``ci.yml`` gained a step.
+    Additional jobs may reuse a characterized pin in that workflow. They may not
+    remove a characterized use or introduce an uncharacterized action/commit.
     """
 
     def key(row: list[object]) -> tuple[object, object, object]:
@@ -111,7 +113,11 @@ def _ref_diff(
     missing_keys = expected_count - actual_count
     extra_keys = actual_count - expected_count
     missing = [row for row in expected if key(row) in missing_keys]
-    extra = [row for row in actual if key(row) in extra_keys]
+    extra = [
+        row
+        for row in actual
+        if key(row) in extra_keys and key(row) not in expected_count
+    ]
     return missing, extra
 
 
@@ -138,6 +144,27 @@ def test_action_ref_diff_ignores_line_shift_and_catches_a_moved_pin() -> None:
     assert extra == moved
     dropped: list[list[object]] = []
     assert _ref_diff(golden, dropped) == (golden, [])
+
+
+@pytest.mark.unit
+def test_action_ref_diff_accepts_added_uses_of_characterized_pins() -> None:
+    golden = [["ci.yml", 10, "actions/checkout", "a" * 40]]
+    added = ["ci.yml", 20, "actions/checkout", "a" * 40]
+    assert _ref_diff(golden, [*golden, added]) == ([], [])
+    # An added job must not smuggle in a new pin, action, or workflow.
+    for unknown in (
+        ["ci.yml", 20, "actions/checkout", "b" * 40],
+        ["ci.yml", 20, "uncharacterized/action", "a" * 40],
+        ["new.yml", 20, "actions/checkout", "a" * 40],
+    ):
+        assert _ref_diff(golden, [*golden, unknown]) == ([], [unknown])
+    # Multiplicity still detects a removed or changed characterized use.
+    assert _ref_diff([*golden, added], golden) == ([*golden, added], [])
+    moved = ["ci.yml", 20, "actions/checkout", "b" * 40]
+    assert _ref_diff([*golden, added], [*golden, moved]) == (
+        [*golden, added],
+        [moved],
+    )
 
 
 @pytest.mark.unit

@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -26,12 +26,17 @@ MEASURE_STEP_NAME = "Measure dev-vs-tag release staleness (OMN-18010)"
 
 def _job() -> dict[str, Any]:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return workflow["jobs"]["release-staleness"]
+    return cast(dict[str, Any], workflow["jobs"]["release-staleness"])
 
 
 def _run_text() -> str:
-    return next(
-        step["run"] for step in _job()["steps"] if step.get("name") == MEASURE_STEP_NAME
+    return cast(
+        str,
+        next(
+            step["run"]
+            for step in _job()["steps"]
+            if step.get("name") == MEASURE_STEP_NAME
+        ),
     )
 
 
@@ -137,10 +142,6 @@ def test_absent_or_conditional_job_is_refused() -> None:
     assert job["timeout-minutes"] == 10
     assert job["permissions"] == {"contents": "read"}
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    jobs = list(workflow["jobs"])
-    index = jobs.index("release-staleness")
-    assert jobs[index - 1] == "canonical-file-shape"
-    assert jobs[index + 1] == "ci-summary"
     checkout = job["steps"][0]
     assert (
         checkout["uses"] == workflow["jobs"]["canonical-file-shape"]["steps"][0]["uses"]
@@ -162,14 +163,66 @@ def test_missing_or_skippable_ci_summary_registration_is_refused() -> None:
     sys.modules[spec.name] = gate
     try:
         spec.loader.exec_module(gate)
-        assert JOB_DISPLAY_NAME in gate.STRICT_GATE_JOBS
-        assert gate.STRICT_GATE_JOBS[-2:] == (
-            "Canonical File Shape (OMN-20304)",
-            JOB_DISPLAY_NAME,
-        )
-        assert JOB_DISPLAY_NAME not in gate.SKIPPABLE_GATE_JOBS
+        _assert_strict_registration(gate.STRICT_GATE_JOBS, gate.SKIPPABLE_GATE_JOBS)
     finally:
         sys.modules.pop(spec.name, None)
+
+
+def _assert_strict_registration(
+    strict_jobs: tuple[str, ...], skippable_jobs: tuple[str, ...]
+) -> None:
+    assert strict_jobs.count(JOB_DISPLAY_NAME) == 1
+    assert JOB_DISPLAY_NAME not in skippable_jobs
+
+
+def test_unrelated_jobs_do_not_change_release_gate_requirements(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    workflow["jobs"] = {
+        "unrelated-gate": {"name": "Another gate"},
+        **dict(reversed(list(workflow["jobs"].items()))),
+    }
+    path = tmp_path / "ci.yml"
+    path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", path)
+    test_absent_or_conditional_job_is_refused()
+
+
+@pytest.mark.parametrize("placement", ["job", "step"])
+@pytest.mark.parametrize("control", ["if", "continue-on-error"])
+def test_release_gate_still_refuses_conditional_or_tolerated_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, placement: str, control: str
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["release-staleness"]
+    target = job if placement == "job" else job["steps"][-1]
+    target[control] = True
+    path = tmp_path / "ci.yml"
+    path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", path)
+    with pytest.raises(AssertionError):
+        test_absent_or_conditional_job_is_refused()
+
+
+@pytest.mark.parametrize(
+    ("strict_jobs", "skippable_jobs"),
+    [
+        (("Another gate",), ()),
+        ((JOB_DISPLAY_NAME, JOB_DISPLAY_NAME), ()),
+        ((JOB_DISPLAY_NAME,), (JOB_DISPLAY_NAME,)),
+    ],
+)
+def test_registration_refuses_missing_duplicate_or_skippable_gate(
+    strict_jobs: tuple[str, ...], skippable_jobs: tuple[str, ...]
+) -> None:
+    with pytest.raises(AssertionError):
+        _assert_strict_registration(strict_jobs, skippable_jobs)
+
+
+def test_registration_accepts_unrelated_strict_gates_in_any_order() -> None:
+    _assert_strict_registration(("Another gate", JOB_DISPLAY_NAME), ())
+    _assert_strict_registration((JOB_DISPLAY_NAME, "Another gate"), ())
 
 
 @pytest.mark.parametrize("path", ["src/a.py", "pyproject.toml", "uv.lock"])
