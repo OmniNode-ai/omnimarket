@@ -1167,6 +1167,19 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-20915: the source-control nodes (every node directory named
+      # *github*) reach GitHub through their transport, never the gh CLI or a
+      # hand-written api.github.com URL. The test plants a violation and
+      # requires the scan to refuse it. SYNC with the ci.yml lint step
+      # "Source-control nodes do not use the gh CLI (OMN-20915)".
+      - id: scm-nodes-no-gh-cli
+        name: Source-control nodes do not use the gh CLI (OMN-20915)
+        language: system
+        entry: uv run pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/[^/]*github[^/]*/.*\.py|tests/ci/test_scm_nodes_no_gh_cli_omn20915\.py|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-17372: house inference-credential gate. Fails if a delegation
       # backend re-declares `api_key_env`, or if any omnimarket source reads a
       # house provider key (OPENROUTER/GLM/GEMINI/...) from the process

@@ -70,3 +70,10 @@ dod_evidence:
         check_value: "uv run pytest tests/test_github_api_triage.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20915-scm-nodes-no-cli"
+    description: "The source-control nodes (every node directory named with github) reach GitHub through their transport, never the CLI or a literal API host URL; the four moved or gateway nodes stay registered onex.nodes entry points. The test plants a violation in a throwaway family and requires the scan to refuse it; the same test is the scm-nodes-no-gh-cli pre-commit hook and the ci.yml lint step."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
