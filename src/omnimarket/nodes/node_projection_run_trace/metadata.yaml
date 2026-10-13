@@ -1,0 +1,27 @@
+name: projection_run_trace
+version: "1.0.0"
+description: "Bus-backed ordered steps of one delegation run, per tenant."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  # Step 1 of OMN-19987 ships only this node's migrations; the contract and handler follow
+  # after the omnibase_infra release that grants the table, and set this to true.
+  full_runtime: false
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, delegation, workflow, reducer]
+ownership:
+  run_trace:
+    ddl_owner: omnimarket.nodes.node_projection_run_trace
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_run_trace.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns the per-run step read model; infra vendors its migration."
+pack: "data"
+display_name: "Projection: Run Trace"
+node_role: "effect"

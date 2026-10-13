@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19987"
+title: "The run_trace migrations keep one tenant's steps out of another tenant's reads and writes"
+summary: "First of two steps. This change adds the three run_trace migrations and the declaration of who owns the table; the node that folds and writes run steps follows after an omnibase_infra release grants the table. What this step proves is the storage half of AC2: on a real Postgres, a session bound to one tenant neither reads nor writes another tenant's step, and a session with no tenant set reads and writes nothing. The fold-level proof of AC1 and of AC2 over a recorded chain arrives with the node."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19987-ac2-tenant-isolated-run-trace-table"
+    statement: |-
+      The run_trace table is keyed on tenant, run and step sequence, has row-level security enabled and forced under one tenant_isolation policy, and refuses at the database what the step model refuses.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: Another tenant's event mixed into that chain never appears -- falsifier: the same pytest finds it
+evidence_requirements:
+  - kind: "tests"
+    description: "The migration proof passes at the head against a real Postgres and fails at the merge base, where the three migration files do not exist."
+    command: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19987-ac2-run-trace-table-tenant-isolation"
+    description: "On a real Postgres the two migrations apply twice; row-level security is enabled and forced under the single tenant_isolation policy; a session bound to one tenant inserts its own step, is refused another tenant's step of the same run and reads only its own, with both tenants' rows present as the control; a session with no tenant set reads no row and is refused every insert. This is the storage half of AC2 only: the fold test that mixes another tenant's event into a recorded chain belongs to the node and is bound when the node lands."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

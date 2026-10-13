@@ -9,37 +9,41 @@
 # runtime auto-wiring attaches only contracts declaring both handler_routing
 # and event_bus, just like node_lab_work_unit_effect.
 #
-# ADDRESSING. The serve process reads the command topic in ONE consumer group and
+# ADDRESSING. The serve process reads the writer topics in ONE consumer group and
 # handles each command inside its subscription callback, so the group's position
 # passes a command only after its receipt is published. A lock beside the ledger
 # file admits one serve process per ledger. The handler dedups on the request's
 # req= cell, so a command redelivered after a crash is answered, never appended
 # twice (TLA+ model and review: omnibase_internal tla/ledger_bus_append).
-# OMN-20282: every request is signed with its principal's Ed25519 key and
-# verified against the issuer-owned public records supplied to serve. Unsigned,
-# forged and unknown identities fail before the append command. Every row is
-# stamped with the verified principal; RULING and OPERATOR-CONSENT require the
-# operator identity configured locally on the ledger host. Keys and that identity
-# are never trusted from the command envelope. Issuance and rollout stay gated.
+# IDENTITY. Rows are attributed to the broker principal of the producing
+# connection, attested by the per-principal topic WRITE ACL declared in
+# omnibase_infra deploy/lab/developer-principal-grants.yaml (issued principals)
+# and the deployment's broker ACL declaration (host logins and the ledger
+# host's read side). Each principal
+# writes only its own topic; the serve process takes identity from that topic.
+# Every row is stamped with that writer; RULING and OPERATOR-CONSENT require
+# the operator identity configured locally on the ledger host. No row signing.
 # The ledger host and append argv are deployment facts
 # given on the serve command line; nothing here names a machine.
 name: "node_work_ledger_append_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
-contract_version: {major: 0, minor: 3, patch: 0}
-node_version: "0.3.0"
+contract_version: {major: 0, minor: 4, patch: 0}
+node_version: "0.4.0"
 description: >
-  Verifies signed lab-host rows, stamps their authenticated principal and appends
-  them on the ledger host, deduplicating by request id and returning line numbers.
+  Attributes rows to the broker principal of the producing connection, attested
+  by per-principal topic WRITE ACLs declared in omnibase_infra
+  deploy/lab/developer-principal-grants.yaml, with no per-row signing. Appends
+  on the ledger host, deduplicating by request id and returning line numbers.
 input_model:
   name: "ModelWorkLedgerAppendRequest"
   module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
-  description: "Request id, rows, ledger id, lane, host, time, principal and Ed25519 signature."
+  description: "Request id, rows, ledger id, lane, host and time; writer identity comes from the broker."
 output_model:
   name: "ModelWorkLedgerAppendReceipt"
   module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
-  description: "Status, exit code, output tail, ledger lines, host, duration and verified principal."
+  description: "Status, exit code, output tail, ledger lines, host, duration and broker writer principal."
 handler:
   module: "omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect"
   class: "HandlerWorkLedgerAppendEffect"
@@ -57,7 +61,18 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 180000
+# One command topic per writer principal: onex.<kind>.<producer>.<name_prefix><principal>.v<version>.
+# The parts are declared apart, because the writer's name is the last piece of
+# the topic's name and a `{principal}` slot inside a full topic string fails the
+# architecture lint's topic-name rule.
+writer_topics:
+  kind: "cmd"
+  producer: "omnimarket"
+  name_prefix: "work-ledger-append-from-"
+  version: 1
+  principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
 runtime_dispatch:
+  # UNATTRIBUTED legacy topic: serve answers parsed requests with a refusal.
   command_topic: "onex.cmd.omnimarket.work-ledger-append-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.work-ledger-append-completed.v1"

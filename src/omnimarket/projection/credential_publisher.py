@@ -60,6 +60,9 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.enums.enum_credential_expiry_warning import (
+    EnumCredentialExpiryWarning,
+)
 from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
@@ -284,6 +287,42 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
         ),
     )
 
+    expires_at: datetime | None = Field(
+        default=None,
+        description=(
+            "OMN-20991. When the provider stops honouring this key, as set where "
+            "the key was created. Recorded on the credential so routing can skip "
+            "a lapsed key and one alert can cover a pool before it lapses. "
+            "Company keys all expire on January 1; any other date, or none, is "
+            "stored with a warning, never refused."
+        ),
+    )
+
+    @field_validator("expires_at", mode="after")
+    @classmethod
+    def _expires_at_must_be_aware_and_ahead(
+        cls, expires_at: datetime | None
+    ) -> datetime | None:
+        """A naive time has no instant, and a past one names a dead key.
+
+        Both are refused before anything is stored: a naive value would be read
+        in whatever zone the reader happens to run in, and a key whose expiry
+        already passed can only ever fail at the provider.
+        """
+        if expires_at is None:
+            return None
+        if expires_at.tzinfo is None or expires_at.utcoffset() is None:
+            raise ValueError(
+                "expires_at must carry a timezone (for example 2027-01-01T00:00:00Z); "
+                "nothing was stored."
+            )
+        if expires_at <= datetime.now(UTC):
+            raise ValueError(
+                f"expires_at {expires_at.isoformat()} has already passed: a key "
+                "past its expiry cannot be used; nothing was stored."
+            )
+        return expires_at
+
     @field_validator("provider", mode="after")
     @classmethod
     def _provider_must_be_on_the_customer_catalogue(cls, provider: str) -> str:
@@ -372,6 +411,11 @@ class ModelInferenceCredentialResponse(BaseModel):
     #: which the route runs. ``None`` when the list could not be read at
     #: registration; the effect then resolves it at the first delegation.
     model: str | None = None
+    #: OMN-20991. The expiry recorded with the credential, if one was given.
+    expires_at: datetime | None = None
+    #: OMN-20991. Set when the expiry is absent or is not January 1. A warning,
+    #: never a refusal: the key is stored and routed either way.
+    expiry_warning: EnumCredentialExpiryWarning | None = None
     created_at: datetime
 
 
@@ -406,6 +450,9 @@ class ModelCredentialRegisteredEvent(BaseModel):
     # sha256(value): enough to tell two keys apart, never enough to recover one.
     fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{8}$")
     set_at: datetime | None = None
+    # OMN-20991. Optional for the same reason: an older producer's event still
+    # validates, and a credential without one is simply undated.
+    expires_at: datetime | None = None
 
 
 class ModelCredentialRevokedEvent(BaseModel):
@@ -699,6 +746,23 @@ async def _resolve_registration_model(
     return discovery.model
 
 
+def credential_expiry_warning(
+    expires_at: datetime | None,
+) -> EnumCredentialExpiryWarning | None:
+    """The warning a registration returns for ``expires_at``, or ``None``.
+
+    OMN-20991, operator ruling 2026-10-11T16:02:35Z: every company key expires
+    on January 1, so one date covers the pool. The date is read in UTC, the
+    zone every stored timestamp is compared in.
+    """
+    if expires_at is None:
+        return EnumCredentialExpiryWarning.EXPIRY_ABSENT
+    in_utc = expires_at.astimezone(UTC)
+    if (in_utc.month, in_utc.day) != (1, 1):
+        return EnumCredentialExpiryWarning.EXPIRY_NOT_JANUARY_1
+    return None
+
+
 async def register_inference_credential(
     request: ModelInferenceCredentialCreateRequest,
     *,
@@ -785,6 +849,7 @@ async def register_inference_credential(
             for key, value in (("plan", plan), ("model", model))
             if value is not None
         },
+        expires_at=request.expires_at,
     )
     envelope: ModelEventEnvelope[
         ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
@@ -815,6 +880,8 @@ async def register_inference_credential(
         provider=request.provider,
         plan=plan,
         model=model,
+        expires_at=request.expires_at,
+        expiry_warning=credential_expiry_warning(request.expires_at),
         created_at=envelope.envelope_timestamp,
     )
 
