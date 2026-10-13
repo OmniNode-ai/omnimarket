@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20780"
+title: "The tests that pin node_dod_verify's refusal of a self-accepted binding run in the required lint job and a pre-commit hook"
+summary: "Operator ruling 2026-10-03T00:40:00Z: a criterion binding is never accepted by the lane that authored it. node_dod_verify carries the check (ac_falsifier_checks.self_accepted_bindings, with the demotion in the verify handler) and tests/test_occ_falsifier_checks.py and tests/test_dod_verify_acceptance_basis.py pin it, but no workflow step or hook named them. A lint step and a check-only hook now run both, with a wiring test that fails when either is dropped."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-wire-self-accepted-bindings"
+    statement: |-
+      The tests that prove node_dod_verify refuses a binding accepted by its own author run in a pre-commit hook and in the required lint job.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the pre-commit hook dod-verify-self-accepted-bindings and the required lint job both run tests/test_occ_falsifier_checks.py and tests/test_dod_verify_acceptance_basis.py -- falsifier: uv run pytest tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py -q -p no:randomly --no-cov fails at the merge base because the hook and the lint step are absent
+      - id: "AC2"
+        statement: |-
+          AC2: the guarded tests pass at the head -- falsifier: uv run pytest tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py -q -p no:randomly --no-cov fails when the self-accepted demotion is removed
+evidence_requirements:
+  - kind: "tests"
+    description: "The hook and the lint job run the guarding tests, and the guarding tests pass."
+    command: "uv run pytest tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20780-wiring"
+    description: "The hook and the lint step name both guarding test files, and the wiring test passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20780-guard-tests-pass"
+    description: "The self-accepted binding tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
