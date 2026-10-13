@@ -42,7 +42,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import click
 import yaml
@@ -336,6 +336,27 @@ def _resolve_model(
         f"{discovery.listed_count} models your key can use)."
     )
     return discovery.model
+
+
+def _model_chosen_by(
+    provider: str | None,
+    plan: str | None,
+    model: str | None,
+    model_option: str | None,
+) -> Literal["customer", "catalogue"] | None:
+    """OMN-21078: record the chooser, including a prompted customer choice."""
+    if model is None:
+        return None
+    backend = (
+        resolve_byok_provider_backend(provider, plan=plan)
+        if provider is not None
+        else None
+    )
+    if model_option is not None or (
+        backend is not None and backend.customer_chooses_model
+    ):
+        return "customer"
+    return "catalogue"
 
 
 def _stdin_is_tty() -> bool:
@@ -869,6 +890,7 @@ def store_secret_value(
         if provider is not None
         else None
     )
+    model_chosen_by = _model_chosen_by(provider, plan, model, model_option)
     # OMN-19985: the local secret store effect stores the key and, for a provider
     # key, registers it under a freshly minted route ref (replacing any earlier
     # one for this provider, one key each) and returns the credential events.
@@ -881,6 +903,7 @@ def store_secret_value(
                 force=force,
                 plan=plan,
                 model=model,
+                model_chosen_by=model_chosen_by,
             )
         )
     except LocalSecretStoreRefusedError as refusal:

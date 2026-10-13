@@ -505,7 +505,11 @@ async def test_local_dispatch_terminalises_customer_route_without_house_fallback
         resolve_api_key_with_source_loop_safe,
     )
     credentials.register_local_byok_credential(
-        "openrouter", KEY, model=old, db_path=db_path
+        "openrouter",
+        KEY,
+        model=old,
+        model_chosen_by="catalogue",
+        db_path=db_path,
     )
     _ladder_with_every_successor(
         monkeypatch,
@@ -567,7 +571,11 @@ async def test_local_dispatch_retries_a_customer_5xx_on_its_own_backend_within_b
         resolve_api_key_with_source_loop_safe,
     )
     credentials.register_local_byok_credential(
-        "openrouter", KEY, model=old, db_path=db_path
+        "openrouter",
+        KEY,
+        model=old,
+        model_chosen_by="catalogue",
+        db_path=db_path,
     )
     _ladder_with_every_successor(
         monkeypatch,

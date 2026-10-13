@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21078"
+title: "A customer's chosen OpenRouter model is never re-aimed or overwritten, including a :free model"
+summary: "On a provider where the customer chooses the model, both delegation call effects now ask the credential who chose its model instead of matching the model against the catalogue's preference patterns. A customer's choice, a :free slug included, and a credential with no record are called once and never re-aimed or stored over. A credential that records the catalogue picked its model keeps the one-shot re-aim. The local credential table gains a nullable model_chosen_by column, written by onex secret set and by the call-time re-resolve."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-chosen-free-model-called-once"
+    statement: "A customer-chosen :free model gets one provider call on a 429 and on a 404, and its stored model is never replaced."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a chosen google/gemma-4-31b-it:free gets exactly one provider call on a 429 and on a 404 -- falsifier: a handler test with a recording transport returning 429 then 404 asserts one call each and no re-aim"
+      - id: "AC2"
+        statement: "AC2: record_local_byok_model is never called for a customer-chosen model -- falsifier: a handler test with a spy on record_local_byok_model asserts zero calls for a customer-chosen credential"
+  - id: "req-catalogue-pick-keeps-re-aim"
+    statement: "A model the catalogue picked keeps its one-shot re-aim once its credential records who chose it."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: a model the catalogue picked keeps its one-shot re-aim, once the credential records who chose its model -- falsifier: a handler test with a catalogue-picked credential asserts exactly one re-aim on 429"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the in-process effect and the bus effect over a recording provider, with the credential store recording who chose the model."
+    command: "uv run pytest tests/test_omn21078_chosen_free_model_never_re_aimed.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21078-ac1-one-call"
+    description: "A chosen :free model gets one provider call on a 429 and on a 404, in the in-process effect and the bus effect, with no list-models read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21078_chosen_free_model_never_re_aimed.py -q -n 0 -p no:randomly --no-cov -k 'one_call or treated_as_a_choice'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21078-ac2-never-stored-over"
+    description: "record_local_byok_model is spied at zero calls and the stored model is read back unchanged after a 404 on a customer-chosen credential."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21078_chosen_free_model_never_re_aimed.py -q -n 0 -p no:randomly --no-cov -k 'never_stored_over'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21078-ac3-catalogue-pick-re-aims"
+    description: "A credential that records the catalogue picked its model is re-aimed exactly once on a 429 and on a 404, in both effects; the record is written by registration and by the call-time re-resolve."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21078_chosen_free_model_never_re_aimed.py tests/test_omn20844_chosen_model_never_re_aimed.py -q -n 0 -p no:randomly --no-cov -k 'catalogue_picked or re_aim or records_who_chose or marks_it_catalogue'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21078-deploy-probe"
+    description: "Deploy probe. Both delegation call effects read who chose the credential's model at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "git grep -q resolve_local_byok_model_chooser HEAD -- src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_llm_delegation_call.py src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py"
+        cwd: "${OMNI_HOME}/omnimarket"

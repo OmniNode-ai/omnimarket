@@ -14,13 +14,15 @@ by a free model. On a row that declares ``customer_chooses_model``:
   ``BYOK_MODEL_NOT_CHOSEN`` before any call, instead of resolving a ``:free``
   model for the customer.
 
-A model the catalogue prefers (a ``:free`` slug the customer may still choose)
-keeps the existing one-shot re-aim, pinned by the OMN-19205/OMN-20555 tests.
+A model the catalogue picked, which its credential records (OMN-21078), keeps
+the existing one-shot re-aim, pinned by the OMN-19205/OMN-20555 tests. A chosen
+``:free`` model is not re-aimed either: see the OMN-21078 test module.
 Fakes only, no network.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -35,6 +37,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
 )
 from omnimarket.routing import byok_model_discovery as discovery
 from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
+from tests.chains.local.harness import store_model_credential
 from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     GEMMA,
     KEY,
@@ -98,9 +101,12 @@ def test_an_unresolved_openrouter_credential_is_refused_before_any_call(
     assert models.calls == []
 
 
-def test_a_catalogue_preferred_free_model_still_re_aims_once(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_catalogue_picked_free_model_still_re_aims_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    store_model_credential(
+        tmp_path / "delegation.sqlite", REF, model=GEMMA, model_chosen_by="catalogue"
+    )
     provider, _ = _bind(monkeypatch, [429, 200], [GEMMA, NEMOTRON])
     result = effect.HandlerLlmDelegationCall().__call__(_chosen(GEMMA))
 

@@ -32,6 +32,7 @@ from omnimarket.routing import byok_model_discovery as discovery
 from tests.chains.local.harness import (
     house_openrouter_rung,
     run_local_delegation,
+    store_model_credential,
     use_local_store,
 )
 from tests.chains.local.test_chain_l6_typed_credential_refusals_omn18698 import (
@@ -71,6 +72,14 @@ OK_BODY = {
     ],
     "usage": {"prompt_tokens": 1, "completion_tokens": 1},
 }
+
+
+@pytest.fixture(autouse=True)
+def _ref_is_catalogue_picked(tmp_path: Path) -> None:
+    """OMN-21078: only a credential that records a catalogue pick is re-aimed."""
+    store_model_credential(
+        tmp_path / "delegation.sqlite", REF, model=GEMMA, model_chosen_by="catalogue"
+    )
 
 
 def _openrouter() -> Any:
@@ -225,7 +234,7 @@ async def test_the_receipt_carries_one_rejected_and_one_accepted_attempt(
         resolve_api_key_with_source_loop_safe,
     )
     credentials.register_local_byok_credential(
-        "openrouter", KEY, model=GEMMA, db_path=db_path
+        "openrouter", KEY, model=GEMMA, model_chosen_by="catalogue", db_path=db_path
     )
     _ladder_with_every_successor(
         monkeypatch,
