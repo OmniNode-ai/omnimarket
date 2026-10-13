@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20911"
+title: "The source-control gateway's run-view carries each step's started_at and completed_at, so the published-board reader can date a publish without a gh read"
+summary: >-
+  onex scm run-list, run-view and job-log already answer the three Actions reads the
+  published-board reader makes. run-view dropped the one field the reader dates a
+  publish by, the upload step's completed_at. The gateway's job step model now
+  carries started_at and completed_at. No operation is added, so the set of reads the
+  gateway serves, and the gh shim's allowances, are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20911-step-timestamps"
+    statement: "A run's jobs read through the gateway names when each step started and completed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: onex scm run-view returns started_at and completed_at for every step of every job, and null for a step that has not run -- falsifier: tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -k steps fails with an AttributeError on ModelJobStep at the merge base"
+  - id: "req-omn20911-no-new-read"
+    statement: "The gateway serves the same set of reads as before this change."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the gateway contract declares the same 14 operations and the onex scm verb table still binds each to exactly one verb -- falsifier: the operation count below changes, or tests/unit/handlers/scm fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "The gateway's recorded-transport read tests and the onex scm command tests."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect tests/unit/handlers/scm -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20911-ac1-step-timestamps"
+    description: "A run's jobs read through the gateway carry started_at and completed_at on every step, null for a step that has not run, at this head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q --no-cov -k run_jobs"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20911-ac2-no-new-read"
+    description: "The gateway contract still declares exactly 14 operations and the scm verb table binds each of them, at this head."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "test \"$(grep -c '^  - name: ' src/omnimarket/nodes/node_github_repo_gateway_effect/contract.yaml)\" = 14"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm -q --no-cov"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20911-deploy-probe-step-timestamps"
+    description: "Deploy smoke on the effects runtime after the deploy agent rolls this change: import the gateway's job step model from the running container and assert it declares started_at and completed_at. The command exits nonzero when the deployed image predates this change, including the merge-base image. It reads deployed code, not this contract or a receipt. Hosted CI has no effects runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime-effects} python -c 'from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import ModelJobStep as S; assert {\"started_at\", \"completed_at\"} <= set(S.model_fields)'"
+        cwd: "${OMNI_HOME}/omnimarket"
