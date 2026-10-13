@@ -15,12 +15,18 @@ from click.testing import CliRunner
 from omnimarket.cli import cli_secret
 from omnimarket.events.topics import CREDENTIAL_REGISTERED_TOPIC_V1
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    CREDENTIALS_TABLE,
+    apply_credential_registered,
+)
 from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     register_inference_credential,
 )
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from omnimarket.routing import byok_model_discovery
 from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
@@ -330,3 +336,66 @@ def test_register_tenant_key_expires_with_a_refused_key_ends_cleanly_and_stores_
     assert _VALUE not in result.output
     assert bus.events == []
     assert asyncio.run(store.list_keys()) == []
+
+
+@pytest.mark.parametrize(
+    ("expires", "warning"),
+    [("2099-01-01", None), ("2099-03-15", "EXPIRY_NOT_JANUARY_1")],
+)
+def test_register_tenant_key_anthropic_expires_reaches_the_catalog(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    expires: str,
+    warning: str | None,
+) -> None:
+    """The Anthropic model-list path and expiry survive the same registration."""
+    store, bus = intake
+    calls: list[str] = []
+
+    def models(
+        *, url: str, extra_headers: dict[str, str], **_kwargs: Any
+    ) -> dict[str, Any]:
+        calls.append(url)
+        assert url == "https://api.anthropic.com/v1/models"
+        assert extra_headers["x-api-key"] == _VALUE
+        assert "Authorization" not in extra_headers
+        return {"data": [{"id": "claude-haiku-5-5"}]}
+
+    monkeypatch.setattr(byok_model_discovery, "get_models_json", models)
+    result = CliRunner().invoke(
+        cli_secret.secret_group,
+        [
+            "register-tenant-key",
+            "anthropic",
+            "--tenant",
+            _TENANT,
+            "--expires",
+            expires,
+        ],
+        input=f"{_VALUE}\n",
+    )
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.output)
+    assert len(calls) == 1
+    assert output["provider"] == "anthropic"
+    assert output["model"] == "claude-haiku-5-5"
+    assert output["expires_at"] == f"{expires}T00:00:00Z"
+    assert output.get("expiry_warning") == warning
+    assert asyncio.run(store.get_secret(output["api_key_ref"])) == _VALUE
+    assert _VALUE not in result.output
+    assert len(bus.events) == 1
+    event_json, topic, _key = bus.events[0]
+    assert topic == CREDENTIAL_REGISTERED_TOPIC_V1
+    assert _VALUE not in event_json
+    payload = json.loads(event_json)["payload"]
+    assert payload["metadata"]["model"] == "claude-haiku-5-5"
+    assert payload["expires_at"].startswith(f"{expires}T00:00:00")
+    db = SqliteDatabaseAdapter(tmp_path / "catalog.sqlite")
+    apply_credential_registered(payload, db)
+    [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": output["api_key_ref"]})
+    assert row["provider"] == "anthropic"
+    assert row["expires_at"] == payload["expires_at"]
+    apply_credential_registered({**payload, "expires_at": None}, db)
+    [redelivered] = db.query(CREDENTIALS_TABLE, {"api_key_ref": output["api_key_ref"]})
+    assert redelivered["expires_at"] == payload["expires_at"]
