@@ -1004,8 +1004,10 @@ class TestOmn15800ExposureParity:
         # 71 as of OMN-19079: +1 for node_projection_open_obligations, whose
         # `schema` recorded the relation's own schema (omninode_internal)
         # instead of the database, so the loader excluded it at every boot.
+        # 72 as of OMN-19987: +1 for the bus-backed, tenant-scoped run trace
+        # (one row per step of one delegation run, ordered by step sequence).
         topic_map = real_topic_map
-        assert len(topic_map) == 71
+        assert len(topic_map) == 72
         assert "onex.snapshot.projection.metering-summary.v1" in topic_map
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         assert "onex.snapshot.projection.delegation.acceptance-eval.v1" in topic_map

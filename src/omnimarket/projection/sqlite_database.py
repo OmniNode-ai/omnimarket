@@ -275,6 +275,31 @@ _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS = (
     + "END",
 )
 
+# OMN-19987: one row per step of one delegation run. The key is the step
+# sequence the delegate orchestrator assigned; it is the run's only order. Rows
+# are written once and never updated, so the insert rowid is the cursor.
+_RUN_TRACE_DDL = """
+CREATE TABLE IF NOT EXISTS run_trace (
+    projection_cursor INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    step_sequence INTEGER NOT NULL CHECK (step_sequence >= 1),
+    step_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    duration_ms INTEGER,
+    outcome TEXT NOT NULL,
+    failure_cause TEXT,
+    backend_id TEXT,
+    model_id TEXT,
+    attempt_number INTEGER,
+    reason TEXT,
+    candidates TEXT NOT NULL DEFAULT '[]',
+    failing_step_sequence INTEGER,
+    updated_at TEXT NOT NULL,
+    UNIQUE (tenant_id, correlation_id, step_sequence)
+)
+"""
+
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
     tenant_id TEXT NOT NULL,
@@ -502,6 +527,7 @@ class SqliteDatabaseAdapter:
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_DDL)
+        conn.execute(_RUN_TRACE_DDL)
         conn.execute(_METERING_SUMMARY_DDL)
         conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)

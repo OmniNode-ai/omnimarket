@@ -52,7 +52,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -173,6 +173,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_d
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
+    ProtocolRunStepPublisher,
+    RunStepRecorder,
+)
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
 # (``handler_delegation_workflow.handle_gate_result`` :1240-1253). The quality-gate
@@ -214,6 +218,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
+    resolve_task_class_tier_order,
     shipped_house_credential_refs,
     sibling_backend_available_in_tier,
     tier_for_backend,
@@ -607,6 +612,20 @@ def _attempt_provider_id(endpoint_ref: str) -> str | None:
         return quota_domain_for_endpoint(endpoint_ref)
     except Exception:
         return None
+
+
+def _route_candidates(task_type: str, excluded_tiers: set[str]) -> tuple[str, ...]:
+    """The tiers still open to this run, in the task class's declared order.
+
+    Shown on the routing step (OMN-19987). It never decides anything, so a
+    ladder that cannot be read is reported as no candidates, not as an error.
+    """
+    try:
+        ladder = resolve_task_class_tier_order(task_type)
+    except Exception:
+        logger.warning("tier order unreadable for task_type=%s", task_type)
+        return ()
+    return tuple(tier for tier in ladder if tier not in excluded_tiers)
 
 
 def _is_local_ladder_rung(backend_id: str) -> bool:
@@ -1072,8 +1091,14 @@ class LocalDelegationDispatchPort:
         quota_observation_sink: ProtocolProviderQuotaObservationSink | None = None,
         terminal_publisher: EmitEffectTopicPublisher | None = None,
         metering_refresh_publisher: ProtocolMeteringRefreshPublisher | None = None,
+        run_step_publisher: ProtocolRunStepPublisher | None = None,
     ) -> None:
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-19987: where each numbered step of a run is published. By default
+        # the same emit effect the terminal uses (spool, then the bus).
+        self._run_step_publisher: ProtocolRunStepPublisher = (
+            run_step_publisher or self._terminal_publisher
+        )
         # OMN-19977: where the end-of-delegate metering refresh is delivered.
         # None is mode 1: in-process, to the metering node, on the local store.
         self._metering_refresh_publisher = metering_refresh_publisher
@@ -1264,6 +1289,16 @@ class LocalDelegationDispatchPort:
         resolved_tenant_id = resolve_or_mint_local_deployment_tenant_id(
             tenant_id or (get_settings().onex_tenant_id or None)
         )
+        # OMN-19987: this run's step counter. Every step below takes its number
+        # here, in the order this method reaches it; the Workflow page shows the
+        # run in that order and no other.
+        run_steps = RunStepRecorder(
+            tenant_id=resolved_tenant_id,
+            correlation_id=correlation_id,
+            publisher=self._run_step_publisher,
+            store=self._evidence_db,
+        )
+        run_steps.request(task_type=task_type)
 
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances
@@ -1402,6 +1437,14 @@ class LocalDelegationDispatchPort:
         byok_retry_counts: dict[str, int] = {}
 
         while True:
+            # OMN-19987: a backend chosen for this pass is a routing decision;
+            # a retry on the backend already chosen is not a new one.
+            run_steps.routing(
+                backend_id=backend.backend_id,
+                model_id=backend.model_id,
+                tier=_routing_tier_name(backend),
+                candidates=_route_candidates(task_type, excluded_tiers),
+            )
             # OMN-17434: the single point on this bus-less port where a
             # backend becomes EXECUTABLE — the initial resolution (pinned or
             # tier-derived), every escalation hop, and every same-tier retry
@@ -1444,6 +1487,14 @@ class LocalDelegationDispatchPort:
                     f"truncating. This is a GROUNDING budget, not the model's "
                     f"context window -- the prompt fits the window and would "
                     f"have been answered, ungrounded."
+                )
+                run_steps.provider_call(
+                    started_at=datetime.now(UTC),
+                    duration_ms=None,
+                    backend_id=backend.backend_id,
+                    model_id=backend.model_id,
+                    failure_cause=EnumDelegationFailureClass.CONTEXT_TOO_LARGE.value,
+                    reason=f"not sent: {over_budget_message}",
                 )
                 attempts.append(
                     {
@@ -1507,6 +1558,11 @@ class LocalDelegationDispatchPort:
                     # on a context ceiling must not be told its problem is a
                     # missing key. Widening it here means giving the query the
                     # real token estimate first, not adding the call.
+                    run_steps.terminal(
+                        succeeded=False,
+                        backend_id=backend.backend_id,
+                        model_id=backend.model_id,
+                    )
                     return {
                         "status": "failed",
                         "content": best_content,
@@ -1535,6 +1591,8 @@ class LocalDelegationDispatchPort:
             if progress is not None:
                 progress.escalation_count = escalation_count
                 progress.cost_usd = float(cumulative_cost_usd)
+            call_started_at = datetime.now(UTC)
+            call_started = time.monotonic()
             attempt_outcome = await self._run_single_attempt(
                 backend=backend,
                 prompt=prompt,
@@ -1591,6 +1649,36 @@ class LocalDelegationDispatchPort:
                     transport_failure_message = ""
                     transport_is_failure = False
             self._deliver_quota_observation(transport_result, quota_observations)
+
+            # OMN-19987: the call as a step. Its duration is the provider's own
+            # latency when it reported one, else the time this attempt took.
+            call_duration_ms = transport_result.latency_ms or int(
+                (time.monotonic() - call_started) * 1000
+            )
+            if not transport_is_failure:
+                for earlier_call in transport_result.earlier_model_attempts:
+                    run_steps.provider_call(
+                        started_at=call_started_at,
+                        duration_ms=None,
+                        backend_id=backend.backend_id,
+                        model_id=earlier_call.model_id,
+                        failure_cause=earlier_call.failure_class.value,
+                        reason=earlier_call.error_message,
+                    )
+            run_steps.provider_call(
+                started_at=call_started_at,
+                duration_ms=call_duration_ms,
+                backend_id=backend.backend_id,
+                model_id=transport_result.served_model_id or backend.model_id,
+                failure_cause=(
+                    None
+                    if not transport_is_failure
+                    else transport_failure_class.value
+                    if transport_failure_class is not None
+                    else "provider_call_failed"
+                ),
+                reason=transport_failure_message or None,
+            )
 
             if transport_is_failure:
                 current_tier = _routing_tier_name(backend)
@@ -1783,6 +1871,11 @@ class LocalDelegationDispatchPort:
                     # Transport failure: the gate never ran, so nothing was scored.
                     actual_score=None,
                     required_bar=None,
+                )
+                run_steps.terminal(
+                    succeeded=False,
+                    backend_id=backend.backend_id,
+                    model_id=backend.model_id,
                 )
                 return {
                     "status": "failed",
@@ -1996,6 +2089,23 @@ class LocalDelegationDispatchPort:
                     "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
+            # OMN-19987: the gate's verdict on that call, timed from the answer.
+            run_steps.quality_gate(
+                answered_at=call_started_at + timedelta(milliseconds=call_duration_ms),
+                backend_id=backend.backend_id,
+                failure_cause=(
+                    None
+                    if quality_passed
+                    else EnumDelegationFailureClass.RUBRIC_FAILED.value
+                    if gate_result.fail_category == "rubric_failed"
+                    else EnumDelegationFailureClass.QUALITY_GATE_FAILED.value
+                ),
+                reason=(
+                    f"score {gate_result.quality_score:.2f}"
+                    if quality_passed
+                    else "; ".join(gate_result.failure_reasons) or None
+                ),
+            )
 
             # OMN-14220: remember the best (highest-scoring) non-empty artifact so a
             # terminal failure can return real authored work instead of discarding it.
@@ -2063,6 +2173,11 @@ class LocalDelegationDispatchPort:
                     attempt_usage=attempt_usage,
                     actual_score=gate_result.quality_score,
                     required_bar=_declared_required_bar(task_type),
+                )
+                run_steps.terminal(
+                    succeeded=True,
+                    backend_id=backend.backend_id,
+                    model_id=attributed_model_id,
                 )
                 return {
                     "status": "completed",
@@ -2287,6 +2402,11 @@ class LocalDelegationDispatchPort:
                     attempt_usage=attempt_usage,
                     actual_score=gate_result.quality_score,
                     required_bar=_declared_required_bar(task_type),
+                )
+                run_steps.terminal(
+                    succeeded=False,
+                    backend_id=backend.backend_id,
+                    model_id=backend.model_id,
                 )
                 return {
                     "status": "failed",

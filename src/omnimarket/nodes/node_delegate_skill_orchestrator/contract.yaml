@@ -306,6 +306,8 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.delegate-skill-completed.v1
     failure: onex.evt.omnimarket.delegate-skill-failed.v1
+  # One event per step of a run, numbered by this node from one counter per run.
+  run_step_event: onex.evt.omnimarket.delegation-run-step.v1
   default_timeout_ms: 300000
   max_timeout_ms: 900000
 
@@ -446,6 +448,9 @@ event_bus:
     # delivers the observation through node_event_emit_effect; appended so the
     # terminal pair above keeps its position.
     - onex.evt.omnimarket.provider-quota-observed.v1
+    # One event per step of a run, numbered by this node; appended so the
+    # entries above keep their positions.
+    - onex.evt.omnimarket.delegation-run-step.v1
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 
@@ -456,6 +461,9 @@ published_events:
   - event_type: DelegateSkillFailed
     topic: onex.evt.omnimarket.delegate-skill-failed.v1
     description: Delegation failed with typed error.
+  - event_type: DelegationRunStep
+    topic: onex.evt.omnimarket.delegation-run-step.v1
+    description: One numbered step of one delegation run, in the order this node took it.
 
 cross_repo_dependencies:
   - repo: omnimarket
