@@ -65,5 +65,6 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'from omnimarket.models.merge_sweep import ModelMergeSweepReadRequest as M; from omnimarket.handlers import rules_merge_sweep as r; f = M.model_fields; assert {\"fleet\", \"non_product_repos\", \"out_of_scope\"} <= set(f); assert \"max_reds\" not in f; assert not hasattr(r, \"FLEET_REPOS\") and not hasattr(r, \"NON_PRODUCT_REPOS\")'"
+    check_value: |-
+      bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "from omnimarket.models.merge_sweep import ModelMergeSweepReadRequest as M; from omnimarket.handlers import rules_merge_sweep as r; f = M.model_fields; assert {\"fleet\", \"non_product_repos\", \"out_of_scope\"} <= set(f); assert \"max_reds\" not in f; assert not hasattr(r, \"FLEET_REPOS\") and not hasattr(r, \"NON_PRODUCT_REPOS\")"'
     cwd: ${OMNI_HOME}/omnimarket
