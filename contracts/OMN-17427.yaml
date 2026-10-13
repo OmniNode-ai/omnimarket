@@ -187,6 +187,13 @@ requirements:
       - id: "AC31"
         statement: |-
           AC31: discovery sends its invoke command with the requested workspace, correlation, model, timeout and prompt to workspace validation, and a rejected verdict stops agent invocation -- falsifier: the focused validation test fails when invoke_command is absent.
+  - id: "req-release-cut-needs-no-contract"
+    statement: |-
+      The ticket-contract prerequisite exempts a release cut, whose diff against the merge base is the root CHANGELOG.md with optional pyproject.toml and uv.lock, because the receipt gate refuses a cut that carries a contracts/ file.
+    acceptance:
+      - id: "AC32"
+        statement: |-
+          AC32: a pull request citing a ticket with no contract passes the prerequisite when its merge-base diff is the root CHANGELOG.md with optional pyproject.toml and uv.lock, and still fails when the diff adds any other path, lacks the root CHANGELOG.md, or the base cannot be read -- falsifier: uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -510,3 +517,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q -k test_workspace_validation_carries_invoke_command_before_agent_runs"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC31"]
+  - id: "dod-omn17427-ac32-release-cut-needs-no-contract"
+    description: "The prerequisite passes a changelog-only release cut with no contract and keeps refusing every other diff."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]
