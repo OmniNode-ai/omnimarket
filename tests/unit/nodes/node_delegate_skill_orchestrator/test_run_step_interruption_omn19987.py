@@ -258,9 +258,13 @@ async def test_two_failed_models_keep_both_calls_in_the_failure_trace(
     assert steps[-1]["failing_step_sequence"] == calls[-1]["step_sequence"]
 
 
+@pytest.mark.parametrize("ending", ["shutdown", "dispatch_deadline"])
 @pytest.mark.parametrize("second_call_started", [False, True])
 async def test_shutdown_during_stalled_discovery_never_invents_a_provider_call(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, second_call_started: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    second_call_started: bool,
+    ending: str,
 ) -> None:
     _install_ladder(monkeypatch, max_escalations=0)
     _budget(monkeypatch)
@@ -291,6 +295,8 @@ async def test_shutdown_during_stalled_discovery_never_invents_a_provider_call(
                 )
             )
         ready.set()
+        if ending == "dispatch_deadline":
+            raise TimeoutError("inner dispatch deadline expired")
         await asyncio.Event().wait()
 
     monkeypatch.setattr(port_mod, "_run_effect_handler_with_killable_timeout", stalled)
@@ -301,15 +307,17 @@ async def test_shutdown_during_stalled_discovery_never_invents_a_provider_call(
     request = _request()
     task = asyncio.create_task(HandlerDelegateSkill(dispatch_port=port).handle(request))
     await asyncio.wait_for(ready.wait(), timeout=5)
-    task.cancel()
+    if ending == "shutdown":
+        task.cancel()
     terminal = await asyncio.wait_for(task, timeout=5)
     assert terminal.terminal_failure_cause is not None
-    assert terminal.terminal_failure_cause.value == "runtime_shutdown"
+    cause = "runtime_shutdown" if ending == "shutdown" else "timeout"
+    assert terminal.terminal_failure_cause.value == cause
     steps = _steps(publisher, request.correlation_id)
     calls = [s for s in steps if s["step_kind"] == "provider_call"]
     expected = [("first-model", "rate_limited")]
     if second_call_started:
-        expected.append(("second-model", "runtime_shutdown"))
+        expected.append(("second-model", cause))
     assert [(s["model_id"], s["failure_cause"]) for s in calls] == expected
     assert [s["step_sequence"] for s in steps] == list(range(1, len(steps) + 1))
     assert steps[-1]["failing_step_sequence"] == calls[-1]["step_sequence"]

@@ -234,6 +234,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallResult,
     current_call_observer,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
+    ModelEarlierModelAttempt,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
 )
@@ -634,6 +637,8 @@ def _record_run_step_calls(
     result: ModelLlmDelegationCallResult,
     started_at: datetime,
     duration_ms: int,
+    *,
+    record_final_call: bool = True,
 ) -> None:
     """Keep every completed provider call before entering the quality gate."""
     if recorder is None:
@@ -647,6 +652,8 @@ def _record_run_step_calls(
             failure_cause=earlier.failure_class.value,
             reason=earlier.error_message,
         )
+    if not record_final_call:
+        return
     progress = current_dispatch_progress.get()
     model_id = result.served_model_id
     if model_id is None and progress is not None and progress.in_flight_calls:
@@ -3261,12 +3268,32 @@ class LocalDelegationDispatchPort:
             # Build a canonical TIMEOUT failure result (public model surface) so
             # the evidence row is materialized through the SAME projection path as
             # a transport failure — never PASS, never silent.
+            observations = [] if progress is None else progress.in_flight_calls
+            provider_call_in_flight = (
+                not observations or observations[-1].phase == "started"
+            )
             timeout_result = ModelLlmDelegationCallResult(
                 request_id=call_request.request_id,
                 success=False,
                 failure_class=EnumDelegationFailureClass.TIMEOUT,
                 error_message=failure_message,
                 endpoint_healthy=False,
+                served_model_id=(
+                    observations[-1].model_id
+                    if observations and provider_call_in_flight
+                    else None
+                ),
+                earlier_model_attempts=tuple(
+                    ModelEarlierModelAttempt(
+                        model_id=call.model_id,
+                        failure_class=call.failure_class
+                        or EnumDelegationFailureClass.UNKNOWN,
+                        error_message=call.error_message,
+                        http_status=call.http_status,
+                    )
+                    for call in observations
+                    if call.phase == "finished" and call.success is False
+                ),
             )
             _record_run_step_calls(
                 run_steps,
@@ -3274,6 +3301,7 @@ class LocalDelegationDispatchPort:
                 timeout_result,
                 call_started_at,
                 max(0, int((time.monotonic() - call_started) * 1000)),
+                record_final_call=provider_call_in_flight,
             )
             return _AttemptOutcome(
                 result=None,
