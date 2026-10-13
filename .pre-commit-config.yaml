@@ -1430,6 +1430,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20890: no timed parks. A stuck cause stays live, is retried when
+      # the base head moves, and files one ticket on first stick. SYNC with
+      # the ci.yml lint step "Landing decision park ladder (OMN-20890)".
+      - id: landing-decision-park-ladder
+        name: Landing decision park ladder (OMN-20890)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_pr_landing_decision_compute/|tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
         language: system
