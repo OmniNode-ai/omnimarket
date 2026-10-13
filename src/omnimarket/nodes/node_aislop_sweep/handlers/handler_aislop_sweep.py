@@ -23,6 +23,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import yaml
 from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
@@ -96,6 +97,10 @@ class AislopSweepRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    correlation_id: UUID | None = Field(
+        default=None,
+        description="Caller's run id; echoed on the result so an orchestrator can correlate it.",
+    )
     target_dirs: list[str] = Field(default_factory=list)
     repos: list[str] = Field(default_factory=list)
     checks: list[str] | None = None
@@ -108,6 +113,7 @@ class AislopSweepResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    correlation_id: UUID | None = None
     findings: list[ModelSweepFinding] = Field(default_factory=list)
     repos_scanned: int = 0
     status: str = "clean"  # clean | findings | partial | error
@@ -304,7 +310,11 @@ class NodeAislopSweep:
         try:
             target_dirs = require_target_dirs(request.target_dirs, request.repos)
         except SweepScopeUnresolvedError:
-            result = AislopSweepResult(status="error", dry_run=request.dry_run)
+            result = AislopSweepResult(
+                correlation_id=request.correlation_id,
+                status="error",
+                dry_run=request.dry_run,
+            )
             self._last_result = result
             self._last_elapsed = time.monotonic() - start_ts
             self._last_repos = []
@@ -357,6 +367,7 @@ class NodeAislopSweep:
         elapsed = time.monotonic() - start_ts
         status = "clean" if not findings else "findings"
         result = AislopSweepResult(
+            correlation_id=request.correlation_id,
             findings=findings,
             repos_scanned=repos_scanned,
             status=status,

@@ -9,7 +9,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 #: The models a developer chooses from, in the order onboarding lists them.
-ModelProvider = Literal["gemini", "openrouter", "openai", "ollama"]
+#: ``anthropic`` joined by operator ruling 2026-10-11T15:05:50Z (OMN-20990).
+ModelProvider = Literal["gemini", "openrouter", "openai", "anthropic", "ollama"]
 
 
 class ModelModelSetupRequest(BaseModel):

@@ -7,8 +7,10 @@ description: >
   Definition-B replay of a committed judged run. The lines of a judgments.jsonl and its
   summary.json in, one calibrated ModelDelegationAcceptanceJudgedEvent per item the matrix
   counted out, or no event and the typed refusals. Reads no file, calls no model and reads no
-  clock; the tenant, the tier of each model, the judge's model version, the rubric hash and the
-  time of judgment come from the request.
+  clock; the tenant, the tier of each model, the judge's model version, the rubric hash, the
+  time of judgment and the origin of the verdicts come from the request. A committed run from
+  before the origin amendment replays as live through the request's origin default; an eval run
+  names origin eval and its eval_run_id (OMN-20968).
 
 handler_routing:
   routing_strategy: operation_match
@@ -52,6 +54,14 @@ inputs:
     type: str
     required: true
     description: The judge run the events belong to; with the delegated call it keys each event.
+  origin:
+    type: str
+    required: false
+    description: live (the default, for a committed pre-amendment run) or eval. The events carry it.
+  eval_run_id:
+    type: str
+    required: false
+    description: Required when origin is eval and refused when origin is live.
 
 outputs:
   status:

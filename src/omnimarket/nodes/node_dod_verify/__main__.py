@@ -195,6 +195,14 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         ),
         "acceptance_retired_bindings": list(state.acceptance_retired_bindings),
         "acceptance_refused_retirements": list(state.acceptance_refused_retirements),
+        # OMN-20858: the revision of the ticket's criteria this verdict was
+        # computed against, so the Done transition can re-check it, and the
+        # criteria that drifted from the contract (null/empty: none, or the
+        # contract records no criteria to compare).
+        "criteria_revision": state.criteria_revision,
+        "criteria_drift": [
+            drift.model_dump(mode="json") for drift in state.criteria_drift
+        ],
     }
 
     def render(kept: int) -> str:
@@ -423,6 +431,13 @@ def _occ_replay_main(argv: list[str]) -> None:
             encoding="utf-8",
         )
     report = replay_records(records, repository=args.repository, count=args.count)
+    if args.rows_file is not None:
+        for row in report.rows:
+            sys.stderr.write(
+                f"replay {args.repository}#{row.pr} head={row.head_sha} "
+                f"occ={row.occ_conclusion} new={row.new_admitted} outcome={row.outcome} "
+                f"new_reason={row.new_reason} note={row.note}\n"
+            )
     if args.table_to is not None:
         args.table_to.write_text(render_replay_table(report), encoding="utf-8")
     sys.stdout.write(report.model_dump_json() + "\n")

@@ -33,7 +33,7 @@ models:
     source: "live probe"
     notes: >
       Routing key retained for downstream contract stability; the actual served
-      model is Qwen3.6-35B-A3B on .201:8000 via vLLM. Live-probed 2026-09-05
+      model is Qwen3.6-35B-A3B on the deployment's primary local endpoint via vLLM. Live-probed 2026-09-05
       (OMN-16999): GET /v1/models -> http=200, {"id": "Qwen3.6-35B-A3B",
       "owned_by": "vllm", "root": "/data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4",
       "max_model_len": 131072}. This SUPERSEDES the OMN-16419/OMN-16492 readback
@@ -54,9 +54,10 @@ models:
     observed_at: "2026-05-30T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Stale slot — the .201:8001 endpoint (llama.cpp GPU1) is DEAD: connection
+      Stale slot — the second local endpoint (llama.cpp GPU1) is DEAD: connection
       refused on live probe 2026-08-23 (OMN-16419/OMN-16442, GPU1 decommissioned).
-      Superseded by qwen3-coder-30b (Qwen3.6-35B-A3B via SGLang on .201:8000). Key retained
+      Superseded by qwen3-coder-30b (Qwen3.6-35B-A3B via SGLang on the primary
+      local endpoint). Key retained
       for routing contract stability; downstream contracts should migrate to
       qwen3-coder-30b. model_name/context_window record the last-served model.
 
@@ -87,11 +88,10 @@ models:
     source: "manual benchmark"
     notes: >
       STALE SLOT (OMN-16442, 2026-08-28) — the endpoint behind LLM_QWEN3_NEXT_URL
-      (.200:8102, MLX Qwen3.6-35B-A3B-8bit) is DEAD: `curl
-      .200:8102/v1/models` returns exit 7 "Couldn't connect to
-      server", and the canonical inventory
-      (omni_home/docs/reference/AI_LAB_HARDWARE.md, verified 2026-08-28) records
-      that ports 8100/8102/8103 on the Mac Studio have no model listener.
+      (MLX Qwen3.6-35B-A3B-8bit) is DEAD: a models request to it returns
+      exit 7 "Couldn't connect to server", and the deployment's hardware
+      inventory (verified 2026-08-28) records that the host has no model
+      listener on that port range.
       The replacement workstation service was also retired. Key retained ONLY
       because routing_tiers.yaml still names it
       as the local/cheap_cloud/cheap_frontier `eval_model`; repointing that
@@ -112,7 +112,7 @@ models:
     notes: >
       Compatibility alias for qwen3.6-35b. Key retained for routing key stability.
       STALE SLOT (OMN-16442, 2026-08-28) — inherits qwen3.6-35b's dead
-      LLM_QWEN3_NEXT_URL (.200:8102, connection refused on live probe). Not a
+      LLM_QWEN3_NEXT_URL (connection refused on live probe). Not a
       routable serving slot; see the qwen3.6-35b entry above.
 
   gemini-2.5-flash-lite:
@@ -172,7 +172,7 @@ models:
       both routes stay selectable (provider-agnostic). endpoint_url null in repo
       default; the overlay supplies the COMPLETE project+region Vertex
       OpenAI-compat URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. ADC proven HTTP
-      200 from .201. Routed via cloud-vertex-gemini bifrost backend.
+      200 from the deployment host. Routed via cloud-vertex-gemini bifrost backend.
 
   openrouter-nemotron-ultra:
     model_id: "openrouter-nemotron-ultra"

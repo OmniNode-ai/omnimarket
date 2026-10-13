@@ -12,6 +12,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from omnimarket.models.delegation_acceptance_judge.enum_acceptance_failure_class import (
     EnumAcceptanceFailureClass,
 )
+from omnimarket.models.delegation_acceptance_judge.enum_acceptance_origin import (
+    EnumAcceptanceOrigin,
+)
 
 # UUID5(NAMESPACE_URL, the judged-acceptance topic); stable across replay.
 JUDGED_ACCEPTANCE_ID_NAMESPACE = UUID("863551bd-bafa-5c15-97b8-79deed7316c0")
@@ -24,12 +27,28 @@ def judged_acceptance_event_id_for(judge_run_id: str, correlation_id: UUID) -> U
     )
 
 
+def check_origin_eval_run_id(
+    origin: EnumAcceptanceOrigin, eval_run_id: str | None
+) -> None:
+    """An eval verdict names its eval run; a live verdict has none."""
+    if origin is EnumAcceptanceOrigin.EVAL and eval_run_id is None:
+        raise ValueError("eval_run_id is required when origin is eval")
+    if origin is EnumAcceptanceOrigin.LIVE and eval_run_id is not None:
+        raise ValueError("eval_run_id is refused when origin is live")
+
+
 class ModelDelegationAcceptanceJudgedEvent(BaseModel):
     """One offline verdict with the judged call's placement and calibration.
 
     Calibration thresholds belong to the projection fold. This schema preserves
     measured calibration, including a run the fold will refuse. Event time comes
     from the call and judge; construction never samples the wall clock.
+
+    ``origin`` says whether the verdict judges live delegation traffic or a call made for an
+    eval, and ``eval_run_id`` names the eval run: required for ``eval``, refused for ``live``.
+    Neither is part of ``event_id``, which stays one delivery key per judge run and call. There is
+    no default and no mapping of a payload without ``origin``: a pre-amendment payload is refused
+    here. The one place a committed pre-amendment run is mapped to ``live`` is the replay request.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
@@ -58,11 +77,18 @@ class ModelDelegationAcceptanceJudgedEvent(BaseModel):
     quality: int = Field(strict=True, ge=0, le=3)
     failure_class: EnumAcceptanceFailureClass
     judged_at: AwareDatetime
+    origin: EnumAcceptanceOrigin
+    eval_run_id: str | None = Field(default=None, min_length=1)
     event_id: UUID = Field(
         default_factory=lambda data: judged_acceptance_event_id_for(
             data["judge_run_id"], data["correlation_id"]
         )
     )
+
+    @model_validator(mode="after")
+    def _validate_eval_run_id(self) -> Self:
+        check_origin_eval_run_id(self.origin, self.eval_run_id)
+        return self
 
     @model_validator(mode="after")
     def _validate_event_id(self) -> Self:
@@ -76,5 +102,6 @@ class ModelDelegationAcceptanceJudgedEvent(BaseModel):
 __all__ = [
     "JUDGED_ACCEPTANCE_ID_NAMESPACE",
     "ModelDelegationAcceptanceJudgedEvent",
+    "check_origin_eval_run_id",
     "judged_acceptance_event_id_for",
 ]

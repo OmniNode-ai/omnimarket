@@ -277,17 +277,23 @@ class HandlerBuildLoopOrchestrator:
 
     async def handle(
         self,
-        command: ModelLoopStartCommand | ModelOrchestratorStartCommand,
+        request: ModelLoopStartCommand | ModelOrchestratorStartCommand,
     ) -> ModelOrchestratorResult:
         """Run the autonomous build loop for up to max_cycles.
 
+        The parameter is named ``request`` because RuntimeLocal binds the
+        validated start model to a single ``handle()`` parameter by that name
+        (or by a concrete ``BaseModel`` annotation, which this union is not);
+        under any other name it fans the payload out as keyword arguments and
+        every start command is refused with a ``TypeError``.
+
         Args:
-            command: Start command with configuration.
+            request: Start command with configuration.
 
         Returns:
             ModelOrchestratorResult with per-cycle summaries.
         """
-        loop_command = self._to_loop_command(command)
+        loop_command = self._to_loop_command(request)
         self._ensure_sub_handlers()
         logger.info(
             "[BUILD-LOOP-ORCH] === ENTRY === handle() called "

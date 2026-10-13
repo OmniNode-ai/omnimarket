@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -27,6 +28,199 @@ TARGET_REPOSITORIES = [
     "omnibase_spi",
 ]
 pytestmark = pytest.mark.unit
+
+
+def test_merged_pr_extraction_drains_history_under_pipefail(tmp_path: Path) -> None:
+    """Execute the workflow pipeline with enough output to overflow a pipe."""
+    git = ["git", f"--git-dir={tmp_path / '.git'}", f"--work-tree={tmp_path}"]
+    subprocess.run([*git, "init", "--quiet"], check=True, timeout=10)
+    numbers = list(range(1000000, 1012000))
+    commits = "".join(
+        f"commit refs/remotes/origin/dev\n"
+        f"committer Replay Test <replay@example.com> {1700000000 + i} +0000\n"
+        f"data {len(subject)}\n{subject}\n\n"
+        for i, number in enumerate(numbers)
+        for subject in [f"replay subject (#{number})"]
+    )
+    subprocess.run(
+        [*git, "fast-import", "--quiet"],
+        input=commits,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    step = next(s for s in _steps(_load()) if s["name"].startswith("Clone"))
+    run = step["run"]
+    extraction = run[run.index("git log --first-parent") : run.index("test -s")]
+    proc = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", extraction],
+        env={
+            **os.environ,
+            "GIT_DIR": str(tmp_path / ".git"),
+            "GIT_WORK_TREE": str(tmp_path),
+            "branch": "origin/dev",
+            "RUNNER_TEMP": str(tmp_path),
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / "merged_prs.txt").read_text().splitlines() == [
+        str(n) for n in reversed(numbers[-200:])
+    ]
+
+
+@pytest.mark.parametrize(
+    ("declarations", "expected"),
+    [
+        (
+            {
+                "caller.yml": {
+                    "jobs": {
+                        "repo-evidence": {
+                            "uses": "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@abc",
+                            "with": {"occ-context": "nested / custom OCC verdict"},
+                        }
+                    }
+                }
+            },
+            "nested / custom OCC verdict",
+        ),
+        (
+            {
+                "receipt-gate.yml": {
+                    "on": {
+                        "workflow_call": {
+                            "inputs": {
+                                "occ-context": {
+                                    "default": "local / custom OCC verdict"
+                                },
+                            }
+                        }
+                    }
+                }
+            },
+            "local / custom OCC verdict",
+        ),
+        (
+            {
+                "ci.yml": {
+                    "jobs": {
+                        "occ-preflight": {
+                            "uses": "OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@abc",
+                            "name": "repository OCC",
+                        }
+                    }
+                }
+            },
+            "repository OCC / eligibility",
+        ),
+        ({}, None),
+        (
+            {
+                "caller.yml": {
+                    "jobs": {
+                        "repo-evidence": {
+                            "uses": "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@abc",
+                            "with": {"occ-context": ""},
+                        }
+                    }
+                }
+            },
+            None,
+        ),
+        (
+            {
+                "caller.yml": {
+                    "jobs": {
+                        "repo-evidence": {
+                            "uses": "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@abc",
+                            "with": {"occ-context": "${{ inputs.context }}"},
+                        }
+                    }
+                }
+            },
+            None,
+        ),
+        (
+            {
+                "caller.yml": {
+                    "jobs": {
+                        name: {
+                            "uses": "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@abc",
+                            "with": {"occ-context": context},
+                        }
+                        for name, context in [
+                            ("one", "one verdict"),
+                            ("two", "two verdict"),
+                        ]
+                    }
+                }
+            },
+            None,
+        ),
+    ],
+    ids=[
+        "caller-override",
+        "local-default",
+        "producer-name",
+        "missing",
+        "empty",
+        "expression",
+        "ambiguous",
+    ],
+)
+def test_repository_occ_context_is_resolved_and_fail_closed(
+    tmp_path: Path, declarations: dict[str, Any], expected: str | None
+) -> None:
+    """Run the whole replay step; intercept only the final network replay call."""
+    workflows = tmp_path / "registry" / "omnibase_spi" / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    for filename, contents in declarations.items():
+        (workflows / filename).write_text(yaml.safe_dump(contents), encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    uv = bin_dir / "uv"
+    uv.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "if args[:3] == ['run', 'python', '-']:\n"
+        "    sys.exit(subprocess.call([sys.executable, *args[2:]]))\n"
+        "Path(os.environ['CAPTURE']).write_text(json.dumps(args))\n"
+        "sys.exit(int(os.environ['REPLAY_EXIT']))\n",
+        encoding="utf-8",
+    )
+    uv.chmod(0o755)
+    capture = tmp_path / "argv.json"
+    proc = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", _replay_step(_load())["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "REPOSITORY": "omnibase_spi",
+            "OMNI_HOME": str(tmp_path / "registry"),
+            "RUNNER_TEMP": str(tmp_path),
+            "CAPTURE": str(capture),
+            "REPLAY_EXIT": "2",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    if expected is None:
+        assert proc.returncode != 0, proc.stdout
+        assert not capture.exists(), "unresolved context must stop before replay"
+    else:
+        assert proc.returncode == 2, proc.stderr
+        argv = json.loads(capture.read_text())
+        assert "--occ-context" in argv, argv
+        assert argv[argv.index("--occ-context") + 1] == expected
 
 
 def _load() -> dict[Any, Any]:
@@ -132,6 +326,31 @@ def test_summary_and_artifact_run_even_when_the_replay_is_red() -> None:
     paths = upload["with"]["path"].split()
     assert any(p.endswith("rows.json") for p in paths)
     assert any(p.endswith("table.md") for p in paths)
+
+
+def test_summary_and_artifact_publish_table_to_job_log(tmp_path: Path) -> None:
+    step = next(s for s in _steps(_load()) if s.get("name", "").startswith("Publish"))
+    out_dir = tmp_path / "replay-out"
+    out_dir.mkdir()
+    table = "| pr | outcome | note |\n| 7 | not_compared | no OCC run on the head |\n"
+    (out_dir / "table.md").write_text(table, encoding="utf-8")
+    summary = tmp_path / "summary.md"
+    proc = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "GITHUB_STEP_SUMMARY": str(summary),
+            "REPOSITORY": "omnimemory",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert table in proc.stdout
+    assert table in summary.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

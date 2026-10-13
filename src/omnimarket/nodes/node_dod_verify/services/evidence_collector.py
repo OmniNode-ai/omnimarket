@@ -79,6 +79,12 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effec
     HandlerDurableEvidenceGateEffect,
     pypi_release_files,
 )
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaCheck,
+)
+from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
+    ModelCriteriaPins,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
@@ -111,6 +117,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelRepoEvidenceVerdict,
     ModelTicketMergedPr,
 )
+from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
+    ModelTicketCriteriaRead,
+)
 from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
     resolve_retirements,
 )
@@ -128,9 +137,18 @@ from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_check,
     classify_item_checks,
 )
+from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
+    contract_structure_failure,
+    missing_contract_message,
+)
 from omnimarket.nodes.node_dod_verify.services.contract_subject import (
     inline_goal_subject,
     resolve_contract_subject,
+)
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
+    ProtocolDodTicketCriteriaReader,
+    evaluate_criteria,
+    extract_criteria_pins,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -530,6 +548,14 @@ _REF_LOCK_ERROR_MARKER = "cannot lock ref"
 # run under it records every affected check as unverifiable rather than
 # pretending the tree was current.
 _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
+
+# OMN-20858: set by the OCC replay (``handler_occ_replay``) on the verifier it
+# runs against an already-merged head. The live ticket's criteria today are not
+# the criteria that head merged against, and the replay compares a head verdict
+# with a control verdict that would read the same ticket, so the criteria-drift
+# check is not measured on that run (``criteria_check`` stays None) rather than
+# refusing every replayed contract that records criteria. Named and logged.
+_HISTORICAL_REPLAY_ENV = "DOD_VERIFY_HISTORICAL_REPLAY"
 
 # OMN-18117: path to the pin file whoever materialised this run's product
 # clones wrote — see ``ModelProductClonePinSet``. Unset (the local operator
@@ -2299,6 +2325,10 @@ def git_release_tags_containing(
     return tuple(line.strip() for line in proc.stdout.splitlines() if line.strip())
 
 
+class _SiblingCheckoutMissing(str):
+    """Typed cwd refusal; a command's output cannot manufacture this cause."""
+
+
 class EvidenceCollector:
     """Loads a ticket contract and runs dod_evidence checks.
 
@@ -2310,12 +2340,25 @@ class EvidenceCollector:
     """
 
     def __init__(
-        self, *, must_fail_runner: ProtocolMustFailTreeRunner | None = None
+        self,
+        *,
+        must_fail_runner: ProtocolMustFailTreeRunner | None = None,
+        ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
     ) -> None:
         # OMN-20032 (GC.9): runs one changed test file against the code before
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
         self._must_fail_runner = must_fail_runner
+        # OMN-20858: reads the live ticket whose criteria the contract is pinned
+        # to. None means the Linear effect, built on first use.
+        self._ticket_reader = ticket_reader
+        self._criteria_pins: ModelCriteriaPins | None = None
+        self._criteria_read_before: ModelTicketCriteriaRead | None = None
+        # OMN-20858: what the criteria-drift check established for the last
+        # ticket-contract collect(). None when the contract records no criteria
+        # (nothing to drift from) or no contract was loaded, so "not measured"
+        # is never "no drift". Read by ``handler_dod_verify``.
+        self.criteria_check: ModelCriteriaCheck | None = None
         # OMN-17795: the per-check ceiling is resolved per call from
         # ``_check_timeout_s()``, not captured here. It used to be a
         # constructor default that no caller ever passed and no operator could
@@ -3531,6 +3574,9 @@ class EvidenceCollector:
         self.acceptance_summary = None
         self.contract_subject = None
         self.contract_load_error = None
+        self.criteria_check = None
+        self._criteria_pins = None
+        self._criteria_read_before = None
         self._last_contract = None
         raw: dict[str, Any] | None
         if loaded_contract is not None:
@@ -3552,7 +3598,7 @@ class EvidenceCollector:
                         evidence_id="contract",
                         description=f"Contract file not found: {contract_path}",
                         status=EnumEvidenceCheckStatus.FAILED,
-                        message=f"File does not exist: {contract_path}",
+                        message=missing_contract_message(ticket_id),
                     )
                 ]
             self.contract_subject = resolve_contract_subject(path)
@@ -3588,42 +3634,14 @@ class EvidenceCollector:
                 )
             ]
 
-        # Validate contract belongs to the requested ticket
-        contract_ticket_id = raw.get("ticket_id")
-        if contract_ticket_id != ticket_id:
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"Contract ticket mismatch: {path}",
-                    status=EnumEvidenceCheckStatus.FAILED,
-                    message=(
-                        f"Expected ticket_id {ticket_id!r}, "
-                        f"found {contract_ticket_id!r}."
-                    ),
-                )
-            ]
-
-        if inline_items is None:
+        # Keep the loaded contract for durable-gate diagnostics even when its
+        # evidence is empty or malformed, as before the shared prerequisite.
+        if inline_items is None and raw.get("ticket_id") == ticket_id:
             self._last_contract = raw
-        dod_items = raw.get("dod_evidence", [])
-        if not isinstance(dod_items, list):
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"Invalid dod_evidence structure in contract: {path}",
-                    status=EnumEvidenceCheckStatus.FAILED,
-                    message="dod_evidence must be a list of mappings.",
-                )
-            ]
-        if not dod_items:
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"No dod_evidence entries in contract: {path}",
-                    status=EnumEvidenceCheckStatus.SKIPPED,
-                    message="Contract has empty or missing dod_evidence[] section.",
-                )
-            ]
+        failure = contract_structure_failure(ticket_id, raw, path)
+        if failure is not None:
+            return [failure]
+        dod_items = raw["dod_evidence"]
 
         # OMN-20153: the author's own accepted falsifiers become evidence items
         # here, before audiences are validated and before anything executes, so
@@ -3636,6 +3654,7 @@ class EvidenceCollector:
         # in it, so no marker may retire one, whatever ids coincide.
         declared_count = len(dod_items)
         if inline_items is None:
+            self._begin_criteria_check(ticket_id, raw, dod_items)
             derived_items, self.acceptance_summary = derive_falsifier_items(
                 raw,
                 dod_items,
@@ -4766,6 +4785,53 @@ class EvidenceCollector:
 
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
 
+    def _begin_criteria_check(
+        self, ticket_id: str, contract: dict[str, Any], dod_items: list[Any]
+    ) -> None:
+        """OMN-20858: read the live ticket before any check runs, when the contract
+        records criteria to compare it with."""
+        pins = extract_criteria_pins(contract, dod_items)
+        if pins is None:
+            return
+        if os.environ.get(_HISTORICAL_REPLAY_ENV, "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            logger.warning(
+                "%s set: %s is a replay of a merged head, so its live ticket "
+                "criteria are not read or compared",
+                _HISTORICAL_REPLAY_ENV,
+                ticket_id,
+            )
+            return
+        self._criteria_pins = pins
+        self._criteria_read_before = self._criteria_reader().read(ticket_id)
+
+    def finish_criteria_check(self) -> ModelCriteriaCheck | None:
+        """OMN-20858: read the ticket again after the checks and compare.
+
+        A second read, not the first reused, because an edit made while the
+        checks ran is exactly what the verdict must refuse. Returns None, and
+        reads nothing, when the contract recorded no criteria.
+        """
+        pins = self._criteria_pins
+        before = self._criteria_read_before
+        if pins is None or before is None:
+            return None
+        after = self._criteria_reader().read(before.ticket_id)
+        self.criteria_check = evaluate_criteria(pins, before.ticket_id, before, after)
+        return self.criteria_check
+
+    def _criteria_reader(self) -> ProtocolDodTicketCriteriaReader:
+        if self._ticket_reader is None:
+            from omnimarket.nodes.node_dod_verify.handlers.handler_dod_ticket_criteria_linear_effect import (
+                HandlerDodTicketCriteriaLinearEffect,
+            )
+
+            self._ticket_reader = HandlerDodTicketCriteriaLinearEffect()
+        return self._ticket_reader
+
     def _contract_repo_dirs(self, dod_items: list[Any]) -> tuple[str, ...]:
         """Repository directory names the contract's own PR-bound items name.
 
@@ -5011,6 +5077,16 @@ class EvidenceCollector:
                 run_cwd, cwd_err, declared = self._resolve_check_cwd(
                     check, ticket_id, contract_path
                 )
+                if isinstance(cwd_err, _SiblingCheckoutMissing):
+                    return ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        unverifiable_cause=EnumEvidenceUnverifiableCause.SIBLING_CHECKOUT_MISSING,
+                        message=cwd_err,
+                        proof_class=item_proof_class,
+                        product_clones=tuple(clones),
+                    )
                 if cwd_err is None and declared and run_cwd is not None:
                     resolution = self._assess_product_clone(run_cwd)
                     if (
@@ -5303,6 +5379,7 @@ class EvidenceCollector:
         self,
         cwd_template: str,
         ticket_id: str,
+        own_repository: str | None = None,
     ) -> tuple[str | None, str | None]:
         """Resolve a ``cwd`` template string into an absolute, contained path.
 
@@ -5355,6 +5432,27 @@ class EvidenceCollector:
                     f"cwd escapes OMNI_HOME containment: {cwd_template!r} "
                     f"resolved to {candidate}"
                 )
+
+            sibling = re.fullmatch(
+                r"\$\{OMNI_HOME\}/([\w][\w.-]*)(?:/.*)?", cwd_template
+            )
+            if sibling and own_repository and sibling[1] != own_repository:
+                root = base / sibling[1]
+                # Only positively identify the absent working tree. A missing
+                # subdirectory of an existing checkout keeps its old verdict.
+                missing = not root.exists()
+                if (root / ".git").exists():
+                    rc, indexed, _ = self._run_git(root, "ls-files")
+                    tree_rc, tracked, _ = self._run_git(
+                        root, "ls-tree", "--name-only", "HEAD"
+                    )
+                    missing = rc == 0 and not indexed and tree_rc == 0 and bool(tracked)
+                if missing:
+                    return None, _SiblingCheckoutMissing(
+                        f"SIBLING_CHECKOUT_MISSING: sibling checkout is missing at {root}; "
+                        f"declared cwd {cwd_template!r}. Provide its read-only working tree "
+                        "at the PR's pinned revision or default-branch head at merge time."
+                    )
 
         if not candidate.exists():
             return None, f"cwd does not exist: {cwd_template!r} -> {candidate}"
@@ -6282,7 +6380,12 @@ class EvidenceCollector:
                 f"cwd must be a string, got {type(cwd_template).__name__}",
                 True,
             )
-        resolved, err = self._resolve_cwd(cwd_template, ticket_id)
+        own_repository = None
+        if contract_path is not None and contract_path.parent.name == "contracts":
+            own_repository = contract_path.parent.parent.name
+        if own_repository is None:
+            own_repository = os.environ.get("REPO", "").rsplit("/", 1)[-1] or None
+        resolved, err = self._resolve_cwd(cwd_template, ticket_id, own_repository)
         if err is not None:
             return None, err, True
         return resolved, None, True

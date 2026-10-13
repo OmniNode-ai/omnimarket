@@ -17,6 +17,10 @@ from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaAmendment,
+    ModelCriterionDrift,
+)
 
 
 class EnumEvidenceCheckStatus(StrEnum):
@@ -125,6 +129,9 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # comparison failed. UNKNOWN must never read as fresh (the OMN-15454 rule,
     # applied to the product clone instead of the OCC one).
     PRODUCT_CLONE_FRESHNESS_UNKNOWN = "product_clone_freshness_unknown"
+    # A declared sibling cwd has no checkout (including a --no-checkout clone).
+    # The command never ran; provisioning the sibling is the remedy.
+    SIBLING_CHECKOUT_MISSING = "sibling_checkout_missing"
     # OMN-16846 D1. The OMN-15620 venv-purity gate refused the venv at
     # ``pytest_configure`` — before collection, before any test module import.
     # The command exited non-zero having executed NOTHING about the product, so
@@ -687,6 +694,21 @@ class ModelDodVerifyState(BaseModel):
     acceptance_refused_retirements: tuple[str, ...] = Field(default=())
     # OMN-20070: declared criteria no evidence item binds through binds_ac.
     acceptance_unbound_criteria: tuple[str, ...] = Field(default=())
+    # OMN-20858: the revision of the live ticket's criteria this verdict was
+    # computed against, so the Done transition can re-check it and a reader can
+    # tell which text a verdict judged. None when no ticket was read (a contract
+    # recording no criteria, a goal-scoped run, caller-supplied results).
+    criteria_revision: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-20858: the criteria on which the live ticket and the contract disagree,
+    # and the one amendment that would bring the contract back in line.
+    criteria_drift: tuple[ModelCriterionDrift, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was

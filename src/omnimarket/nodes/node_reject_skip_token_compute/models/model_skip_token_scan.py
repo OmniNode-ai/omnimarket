@@ -45,13 +45,12 @@ class ModelSkipTokenScanRequest(BaseModel):
 
 
 class ModelSkipTokenFinding(BaseModel):
-    """One scanned text that carries a ``[skip-<letter>`` token; ``allowed`` when it also carries an approval receipt."""
+    """One scanned text that carries a ``[skip-<letter>`` token. Every finding blocks."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     surface: EnumSkipTokenSurface
     path: str
-    allowed: bool
 
 
 class ModelSkipTokenScanResult(BaseModel):

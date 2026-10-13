@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import ConfigDict, Field, model_validator
 
-from omnimarket.events.pr_state import PR_STATE_V2_FIELDS, ModelPrStateEmitRequest
+from omnimarket.events.pr_state import ModelPrStateEmitRequest
 from omnimarket.models.pr_handoff.model_pr_handoff_requested import handoff_key_for
 
 
@@ -16,7 +16,10 @@ class ModelPrHandoffObservationIngress(ModelPrStateEmitRequest):
     The wire payload is the PR watcher's (node_pr_state_emit_effect's) event,
     whose identity is its ``digest``. ``handoff_key`` is derived from ``repo``
     and ``pr_number`` so the runtime loads the PR's handoff row; a payload that
-    supplies a different key is refused.
+    supplies a different key is refused. Like ``pr_state_event_from_wire``, it
+    reads only its declared fields: the emit transport's enrichment (actor,
+    lane, emitted_at and the rest) and the schema version 2 per-check facts are
+    not this orchestrator's input.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -28,8 +31,7 @@ class ModelPrHandoffObservationIngress(ModelPrStateEmitRequest):
     @classmethod
     def _derive_handoff_key(cls, data: object) -> object:
         if isinstance(data, dict):
-            # Schema version 2 per-check facts are not this orchestrator's input.
-            data = {k: v for k, v in data.items() if k not in PR_STATE_V2_FIELDS}
+            data = {k: v for k, v in data.items() if k in cls.model_fields}
         if isinstance(data, dict) and "repo" in data and "pr_number" in data:
             derived = handoff_key_for(str(data["repo"]), int(data["pr_number"]))
             supplied = data.get("handoff_key")

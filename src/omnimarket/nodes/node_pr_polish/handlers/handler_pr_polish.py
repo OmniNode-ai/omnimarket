@@ -8,6 +8,7 @@ Circuit breaker: 3 consecutive failures -> FAILED.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -163,6 +164,19 @@ class HandlerPrPolish:
             return run_live_pr_polish(command)
         _state, _events, completed = self.run_full_pipeline(command)
         return completed
+
+    async def handle_async(
+        self, command: ModelPrPolishStartCommand
+    ) -> ModelPrPolishCompletedEvent:
+        """Runtime dispatch entrypoint: ``handle`` on a worker thread.
+
+        The runtime calls its entrypoint on the kernel event loop. The live
+        workflow blocks on git, gh and pre-commit, and publishes the repair
+        delegation with ``asyncio.run``, which cannot run inside a running loop.
+        A worker thread keeps the kernel loop free and gives that publish a loop
+        of its own.
+        """
+        return await asyncio.to_thread(self.handle, command)
 
     def run_full_pipeline(
         self,

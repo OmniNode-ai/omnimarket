@@ -217,7 +217,7 @@ def render_batches(
         raise ValueError("item ids must be unique")
     candidates, probe_ids = split_probes(items, rubric)
     if not candidates:
-        raise ValueError("every item is a probe: nothing to judge")
+        return [], probe_ids, [], []
     kept, dropped = cap_cells(candidates, cell_cap, seed, rubric)
     ordered = sorted(kept, key=lambda i: (_digest(seed, "order", i.item_id), i.item_id))
     sample = double_judge_sample(kept, seed, rubric)

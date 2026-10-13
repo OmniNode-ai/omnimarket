@@ -61,7 +61,11 @@ class HandlerAntipatternClassifier:
                 )
             )
 
-        return ModelAntipatternClassifyResult(violations=tuple(violations))
+        return ModelAntipatternClassifyResult(
+            violations=tuple(violations),
+            correlation_id=request.correlation_id,
+            validation_context=request.validation_context,
+        )
 
 
 __all__ = ["HandlerAntipatternClassifier"]

@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20677"
+title: "ledger-reconcile.js and ledger/reconcile.py become a contract, a declarative node and a canonical handler over the bus"
+summary: "The ledger reconciler is contract.yaml files, declarative nodes and definition-B handlers in omnimarket, with topics declared in the contracts: a pure compute node decides (parse, pair, evidence binding, verdicts, rows, report), an effect node reads the ledger host, verifies cited pull requests and commits and appends through the ledger writer, and an orchestrator carries one command through both. Deployment facts arrive from an overlay. This change moves the node from its previous home; the callers there are repointed and the old copy deleted in a following change, which is what closes AC2."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reconcile-node-canonical"
+    statement: |-
+      Ledger reconciliation is contract-declared compute, effect and orchestrator nodes with definition-B handlers and typed models, their topics declared in the contracts, run over the event bus.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the tool is a contract.yaml, a declarative node and a handler with the canonical definition-B signature, and its topics are declared in the contract -- falsifier: uv run pytest tests/ledger/test_reconcile.py passes with the node's handler file removed
+evidence_requirements:
+  - kind: "tests"
+    description: "The contracts resolve and declare their topics, and a golden chain executes every operation through the contract's own handler and model bindings."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_golden_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_golden_chain_ledger_reconcile_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Six captured cases of the previous tool answer the same stdout, stderr, exit code and appended rows, and claim digests equal the ledger writer's."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_legacy_parity.py tests/nodes/node_ledger_reconcile_compute/test_claim_digest_parity.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Invalid bounds, an unreadable ledger, a missing roster file, a missing overlay, a failed append and an over-cap pass each end in a typed result that says why."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_error_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_error_chain_ledger_reconcile_effect.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The orchestrator contract dispatches a command and its terminal over the in-process bus."
+    command: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20677-ac1-golden-chains"
+    description: "The contracts resolve, declare their topics and terminal events, and a golden chain executes every operation through the contract's own handler and model bindings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_golden_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_golden_chain_ledger_reconcile_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20677-ac1-legacy-parity"
+    description: "Six captured cases of the previous tool answer the same stdout, stderr, exit code and appended rows through the orchestrator, and claim digests equal the ledger writer's."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_legacy_parity.py tests/nodes/node_ledger_reconcile_compute/test_claim_digest_parity.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20677-ac1-error-chains"
+    description: "Each refused or failed command ends in a typed result that says why; no port failure is raised or read as an empty answer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_compute/test_error_chain_ledger_reconcile_compute.py tests/nodes/node_ledger_reconcile_effect/test_error_chain_ledger_reconcile_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20677-ac1-bus-cycle"
+    description: "The orchestrator contract dispatches a command and its terminal over the in-process bus; report mode appends nothing and apply mode appends through the ledger writer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20677-deploy-probe"
+    description: "Deploy probe. The reconcile orchestrator contract at the checked-out commit declares its terminal event; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ledger_reconcile_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^terminal_event:'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

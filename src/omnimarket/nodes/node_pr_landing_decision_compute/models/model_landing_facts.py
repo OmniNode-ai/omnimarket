@@ -13,6 +13,10 @@ The shared-cause inputs (each red check's failure annotation, when a gate
 began, the fixer HOLD rows, the floor alarm's breach set, the CLAIMs that name
 a cause, RELEASE rows naming a parked cause) are all optional with empty
 defaults, so a snapshot without them decides exactly as before.
+
+Typed no-new-commits update responses and external shared-check verdicts are
+also optional effect observations. Without them the node cannot infer either
+class from an arbitrary refusal, a base push or a PR head alone.
 """
 
 from __future__ import annotations
@@ -83,6 +87,36 @@ class ModelLandingRerunRun(BaseModel):
     run_id: int = Field(..., ge=1)
     head_sha: str = Field(..., pattern=SHA_PATTERN)
     created_at: datetime
+
+
+class ModelLandingUpdateNoNewCommits(BaseModel):
+    """Effect readback of update-branch's transient 422 no-new-commits response.
+
+    Other 422 responses (conflict, moved head, invalid request) are not this
+    fact. The collector supplies the attempted head and response time.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    at: datetime
+
+
+class ModelLandingSharedCheckVerdict(BaseModel):
+    """An external verdict a shared check reads, already observed by an effect.
+
+    ``verdict_id`` identifies the verdict run and attempt, not the PR head or
+    the base SHA. A base push alone is not evidence that the check is fixed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(..., pattern=REPO_PATTERN)
+    check: str = Field(..., min_length=1)
+    verdict_id: str = Field(..., min_length=1)
+    green: bool
+    at: datetime
 
 
 class ModelLandingPrFacts(BaseModel):
@@ -342,6 +376,11 @@ class ModelLandingPolicy(BaseModel):
         ge=1,
         description="Update-branch refreshes per PR for stale cancelled copies.",
     )
+    update_retry_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="Backoff after an update-branch 422 no-new-commits response.",
+    )
     stale_gate_seconds: int = Field(
         default=600,
         ge=0,
@@ -426,6 +465,8 @@ class ModelLandingFacts(BaseModel):
         default_factory=ModelLandingControllerState
     )
     prs: tuple[ModelLandingPrFacts, ...] = ()
+    update_no_new_commits: tuple[ModelLandingUpdateNoNewCommits, ...] = ()
+    shared_check_verdicts: tuple[ModelLandingSharedCheckVerdict, ...] = ()
     companions: tuple[ModelLandingCompanionFacts, ...] = ()
     probes: tuple[ModelLandingWorkerProbe, ...] = ()
     results: tuple[ModelLandingWorkerResult, ...] = ()
@@ -519,6 +560,8 @@ __all__: list[str] = [
     "ModelLandingRepoChecks",
     "ModelLandingRepoHead",
     "ModelLandingRerunRun",
+    "ModelLandingSharedCheckVerdict",
+    "ModelLandingUpdateNoNewCommits",
     "ModelLandingWorkerProbe",
     "ModelLandingWorkerResult",
 ]

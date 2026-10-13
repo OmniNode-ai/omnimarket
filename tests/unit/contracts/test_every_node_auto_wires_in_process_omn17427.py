@@ -41,6 +41,12 @@ import pytest
 import yaml
 from omnibase_core.container import ModelONEXContainer
 from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
+from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
+    ProtocolEventBusSubscriber,
+)
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
@@ -78,30 +84,12 @@ _TOPOLOGY_PROFILE = "local"
 
 # Shrink-only. Contracts whose derived dispatch identifiers exceed a
 # ModelDispatchRoute limit under the omnibase-infra this repo resolves.
-_IDS_OVER_LIMIT: dict[str, str] = {
-    "node_delegation_acceptance_judged_publish_effect": (
-        "route.auto.<contract>.<handler>.<topic> is 206 characters; the 0.38.69 "
-        "runtime does not bound derived ids. omnibase_infra#4767 bounds them with "
-        "a digest suffix; remove this entry when the omnibase-infra pin carries it"
-    ),
-    "node_delegation_acceptance_judged_replay_compute": (
-        "same derived route id class as the publish effect; same exit condition"
-    ),
-}
+_IDS_OVER_LIMIT: dict[str, str] = {}
 
 # Shrink-only. Contracts that cannot wire in-process for a reason this test
 # cannot supply honestly (a secret, an operator overlay, explicit dependencies)
 # or because of a defect already filed.
 _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
-    "node_delegation_acceptance_judged_publish_effect": (
-        "ModelDispatchRoute ValidationError on the derived route id (see _IDS_OVER_LIMIT)"
-    ),
-    "node_delegation_acceptance_judged_replay_compute": (
-        "ModelDispatchRoute ValidationError on the derived route id (see _IDS_OVER_LIMIT)"
-    ),
-    "node_adr_canary_orchestrator": (
-        "HandlerCanaryOrchestrator needs the ADR bus protocol as an explicit dependency"
-    ),
     "node_memory_storage_effect": (
         "omnimemory HandlerFileSystemAdapter requires a config constructor argument"
     ),
@@ -239,13 +227,19 @@ async def test_every_node_auto_wires_in_process(
     monkeypatch.delenv("ONEX_WIRING_STRICT_MODE", raising=False)
 
     bus = EventBusInmemory()
+    # The kernel registers its bus under both protocol keys before it wires
+    # (service_kernel, ahead of wire_from_manifest); a handler that builds bus
+    # request/response adapters resolves the bus from the container.
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(ProtocolEventBusPublisher, bus)
+    await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
     try:
         report = await wire_from_manifest(
             _manifest(),
             MessageDispatchEngine(),
             event_bus=bus,
             environment=_TOPOLOGY_PROFILE,
-            container=ModelONEXContainer(),
+            container=container,
             topology=topology,
         )
     finally:

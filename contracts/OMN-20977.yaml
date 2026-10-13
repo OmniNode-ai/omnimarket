@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20977"
+title: "Lane-side merged-PR reads go through onex scm pr-heads (canonical clones first, gateway node behind it)"
+summary: "onex scm pr-heads OWNER/REPO answers every pull request's number, head oid, state, merge commit and, where known, head branch from the PR watcher state and the canonical clone over git alone, and node_github_repo_gateway_effect gains the read-only pr_heads operation that the verb publishes when the local sources cannot answer. AC3 (the three worktree prune tools reading merged state through the verb) lives in other repositories and is not bound here."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-pr-heads-local"
+    statement: "A lane reads every pull request's head and merge outcome without a GitHub API request."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: `onex scm pr-heads OWNER/REPO --source local` answers from the watcher state and the canonical clone with zero GitHub API requests, naming each merged PR's head oid and merge commit -- falsifier: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k pr_heads -q in omnimarket fails at the merge base, where the verb does not exist
+  - id: "req-pr-heads-gateway-operation"
+    statement: "The gateway node declares and serves the read-only pr_heads operation that the verb falls back to."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: node_github_repo_gateway_effect declares and serves a read-only `pr_heads` operation -- falsifier: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k contract -q fails when a served verb names no contract operation
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: pr-heads is answered from the canonical clone over git, overlaid by the watcher state, narrowed by head, and reported as unanswered locally when there is no clone."
+    command: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k 'pr_heads' -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: the gateway serves pr_heads on a recorded fake transport, and every contract operation has exactly one served verb."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20977-ac1-pr-heads-local"
+    description: "AC1: pr-heads answers from the canonical clone over git and the watcher state with no bus publish, names each merged PR's head oid and merge commit, and exits as unanswered when no clone exists. The tests are added by this pull request; the verb does not exist at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k pr_heads -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20977-ac1-verb-deploy-probe"
+    description: "AC1 deploy probe: the scm dispatch module GitHub serves at the checked-out commit declares the pr-heads verb."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/scm/handler_scm_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'verb=\"pr-heads\"' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20977-ac2-gateway-pr-heads"
+    description: "AC2: the gateway answers pr_heads on a recorded fake transport (state, head oid, merge commit, narrowing by branch or head) and exposes fourteen independent read functions."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20977-ac2-contract-verb-parity"
+    description: "AC2: every operation the gateway contract declares has exactly one served verb, and every served verb is exercised, so pr_heads cannot be declared without its verb or served without its contract operation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k 'contract or served_verb' -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20977-ac2-gateway-deploy-probe"
+    description: "AC2 deploy probe: the gateway model module GitHub serves at the checked-out commit declares the pr_heads operation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/models/model_gateway_io.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep 'PR_HEADS = \"pr_heads\"' > /dev/null"
+        cwd: "${OMNI_HOME}/omnimarket"

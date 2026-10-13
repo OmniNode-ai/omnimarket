@@ -85,14 +85,18 @@ jobs:
             "https://github.com/OmniNode-ai/${REPOSITORY}.git" "$OMNI_HOME/$REPOSITORY"
           for home in omnibase_core omnibase_infra omniclaude omnimarket omnidash onex_change_control; do
             if [ "$home" != "$REPOSITORY" ]; then
-              git clone --quiet --no-checkout --depth 1 \
+              # OMN-21013: sibling working trees need pinned commits and history at merge time.
+              git clone --quiet --no-checkout \
                 "https://github.com/OmniNode-ai/${home}.git" "$OMNI_HOME/$home"
             fi
           done
           cd "$OMNI_HOME/$REPOSITORY"
           branch="$(git symbolic-ref --short refs/remotes/origin/HEAD)"
+          # OMN-20917: read this repository's declared OCC context from its workflows.
+          git checkout --quiet "$branch" -- .github/workflows
+          # Drain every subject so pipefail cannot fail on an early reader's SIGPIPE.
           git log --first-parent --format=%s "refs/remotes/${branch}" \
-            | sed -n 's/.* (#\([0-9][0-9]*\))$/\1/p' | head -n 200 > "$RUNNER_TEMP/merged_prs.txt"
+            | sed -n 's/.* (#\([0-9][0-9]*\))$/\1/p' | sed -n '1,200p' > "$RUNNER_TEMP/merged_prs.txt"
           test -s "$RUNNER_TEMP/merged_prs.txt"
           mapfile -t refspecs < <(sed 's#.*#+refs/pull/&/head:refs/remotes/origin/pr/&#' "$RUNNER_TEMP/merged_prs.txt")
           if ! git fetch --quiet --no-tags origin "${refspecs[@]}"; then
@@ -110,13 +114,47 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Prefer a caller override, then a local reusable default, then the
+          # check name declared by a direct OCC producer. No global fallback.
+          occ_context="$(uv run python - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ["OMNI_HOME"]) / os.environ["REPOSITORY"] / ".github/workflows"
+          overrides, defaults, producers = [], [], []
+          for path in sorted(root.glob("*.y*ml")):
+              workflow = yaml.safe_load(path.read_text())
+              triggers = workflow.get("on", workflow.get(True, {}))
+              call = (triggers.get("workflow_call") or {}) if isinstance(triggers, dict) else {}
+              inputs = call.get("inputs", {})
+              if "occ-context" in inputs:
+                  defaults.append(inputs["occ-context"].get("default"))
+              for job_id, job in workflow.get("jobs", {}).items():
+                  uses = job.get("uses", "").split("@", 1)[0]
+                  supplied = job.get("with", {})
+                  if uses.endswith("/receipt-gate.yml") and "occ-context" in supplied:
+                      overrides.append(supplied["occ-context"])
+                  if uses.endswith("/occ-preflight.yml"):
+                      producers.append(f"{job.get('name', job_id)} / eligibility")
+          candidates = overrides or defaults or producers
+          if (not candidates or any(
+              not isinstance(value, str) or not value.strip() or ("$" + "{{") in value
+              or "\n" in value or "\r" in value for value in candidates
+          ) or len(set(candidates)) != 1):
+              raise SystemExit(f"::error::cannot resolve one literal OCC context from {root}")
+          print(candidates[0])
+          PY
+          )"
+          echo "replaying $REPOSITORY with OCC context: $occ_context"
           mkdir -p replay-out "$RUNNER_TEMP/replay-work"
           uv run python -m omnimarket.nodes.node_dod_verify occ-difference replay \
             --repository "OmniNode-ai/${REPOSITORY}" --count 30 \
+            --occ-context "$occ_context" \
             --work-dir "$RUNNER_TEMP/replay-work" \
             --record-to replay-out/rows.json --table-to replay-out/table.md
 
-      - name: Publish the replay table to the job summary
+      - name: Publish the replay table to the job log and summary
         if: always()
         env:
           REPOSITORY: ${{ inputs.repository }}
@@ -132,6 +170,11 @@ jobs:
               echo "(no table: the replay did not finish; see the step logs)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s replay-out/table.md ]; then
+            cat replay-out/table.md
+          else
+            echo "(no table: the replay did not finish; see the step logs)"
+          fi
 
       - name: Upload rows.json and table.md
         if: always()

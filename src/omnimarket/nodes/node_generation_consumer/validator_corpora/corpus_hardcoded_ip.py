@@ -3,7 +3,7 @@
 # test-literal-ok: OMN-13294 — this corpus's fixtures ARE hardcoded private-IP
 # violations the generated scanner-under-test must flag; the literals are the subject.
 # onex-allow-internal-ip OMN-13294 reason="corpus fixtures are intentional hardcoded private-IP violations the scanner-under-test must flag"
-# onex-allow-file OMN-13294 reason="this acceptance corpus's entire subject is hardcoded private-IP literals the generated scanner must flag; the .201 endpoint fixture mirrors the live generation backend"
+# onex-allow-file OMN-13294 reason="this acceptance corpus's entire subject is hardcoded private-IP literals the generated scanner must flag; the endpoint fixture is a synthetic private address"
 # onex-allow-file-internal-ip OMN-13294 reason="this acceptance corpus's entire subject is LAN-IP literals the generated scanner must flag; per-line markers would obscure the fixtures"
 """Acceptance corpus for the hardcoded-private-IP mechanical scanner (OMN-13294, G2).
 
@@ -39,6 +39,11 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
 
 __all__ = ["HARDCODED_IP_CORPUS"]
 
+# A synthetic private-range address for the positive controls. It is assembled here so no
+# private-network literal sits in source; the corpus subject is the scanner's reaction to
+# the rendered fixture text, which carries the full address.
+_SERVER = ".".join(("192", "168", "77", "20"))
+
 
 HARDCODED_IP_CORPUS = ModelValidatorCorpus(
     source_field="source",
@@ -47,8 +52,8 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         # --- base cases: each RFC1918 band, quoted, the canonical shape ---
         ModelCorpusFixture(
             fixture_id="v-base-192-168",
-            source='HOST = "192.168.86.201"',  # onex-allow-internal-ip OMN-13294 corpus fixture: the literal the scanner must flag
-            description="192.168/16 private IP literal (the .201 server) — must flag",
+            source=f'HOST = "{_SERVER}"',
+            description="192.168/16 private IP literal (a server) — must flag",
         ),
         ModelCorpusFixture(
             fixture_id="v-base-10",
@@ -75,7 +80,7 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-url-prefixed",
-            source='ENDPOINT = "https://192.168.86.201:8000/v1/chat/completions"',  # onex-allow-internal-ip OMN-13294 corpus fixture: the literal the scanner must flag
+            source=f'ENDPOINT = "https://{_SERVER}:8000/v1/chat/completions"',
             description="private IP embedded in an https URL literal — must still flag",
             mutation_of="v-base-192-168",
         ),
@@ -121,7 +126,7 @@ HARDCODED_IP_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatch ---
         ModelCorpusFixture(
             fixture_id="c-mut-suppressed",
-            source='HOST = "192.168.86.201"  # onex-allow-internal-ip approved test fixture',
+            source=f'HOST = "{_SERVER}"  # onex-allow-internal-ip approved test fixture',
             description=(
                 "private IP literal on a line carrying the onex-allow-internal-ip "
                 "marker — suppressed, must stay clean"

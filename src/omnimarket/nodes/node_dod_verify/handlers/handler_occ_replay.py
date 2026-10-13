@@ -36,7 +36,10 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
+import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -173,18 +176,25 @@ class HandlerOccReplay:
                 break
             record = self._record(request, clone, mirror, work, pr)
             records.append(record)
-            if replay_row(record).outcome not in NOT_COUNTED_OUTCOMES:
+            row = replay_row(record)
+            if row.outcome not in NOT_COUNTED_OUTCOMES:
                 compared += 1
-            logger.info(
-                "replay %s#%d head=%s occ=%s new=%s compared=%d/%d: %s",
-                request.repository,
-                pr.number,
-                record.head_sha[:12],
-                (record.occ_check_run or {}).get("conclusion"),
-                record.new_verdict.model_dump() if record.new_verdict else None,
-                compared,
-                request.count,
-                record.note,
+            sys.stderr.write(
+                f"replay {request.repository}#{row.pr} head={row.head_sha} "
+                f"occ={row.occ_conclusion} new={row.new_admitted} outcome={row.outcome} "
+                f"new_reason={row.new_reason} note={row.note}\n"
+            )
+            sys.stderr.flush()
+        if compared < request.count:
+            stop_reason = (
+                "max_examined reached"
+                if len(merged) >= request.max_examined
+                else "merged list exhausted"
+            )
+            sys.stderr.write(
+                f"replay {request.repository}: examined={len(records)} "
+                f"compared={compared}/{request.count} stop={stop_reason} "
+                f"max_examined={request.max_examined}\n"
             )
         return records
 
@@ -344,7 +354,16 @@ class HandlerOccReplay:
         dod.mkdir(parents=True)
         try:
             how = self._verify(
-                request, clone, mirror, dod, trees, head, merge_base, paths, tickets
+                request,
+                clone,
+                mirror,
+                dod,
+                trees,
+                head,
+                merge_base,
+                paths,
+                tickets,
+                pr.merged_at,
             )
             if how is None:
                 return None, "new path not replayed: Binds-Merged-Fix control"
@@ -365,6 +384,7 @@ class HandlerOccReplay:
         finally:
             for side in ("head", "base"):
                 tree = trees / side / mirror.name
+                self._restore_sibling_permissions(trees / side, mirror.name)
                 if tree.exists():
                     _git(mirror, "worktree", "remove", "--force", str(tree))
             shutil.rmtree(trees, ignore_errors=True)
@@ -381,6 +401,7 @@ class HandlerOccReplay:
         merge_base: str,
         paths: list[str],
         tickets: tuple[str, ...],
+        merged_at: str,
     ) -> str | None:
         """Write head-, base- and contract-home- files the way the gate does.
 
@@ -393,6 +414,10 @@ class HandlerOccReplay:
         if _git(mirror, "worktree", "add", "--detach", str(head_tree), head)[0] != 0:
             raise RuntimeError(f"cannot check out {head[:12]} in the scratch clone")
         owner = request.repository.split("/", 1)[0]
+        contracts = [head_tree / "contracts" / f"{ticket}.yaml" for ticket in tickets]
+        self._prepare_sibling_checkouts(
+            owner, head_tree, head_home, contracts, merged_at
+        )
         head_results: dict[str, object] = {}
         for ticket in tickets:
             contract = head_tree / "contracts" / f"{ticket}.yaml"
@@ -447,6 +472,11 @@ class HandlerOccReplay:
                 test_paths += int(is_test_side(path))
         if test_paths == 0:
             return "control refused: no test-side change"
+        # The control varies the product tree, not the sibling dependency. Both
+        # sides use the PR head's declarations and the same merge-time cutoff.
+        self._prepare_sibling_checkouts(
+            owner, head_tree, base_home, contracts, merged_at
+        )
         test_only = is_test_only_diff(paths, tickets)
         lines: list[str] = []
         for ticket in tickets:
@@ -475,6 +505,161 @@ class HandlerOccReplay:
             )
             lines.append(f"{ticket} control {line}")
         return "head verified; " + "; ".join(lines)
+
+    @staticmethod
+    def _sibling_revision(tree: Path, sibling: str, clone: Path, merged_at: str) -> str:
+        """Resolve a source pin, an action pin, or the default history at merge."""
+        source_pins: set[str] = set()
+        project = tree / "pyproject.toml"
+        if project.is_file():
+            sources = (
+                tomllib.loads(project.read_text())
+                .get("tool", {})
+                .get("uv", {})
+                .get("sources", {})
+            )
+            for source in sources.values():
+                for entry in source if isinstance(source, list) else [source]:
+                    if isinstance(entry, dict) and re.search(
+                        rf"[:/]{re.escape(sibling)}(?:\.git)?$",
+                        str(entry.get("git", "")),
+                    ):
+                        revision = entry.get("rev") or entry.get("tag")
+                        if not isinstance(revision, str) or not revision:
+                            raise RuntimeError(
+                                f"sibling {sibling} has no fixed source revision"
+                            )
+                        source_pins.add(revision)
+        action_pins: set[str] = set()
+        checkout_pins: set[str] = set()
+        # Reusable workflow pins version the gate, not the product checkout.
+        # Composite action pins version the product code the check exercises.
+        if not source_pins:
+            pattern = re.compile(
+                rf"^\s*(?:-\s*)?uses:\s*[\"']?[\w.-]+/{re.escape(sibling)}/\.github/actions/[^@\s]+@([^\s\"'#]+)",
+                re.MULTILINE,
+            )
+            for workflow in (tree / ".github" / "workflows").glob("*.y*ml"):
+                action_pins.update(pattern.findall(workflow.read_text()))
+                data = yaml.safe_load(workflow.read_text())
+                jobs = data.get("jobs", {}) if isinstance(data, dict) else {}
+                for job in jobs.values():
+                    for step in job.get("steps", []) if isinstance(job, dict) else []:
+                        if not isinstance(step, dict) or not str(
+                            step.get("uses", "")
+                        ).startswith("actions/checkout@"):
+                            continue
+                        inputs = step.get("with", {})
+                        if (
+                            not isinstance(inputs, dict)
+                            or str(inputs.get("repository", "")).rsplit("/", 1)[-1]
+                            != sibling
+                        ):
+                            continue
+                        revision = inputs.get("ref")
+                        if (
+                            isinstance(revision, str)
+                            and revision
+                            and "${{" not in revision
+                        ):
+                            checkout_pins.add(revision)
+        pins = source_pins or action_pins or checkout_pins
+        if len(pins) > 1:
+            raise RuntimeError(
+                f"sibling {sibling} has conflicting code pins: {sorted(pins)}"
+            )
+        if pins:
+            revision = next(iter(pins))
+            if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                revision = f"refs/tags/{revision}"
+            rc, sha = _git(clone, "rev-parse", "--verify", f"{revision}^{{commit}}")
+        else:
+            # A shallow clone cannot establish the historical default tip.
+            rc, shallow = _git(clone, "rev-parse", "--is-shallow-repository")
+            if rc or shallow.strip() != "false":
+                raise RuntimeError(
+                    f"sibling {sibling} needs full history at {merged_at}"
+                )
+            rc, sha = _git(
+                clone,
+                "rev-list",
+                "--first-parent",
+                "-1",
+                f"--before={merged_at}",
+                f"refs/remotes/origin/{_default_branch(clone)}",
+            )
+        if rc or not re.fullmatch(r"[0-9a-f]{40}", sha.strip()):
+            raise RuntimeError(f"sibling {sibling} revision unavailable at {merged_at}")
+        return sha.strip()
+
+    @classmethod
+    def _prepare_sibling_checkouts(
+        cls,
+        owner: str,
+        tree: Path,
+        home: Path,
+        contracts: list[Path],
+        merged_at: str,
+    ) -> None:
+        """Materialise only declared siblings from local clones, without fetching."""
+        siblings: set[str] = set()
+        for contract in contracts:
+            if not contract.is_file():
+                continue
+            data = yaml.safe_load(contract.read_text())
+            for item in data.get("dod_evidence", []) if isinstance(data, dict) else []:
+                for check in item.get("checks", []) if isinstance(item, dict) else []:
+                    cwd = check.get("cwd") if isinstance(check, dict) else None
+                    if not isinstance(cwd, str) or ".." in Path(cwd).parts:
+                        continue
+                    match = re.fullmatch(r"\$\{OMNI_HOME\}/([\w][\w.-]*)(?:/.*)?", cwd)
+                    if match and match[1] != tree.name:
+                        siblings.add(match[1])
+        for sibling in sorted(siblings):
+            clone = canonical_clone(f"{owner}/{sibling}")
+            if clone is None:
+                # Leave the absent input for the collector's named refusal.
+                continue
+            sha = cls._sibling_revision(tree, sibling, clone, merged_at)
+            target = home / sibling
+            if target.exists():
+                raise RuntimeError(f"sibling destination already exists: {target}")
+            rc, _ = _git(
+                home,
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                str(clone),
+                str(target),
+            )
+            if rc or _git(target, "checkout", "--quiet", "--detach", sha)[0]:
+                raise RuntimeError(f"cannot materialise sibling {sibling} at {sha}")
+            for root, directories, files in os.walk(target):
+                directories[:] = [name for name in directories if name != ".git"]
+                for name in files:
+                    path = Path(root) / name
+                    if not path.is_symlink():
+                        path.chmod(stat.S_IMODE(path.stat().st_mode) & ~0o222)
+                Path(root).chmod(stat.S_IMODE(Path(root).stat().st_mode) & ~0o222)
+            logger.info("sibling checkout %s at %s (read-only)", sibling, sha)
+
+    @staticmethod
+    def _restore_sibling_permissions(home: Path, own_repository: str) -> None:
+        """Restore scratch-directory permissions only for deterministic cleanup."""
+        if not home.is_dir():
+            return
+        for sibling in home.iterdir():
+            if (
+                sibling.name == own_repository
+                or sibling.is_symlink()
+                or not sibling.is_dir()
+            ):
+                continue
+            for root, directories, _files in os.walk(sibling):
+                directories[:] = [name for name in directories if name != ".git"]
+                path = Path(root)
+                path.chmod(stat.S_IMODE(path.stat().st_mode) | stat.S_IWUSR)
 
     @staticmethod
     def _contract_home(owner: str, repo_short: str, ticket: str) -> str:
@@ -508,6 +693,9 @@ class HandlerOccReplay:
         }
         env["OMNI_HOME"] = str(home)
         env["DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"] = "1"
+        # OMN-20858: a merged head is not verified against its ticket's criteria
+        # as they read today.
+        env["DOD_VERIFY_HISTORICAL_REPLAY"] = "1"
         result_path = stem.with_suffix(".json")
         try:
             proc = subprocess.run(

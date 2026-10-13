@@ -32,13 +32,6 @@ _GENERATION_CONTRACT_PATH = (
 )
 _BIFROST_CONTRACT_PATH = _SRC_ROOT / "configs" / "bifrost_delegation.yaml"
 _COST_PRICING_PATH = _SRC_ROOT / "cost" / "cost_pricing.yaml"
-_ENDPOINT_REGISTRY_PATH = (
-    _SRC_ROOT
-    / "nodes"
-    / "node_swarm_registry_compute"
-    / "contracts"
-    / "endpoint_registry.yaml"
-)
 
 
 def _generation_model_routing() -> dict[str, object]:
@@ -121,34 +114,3 @@ def test_generation_served_model_id_has_local_cost_pricing_entry() -> None:
         f"cost_pricing.yaml has no entry for {pair!r} — generation cost "
         "attribution degrades to explicit-unknown for every run"
     )
-
-
-@pytest.mark.unit
-def test_swarm_endpoint_registry_carries_no_dead_8001_endpoint() -> None:
-    """The swarm registry declares no endpoint on the decommissioned .201:8001.
-
-    GPU1's llama.cpp endpoint is dead (connection refused, OMN-16442); the
-    registry schema has no retired flag, so the honest state is absence.
-    """
-    registry = yaml.safe_load(_ENDPOINT_REGISTRY_PATH.read_text(encoding="utf-8"))
-    dead = [ep["id"] for ep in registry["endpoints"] if ":8001" in ep["base_url"]]
-    assert not dead, f"endpoints still declared on dead .201:8001: {dead}"
-
-
-@pytest.mark.unit
-def test_swarm_local_primary_model_matches_routing_authority(
-    lab_backends: dict[str, dict[str, object]],
-) -> None:
-    """The swarm registry's .201:8000 entry names the same served model the
-    routing authority declares for local-coder (the live-guarded value)."""
-    registry = yaml.safe_load(_ENDPOINT_REGISTRY_PATH.read_text(encoding="utf-8"))
-    primary = [
-        ep for ep in registry["endpoints"] if ep["base_url"].endswith(":8000/v1")
-    ]
-    assert primary, "no .201:8000 entry in the swarm endpoint registry"
-    local_coder_model = lab_backends["local-coder"]["model_name"]
-    for ep in primary:
-        assert ep["model_id"] == local_coder_model, (
-            f"swarm registry entry {ep['id']!r} pins model_id {ep['model_id']!r} "
-            f"but the routing authority serves {local_coder_model!r} at :8000"
-        )

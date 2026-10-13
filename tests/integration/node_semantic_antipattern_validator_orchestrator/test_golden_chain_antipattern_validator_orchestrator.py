@@ -114,10 +114,11 @@ async def test_route_fires_and_emits_single_match_command_over_bus(
     try:
         command = await _drive(bus, _make_request())
         # The emitted command targets the antipattern match effect boundary.
+        context = command["validation_context"]
         assert (
-            command["file_path"] == "src/omnimarket/nodes/node_x/handlers/handler_x.py"
+            context["file_path"] == "src/omnimarket/nodes/node_x/handlers/handler_x.py"
         )
-        assert command["enforcement_mode"] == "blocking"
+        assert context["enforcement_mode"] == "blocking"
     finally:
         await bus.close()
 
@@ -131,7 +132,7 @@ async def test_default_threshold_propagated_over_bus(
     await bus.start()
     try:
         command = await _drive(bus, _make_request(similarity_threshold=0.80))
-        assert command["similarity_threshold"] == pytest.approx(0.80)
+        assert command["min_similarity"] == pytest.approx(0.80)
     finally:
         await bus.close()
 
@@ -145,7 +146,7 @@ async def test_custom_threshold_propagated_over_bus(
     await bus.start()
     try:
         command = await _drive(bus, _make_request(similarity_threshold=0.92))
-        assert command["similarity_threshold"] == pytest.approx(0.92)
+        assert command["min_similarity"] == pytest.approx(0.92)
     finally:
         await bus.close()
 
@@ -159,7 +160,7 @@ async def test_advisory_enforcement_mode_propagated_over_bus(
     await bus.start()
     try:
         command = await _drive(bus, _make_request(enforcement_mode="advisory"))
-        assert command["enforcement_mode"] == "advisory"
+        assert command["validation_context"]["enforcement_mode"] == "advisory"
     finally:
         await bus.close()
 
@@ -174,7 +175,7 @@ async def test_file_content_propagated_over_bus(
     try:
         content = "def god_function():\n    return 1\n"
         command = await _drive(bus, _make_request(file_content=content))
-        assert command["file_content"] == content
+        assert command["code_text"] == content
     finally:
         await bus.close()
 
@@ -242,10 +243,8 @@ async def test_repeated_requests_each_emit_one_command_idempotent_shape(
         emitted = await bus.get_event_history(topic=TOPIC_MATCH_REQUESTED)
         assert len(emitted) == 2
         payloads = [json.loads(e.value) for e in emitted]
-        assert payloads[0]["file_path"] == payloads[1]["file_path"]
-        assert (
-            payloads[0]["similarity_threshold"] == payloads[1]["similarity_threshold"]
-        )
+        assert payloads[0]["validation_context"] == payloads[1]["validation_context"]
+        assert payloads[0]["min_similarity"] == payloads[1]["min_similarity"]
         assert payloads[0]["correlation_id"] == payloads[1]["correlation_id"]
     finally:
         await bus.close()
