@@ -157,6 +157,9 @@ from omnimarket.models.delegation.delegation_ticket_id import (
 from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
 )
+from omnimarket.models.delegation.model_earlier_model_attempt import (
+    ModelEarlierModelAttempt,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
@@ -233,9 +236,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
     current_call_observer,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
-    ModelEarlierModelAttempt,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
