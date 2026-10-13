@@ -69,6 +69,9 @@ class SqliteLivenessStore:
     async def execute(self, query: str, *params: StoreValue) -> list[dict[str, object]]:
         if self._conn is None:
             raise RuntimeError("call connect() first")
+        # The sqlite3 module resolves a mapping against the name after the
+        # parameter's ``$``, so key "n" is the statement's ``$n``. A
+        # multi-digit ``$10`` is the name "10", never ``$1`` followed by "0".
         bound = {str(i): _sqlite_value(p) for i, p in enumerate(params, 1)}
         with self._conn:
             rows = self._conn.execute(query, bound).fetchall()
