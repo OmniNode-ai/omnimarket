@@ -141,6 +141,7 @@ def test_golden_chain_loads_facts_then_runs_a_lane(tmp_path: Path) -> None:
             now="2026-10-09T12:01:00Z",
             load1=1.0,
             cpus=2,
+            fleet=["omnimarket"],
         )
     )
     assert loaded.ok
@@ -150,6 +151,7 @@ def test_golden_chain_loads_facts_then_runs_a_lane(tmp_path: Path) -> None:
     assert (pr.runs[0].id, pr.runs[0].conclusion) == (77, "failure")
     assert pr.facts_unread == ["files", "ready_at"]
     assert loaded.facts.floors == {"omnimarket": 1.0}
+    assert loaded.facts.fleet == ["omnimarket"]
     assert loaded.facts.ticks is None
 
     handler_type, request_type = _resolve(entries["run_merge_sweep_lane"])

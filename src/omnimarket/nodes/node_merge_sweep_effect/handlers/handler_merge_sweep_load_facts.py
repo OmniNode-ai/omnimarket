@@ -257,6 +257,11 @@ class HandlerMergeSweepLoadFacts:
     """Read the watcher state, the ledger, the tick log and the floors into one reading request."""
 
     def handle(self, request: ModelMergeSweepLoadRequest) -> ModelMergeSweepLoadResult:
+        if not request.fleet:
+            return ModelMergeSweepLoadResult(
+                ok=False,
+                why="the request names no fleet: the repositories a sweep reads arrive as data",
+            )
         now = rules.as_utc(request.now)
         try:
             raw = json.loads(Path(request.state_path).read_text(encoding="utf-8"))
@@ -361,7 +366,9 @@ class HandlerMergeSweepLoadFacts:
             facts=ModelMergeSweepReadRequest(
                 now=request.now,
                 window_min=request.window_min,
-                max_reds=request.max_reds,
+                fleet=request.fleet,
+                non_product_repos=request.non_product_repos,
+                out_of_scope=request.out_of_scope,
                 load1=load1,
                 cpus=cpus,
                 floors={str(k): float(v) for k, v in floors.items()},
