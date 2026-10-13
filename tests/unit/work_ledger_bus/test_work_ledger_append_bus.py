@@ -4,9 +4,11 @@
 
 import asyncio
 import json
+import re
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from importlib import resources
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -508,6 +510,28 @@ def test_writer_topic_rejects_obsolete_payload_attribution() -> None:
             await bus.close()
 
     asyncio.run(scenario())
+
+
+def test_every_contract_line_naming_a_topic_passes_the_architectural_lint() -> None:
+    # The PR architecture lint (ARCH-TOPIC-002) greps each changed contract line
+    # that holds `onex.` and rejects one with no `onex.<kind>.<producer>.<name>.v<N>`
+    # in it. A writer-topic template with a `{principal}` slot fails that grep, so
+    # the contract declares the topic's parts and the loader joins them.
+    contract = (
+        resources.files("omnimarket.nodes.node_work_ledger_append_effect")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    topic_line = re.compile(
+        r"onex\.(cmd|evt|dlq|intent|snapshot)\.[a-z_-]+\.[a-z_-]+\.v[0-9]+"
+    )
+    offenders = [
+        line
+        for line in contract.splitlines()
+        if "onex." in line and "#" not in line and not topic_line.search(line)
+    ]
+    assert offenders == []
+    assert "onex." in contract
 
 
 def test_writer_topic_names_come_from_contract_and_validate_principals() -> None:

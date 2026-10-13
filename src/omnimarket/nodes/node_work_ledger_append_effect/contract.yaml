@@ -61,8 +61,15 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 180000
+# One command topic per writer principal: onex.<kind>.<producer>.<name_prefix><principal>.v<version>.
+# The parts are declared apart, because the writer's name is the last piece of
+# the topic's name and a `{principal}` slot inside a full topic string fails the
+# architecture lint's topic-name rule.
 writer_topics:
-  command_topic_template: "onex.cmd.omnimarket.work-ledger-append-from-{principal}.v1"
+  kind: "cmd"
+  producer: "omnimarket"
+  name_prefix: "work-ledger-append-from-"
+  version: 1
   principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
 runtime_dispatch:
   # UNATTRIBUTED legacy topic: serve answers parsed requests with a refusal.

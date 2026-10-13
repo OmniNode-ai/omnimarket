@@ -41,7 +41,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -p no:randomly -k "unattributed_or_unknown_writer_refused or writer_topic_attribution_and_negative_controls or unknown_writer_topic_is_never_consumed"'
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-ac7-forged-principal-and-operator-rows"
+  - id: "dod-omn20275-ac7-forged-principal-operator-rows"
     description: "AC7: forged principal cells and non-operator RULING or OPERATOR-CONSENT rows are refused."
     source: "manual"
     binds_ac: ["AC7"]
@@ -64,4 +64,11 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -p no:randomly -k "request_has_no_payload_writer_identity or rejects_obsolete_payload_attribution"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-probe-writer-topic-parts"
+    description: "Deploy probe. The work-ledger append node contract GitHub serves at the checked-out commit declares the writer topic's name prefix, the declaration this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_append_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^  name_prefix: \"work-ledger-append-from-\"'"
         cwd: "${OMNI_HOME}/omnimarket"
