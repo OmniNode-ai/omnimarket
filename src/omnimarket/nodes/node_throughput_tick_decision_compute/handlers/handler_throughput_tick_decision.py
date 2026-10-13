@@ -31,6 +31,12 @@ Codex (`codex_allowed`) gets a Codex reading from its newest placement reading (
 MISSING lab-headroom line naming them instead of "limited; no dispatch". The Claude marks never gate Codex
 and the `.codex-sandbox-<host>` marks (landing workers only) are not judged.
 
+OMN-20864 (2026-10-13, h202 read 3 free slots while placement refused it on swap traffic): when the caller
+sets `live_admission`, each host's free slots are the runner's live pool admission (`admission`), per engine,
+and the receipts, marks and parses decide nothing. A refused engine is named with its rule and the other engine
+keeps its slots; Claude and Codex lanes draw from one shared slot budget, so the pr-land fallback counts the
+host's slots once; a host the probe could not read is UNKNOWN.
+
 OMN-20851: a lane the ledger records as dispatched with no placement receipt for more than
 `unplaced_lane_alarm_minutes`, and a cross-host dispatch-venv divergence older than
 `venv_divergence_alarm_minutes`, are ALARM verdicts (typed in `alarms`, exit code 1), a younger one a NOTE;
@@ -50,6 +56,7 @@ from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelCodexHeadroom,
+    ModelLabAdmission,
     ModelLabHeadroomFacts,
     ModelLabHost,
     ModelLabMark,
@@ -847,6 +854,11 @@ def _claude_blocked_host(
         rep.note(f"{label} | {note}; no dispatch (codex: {claimed.refusal})")
 
 
+LIVE_UNREAD_FIX = (
+    "rerun the tick; if the probe stays unreadable, read {host}'s live capacity with "
+    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a host that "
+    "cannot be read is a lab fault to name to the operator, never free and never full"
+)
 PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
 HOLD_SOURCE_FIX = (
     "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
@@ -871,6 +883,8 @@ def check_lab_headroom(
     if facts.placement_error is not None:
         rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
         return None
+    if facts.live_admission:
+        return _pr_land_fallback(rep, _check_live_admission(rep, facts), now, pr_land)
     free_lines: list[
         tuple[int, int]
     ] = []  # (index in rep.lines, free slots), host order
@@ -964,6 +978,80 @@ def check_lab_headroom(
             )
         else:
             rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    return _pr_land_fallback(rep, free_lines, now, pr_land)
+
+
+def _live_fix(host: str, admission: ModelLabAdmission) -> str:
+    """The FIX of a host with admitted slots: only an admitted engine is named, and the engines share one budget."""
+    lanes = []
+    if admission.claude_slots:
+        lanes.append(f"up to {admission.claude_slots} Claude lanes")
+    if admission.codex_slots:
+        lanes.append(f"up to {admission.codex_slots} Codex lanes (--model codex)")
+    return (
+        f"dispatch {' or '.join(lanes)} to {host} through the remote-lane runner, sharing "
+        f"{admission.slots} slots; never pin to a host without headroom"
+    )
+
+
+def _check_live_admission(
+    rep: Report, facts: ModelLabHeadroomFacts
+) -> list[tuple[int, int]]:
+    """One finding per host from the runner's live admission (OMN-20864): free slots are what placement would
+    admit now, per engine, never the cap minus the lanes a receipt shows. A refused engine is named with the rule
+    that refused it and the other engine keeps its slots; a host the probe could not read is UNKNOWN. Returns
+    (index in rep.lines, free slots) of each MISSING line, host order."""
+    free_lines: list[tuple[int, int]] = []
+    for host in facts.hosts:
+        label = f"lab-headroom:{host.name}"
+        adm = host.admission
+        if adm is None or adm.probe_error is not None:
+            why = "no live admission reading" if adm is None else adm.probe_error
+            rep.unk(
+                label,
+                f"live admission probe unreadable ({why}): its capacity is unread",
+                LIVE_UNREAD_FIX.format(host=host.name),
+            )
+            continue
+        rep.codex.append(
+            ModelCodexHeadroom(
+                host=host.name,
+                free=adm.codex_slots,
+                cap=adm.cap,
+                running=adm.lanes,
+                refusal=None if adm.codex_slots else adm.codex_refusal,
+                claude_blocked=None if adm.claude_slots else adm.claude_refusal,
+            )
+        )
+        summary = (
+            f"running lanes {adm.lanes}, placed units {adm.placed} of cap {adm.cap}, "
+            f"free Claude slots {adm.claude_slots}, free Codex slots {adm.codex_slots} "
+            f"(shared slots {adm.slots})"
+        )
+        refused = "".join(
+            f"; {engine} refused: {reason}"
+            for engine, reason in (
+                ("Claude", adm.claude_refusal),
+                ("Codex", adm.codex_refusal),
+            )
+            if reason
+        )
+        free = max(adm.claude_slots, adm.codex_slots)
+        if free:
+            free_lines.append((len(rep.lines), free))
+            rep.miss(label, summary + refused, _live_fix(host.name, adm))
+        else:
+            rep.note(f"{label} | {summary}{refused}; no dispatch")
+    return free_lines
+
+
+def _pr_land_fallback(
+    rep: Report,
+    free_lines: list[tuple[int, int]],
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None,
+) -> ModelLabFillPrLandPlan | None:
+    """The idle-slot pr-land fallback over the free-slot lines (OMN-20864)."""
     if pr_land is None:
         return None
     plan = plan_pr_land_fallback(
