@@ -325,6 +325,10 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # sweep, and this row makes a skipped or absent conclusion fail closed too.
     # Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Release Staleness (OMN-18010)",  # release-staleness
+    # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
+    # change to the generic test job's selection cannot drop them. Registered
+    # on the same terms as the rows above; unconditional in ci.yml.
+    "BYOK Customer Chooses Model (OMN-20844)",  # byok-customer-chooses-model
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.

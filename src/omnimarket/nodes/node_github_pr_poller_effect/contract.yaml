@@ -1,0 +1,220 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 OmniNode Team
+#
+# ONEX Node Contract
+# Node: NodeGitHubPRPollerEffect
+#
+# Polls GitHub API for PR triage state changes across configured repos.
+# Triggered by onex.intent.platform.runtime-tick.v1 and publishes ModelGitHubPRStatusEvent
+# to onex.evt.github.pr-status.v1.
+#
+# Related Tickets:
+#   - OMN-2656: Phase 2 — Effect Nodes & CLIs (omnibase_infra)
+#   - OMN-2655: Phase 1 — Core event models and SPI contracts
+name: "node_github_pr_poller_effect"
+contract_name: "node_github_pr_poller_effect"
+node_name: "node_github_pr_poller_effect"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - "effects"
+description: >
+  Effect node that polls the GitHub REST API for open pull-request triage state across configured repositories. Triggered by the runtime tick intent; checks elapsed time against poll_interval_seconds before calling the API. Publishes one ModelGitHubPRStatusEvent per open PR to onex.evt.github.pr-status.v1 with partition key "{repo}:{pr_number}", including GitHub's draft flag as is_draft.
+
+# Input subscriptions: this is the scheduling trigger
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "github.poll.prs"
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.github.pr-status.v1"
+input_model:
+  name: "ModelGitHubPollerConfig"
+  module: "omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_config"
+  description: "Configuration model for the GitHub PR poller (repos, interval, token env var)."
+output_model:
+  name: "ModelGitHubPollerResult"
+  module: "omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_result"
+  description: "Result model containing events published and any errors encountered."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "github.poll.prs"
+      event_model:
+        name: "ModelRuntimeTick"
+        module: "omnibase_infra.runtime.models.model_runtime_tick"
+      event_type: "platform.runtime-tick"
+      message_category: "INTENT"
+      handler:
+        name: "HandlerGitHubApiPoll"
+        module: "omnimarket.nodes.node_github_pr_poller_effect.handlers.handler_github_api_poll"
+      description: "Poll GitHub API for open PR triage state across configured repos"
+      output_fields:
+        - events_published
+        - errors
+        - repos_polled
+        - prs_polled
+error_handling:
+  retry_policy:
+    max_retries: 3
+    initial_delay_ms: 500
+    max_delay_ms: 10000
+    exponential_base: 2
+    retry_on:
+      - "GITHUB_RATE_LIMITED"
+      - "GITHUB_TIMEOUT"
+      - "GITHUB_CONNECTION_ERROR"
+  error_types:
+    - name: "GITHUB_RATE_LIMITED"
+      description: "GitHub API returned HTTP 429 rate limit"
+      recoverable: true
+      retry_strategy: "exponential_backoff"
+    - name: "GITHUB_TIMEOUT"
+      description: "GitHub API request timed out"
+      recoverable: true
+      retry_strategy: "exponential_backoff"
+    - name: "GITHUB_CONNECTION_ERROR"
+      description: "Failed to connect to GitHub API"
+      recoverable: true
+      retry_strategy: "exponential_backoff"
+    - name: "GITHUB_AUTH_ERROR"
+      description: "GitHub token missing or invalid"
+      recoverable: false
+      retry_strategy: "none"
+    - name: "GITHUB_NOT_FOUND"
+      description: "Repository or PR not found"
+      recoverable: false
+      retry_strategy: "none"
+io_operations:
+  - operation: "github.poll.prs"
+    description: "Poll GitHub for PR triage state across configured repos"
+    input_fields:
+      - repos
+      - poll_interval_seconds
+      - stale_threshold_hours
+      - github_token_env_var
+    output_fields:
+      - events_published
+      - repos_polled
+      - prs_polled
+      - errors
+# The GitHub token is resolved at the effect boundary from this declared ref via
+# the canonical secret-store resolver; no raw environment read.
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub PAT or App installation token for the open-PR triage reads."
+    required: true
+# Node configuration with defaults
+config:
+  poll_interval_seconds: 60
+  repos: []
+  stale_threshold_hours: 48
+  github_token_env_var: "GITHUB_TOKEN"
+dependencies:
+  - name: "github_http_client"
+    type: "service"
+    description: "omnimarket.github_api.GitHubHttpTransport, the one omnimarket GitHub transport"
+    required: true
+  - name: "github_token"
+    type: "environment"
+    env_var: "GITHUB_TOKEN"
+    description: "GitHub personal access token or app installation token"
+    required: true
+  - name: "event_publisher"
+    type: "protocol"
+    protocol: "ProtocolEventPublisher"
+    description: "Event publisher for onex.evt.github.pr-status.v1"
+capabilities:
+  - name: "github_pr_polling"
+    description: "Poll GitHub REST API for open PR triage state"
+  - name: "triage_classification"
+    description: "Classify PRs into 8 triage states based on CI, reviews, staleness, and draft state"
+  - name: "kafka_event_production"
+    description: "Publish ModelGitHubPRStatusEvent to onex.evt.github.pr-status.v1"
+definitions:
+  ModelGitHubPollerConfig:
+    type: object
+    description: "Configuration input for the GitHub PR poller"
+    frozen: true
+    extra: "forbid"
+    properties:
+      repos:
+        type: array
+        item_type: string
+        description: "Repository identifiers in {owner}/{name} format"
+        default_factory: "list"
+      poll_interval_seconds:
+        type: integer
+        description: "Minimum seconds between successive polls of the same repo"
+        default: 60
+        ge: 10
+      stale_threshold_hours:
+        type: integer
+        description: "Hours of inactivity before a PR is classified as stale"
+        default: 48
+        ge: 1
+      github_token_env_var:
+        type: string
+        description: "Environment variable name containing the GitHub token"
+        default: "GITHUB_TOKEN"
+    required: []
+  ModelGitHubPollerResult:
+    type: object
+    description: "Result from one poll cycle"
+    frozen: true
+    extra: "forbid"
+    properties:
+      events_published:
+        type: integer
+        description: "Number of ModelGitHubPRStatusEvent instances published"
+        default: 0
+        ge: 0
+      repos_polled:
+        type: array
+        item_type: string
+        description: "Repository identifiers polled in this cycle"
+        default_factory: "list"
+      prs_polled:
+        type: integer
+        description: "Total number of PRs polled"
+        default: 0
+        ge: 0
+      errors:
+        type: array
+        item_type: string
+        description: "Error messages encountered during polling (non-fatal)"
+        default_factory: "list"
+    required: []
+health_check:
+  enabled: true
+  endpoint: "/health"
+  interval_seconds: 60
+  checks:
+    - name: "github_token_configured"
+      check_type: "environment"
+      env_var: "GITHUB_TOKEN"
+      description: "Verify GITHUB_TOKEN is set"
+metadata:
+  description: "Polls GitHub REST API for open pull-request triage state and draft state across configured repositories on runtime tick intents, respecting configurable poll intervals"
+  transport_type: "HTTP"
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-02-23"
+  updated: "2026-02-23"
+  tags:
+    - effect
+    - github
+    - pr-poller
+    - kafka-producer
+    - triage
