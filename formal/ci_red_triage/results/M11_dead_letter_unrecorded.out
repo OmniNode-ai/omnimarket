@@ -1,0 +1,209 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 15 and seed -8695090190260803218 with 4 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CiRedTriage.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module CiRedTriage
+Starting... (2026-10-13 12:49:11)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-13 12:49:11.
+Error: Invariant AckedIsDurable is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 2: <GoRed line 183, col 5 to line 185, col 84 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 3: <FirstEmit line 208, col 17 to line 208, col 55 of module CiRedTriage>
+/\ emits = [a1 |-> 1, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<"a1">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 4: <Read line 216, col 5 to line 220, col 79 of module CiRedTriage>
+/\ emits = [a1 |-> 1, a2 |-> 0]
+/\ cst = "read"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a1">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 5: <WriteFail line 239, col 5 to line 244, col 68 of module CiRedTriage>
+/\ emits = [a1 |-> 1, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a1">>
+/\ fails = 1
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 1
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 6: <Read line 216, col 5 to line 220, col 79 of module CiRedTriage>
+/\ emits = [a1 |-> 1, a2 |-> 0]
+/\ cst = "read"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a1">>
+/\ fails = 1
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 1
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 7: <DeadLetter line 248, col 5 to line 255, col 65 of module CiRedTriage>
+/\ emits = [a1 |-> 1, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 1
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a1">>
+/\ fails = 1
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+3490 states generated, 1592 distinct states found, 984 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 3 (minimum is 0, the maximum 8 and the 95th percentile is 5).
+Finished in 01s at (2026-10-13 12:49:11)
+exit=12

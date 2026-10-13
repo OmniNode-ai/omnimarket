@@ -1,0 +1,209 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 45 and seed 2805243531156063581 with 4 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CiRedTriage.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module CiRedTriage
+Starting... (2026-10-13 12:48:50)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-13 12:48:50.
+Error: Invariant PollNeverDoubleWrites is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 2: <GoRed line 183, col 5 to line 185, col 84 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 3: <FirstEmit line 208, col 17 to line 208, col 55 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 1]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 4: <PollScan line 314, col 5 to line 318, col 57 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 1]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {"a2"}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "scanned"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 5: <Read line 216, col 5 to line 220, col 79 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 1]
+/\ cst = "read"
+/\ off = 0
+/\ cur = 1
+/\ snap = {"a2"}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "scanned"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 6: <Process line 223, col 5 to line 226, col 77 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 1]
+/\ cst = "written"
+/\ off = 0
+/\ cur = 1
+/\ snap = {"a2"}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {<<"a2", 0>>}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "pending"]
+/\ pst = "scanned"
+/\ triaged = {"a2"}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 1]
+/\ srcOf = [a1 |-> "none", a2 |-> "event"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 7: <PollWrite line 321, col 5 to line 327, col 55 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 1]
+/\ cst = "written"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = TRUE
+/\ keys = {<<"a2", 0>>}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "pending"]
+/\ pst = "scanned"
+/\ triaged = {"a2"}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 2]
+/\ srcOf = [a1 |-> "none", a2 |-> "poll"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+3282 states generated, 1488 distinct states found, 919 states left on queue.
+The depth of the complete state graph search is 8.
+The average outdegree of the complete state graph is 3 (minimum is 0, the maximum 7 and the 95th percentile is 5).
+Finished in 00s at (2026-10-13 12:48:50)
+exit=12

@@ -9,7 +9,7 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 1, patch: 0}
 
@@ -19,10 +19,10 @@ description: >
   ModelRepoWriteCompleted on onex.evt.omnimarket.github-repo-write-completed.v1
   or one ModelRepoWriteFailed on onex.evt.omnimarket.github-repo-write-failed.v1.
   Every call goes through the shared landing transport; no gh subprocess. The
-  mode comes from write_config per repository (dry_run plans the calls and
-  sends nothing). The quota floor is the landing effect's rule, read from the
-  x-ratelimit-* response headers. pr_edit, pr_ready and pr_close refuse a moved
-  head (head_moved) before any mutation; pr_create and workflow_dispatch check
+  mode comes from write_config per repository, then per owner (dry_run plans
+  the calls and sends nothing). The quota floor is the landing effect's rule,
+  read from the x-ratelimit-* response headers. pr_edit, pr_ready and pr_close
+  refuse a moved head (head_moved) before any mutation; pr_create and workflow_dispatch check
   the branch tip when given an expected head. A retried command with the same
   idempotency key writes nothing twice. pr_close is refused (claim_not_held)
   unless the requesting lane and run hold a live claim on the PR in
@@ -66,13 +66,20 @@ modes:
   - dry_run
   - enforce
 
-# Default dry_run. enforce is declared for omnimarket only, the repository the
-# lab proof writes a scratch PR in; the landing orchestrator's per-repository
-# github_mode (OMN-20866) is the precedent. Widening it is a contract change.
+# Default dry_run. enforce is declared for the OmniNode-ai owner, the
+# registry repositories lanes open pull requests in, so `onex scm` writes in
+# each of them; a repository of any other owner keeps dry_run and sends
+# nothing. The expected-head, quota-floor and claim guards apply to every
+# write in either mode. The landing orchestrator's per-repository github_mode
+# (OMN-20866) is the precedent: a repository row wins over its owner's row, so
+# one repository is pinned to dry_run by adding `OmniNode-ai/<repo>: dry_run`
+# under github_mode_by_repository. A request may still force dry_run; it can
+# never force enforce. Widening the owner table is a contract change.
 write_config:
   github_mode: dry_run
-  github_mode_by_repository:
-    OmniNode-ai/omnimarket: enforce
+  github_mode_by_owner:
+    OmniNode-ai: enforce
+  github_mode_by_repository: {}
 
 quota_floor:
   # The landing effect's rule (OMN-19826): quota is read only from response

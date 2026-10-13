@@ -27,6 +27,22 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: A repeated observation or a replayed event_id emits no second ci-run-failed event, decision or start -- falsifier: a duplicate or replay emits again
+  - id: "req-ci-red-triage-model"
+    statement: |-
+      Before the durable red CI triage contract is built, a design note fixes its scope, record identity, one writer and checkpoints, and a TLA+ model checks it, with each property failing on a one-knob mutation and an approving verdict that names the model's digest.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: One triage per canonical run identity (repo, workflow_run_id, run_attempt, check_name): the design config of formal/ci_red_triage passes OneTriagePerIdentity and each mutant targeting it (key per delivery, blind insert, dedup in process memory) records a counterexample -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k one_triage_per_identity
+      - id: "AC6"
+        statement: |-
+          AC6: No lost red: the design config passes NoLostRed and each mutant targeting it (a key without the run attempt, no poll backstop) records a counterexample -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k no_lost_red
+      - id: "AC7"
+        statement: |-
+          AC7: The poll backstop never double-writes: the design config passes PollNeverDoubleWrites and the mutant where the poll inserts outside the shared writer records a counterexample -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k poll_never_double_writes
+      - id: "AC8"
+        statement: |-
+          AC8: formal/ci_red_triage/README.txt is the design note, and formal/ci_red_triage/VERDICT.txt holds exactly one verdict line, an APPROVE naming the sha256 of the committed CiRedTriage.tla -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k verdict_names_model_digest
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the detector emits ci-run-failed for open, non-draft RED PRs and drops the rest."
@@ -37,6 +53,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3 and AC4: one owner start per shared cause, and duplicates and replays emit nothing."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
+  - kind: "tests"
+    description: "AC5 to AC8: the red CI triage model, its TLC results and its verdict agree."
+    command: "uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -66,3 +85,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3", "AC4"]
+  - id: "dod-omn20730-ac5-ac8-triage-model"
+    description: "AC5 to AC8: the red CI triage model passes its design config, each property fails on its one-knob mutation, the results match the committed model, configs and outputs, and the verdict approves the model's digest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5", "AC6", "AC7", "AC8"]
