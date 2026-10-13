@@ -530,6 +530,11 @@ jobs:
       # SYNC with pre-commit hook 'dod-verify-self-accepted-bindings'.
       - name: dod_verify demotes self-accepted bindings (OMN-20780)
         run: uv run pytest tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py -q -p no:randomly --no-cov
+      # OMN-20730: red CI emits ci-run-failed and the lifecycle orchestrator triages it on
+      # receipt (ruling 2026-10-08T14:27:26Z); the five contract legs of that chain stay
+      # connected. SYNC with pre-commit hook 'red-ci-event-chain'.
+      - name: red CI bus chain stays connected (OMN-20730)
+        run: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
       # OMN-20001: the drift check reads omniclaude at the pin, a pin move needs the
       # integration step, both drift directions stay strict, and the two OMN-13146
       # tests stay present and uninverted. SYNC with pre-commit hook

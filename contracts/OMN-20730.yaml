@@ -43,6 +43,13 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: formal/ci_red_triage/README.txt is the design note, and formal/ci_red_triage/VERDICT.txt holds exactly one verdict line, an APPROVE naming the sha256 of the committed CiRedTriage.tla -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k verdict_names_model_digest
+  - id: "req-ci-red-bus-chain-gate"
+    statement: |-
+      The red CI chain that ruling 2026-10-08T14:27:26Z requires stays connected on the bus, and CI and pre-commit refuse a change that cuts a leg.
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: Cutting any leg of the chain (the emitter consuming pr-state-observed or publishing ci-run-failed, the orchestrator consuming ci-run-failed or publishing ci-red-triage-decided, the reducer consuming the decision, a route to a deleted handler module) fails tests/ci/test_red_ci_bus_chain_omn20730.py, and the required lint job and the red-ci-event-chain pre-commit hook both run it -- falsifier: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -k "planted_violation or required_lint or pre_commit_hook"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the detector emits ci-run-failed for open, non-draft RED PRs and drops the rest."
@@ -56,6 +63,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC5 to AC8: the red CI triage model, its TLC results and its verdict agree."
     command: "uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC9: the five contract legs of the red CI chain, each cut refused, and the lint job and pre-commit hook that run the gate."
+    command: "uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -93,3 +103,11 @@ dod_evidence:
         check_value: "uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5", "AC6", "AC7", "AC8"]
+  - id: "dod-omn20730-ac9-bus-chain-gate"
+    description: "AC9: every planted cut of the red CI chain is refused, and the lint job and the pre-commit hook run the gate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]

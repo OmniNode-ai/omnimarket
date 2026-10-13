@@ -1488,6 +1488,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20730: red CI emits ci-run-failed and the lifecycle orchestrator triages it on
+      # receipt (ruling 2026-10-08T14:27:26Z); the five contract legs of that chain stay
+      # connected. Check-only. SYNC with the ci.yml lint step
+      # "red CI bus chain stays connected (OMN-20730)".
+      - id: red-ci-event-chain
+        name: red CI bus chain stays connected (OMN-20730)
+        language: system
+        entry: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/(node_pr_state_emit_effect|node_pr_lifecycle_orchestrator|node_pr_lifecycle_state_reducer)/(contract\.yaml|handlers/)|src/omnimarket/events/topics\.py$|tests/ci/test_red_ci_bus_chain_omn20730\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20001: the event registry drift check reads omniclaude at the pinned
       # rev, a pin move needs the integration step, both drift directions stay
       # strict, and the two OMN-13146 tests stay present and uninverted.
