@@ -1488,6 +1488,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20730: the red CI triage model passes its design config, each property
+      # fails on a one-knob mutation, the TLC results match the committed model,
+      # configs and outputs, and VERDICT.txt approves the model's digest.
+      # Check-only. SYNC with the ci.yml lint step "Red CI triage model and
+      # verdict (OMN-20730)".
+      - id: ci-red-triage-model
+        name: Red CI triage model and verdict (OMN-20730)
+        language: system
+        entry: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/ci_red_triage/|tests/formal/(test_ci_red_triage_model\.py|ci_red_triage_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
         language: system
