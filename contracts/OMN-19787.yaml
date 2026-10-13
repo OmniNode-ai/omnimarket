@@ -26,6 +26,16 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: lab_run run --task-class keeps only the named task classes -- falsifier: uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only
+  - id: "req-ground-truth-labels"
+    statement: |-
+      A delegated run must be labelled from evidence the acceptance gate never produced, so the gate's false-pass rate is measured against ground truth.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: a code run is adequate only when a hidden test the delegated model never saw passes every case, a document run only when every checklist item is met by a scorer that is not the delegated model, and the labelled items count the gate's false passes per class -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q
+      - id: "AC6"
+        statement: |-
+          AC6: every golden code task's reference passes its hidden test, its control fails it, and no hidden-test line appears in the task prompt -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The first page of the exposure carries the newest run for every class."
@@ -39,6 +49,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The lab run keeps only the named task classes."
     command: "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only"
+  - kind: "tests"
+    description: "Runs are labelled from hidden tests and independently scored checklists, and the gate's false passes are counted against those labels."
+    command: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q"
+  - kind: "tests"
+    description: "The golden code tasks' hidden tests pass their references, fail their controls and never appear in the prompts."
+    command: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -76,3 +92,19 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-ground-truth-labels-ac5"
+    description: "The focused test proves the labeller decides from hidden tests and independent checklists and the gate eval counts false passes against them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-golden-hidden-tests-ac6"
+    description: "The focused test proves every golden hidden test passes its reference, fails its control and stays out of the prompt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
