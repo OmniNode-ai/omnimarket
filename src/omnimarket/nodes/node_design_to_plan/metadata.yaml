@@ -1,6 +1,6 @@
 name: node_design_to_plan
 version: "1.1.0"
-description: "End-to-end design workflow — brainstorm ideas into structured implementation plans with Phase 3 launch stub (OMN-12228)"
+description: "End-to-end design workflow — brainstorm ideas into structured implementation plans through a lab-hosted model, with Phase 3 launch routing (OMN-12228)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -8,13 +8,14 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_write
+  side_effect_class: external_io
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "httpx>=0.27.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["planning", "design", "brainstorm", "workflow", "orchestrator", "OMN-12228"]

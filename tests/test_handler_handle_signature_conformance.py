@@ -157,7 +157,7 @@ def test_build_loop_handle_accepts_runtime_dispatch() -> None:
 
 
 @pytest.mark.unit
-def test_design_to_plan_handle_accepts_runtime_dispatch() -> None:
+async def test_design_to_plan_handle_accepts_runtime_dispatch() -> None:
     """Reproduce OMN-13711 through the real adapter for HandlerDesignToPlan."""
     from omnimarket.nodes.node_design_to_plan.handlers.handler_design_to_plan import (
         HandlerDesignToPlan,
@@ -167,11 +167,13 @@ def test_design_to_plan_handle_accepts_runtime_dispatch() -> None:
     command = ModelDesignToPlanCommand(
         correlation_id=uuid.uuid4(),
         topic="conformance probe",
+        plan_path="/tmp/conformance-plan.md",  # existing plan: no model call
         requested_at=datetime.now(tz=UTC),
         dry_run=True,
         plan_only=True,
     )
-    result = _invoke_handle_method(HandlerDesignToPlan().handle, command)
+    # handle() is a coroutine; the adapter awaits it (inspect.isawaitable).
+    result = await _invoke_handle_method(HandlerDesignToPlan().handle, command)
     # Typed ModelDesignToPlanResult (BaseModel), not a tuple (OMN-13841).
     assert result is not None
     assert isinstance(result, BaseModel)

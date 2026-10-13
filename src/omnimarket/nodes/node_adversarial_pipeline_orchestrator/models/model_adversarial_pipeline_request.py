@@ -9,7 +9,9 @@ Contains:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ModelAdversarialPipelineRequest(BaseModel):
@@ -79,6 +81,15 @@ class ModelAdversarialPipelineResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    status: Literal["completed", "failed"] = Field(
+        default="completed",
+        description=(
+            "Terminal verdict the runtime result applier routes on: 'completed' "
+            "publishes to the success terminal, 'failed' to the declared "
+            "gate-failed terminal. Derived from gate_passed; a contradicting "
+            "value is refused."
+        ),
+    )
     plan_path: str | None = Field(
         default=None,
         description="Path to the plan file produced or used by Stage 1.",
@@ -119,3 +130,22 @@ class ModelAdversarialPipelineResult(BaseModel):
         le=3,
         description="Highest pipeline stage reached (1=design, 2=review, 3=tickets).",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_status_from_gate(cls, data: Any) -> Any:
+        """status follows the gate: the one fact the terminal routing reads.
+
+        Derived rather than trusted so a below-gate result can never carry a
+        'completed' verdict onto the success terminal, or the reverse.
+        """
+        if not isinstance(data, dict):
+            return data
+        expected = "completed" if data.get("gate_passed") else "failed"
+        stated = data.get("status")
+        if stated is not None and stated != expected:
+            raise ValueError(
+                f"status={stated!r} contradicts gate_passed={data.get('gate_passed')!r}"
+                f" (expected status={expected!r})"
+            )
+        return {**data, "status": expected}

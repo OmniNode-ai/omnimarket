@@ -88,7 +88,30 @@ class HandlerCodingAgentBus:
             .joinpath("contract.yaml")
             .read_text(encoding="utf-8")
         )
+        command = ModelCodingAgentInvokeCommand(
+            correlation_id=task.correlation_id,
+            agent=EnumCodingAgent(settings.agent),
+            sandbox=EnumAgentSandbox(settings.sandbox),
+            workspace_path=task.workspace_path,
+            allow_dirty_tree=True,
+            network=True,
+            model=task.model,
+            timeout_ms=task.timeout_ms,
+            prompt=task.prompt
+            + "\n\nReturn ONLY the JSON object matching this schema:\n"
+            + json.dumps(task.schema_definition, ensure_ascii=False)
+            + "\n"
+            "Execution authority: work in ticket worktrees, never a canonical clone. "
+            "Create a KB worktree from the declared KB clone before writing or "
+            "committing the report. "
+            "Read PR state only from the PR watcher. After opening the report PR, hand it to "
+            "landing-controller; never merge, arm, requeue or rerun CI. These instructions "
+            "override "
+            "any older operational recipe quoted above. Preserve the report format "
+            "and classifications.",
+        )
         validation_command = ModelWorkspaceValidateCommand(
+            invoke_command=command,
             correlation_id=task.correlation_id,
             workspace_path=task.workspace_path,
             allowed_roots=contract_allowed_workspace_roots(
@@ -133,29 +156,9 @@ class HandlerCodingAgentBus:
             raise ValueError(
                 f"{task.label}: workspace rejected: {validation.rejection_reason}"
             )
-        command = ModelCodingAgentInvokeCommand(
-            correlation_id=task.correlation_id,
-            agent=EnumCodingAgent(settings.agent),
-            sandbox=EnumAgentSandbox(settings.sandbox),
-            workspace_path=validation.resolved_path,
-            allow_dirty_tree=True,
-            network=True,
-            model=task.model,
-            timeout_ms=task.timeout_ms,
-            prompt=task.prompt
-            + "\n\nReturn ONLY the JSON object matching this schema:\n"
-            + json.dumps(task.schema_definition, ensure_ascii=False)
-            + "\n"
-            "Execution authority: work in ticket worktrees, never a canonical clone. "
-            "Create a KB worktree from the declared KB clone before writing or "
-            "committing the report. "
-            "Read PR state only from the PR watcher. After opening the report PR, hand it to "
-            "landing-controller; never merge, arm, requeue or rerun CI. These instructions "
-            "override "
-            "any older operational recipe quoted above. Preserve the report format "
-            "and classifications.",
-        )
-        payload = command.model_dump(mode="json")
+        payload = command.model_copy(
+            update={"workspace_path": validation.resolved_path}
+        ).model_dump(mode="json")
         # The shared transport owns the wire correlation, including its matching payload id.
         payload.pop("correlation_id")
         response = self._publish(

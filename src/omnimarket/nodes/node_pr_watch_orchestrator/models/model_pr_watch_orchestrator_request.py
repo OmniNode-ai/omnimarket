@@ -22,7 +22,7 @@ class ModelPrWatchOrchestratorRequest(BaseModel):
         default=10.0,
         ge=0.0,
         le=600.0,
-        description="Seconds to wait between gh pr checks polls.",
+        description="Minimum seconds between two reads of the PR; never polled sooner.",
     )
     timeout_seconds: float | None = Field(
         default=None,
@@ -32,7 +32,7 @@ class ModelPrWatchOrchestratorRequest(BaseModel):
     )
     required_only: bool = Field(
         default=False,
-        description="When true, pass --required to gh pr checks.",
+        description="Not served by the REST checks client; true is refused with a typed failure.",
     )
 
     @field_validator("repo")

@@ -38,6 +38,10 @@ descriptor:
   idempotent: false
   timeout_ms: 600000
 
+io_operations:
+  - operation_type: llm_call
+    timeout_seconds: 240
+
 inputs:
   phase:
     type: str
@@ -75,6 +79,12 @@ outputs:
   phase_reached:
     type: str
     description: "Final phase reached (brainstorm, plan, launch)"
+  plan_content:
+    type: str
+    description: >
+      Markdown plan the brainstorm phase produced through a lab-hosted model
+      (a title, then "## Task N:" sections). Carried on the completed event;
+      absent when the command named an existing plan_path or a phase failed.
 
 terminal_event: onex.evt.omnimarket.design-to-plan-completed.v1
 

@@ -1430,6 +1430,23 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: ticket-contract-prerequisite
+        name: Ticket contract at pushed head (OMN-20864)
+        language: system
+        entry: uv run --frozen python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect
+        fail_fast: true
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ticket-contract-prerequisite-regression
+        name: Ticket contract push and PR-create controls (OMN-20864)
+        language: system
+        entry: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_ticket_contract_prerequisite_effect/.*|src/omnimarket/nodes/(node_dod_verify/services/contract_prerequisite\.py|node_github_repo_write_effect/.*)|tests/ci/(test_ticket_contract_prerequisite_omn20864\.py|fixtures/ticket_contract_refusal_omn20864\.json)|\.github/workflows/ci\.yml|contracts/OMN-20864\.yaml|pyproject\.toml|tests/nodes/node_ticket_contract_prerequisite_effect/.*|tests/ci/test_pipeline_observability_export_closure_omn20864\.py|src/omnimarket/nodes/node_(emit_daemon|event_emit_effect)/contract\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Golden-chain validation layer, generation step (epic OMN-19546). Runs
       # the contract walker over src, re-drives every generated chain of an
       # enrolled workflow and fails on a path with no chain, a chain with no

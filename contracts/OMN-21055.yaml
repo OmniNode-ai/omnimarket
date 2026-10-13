@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-21055
+title: adversarial pipeline orchestrator declares its gate-failed terminal and carries a gate verdict status
+summary: The node contract declares runtime_dispatch.terminal_events with the completed topic as success and
+  the gate-failed topic as failure. ModelAdversarialPipelineResult carries a status derived from gate_passed,
+  and a contradicting status is refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-gate-failed-terminal
+  statement: A below-gate result is published on the gate-failed topic and a passing result on the completed topic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: contract.yaml declares the gate-failed topic as the one failure terminal and the completed
+      topic as the success terminal -- falsifier: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py
+      fails at the merge base'
+  - id: AC2
+    statement: 'AC2: the result status follows gate_passed and a contradicting status is refused -- falsifier:
+      the same test file fails at the merge base'
+evidence_requirements:
+- kind: tests
+  description: Contract result applier over the real contract and handler result.
+  command: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py -q -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21055-ac1-terminals
+  description: The contract declares both terminals and the applier publishes one terminal per outcome.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py -q -n 0 -k 'gate_failed or completed_terminal'
+  binds_ac:
+  - AC1
+- id: dod-omn21055-ac2-status
+  description: Result status follows the gate and cannot contradict it.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_adversarial_pipeline_runtime_dispatch.py -q -n 0 -k status_follows_the_gate
+  binds_ac:
+  - AC2
+- id: dod-omn21055-deploy-probe
+  description: Deploy smoke on the runtime after the deploy agent rolls this change - import the adversarial pipeline
+    result model from the running container and assert that a below-gate result carries the failed status and that
+    the deployed node contract declares the gate-failed failure terminal. The command exits nonzero when the deployed
+    image lacks the change, including the merge-base image. It reads deployed code, not this contract or a receipt.
+    Hosted CI has no runtime; the local Done gate must execute this unbound deployment check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'import importlib.resources as r, yaml; from omnimarket.nodes.node_adversarial_pipeline_orchestrator.models.model_adversarial_pipeline_request import ModelAdversarialPipelineResult as M; assert M.model_fields[\"status\"].default == \"completed\"; assert M(gate_passed=False, dry_run=True).status == \"failed\"; c = yaml.safe_load(r.files(\"omnimarket.nodes.node_adversarial_pipeline_orchestrator\").joinpath(\"contract.yaml\").read_text()); t = c[\"runtime_dispatch\"][\"terminal_events\"]; assert t[\"failure\"] != t[\"success\"]; assert t[\"failure\"] in c[\"event_bus\"][\"publish_topics\"]; assert \"-gate-failed\" in t[\"failure\"]'"
+    cwd: ${OMNI_HOME}/omnimarket

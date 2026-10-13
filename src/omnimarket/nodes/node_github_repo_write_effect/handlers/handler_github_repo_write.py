@@ -35,12 +35,16 @@ Rules this handler enforces:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaHeadersMissingError,
@@ -72,6 +76,11 @@ from omnimarket.github_landing.model_github_http_exchange import (
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.models.model_github_quota_floor import ModelGithubQuotaFloor
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
+    M4_REPOSITORIES,
+    cited_tickets,
+    contract_prerequisite,
+)
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
 )
@@ -205,7 +214,9 @@ class _Run:
             comment_id=comment_id,
         )
 
-    async def send(self, request: ModelGithubHttpRequest) -> ModelGithubHttpResponse:
+    async def send(
+        self, request: ModelGithubHttpRequest, *, allow_not_found: bool = False
+    ) -> ModelGithubHttpResponse:
         """Send one request; raise :class:`_RefusedError` with the typed failure."""
         resource = _resource_of(request)
         floor_reading = self._handler.floor_refusal(resource)
@@ -234,6 +245,8 @@ class _Run:
             self.quota = reading
             self._handler.record_reading(reading)
         errors = (response.body or {}).get("errors")
+        if allow_not_found and response.status == 404:
+            return response
         if 200 <= response.status < 300 and not errors:
             return response
         reason = (
@@ -450,6 +463,8 @@ async def _pr_create(run: _Run) -> ModelRepoWriteCompleted:
             html_url=_str_at(pr, "html_url"),
             head_sha=_str_at(pr, "head", "sha"),
         )
+    if c.repo.rsplit("/", 1)[-1].lower() in M4_REPOSITORIES:
+        await _pr_create_contract_precondition(run)
     created = (
         await run.send(
             create_pull_request_request(
@@ -467,6 +482,67 @@ async def _pr_create(run: _Run) -> ModelRepoWriteCompleted:
         html_url=_str_at(created, "html_url"),
         head_sha=_str_at(created, "head", "sha"),
     )
+
+
+async def _pr_create_contract_precondition(run: _Run) -> None:
+    """Read each cited contract at one immutable head before sending POST."""
+    c = run.command
+    tickets = cited_tickets(c.title or "")
+    if not tickets:
+        raise run.refused(
+            EnumRepoWriteRefusal.CONTRACT_REQUIRED,
+            "pull request title must cite at least one OMN-[0-9]+ ticket",
+        )
+    head = c.head or ""
+    ref = (await run.send(git_ref_request(c.repo, head))).body or {}
+    sha = _str_at(ref, "object", "sha")
+    if (
+        sha is None
+        or re.fullmatch(r"[0-9a-fA-F]{40}", sha) is None
+        or (c.expected_head_sha and sha != c.expected_head_sha)
+    ):
+        raise run.refused(
+            EnumRepoWriteRefusal.HEAD_MOVED, "PR head is unreadable or moved"
+        )
+    for ticket in tickets:
+        response = await run.send(
+            ModelGithubHttpRequest(
+                method="GET",
+                path=f"/repos/{c.repo}/contents/contracts/{ticket}.yaml?ref={quote(sha, safe='')}",
+            ),
+            allow_not_found=True,
+        )
+        text = None
+        if response.status != 404:
+            body = response.body or {}
+            content = _str_at(body, "content")
+            if (
+                body.get("type") != "file"
+                or body.get("encoding") != "base64"
+                or content is None
+            ):
+                raise run.refused(
+                    EnumRepoWriteRefusal.CONTRACT_REQUIRED,
+                    f"contracts/{ticket}.yaml: contract content is unreadable",
+                )
+            try:
+                text = base64.b64decode("".join(content.split()), validate=True).decode(
+                    "utf-8"
+                )
+            except (binascii.Error, UnicodeDecodeError, ValueError):
+                raise run.refused(
+                    EnumRepoWriteRefusal.CONTRACT_REQUIRED,
+                    f"contracts/{ticket}.yaml: contract content is unreadable",
+                ) from None
+        failure = contract_prerequisite(ticket, text)
+        if failure:
+            raise run.refused(EnumRepoWriteRefusal.CONTRACT_REQUIRED, failure)
+    # A branch can move while the content reads run. Refuse before creation.
+    latest = (await run.send(git_ref_request(c.repo, head))).body or {}
+    if _str_at(latest, "object", "sha") != sha:
+        raise run.refused(
+            EnumRepoWriteRefusal.HEAD_MOVED, "PR head moved during contract preflight"
+        )
 
 
 async def _pr_edit(run: _Run) -> ModelRepoWriteCompleted:

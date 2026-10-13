@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,6 +39,10 @@ class ModelDiagnosticsRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    correlation_id: UUID | None = Field(
+        default=None,
+        description="Caller's run id; echoed on the result so an orchestrator can correlate it.",
+    )
     dimensions: list[EnumDiagnosticDimension] = Field(default_factory=list)
     dry_run: bool = False
     freshness_threshold_hours: int = Field(default=4, ge=1, le=168)
@@ -71,6 +76,7 @@ class HandlerPlatformDiagnostics:
         run_duration = time.monotonic() - start_time
 
         return ModelDiagnosticsResult(
+            correlation_id=request.correlation_id,
             overall_status=overall_status,
             dimensions=dimension_results,
             run_duration_seconds=round(run_duration, 3),

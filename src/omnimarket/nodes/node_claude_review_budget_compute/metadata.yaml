@@ -1,0 +1,25 @@
+name: node_claude_review_budget_compute
+version: "0.1.0"
+description: "the Claude review key that can afford a call and keep its reserve this cycle, or none and why"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_claude_review_budget_compute: "omnimarket.nodes.node_claude_review_budget_compute"
+capabilities:
+  standalone: true
+  # false until the review gateway asks it before each upstream call.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  # The pricing manifest (ModelPricingTable) prices every call.
+  - "omnibase_infra"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "review", "claude", "budget", "pure"]
+pack: "routing"
+display_name: "Claude Review Key Budget"
+node_role: "compute"

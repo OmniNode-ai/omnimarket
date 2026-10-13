@@ -32,9 +32,20 @@ class ModelAbCompareResult(BaseModel):
     )
     correlation_id: str = Field(description="Echoed correlation_id for traceability")
     status: str = Field(
-        description="COMPLETED or PARTIAL (some models skipped)",
+        description=(
+            "COMPLETED, PARTIAL (some models skipped, refused or errored), "
+            "FAILED (every model errored) or REFUSED "
+            "(every requested model is absent from the registry)"
+        ),
     )
     models_skipped: list[str] = Field(
         default_factory=list,
         description="Model IDs that were skipped (missing key or unreachable)",
+    )
+    models_refused: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Requested model IDs the registry does not declare; "
+            "no inference request is sent for them"
+        ),
     )

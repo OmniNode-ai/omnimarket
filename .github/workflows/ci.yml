@@ -495,6 +495,19 @@ jobs:
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
 
+      # Paired with ticket-contract-prerequisite-regression (pre-commit).
+      - name: Ticket contract authoring refusal controls (OMN-20864)
+        run: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
+
+      # The checkout has full history, so read the actual PR head, not the
+      # synthetic merge tree. Paired with ticket-contract-prerequisite (pre-push).
+      - name: Ticket contract prerequisite at PR head (OMN-20864)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: uv run python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect --head "$PR_HEAD" --title "$PR_TITLE"
+
       # OMN-20838: dod_verify reads PR and commit facts from the canonical
       # clone and the PR watcher's state; this fails when its read layer spawns
       # gh for a read a local source holds. SYNC with pre-commit hook
@@ -3116,7 +3129,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.70
+          ref: v0.38.71
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
