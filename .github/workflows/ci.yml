@@ -491,6 +491,9 @@ jobs:
       # OMN-21002: paired with the imperative-contract-guard-caller hook.
       - name: Imperative guard caller regression (OMN-21002)
         run: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+      # OMN-20910: paired with the review-voter-model-from-overlay hook.
+      - name: Review voter model comes from the overlay (OMN-20910)
+        run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
       # OMN-20967: paired with the anthropic-key-prefix-workflows hook.
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0

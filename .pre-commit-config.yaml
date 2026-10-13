@@ -1419,6 +1419,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20910: a review voter's model is declared only in the contract
+      # overlay. Refuses any vars.*MODEL* reference and any model id literal in
+      # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
+      # comes from the overlay (OMN-20910)".
+      - id: review-voter-model-from-overlay
+        name: Review voter model comes from the overlay (OMN-20910)
+        language: system
+        entry: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+        files: ^(\.github/workflows/[^/]+\.ya?ml|tests/ci/test_hostile_reviewer_voters_overlay_omn20910\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
       # lint step "No Anthropic key value in a workflow (OMN-20967)".
       - id: anthropic-key-prefix-workflows
