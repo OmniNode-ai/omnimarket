@@ -17,6 +17,16 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: the caller passes verifier-version at or above VERIFIER_FLOOR 0.4.303 to the floor-enforcing reusable, the comparison refuses 0.4.280 and 0.4.302 and admits 0.4.303 and 0.4.305 -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k "at_or_above_the_floor or floor_comparison" fails at the merge base because the old reusable does not enforce the floor
+  - id: "req-wire-every-criterion-bound"
+    statement: |-
+      The test that proves node_dod_verify refuses a partly bound contract runs in a pre-commit hook and in the required lint job.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the pre-commit hook dod-verify-every-criterion-bound and the required lint job both run tests/test_dod_verify_every_criterion_bound.py, and that test fails when the unbound-criteria demotion is removed -- falsifier: uv run pytest tests/ci/test_dod_verify_criterion_bound_wiring_omn20032.py -q
+      - id: "AC2"
+        statement: |-
+          AC2: the guarding test passes at the head -- falsifier: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
 evidence_requirements:
   - kind: "tests"
     description: "The caller pins the floor-carrying reusable."
@@ -24,6 +34,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The caller passes a version at or above the floor to the floor-enforcing reusable, with a refusing and an admitting comparison case."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k \"at_or_above_the_floor or floor_comparison\""
+  - kind: "tests"
+    description: "The hook and the lint job run the guarding test."
+    command: "uv run pytest tests/ci/test_dod_verify_criterion_bound_wiring_omn20032.py -q"
+  - kind: "tests"
+    description: "The guarding test passes."
+    command: "uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +61,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -k \"at_or_above_the_floor or floor_comparison\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20032-wiring"
+    description: "The pre-commit hook and the lint job run the guarding test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dod_verify_criterion_bound_wiring_omn20032.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20032-guard-passes"
+    description: "The guarding test passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
