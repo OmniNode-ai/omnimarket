@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from omnibase_core.enums import EnumNodeKind
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.events.topics import GITHUB_PR_STATUS_TOPIC_V1
@@ -17,6 +19,22 @@ from omnimarket.nodes.node_github_pr_poller_effect.handlers.handler_github_api_p
 from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_poller_config import (
     ModelGitHubPollerConfig,
 )
+from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_pr_status_poll_event import (
+    ModelGitHubPrStatusPollEvent,
+)
+
+# The fields every ModelRuntimeEventBase stamps per instance (ids, clock).
+_PER_INSTANCE_FIELDS = {"event_id", "correlation_id", "timestamp", "source_node_id"}
+
+
+def _published(result: ModelHandlerOutput[None]) -> list[dict[str, object]]:
+    """The wire payloads of the events the runtime will publish."""
+    assert result.node_kind is EnumNodeKind.EFFECT
+    assert result.result is None
+    assert all(isinstance(e, ModelGitHubPrStatusPollEvent) for e in result.events)
+    return [
+        e.model_dump(mode="json", exclude=_PER_INSTANCE_FIELDS) for e in result.events
+    ]
 
 
 def _tick() -> ModelRuntimeTick:
@@ -75,10 +93,10 @@ async def test_handle_builds_the_client_from_the_token_and_polls_each_repo() -> 
 
     result = await handler.handle(_tick())
 
-    assert result.errors == []
-    assert result.repos_polled == ["OmniNode-ai/omnimarket"]
-    assert result.prs_polled == 1
-    assert result.pending_events == [
+    assert result.logs == ()
+    assert result.metrics["repos_polled"] == 1
+    assert result.metrics["prs_polled"] == 1
+    assert _published(result) == [
         {
             "event_type": GITHUB_PR_STATUS_TOPIC_V1,
             "repo": "OmniNode-ai/omnimarket",
@@ -131,7 +149,7 @@ async def test_handle_publishes_is_draft_true_for_draft_pr() -> None:
 
     result = await handler.handle(_tick())
 
-    assert result.pending_events == [
+    assert _published(result) == [
         {
             "event_type": GITHUB_PR_STATUS_TOPIC_V1,
             "repo": "OmniNode-ai/omnimarket",
@@ -160,11 +178,59 @@ async def test_handle_surfaces_github_client_initialization_errors() -> None:
 
     result = await handler.handle(_tick())
 
-    assert result.repos_polled == []
-    assert result.prs_polled == 0
-    assert result.pending_events == []
-    assert len(result.errors) == 1
-    assert "Error initializing GitHub client: RuntimeError" in result.errors[0]
+    assert result.metrics["repos_polled"] == 0
+    assert result.metrics["prs_polled"] == 0
+    assert result.events == ()
+    assert len(result.logs) == 1
+    assert "Error initializing GitHub client: RuntimeError" in result.logs[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_handle_with_no_configured_repos_returns_no_events() -> None:
+    """repos=[] (the contract default) returns nothing to publish."""
+    created: list[object] = []
+
+    def factory(token: str) -> _FakeGitHubClient:
+        client = _FakeGitHubClient(token)
+        created.append(client)
+        return client
+
+    handler = HandlerGitHubApiPoll(
+        github_client_factory=factory, config=ModelGitHubPollerConfig(repos=[])
+    )
+
+    result = await handler.handle(_tick())
+
+    assert result.events == ()
+    assert result.result is None
+    assert created == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_handle_inside_poll_interval_returns_no_events() -> None:
+    """A second tick before poll_interval_seconds elapses polls and returns nothing."""
+    created: list[_FakeGitHubClient] = []
+
+    def factory(token: str) -> _FakeGitHubClient:
+        client = _FakeGitHubClient(token)
+        created.append(client)
+        return client
+
+    config = ModelGitHubPollerConfig(
+        repos=["OmniNode-ai/omnimarket"], poll_interval_seconds=60
+    )
+    handler = HandlerGitHubApiPoll(
+        github_token="fake-token", github_client_factory=factory, config=config
+    )
+
+    first = await handler.handle(_tick())
+    second = await handler.handle(_tick())
+
+    assert len(first.events) == 1
+    assert second.events == ()
+    assert [c.repos for c in created] == [["OmniNode-ai/omnimarket"], []]
 
 
 @pytest.mark.asyncio
@@ -201,7 +267,7 @@ async def test_handle_resolves_the_token_from_the_contract_secret_when_none_is_g
 
     result = await handler.handle(_tick())
 
-    assert result.errors == []
+    assert result.logs == ()
     assert resolved == [("GITHUB_TOKEN", "GITHUB_TOKEN")]
     assert created[0].token == "resolved-token"
 
@@ -229,10 +295,7 @@ async def test_handle_with_no_repos_resolves_no_token_and_builds_no_client(
 
     result = await handler.handle(_tick())
 
-    assert result.model_dump() == {
-        "events_published": 0,
-        "repos_polled": [],
-        "prs_polled": 0,
-        "errors": [],
-        "pending_events": [],
-    }
+    assert result.events == ()
+    assert result.result is None
+    assert result.logs == ()
+    assert result.metrics == {"repos_polled": 0.0, "prs_polled": 0.0, "events": 0.0}
