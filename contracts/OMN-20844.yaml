@@ -84,6 +84,9 @@ requirements:
       - id: "AC21"
         statement: |-
           AC21: the routing reducer never resolves a backend other than the pin for a pinned request: a same-tier re-route re-selects the pin, and a re-route past the pin's tier or with the pin excluded refuses -- falsifier: a routing decision for a pinned request naming another backend.
+      - id: "AC22"
+        statement: |-
+          AC22: on the in-process path (LocalDelegationDispatchPort) a pinned run whose call fails in transport, or whose answer the gate refuses, calls no backend but the pin and returns status failed with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still reaches the sibling -- falsifier: a call to another backend for the pinned run, or the unpinned control not reaching the sibling.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -101,8 +104,8 @@ evidence_requirements:
     description: "AC13 and AC14: the local port's quality-refused terminal names its stop reason on the hard-tier fixture, the budget case and the already-tried-route case."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_ladder_stop_reason_omn20844.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC20 and AC21: workflow, escalation COMPUTE and routing reducer tests for a pinned run, with the unpinned control."
-    command: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py -q -n 0 -p no:randomly --no-cov"
+    description: "AC20 to AC22: workflow, escalation COMPUTE, routing reducer and in-process port tests for a pinned run, with the unpinned controls."
+    command: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_pin_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -229,3 +232,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py -q -n 0 -p no:randomly --no-cov -k 'reroute or escalation_after_pinned or initial'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC21"]
+  - id: "dod-omn20844-ac22-in-process-pin"
+    description: "AC22: the in-process port calls only the pin for a pinned run and returns pinned_backend_failed on a transport failure and on a gate refusal; the unpinned control reaches the sibling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_pin_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
