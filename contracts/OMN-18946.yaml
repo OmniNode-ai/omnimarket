@@ -12,7 +12,7 @@ summary: >-
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "omninode_internal.claude_hook_events gains seven nullable columns"
+  - "events"
 requirements:
   - id: "req-omn18946-projection"
     statement: "claude_hook_events states which guard refused a call and how many tokens a session used."
