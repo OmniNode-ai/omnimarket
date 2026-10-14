@@ -1,0 +1,73 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20489"
+title: "The summarization contract grader agrees with a careful reading of 120 summaries: claims are checked against the whole commit or PR body, a bare unverified is not a disclaimer, and the prompt's sentence limit is enforced"
+summary: "On 120 summaries read against their sources the summarization grader agreed with a careful reading on 78 answers. Its claims_grounded check searched only the one source line holding the ticket id, so a state written in a commit or PR body was never found; its accurate check read the bare word unverified as the answer disclaiming its own accuracy; and nothing counted the prompt's own at-most-N-sentences limit. A commit line or a Title line now opens a source record that runs to the next one, summarization declares accurate_summary (accurate without the bare word, every real disclaimer kept) in place of accurate, and a new within_sentence_limit check, waived for a prompt that states no limit, rejects an answer over it. The other task classes' definitions of done are unchanged. The 120 labelled answers are a fixture set and the grader agrees on 99 of them."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claims-whole-record"
+    statement: "A state the answer asserts about a ticket id is looked for in the whole commit or PR body the id came from, not only the line that holds the id."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the 17 labelled answers a careful reading accepts, which the grader refused because the state word sat in a commit or PR body, now pass; a state the record does not hold is still refused -- falsifier: any of the 17 still refused, or an invented state in a commit body accepted"
+  - id: "req-bare-unverified"
+    statement: "The bare word unverified is not read as the answer disclaiming its own accuracy, and the real disclaimers still veto."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the 4 labelled answers vetoed for the bare word now pass; cannot verify, not verified and may be inaccurate still veto; every other task class keeps accurate unchanged -- falsifier: any of the 4 still vetoed, a real disclaimer accepted, or accurate_summary declared by another class"
+  - id: "req-sentence-limit"
+    statement: "The prompt's at-most-N-sentences limit is a check."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the 2 labelled answers over their prompt's limit are rejected, and a prompt with no stated limit is unaffected -- falsifier: either answer accepted, or a prompt without a limit given the rule"
+  - id: "req-agreement"
+    statement: "The grader's agreement with the careful reading on the 120 labelled answers is at least 99 (was 78)."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: graded with the real gate the way production builds it, the grader agrees with the careful reading on at least 99 of 120 -- falsifier: an agreement count below 99"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4: the fixture-driven agreement and named-case tests and the controls for the real disclaimers, the other classes and the sentence counter."
+    command: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20489-ac1-claims-whole-record"
+    description: "AC1: the 17 named answers pass, and an invented state in a commit body is still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py -q -p no:randomly --no-cov -n 0 -k 'claim_found_in_the_commit_or_pr_body or invented_state'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20489-ac2-bare-unverified"
+    description: "AC2: the 4 named answers pass; real disclaimers still veto; other classes keep accurate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0 -k 'bare_unverified or real_disclaimers or only_summarization'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20489-ac3-sentence-limit"
+    description: "AC3: the 2 named answers are rejected for exceeding the prompt's limit, a prompt with no limit is unaffected, and the counter reads a list item as a sentence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0 -k 'sentence'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20489-ac4-agreement"
+    description: "AC4: the grader agrees with the careful reading on at least 99 of the 120 labelled answers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py -q -p no:randomly --no-cov -n 0 -k 'agrees_with_the_careful_reading'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20489-deploy-probe"
+    description: "Deploy probe. The summarization definition of done at the checked-out commit declares within_sentence_limit, which is what the deploy agent rolls onto the dev lane; the probe reads the contract from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq -- \"- within_sentence_limit\"'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -117,6 +117,16 @@ checks:
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
 
+  - check_id: delegation.acceptance.gate.accurate_summary
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `accurate_summary` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
   - check_id: delegation.acceptance.gate.cites_sources
     check_class: gate
     blocks:
@@ -453,6 +463,16 @@ checks:
       - delegation acceptance
     source: >-
       the delegation quality gate's `uses_pytest_mark_unit` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.within_sentence_limit
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `within_sentence_limit` check (handler_quality_gate); per-check
       calibration is unmeasured: the committed measurement
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
