@@ -264,6 +264,9 @@ class ModelMorningPage(BaseModel):
     skill_executions: ModelProjectionRead
     topic_activity: ModelProjectionRead
     promotion_gate: ModelProjectionRead
+    automation_liveness: ModelProjectionRead
+    automation_liveness_runs: ModelProjectionRead
+    automation_liveness_alarms: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
 
 
@@ -763,6 +766,33 @@ def build_morning_page(
             limit=_LIST_ROW_CAP,
             tenant_id=tenant_id,
         ),
+        automation_liveness=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id="onex_status_page",
+            projection_slot="automation_liveness",
+            route="/",
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
+        automation_liveness_runs=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id="onex_status_page",
+            projection_slot="automation_liveness_runs",
+            route="/",
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
+        automation_liveness_alarms=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id="onex_status_page",
+            projection_slot="automation_liveness_alarms",
+            route="/",
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
         inventory=build_inventory(topic_map, cache),
     )
 
@@ -1113,6 +1143,24 @@ def render_morning_page(page: ModelMorningPage) -> str:
             "every prod-promotion-gate evaluation, allowed and refused "
             "alike, with the typed refusal code, the authorization grant, "
             "the requested digest and the evaluation time",
+        ),
+        _render_rows_panel(
+            page.automation_liveness,
+            "automation liveness",
+            "one row per declared automation process and host, with its "
+            "liveness verdict and the reason for it",
+        ),
+        _render_rows_panel(
+            page.automation_liveness_runs,
+            "automation runs",
+            "the run history each automation process reported, with outcome "
+            "and the work it did",
+        ),
+        _render_rows_panel(
+            page.automation_liveness_alarms,
+            "automation liveness alarms",
+            "every liveness alarm episode with its delivery and ledger "
+            "recording receipts",
         ),
         _render_inventory(page.inventory, page.bus_backed_count),
     ]

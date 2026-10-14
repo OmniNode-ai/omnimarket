@@ -126,6 +126,8 @@ class TestCredentialRegistered:
             None,
             # OMN-20991: expires_at; an event without one stores none.
             None,
+            # OMN-21012: bound_host; an event without one binds no host.
+            None,
         )
 
     @pytest.mark.asyncio
@@ -337,6 +339,8 @@ class TestHandleDefBEntrypoint:
             None,
             # OMN-20991: expires_at; an event without one stores none.
             None,
+            # OMN-21012: bound_host; an event without one binds no host.
+            None,
         )
 
     def test_handle_defaults_topic_to_the_first_subscribed_topic(
@@ -390,7 +394,7 @@ class TestExpiresAt:
         assert "expires_at" in sql
         # COALESCE: a re-delivery without the field never erases a stored date.
         assert "COALESCE(EXCLUDED.expires_at" in sql
-        assert args[-1] == datetime(2027, 1, 1, tzinfo=UTC)
+        assert args[-2] == datetime(2027, 1, 1, tzinfo=UTC)
 
     def test_expires_at_migration_adds_one_nullable_column_and_nothing_else(
         self,
@@ -428,3 +432,87 @@ class TestExpiresAt:
         apply_credential_registered({**event, "expires_at": None}, db)
         [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
         assert row["expires_at"] == "2027-01-01T00:00:00+00:00"
+
+
+# ---------------------------------------------------------------------------
+# OMN-21012: the lab host a key is bound to reaches the catalog and the exposure.
+# ---------------------------------------------------------------------------
+
+_BOUND_HOST_MIGRATION = _NODE_DIR / "migrations/0007_tenant_credentials_bound_host.sql"
+
+
+class TestBoundHost:
+    @pytest.mark.asyncio
+    async def test_tenant_credentials_bound_host_is_written_and_kept(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        data = {
+            "tenant_id": "omninode",
+            "provider": "anthropic",
+            "name": "pool-key-h201",
+            "api_key_ref": "cred_omninode_anthropic_" + "d" * 32,
+            "metadata": {},
+            "bound_host": "h201",
+        }
+        assert await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
+        args = _credential_call(mock_db)
+        sql = str(args[0])
+        assert "bound_host" in sql
+        # COALESCE: a re-delivery without the field never unbinds the key.
+        assert "COALESCE(EXCLUDED.bound_host" in sql
+        assert args[-1] == "h201"
+
+    def test_tenant_credentials_bound_host_migration_adds_one_nullable_column(
+        self,
+    ) -> None:
+        body = "\n".join(
+            line
+            for line in _BOUND_HOST_MIGRATION.read_text().splitlines()
+            if not line.lstrip().startswith("--")
+        )
+        statements = [
+            re.sub(r"\s+", " ", s).strip().upper() for s in body.split(";") if s.strip()
+        ]
+        assert statements == [
+            "ALTER TABLE TENANT_INFERENCE_CREDENTIALS ADD COLUMN IF NOT EXISTS BOUND_HOST TEXT"
+        ]
+
+    def test_tenant_credentials_bound_host_is_on_the_snapshot_exposure(self) -> None:
+        contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
+        assert "bound_host" in contract["projection_api"]["columns"]
+
+    def test_tenant_credentials_bound_host_sqlite_store_writes_and_keeps_it(
+        self, tmp_path: Path
+    ) -> None:
+        db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
+        ref = "cred_omninode_anthropic_" + "e" * 32
+        event = {
+            "tenant_id": "omninode",
+            "provider": "anthropic",
+            "name": "pool-key-h101",
+            "api_key_ref": ref,
+            "bound_host": "h101",
+        }
+        apply_credential_registered(event, db)
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["bound_host"] == "h101"
+        apply_credential_registered({**event, "bound_host": None}, db)
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["bound_host"] == "h101"
+
+    def test_tenant_credentials_bound_host_unset_projects_null(
+        self, tmp_path: Path
+    ) -> None:
+        db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
+        ref = "cred_omninode_openrouter_" + "f" * 32
+        apply_credential_registered(
+            {
+                "tenant_id": "omninode",
+                "provider": "openrouter",
+                "name": "unbound",
+                "api_key_ref": ref,
+            },
+            db,
+        )
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["bound_host"] is None

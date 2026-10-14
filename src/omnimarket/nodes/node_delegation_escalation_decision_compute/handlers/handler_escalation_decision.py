@@ -15,10 +15,11 @@ delegates the verdict here.
 The decision precedence, preserved verbatim from the orchestrator branches:
 
 1. failure is non-retryable  -> terminate (``non_retryable_reason``)
-2. escalation budget reached  -> terminate ("max_escalation_attempts_reached")
-3. current tier unknown        -> terminate ("current_tier_unknown")
-4. no higher tier available    -> terminate (``no_higher_tier_reason``)
-5. otherwise                   -> escalate to ``next_tier_name``
+2. backend pinned by caller   -> terminate ("pinned_backend_failed", OMN-20844)
+3. escalation budget reached  -> terminate ("max_escalation_attempts_reached")
+4. current tier unknown        -> terminate ("current_tier_unknown")
+5. no higher tier available    -> terminate (``no_higher_tier_reason``)
+6. otherwise                   -> escalate to ``next_tier_name``
 
 This is a NodeCompute archetype: stateless, deterministic, zero I/O. Tiers,
 providers and models are resolved upstream from the routing contract+overlay and
@@ -36,6 +37,7 @@ from omnimarket.routing.model_escalation_decision_result import (
 
 _MAX_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"
 _CURRENT_TIER_UNKNOWN_REASON = "current_tier_unknown"
+PINNED_BACKEND_FAILED_REASON = "pinned_backend_failed"
 
 
 def _terminal(reason: str) -> ModelEscalationDecisionResult:
@@ -56,15 +58,20 @@ class HandlerEscalationDecision:
         if not request.error_retryable:
             return _terminal(request.non_retryable_reason)
 
-        # 2. Escalation budget exhausted.
+        # 2. OMN-20844: a caller-pinned run runs on the pin or fails. Any
+        #    escalation would answer it from another backend under the pin.
+        if request.pinned_backend_ref is not None:
+            return _terminal(PINNED_BACKEND_FAILED_REASON)
+
+        # 3. Escalation budget exhausted.
         if request.escalation_count >= request.max_escalation_attempts:
             return _terminal(_MAX_ATTEMPTS_REACHED_REASON)
 
-        # 3. Current tier could not be identified.
+        # 4. Current tier could not be identified.
         if request.current_tier_name is None:
             return _terminal(_CURRENT_TIER_UNKNOWN_REASON)
 
-        # 4. Ladder exhausted — no routable higher tier. The orchestrator resolves
+        # 5. Ladder exhausted — no routable higher tier. The orchestrator resolves
         #    the precise reason from the routing contract; require it here so the
         #    terminal record is never a bare/empty string.
         if request.next_tier_name is None:
@@ -77,7 +84,7 @@ class HandlerEscalationDecision:
                 )
             return _terminal(reason)
 
-        # 5. Escalate to the resolved next tier.
+        # 6. Escalate to the resolved next tier.
         return ModelEscalationDecisionResult(
             can_escalate=True,
             next_tier_name=request.next_tier_name,
@@ -85,4 +92,4 @@ class HandlerEscalationDecision:
         )
 
 
-__all__ = ["HandlerEscalationDecision"]
+__all__ = ["PINNED_BACKEND_FAILED_REASON", "HandlerEscalationDecision"]

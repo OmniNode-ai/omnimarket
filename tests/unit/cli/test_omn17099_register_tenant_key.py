@@ -65,6 +65,14 @@ def intake(
     monkeypatch.setattr(cli_secret, "_tenant_key_store", lambda: store)
     monkeypatch.setattr(cli_secret, "_tenant_key_event_bus", lambda: bus)
     monkeypatch.setattr(cli_secret, "_stdin_is_tty", lambda: False)
+    # OMN-21012: off the lab, so no lab host table binds the key to a host.
+    for name in (
+        "ONEX_LAB_RUN_HOSTS",
+        "OMNI_HOME",
+        "ONEX_LANE_HOST",
+        "ONEX_REMOTE_LANE_HOST",
+    ):
+        monkeypatch.delenv(name, raising=False)
     return store, bus
 
 
@@ -113,6 +121,7 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "plan",
         "model_option",
         "expires",
+        "host",
     }
     assert all(not getattr(parameter, "envvar", None) for parameter in command.params)
 

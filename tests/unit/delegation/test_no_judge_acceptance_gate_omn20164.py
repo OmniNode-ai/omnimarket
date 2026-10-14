@@ -19,7 +19,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
-from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -111,13 +114,14 @@ async def test_vetoed_fixtures_refused_deterministic_controls(
 async def test_vetoed_fixtures_refused_known_gap_stub(
     path: str, tmp_path: Path
 ) -> None:
-    """Known gap: propose an AST check rejecting pass-only function bodies.
-
-    This pins the unrefused control so AC2 cannot be reported as fully proved.
-    """
+    """An untested stub is refused without invoking a judge."""
     judge = RecordingJudge()
     result = await decide(
         path, "code_generation", "def add(a, b):\n    pass", tmp_path, judge
     )
-    assert result.passed is True
+    # OMN-21077: no named test run refuses even a mechanically valid stub.
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
+    assert result.no_rung_can_satisfy is True
     assert judge.calls == []

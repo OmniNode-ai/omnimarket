@@ -37,6 +37,9 @@ class ModelMeteringSummaryRow(BaseModel):
     savings_usd: str | None
     # savings_usd over runs_measured, to the millionth; null when savings_usd is.
     savings_per_measured_run_usd: str | None
+    # OMN-20008: savings_usd over counterfactual_usd, to the millionth; null when
+    # either is null or the counterfactual is 0.
+    savings_pct_of_counterfactual: str | None
     # OMN-20226: raw over compressed input tokens, and runs answered from the
     # semantic cache over runs_total. Null until a producer measures them.
     compression_ratio: str | None

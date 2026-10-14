@@ -1,0 +1,102 @@
+schema_version: 1.0.0
+ticket_id: OMN-20634
+title: 'delegation_route_check: the walk oracle becomes a second operation on node_delegation_rubric_check_compute'
+summary: node_delegation_rubric_check_compute routes a second operation, delegation_route_check, to its own handler and
+  its own request model. The handler grades a delegation receipt the way appendix A.0.2 of the delegation sprint test
+  matrix does, unwrapping the three terminal carriers, and returns a typed verdict that carries the draw's run directory.
+  A receipt with no resolvable terminal returns NO_TERMINAL, and a receipt the CLI refused before dispatch returns REFUSED
+  naming the CLI's failure reason. The onex node JSON-file invocation (AC5) is not part of this change.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-route-check-operation
+  statement: The rubric-check node routes delegation_route_check to a route-check handler that validates its own request
+    model and grades a receipt from any of the three terminal carriers, without disturbing the rubric-check operation.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: contract.yaml routes operation delegation_route_check to its own handler while delegation_rubric_check
+      still resolves to HandlerDelegationRubricCheck -- falsifier: a contract whose handler_routing lists one operation,
+      or a rubric-check input that resolves to the route-check handler'
+  - id: AC2
+    statement: 'AC2: the handler unwraps all three terminal carriers the appendix names -- a result_model naming a ModelDelegateSkill
+      class, a bare terminal_payload or handler_result, and a deployed-lane event envelope whose terminal sits one level
+      down under payload -- falsifier: a test feeding each of the three shapes where any one returns a verdict computed
+      from the wrong object'
+  - id: AC3
+    statement: 'AC3: the 18 receipt cases of appendix A.0.2 are ported as tests, each asserting its expected verdict --
+      falsifier: a test file carrying fewer than 18 cases, or a case whose expected verdict is not asserted'
+  - id: AC4
+    statement: 'AC4: a receipt with no resolvable terminal returns a typed NO_TERMINAL verdict rather than INVALID_ROUTE
+      -- falsifier: a test feeding a receipt with no terminal that returns INVALID_ROUTE'
+  - id: AC6
+    statement: 'AC6: the route-check operation validates its own request model rather than ModelRubricCheckRequest -- falsifier:
+      a route-check input that fails validation against ModelRubricCheckRequest'
+evidence_requirements:
+- kind: tests
+  description: The route-check operation resolves to its own handler and model, the 18 appendix cases and the pre-dispatch
+    and unresolvable-terminal cases pass.
+  command: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q -p no:randomly --no-cov -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20634-ac1-operation-routing
+  description: The route-check operation resolves to HandlerDelegationRouteCheck, the rubric-check operation and the
+    unqualified legacy command still resolve to HandlerDelegationRubricCheck, and an unknown operation refuses.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q -p no:randomly --no-cov -n 0 -k "route_operation_selects or rubric_operation_keeps or unknown_operation or deployed_binding"
+  binds_ac:
+  - AC1
+- id: dod-omn20634-ac2-three-carriers
+  description: A result_model carrier, a bare terminal_payload, a bare handler_result and an event envelope with the
+    terminal under payload each grade VALID from their own terminal.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q -p no:randomly --no-cov -n 0 -k "local-pin-honoured or bare-terminal-payload or bare-handler-result or event-envelope-payload"
+  binds_ac:
+  - AC2
+- id: dod-omn20634-ac3-appendix-cases
+  description: The 18 appendix A.0.2 receipt cases each assert their expected verdict.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q -p no:randomly --no-cov -n 0 -k test_appendix_receipt_cases
+  binds_ac:
+  - AC3
+- id: dod-omn20634-ac4-no-terminal
+  description: A receipt with no resolvable terminal returns NO_TERMINAL and the REFUSED draw class, and a null
+    receipt.result returns REFUSED naming the CLI failure reason.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q -p no:randomly --no-cov -n 0 -k "unresolvable_terminal or null_result or dropped-reply"
+  binds_ac:
+  - AC4
+- id: dod-omn20634-ac6-own-request-model
+  description: The route-check operation binds ModelRouteCheckRequest, which accepts a route-check input and refuses a
+    rubric-check input.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_route_check.py -q -p no:randomly --no-cov -n 0 -k "route_operation_selects or deployed_binding"
+  binds_ac:
+  - AC6
+- id: dod-omn20634-deploy-probe
+  description: Deploy smoke on the runtime after the deploy agent rolls this change - load the node contract from the
+    running container and assert that delegation_route_check routes to HandlerDelegationRouteCheck with ModelRouteCheckRequest
+    while delegation_rubric_check keeps HandlerDelegationRubricCheck. The command exits nonzero when the deployed image
+    lacks the change, including the merge-base image. It reads deployed code, not this contract or a receipt. Hosted
+    CI has no runtime; the local Done gate must execute this unbound deployment check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "import importlib.resources as r, yaml; c = yaml.safe_load((r.files(\"omnimarket.nodes.node_delegation_rubric_check_compute\") / \"contract.yaml\").read_text()); h = {e[\"operation\"]: e[\"handler\"] for e in c[\"handler_routing\"][\"handlers\"]}; assert h[\"delegation_route_check\"][\"name\"] == \"HandlerDelegationRouteCheck\"; assert h[\"delegation_route_check\"][\"input_model\"].endswith(\"ModelRouteCheckRequest\"); assert h[\"delegation_rubric_check\"][\"name\"] == \"HandlerDelegationRubricCheck\""'
+    cwd: ${OMNI_HOME}/omnimarket

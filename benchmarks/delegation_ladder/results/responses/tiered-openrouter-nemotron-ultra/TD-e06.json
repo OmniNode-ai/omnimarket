@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e06",
+  "path": "pinned",
+  "sha256": "015ab5b21d1762941e4cb62c7e209c64088a468125745a5fd7aa8152411a59cd",
+  "response": "The classify_head_checks operation now classifies a PR head's check facts into a verdict using the newest check copies, blocking checks from required contexts and red CI Summary, with reason codes and classes, and includes run attempts for each blocking result (PR #3002, ticket OMN-19830). This reproduces the labelled check-run corpus with run attempts on the verdict, adding missing timed_out (omnimarket#2564) and runner_infra (omnibase_infra#4049, #4068, #4115) heads and teaching the merge-check classifier that an image pre-pull step is the runner's environment."
+}

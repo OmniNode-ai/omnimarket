@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import statistics
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +33,14 @@ HERE = Path(__file__).resolve().parent
 if str(HERE.parent.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent.parent))
 
+
 RUNG_ORDER = ["R1", "R2", "R3", "R3b", "R4", "R5", "R6"]
+
+# The five task classes the delegation benchmark reports, in report order.
+CLASS_ORDER = ["document", "review", "test", "reasoning", "code_generation"]
+
+# The smallest class a separation claim may rest on (OMN-20844 AC2).
+MINIMUM_TASKS_PER_CLASS = 25
 
 
 def merge(paths: list[Path]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
@@ -107,10 +117,711 @@ def rung_table(
     return rows
 
 
+# --------------------------------------------------------------------------
+# Per-class, per-rung table (OMN-20844)
+# --------------------------------------------------------------------------
+
+
+def _median(values: Sequence[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def class_rung_table(
+    records: Sequence[dict[str, Any]],
+    rung_order: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """One row per (task class, delegation rung) over rung-run records.
+
+    Each record is one task answered by one ``model_rung``. A task that came
+    back with no answer is a row member that did not pass: dropping it would
+    raise a rung's share by the very failures that distinguish it.
+
+    ``accepted`` is the share the benchmark quotes: delivered past the
+    delegation quality gate AND passed by the class scorer.
+    ``answer_correct`` is the scorer's verdict alone, so a correct answer the
+    gate refused is visible as ``gate_refused_correct`` and is neither counted
+    as accepted nor mistaken for a wrong answer.
+    """
+    classes = [c for c in CLASS_ORDER if any(r["task_type"] == c for r in records)]
+    classes += sorted({r["task_type"] for r in records} - set(CLASS_ORDER))
+    seen: list[str] = []
+    for record in records:
+        if record["model_rung"] not in seen:
+            seen.append(record["model_rung"])
+    order = list(rung_order) if rung_order else seen
+    order += [name for name in seen if name not in order]
+
+    rows: list[dict[str, Any]] = []
+    for task_type in classes:
+        for model_rung in order:
+            group = [
+                r
+                for r in records
+                if r["task_type"] == task_type and r["model_rung"] == model_rung
+            ]
+            if not group:
+                continue
+            n = len(group)
+            # A pinned row the ladder moved to another backend is that backend's
+            # answer under this rung's name: it is never accepted for this rung.
+            moved = sum(1 for r in group if r.get("backend_pin_honoured") is False)
+            accepted = sum(
+                1
+                for r in group
+                if r["accepted"] and r.get("backend_pin_honoured") is not False
+            )
+            correct = sum(1 for r in group if r["scorer_outcome"] == "pass")
+            low, high = wilson_interval(accepted, n)
+            latencies = [
+                r["model_latency_ms"] / 1000
+                for r in group
+                if r.get("model_latency_ms") is not None
+            ]
+            costs = [r["cost_usd"] for r in group if r.get("cost_usd") is not None]
+            rows.append(
+                {
+                    "task_type": task_type,
+                    "model_rung": model_rung,
+                    "tasks": n,
+                    "accepted": accepted,
+                    "accepted_share": accepted / n,
+                    "interval_low": low,
+                    "interval_high": high,
+                    "answer_correct": correct,
+                    "gate_refused_correct": sum(
+                        1
+                        for r in group
+                        if r["scorer_outcome"] == "pass"
+                        and not (
+                            r["accepted"] and r.get("backend_pin_honoured") is not False
+                        )
+                    ),
+                    "pin_moved": moved,
+                    "no_answer": sum(
+                        1 for r in group if r["scorer_outcome"] == "no_answer"
+                    ),
+                    "median_wall_s": _median([r["wall_ms"] / 1000 for r in group]),
+                    "median_model_latency_s": _median(latencies),
+                    "model_latency_receipts": len(latencies),
+                    "cost_usd": sum(costs) if costs else None,
+                    "cost_receipts": len(costs),
+                    "meets_minimum_tasks": n >= MINIMUM_TASKS_PER_CLASS,
+                }
+            )
+    return rows
+
+
+def class_separation(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Which rungs, per class, have an interval that clears every other rung's.
+
+    Two rungs are separated when their 95% intervals do not overlap. A rung is
+    named ``separated`` only when it is disjoint from *every* other rung in the
+    class: being clear of one rung and tangled with another is not a ranking.
+    ``disjoint_pairs`` lists each disjoint pair as ``(higher, lower)``.
+    """
+    by_class: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_class.setdefault(row["task_type"], []).append(row)
+
+    result: dict[str, dict[str, Any]] = {}
+    for task_type, group in by_class.items():
+        pairs: list[tuple[str, str]] = []
+        for a in group:
+            for b in group:
+                if a is b:
+                    continue
+                if a["interval_low"] > b["interval_high"]:
+                    pairs.append((a["model_rung"], b["model_rung"]))
+        separated: list[str] = []
+        if len(group) > 1:
+            for row in group:
+                name = row["model_rung"]
+                others = [r["model_rung"] for r in group if r is not row]
+                if all((name, o) in pairs or (o, name) in pairs for o in others):
+                    separated.append(name)
+        result[task_type] = {
+            "separated": separated,
+            "disjoint_pairs": pairs,
+            "tasks": min(r["tasks"] for r in group),
+        }
+    return result
+
+
+def render_table(
+    rows: Sequence[dict[str, Any]], separation: dict[str, dict[str, Any]]
+) -> str:
+    """Markdown the report quotes verbatim: nothing in it is typed by hand."""
+    lines: list[str] = []
+    current: str | None = None
+    for row in rows:
+        if row["task_type"] != current:
+            current = row["task_type"]
+            info = separation.get(current, {})
+            verdict = (
+                "separated: " + ", ".join(info["separated"])
+                if info.get("separated")
+                else "separated: none (every rung's interval overlaps another's)"
+            )
+            lines += [
+                "",
+                f"### {current} ({info.get('tasks', row['tasks'])} tasks) - {verdict}",
+                "",
+                "| rung | accepted | share | 95% interval | answer correct "
+                "| no answer | median wall s | median model s | cost USD |",
+                "| -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+            ]
+        latency = row["median_model_latency_s"]
+        cost = row["cost_usd"]
+        lines.append(
+            f"| {row['model_rung']} | {row['accepted']}/{row['tasks']} "
+            f"| {row['accepted_share']:.0%} "
+            f"| {row['interval_low']:.0%}-{row['interval_high']:.0%} "
+            f"| {row['answer_correct']} | {row['no_answer']} "
+            f"| {row['median_wall_s']:.1f} "
+            f"| {'n/a' if latency is None else f'{latency:.1f}'} "
+            f"| {'not measured' if cost is None else f'{cost:.4f} ({row["cost_receipts"]} receipts)'} |"
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+# --------------------------------------------------------------------------
+# Difficulty tiers (OMN-20844)
+# --------------------------------------------------------------------------
+
+DIFFICULTY_ORDER = ["easy", "medium", "hard"]
+
+# Where a class's tiers begin, in characters of the prompt a rung is fed:
+# (first medium prompt, first hard prompt). Fixed constants, not percentiles of
+# whatever set is loaded, so adding a task never moves another task's tier. They
+# were set on the committed tasks so each tier holds at least eight of them.
+# The only spread the committed tasks have is the size of their input (every
+# test task declares 3 dependent steps and every code_generation task 4), so a
+# tier here ranks input size; it does not claim to rank intrinsic difficulty.
+DIFFICULTY_THRESHOLDS: dict[str, tuple[int, int]] = {
+    "test": (3_000, 5_000),
+    "code_generation": (7_000, 9_000),
+}
+
+
+def difficulty_tier(task_type: str, prompt_chars: int) -> str | None:
+    """The tier of a task, or None for a class with no declared thresholds."""
+    thresholds = DIFFICULTY_THRESHOLDS.get(task_type)
+    if thresholds is None:
+        return None
+    medium_from, hard_from = thresholds
+    if prompt_chars >= hard_from:
+        return "hard"
+    return "medium" if prompt_chars >= medium_from else "easy"
+
+
+def tier_rung_table(
+    records: Sequence[dict[str, Any]],
+    tiers: dict[str, str],
+    rung_order: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """The class table split by difficulty tier.
+
+    ``tiers`` maps a task id to its tier. A record whose task has no tier is
+    left out: filing it under a default tier would put its answer in a share it
+    does not belong to. Rows are the same rows ``class_rung_table`` builds, one
+    per (class, tier, rung), so a tier's share, interval, latency and cost are
+    figured the same way as a class's.
+    """
+    tiered = [
+        {**r, "difficulty": tiers[r["task_id"]]}
+        for r in records
+        if r["task_id"] in tiers
+    ]
+    rows: list[dict[str, Any]] = []
+    for difficulty in DIFFICULTY_ORDER:
+        group = [r for r in tiered if r["difficulty"] == difficulty]
+        for row in class_rung_table(group, rung_order):
+            rows.append({**row, "difficulty": difficulty})
+    classes = [c for c in CLASS_ORDER if any(r["task_type"] == c for r in tiered)]
+    classes += sorted({r["task_type"] for r in tiered} - set(CLASS_ORDER))
+    order = {c: i for i, c in enumerate(classes)}
+    rows.sort(
+        key=lambda r: (order[r["task_type"]], DIFFICULTY_ORDER.index(r["difficulty"]))
+    )
+    return rows
+
+
+def first_failing_rung_tier(
+    rows: Sequence[dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, str | None]]:
+    """Per (class, rung): the first tier with any miss, and the first with a majority of misses.
+
+    The majority line is the one a routing argument can lean on. With eight
+    tasks a tier the rung only just misses is inside its interval's noise, so
+    both are reported and neither is called a threshold of the rung.
+    """
+    found: dict[tuple[str, str], dict[str, str | None]] = {}
+    for row in rows:
+        key = (row["task_type"], row["model_rung"])
+        entry = found.setdefault(key, {"first_miss": None, "first_majority_fail": None})
+        if entry["first_miss"] is None and row["accepted"] < row["tasks"]:
+            entry["first_miss"] = row["difficulty"]
+        if entry["first_majority_fail"] is None and row["accepted_share"] < 0.5:
+            entry["first_majority_fail"] = row["difficulty"]
+    return found
+
+
+def render_difficulty_table(
+    rows: Sequence[dict[str, Any]],
+    failing: dict[tuple[str, str], dict[str, str | None]],
+) -> str:
+    """Markdown for the report: per class, a row per (rung, tier), then where each rung fails."""
+    lines: list[str] = []
+    current: str | None = None
+    for row in rows:
+        if row["task_type"] != current:
+            current = row["task_type"]
+            lines += [
+                "",
+                f"### {current} by difficulty",
+                "",
+                "| rung | tier | accepted | share | 95% interval | answer correct "
+                "| no answer | median wall s | median model s |",
+                "| -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+            ]
+        latency = row["median_model_latency_s"]
+        lines.append(
+            f"| {row['model_rung']} | {row['difficulty']} "
+            f"| {row['accepted']}/{row['tasks']} | {row['accepted_share']:.0%} "
+            f"| {row['interval_low']:.0%}-{row['interval_high']:.0%} "
+            f"| {row['answer_correct']} | {row['no_answer']} "
+            f"| {row['median_wall_s']:.1f} "
+            f"| {'n/a' if latency is None else f'{latency:.1f}'} |"
+        )
+    lines += ["", "### where each rung starts failing", ""]
+    for (task_type, model_rung), entry in sorted(failing.items()):
+        lines.append(
+            f"- {task_type} / {model_rung}: first miss: {entry['first_miss'] or 'none'}; "
+            f"first majority failure: {entry['first_majority_fail'] or 'none'}"
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_ladder_table(records: Sequence[dict[str, Any]]) -> str:
+    """Markdown for the unpinned-ladder run: one row per task, then who answered.
+
+    Each record carries the ``ladder`` trace of its own run. ``climbed`` is a
+    run that tried more than one rung; a rung that was refused is listed with the
+    gate rule or verdict the receipt gave for it.
+    """
+    lines = [
+        "| task | class | answered by | escalations | accepted | wall s | refused rungs (why) |",
+        "| -- | -- | -- | -- | -- | -- | -- |",
+    ]
+    answered: dict[str, int] = {}
+    climbed = 0
+    gate_took_wrong = 0
+    for record in sorted(records, key=lambda r: r["task_id"]):
+        # A run with no receipt has no trace: it answered nobody and tried one rung.
+        trace = record.get("ladder") or {
+            "answered_by": None,
+            "escalations": 0,
+            "refused": [],
+        }
+        who = trace["answered_by"]
+        answered[who or "no rung"] = answered.get(who or "no rung", 0) + 1
+        climbed += 1 if trace["escalations"] > 0 else 0
+        gate_took_wrong += 1 if who and not record["accepted"] else 0
+        why = "; ".join(
+            f"{r['backend_id']}: {r['reason'] or r['decision']}"
+            for r in trace["refused"]
+        )
+        lines.append(
+            f"| {record['task_id']} | {record['task_type']} | {who or 'none'} "
+            f"| {trace['escalations']} | {'yes' if record['accepted'] else 'no'} "
+            f"| {record['wall_ms'] / 1000:.1f} | {why or '-'} |"
+        )
+    total = len(records)
+    lines += ["", f"tasks: {total}"]
+    for name, count in sorted(answered.items(), key=lambda kv: (-kv[1], kv[0])):
+        label = "no rung" if name == "no rung" else name
+        lines.append(f"- {label} answered {count} of {total}")
+    lines.append(f"climbed at least once: {climbed} of {total}")
+    lines.append(f"gate accepted, scorer failed: {gate_took_wrong} of {total}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def wilson_interval(k: int, n: int, z: float = 1.959964) -> tuple[float, float]:
+    """Wilson score interval for a binomial share, including both endpoints."""
+    if n == 0:
+        return 0.0, 1.0
+    share = k / n
+    denominator = 1 + z * z / n
+    centre = (share + z * z / (2 * n)) / denominator
+    radius = z * math.sqrt(share * (1 - share) / n + z * z / (4 * n * n)) / denominator
+    return (
+        0.0 if k == 0 else max(0.0, centre - radius),
+        1.0 if k == n else min(1.0, centre + radius),
+    )
+
+
+def load_jsonl(paths: list[Path]) -> list[dict[str, Any]]:
+    """Later files win per backend and task, irrespective of their verdict."""
+    records: dict[tuple[str | None, str], dict[str, Any]] = {}
+    for path in paths:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                record = json.loads(line)
+                records[(record.get("backend"), record["task_id"])] = record
+    return list(records.values())
+
+
+def is_unreached(record: dict[str, Any]) -> bool:
+    """True when the delegate never produced a model answer or a gate verdict.
+
+    A model that answered wrongly has a response or an attempt with a verdict;
+    a request refused before any rung ran, or a client that timed out, has
+    neither. Harness (GLM) cells carry no attempt list, so they are judged by
+    their own recorded outcome instead. A call that ran out of its time budget
+    is a failure to deliver, not an unreached cell.
+    """
+    if record["score"]["outcome"] == "harness_error":
+        return True
+    notes = str(record.get("notes", ""))
+    if record["score"]["outcome"] == "refused":
+        # Running out of the call budget is the rung failing to deliver, so it
+        # stays in n; a refusal before any attempt is the route's own.
+        return not ("client exceeded" in notes or "timed_out=True" in notes)
+    if notes.startswith("status=") and not record.get("attempts"):
+        return bool(record.get("response_chars", 0) == 0)
+    return False
+
+
+def _accepted(record: dict[str, Any]) -> bool:
+    from benchmarks.delegation_ladder.models import EnumOutcome, is_accepted
+
+    accepted = record.get("accepted")
+    if accepted is not None:
+        return bool(accepted)
+    return is_accepted(
+        EnumOutcome(record["score"]["outcome"]), record.get("quality_gate_passed")
+    )
+
+
+def _class_metrics(group: list[dict[str, Any]]) -> dict[str, Any]:
+    n = len(group)
+    accepted = sum(_accepted(r) for r in group)
+    lo, hi = wilson_interval(accepted, n)
+    latencies = [
+        r["model_latency_ms"] for r in group if r.get("model_latency_ms") is not None
+    ]
+    costs = [r["cost_usd"] for r in group if r.get("cost_usd") is not None]
+    return {
+        "n": n,
+        "accepted": accepted,
+        "share": accepted / n,
+        "lo": lo,
+        "hi": hi,
+        "scorer_pass": sum(r["score"]["outcome"] == "pass" for r in group),
+        "gate_refused": sum(
+            r["score"]["outcome"] == "pass" and not _accepted(r) for r in group
+        ),
+        "failed": sum(r["score"]["outcome"] == "fail" for r in group),
+        "refused": sum(r["score"]["outcome"] == "refused" for r in group),
+        # The node's gate vetoed the answer and returned none, so the scorer saw
+        # nothing: not accepted, but not evidence the model was wrong either.
+        "gate_no_answer": sum(
+            r.get("quality_gate_passed") is False and r.get("response_chars", 0) == 0
+            for r in group
+        ),
+        "median_model_latency_ms": statistics.median(latencies) if latencies else None,
+        "median_wall_s": statistics.median(r["wall_ms"] for r in group) / 1000,
+        "cost_usd": sum(costs) if costs else None,
+        "cost_receipts": len(costs),
+    }
+
+
+def class_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Acceptance and scorer-only counts per task class and delegation rung."""
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for record in records:
+        key = (str(record.get("task_type")), str(record.get("backend")))
+        groups.setdefault(key, []).append(record)
+    return [
+        {
+            "task_type": task_type,
+            "backend": backend,
+            **_class_metrics(groups[(task_type, backend)]),
+        }
+        for task_type, backend in sorted(groups)
+    ]
+
+
+def tier_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for record in records:
+        key = (
+            str(record.get("task_type")),
+            str(record.get("difficulty")),
+            str(record.get("backend")),
+        )
+        groups.setdefault(key, []).append(record)
+    keys = sorted(
+        groups,
+        key=lambda key: (
+            key[0],
+            DIFFICULTY_ORDER.index(key[1]) if key[1] in DIFFICULTY_ORDER else 3,
+            key[2],
+        ),
+    )
+    return [
+        {
+            "task_type": task_type,
+            "difficulty": difficulty,
+            "backend": backend,
+            **_class_metrics(groups[(task_type, difficulty, backend)]),
+        }
+        for task_type, difficulty, backend in keys
+    ]
+
+
+def first_failing_tier(
+    rows: list[dict[str, Any]],
+    fail_below: float = 0.8,
+) -> dict[tuple[str, str], str | None]:
+    groups: dict[tuple[str, str], dict[str, float]] = {}
+    for row in rows:
+        groups.setdefault((row["task_type"], row["backend"]), {})[row["difficulty"]] = (
+            row["share"]
+        )
+    return {
+        key: next(
+            (
+                tier
+                for tier in DIFFICULTY_ORDER
+                if tier in shares and shares[tier] < fail_below
+            ),
+            None,
+        )
+        for key, shares in sorted(groups.items())
+    }
+
+
+def separation(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """A backend is separated only if its Wilson interval is disjoint from
+    EVERY other backend's interval in that class. Pairwise disjointness alone
+    does not separate a backend that overlaps a third one.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(row["task_type"], []).append(row)
+    result: dict[str, dict[str, Any]] = {}
+    for task_type, group in sorted(groups.items()):
+        group = sorted(group, key=lambda r: r["backend"])
+        disjoint: list[tuple[str, str]] = []
+        overlapping: list[tuple[str, str]] = []
+        for i, a in enumerate(group):
+            for b in group[i + 1 :]:
+                target = (
+                    disjoint if a["hi"] < b["lo"] or b["hi"] < a["lo"] else overlapping
+                )
+                target.append((a["backend"], b["backend"]))
+        # One rung has nothing to be separated from; "disjoint from every other"
+        # would otherwise be vacuously true.
+        separated = (
+            [
+                r["backend"]
+                for r in group
+                if all(r["backend"] not in pair for pair in overlapping)
+            ]
+            if len(group) > 1
+            else []
+        )
+        result[task_type] = {
+            "separated": separated,
+            "overlapping_pairs": overlapping,
+            "disjoint_pairs": disjoint,
+            "verdict": "separated: " + ", ".join(separated)
+            if separated
+            else "none separated",
+        }
+    return result
+
+
+def escalation_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for record in records:
+        if record.get("backend") != "unpinned":
+            continue
+        attempts = record.get("attempts") or []
+        answering: dict[str, Any] = next(
+            (a for a in reversed(attempts) if a.get("acceptance_decision") == "accept"),
+            {},
+        )
+        rows.append(
+            {
+                "task_id": record["task_id"],
+                "answering_backend": answering.get("backend_id") or "none",
+                "escalation_count": record.get("escalation_count"),
+                "refused_attempts": [
+                    f"{a.get('backend_id')}:{a.get('acceptance_decision')}:{a.get('acceptance_reason')}"
+                    for a in attempts
+                    if a.get("acceptance_decision") != "accept"
+                ],
+                "wall_ms": record["wall_ms"],
+                "scorer": record["score"]["outcome"],
+                "accepted": record.get("accepted"),
+            }
+        )
+    return sorted(rows, key=lambda row: row["task_id"])
+
+
+def _markdown_table(headers: list[str], cells: list[list[str]]) -> None:
+    def escaped(value: str) -> str:
+        return value.replace("|", "\\|").replace("\n", " ")
+
+    print("| " + " | ".join(headers) + " |")
+    print("| " + " | ".join("---" for _ in headers) + " |")
+    for row in cells:
+        print("| " + " | ".join(escaped(value) for value in row) + " |")
+    print()
+
+
+def _print_class_table(rows: list[dict[str, Any]], *, tiered: bool = False) -> None:
+    headers = (
+        ["class"]
+        + (["difficulty"] if tiered else [])
+        + [
+            "backend",
+            "n",
+            "accepted",
+            "share",
+            "95% CI",
+            "median model latency ms",
+            "median wall s",
+            "cost",
+            "gate-refused, no answer",
+        ]
+    )
+    cells: list[list[str]] = []
+    for row in rows:
+        cost = (
+            f"${row['cost_usd']:.4f} ({row['cost_receipts']}/{row['n']} receipts)"
+            if row["cost_usd"] is not None
+            else "no cost receipt"
+        )
+        latency = row["median_model_latency_ms"]
+        cells.append(
+            [row["task_type"]]
+            + ([row["difficulty"]] if tiered else [])
+            + [
+                row["backend"],
+                str(row["n"]),
+                str(row["accepted"]),
+                f"{row['share']:.1%}",
+                f"{row['lo']:.1%} - {row['hi']:.1%}",
+                str(latency) if latency is not None else "—",
+                f"{row['median_wall_s']:.1f}",
+                cost,
+                str(row["gate_no_answer"]),
+            ]
+        )
+    _markdown_table(headers, cells)
+
+
+def _jsonl_report(
+    paths: list[Path], out: Path | None, aliases: dict[str, str] | None = None
+) -> int:
+    records = load_jsonl(paths)
+    for record in records:
+        # One model served from two hosts is one rung: --alias folds the second
+        # backend id into the first and the host column keeps the difference.
+        record["backend"] = (aliases or {}).get(record["backend"], record["backend"])
+    # The unpinned ladder is the chain, not a rung; it has its own table below.
+    on_rungs = [r for r in records if r.get("backend") != "unpinned"]
+    # A request that never reached a model (no attempt, no answer, a refusal in
+    # the delegate's own plumbing) measures the route, not the rung. Counting it
+    # as a wrong answer would hand a rung a capability regression it does not
+    # have, so those cells are listed apart and left out of n.
+    unreached = [r for r in on_rungs if is_unreached(r)]
+    pinned = [r for r in on_rungs if not is_unreached(r)]
+    if unreached:
+        print(
+            f"Unreached (excluded from n): {len(unreached)} cells: "
+            + ", ".join(
+                f"{b}={sum(1 for r in unreached if r['backend'] == b)}"
+                for b in sorted({r["backend"] for r in unreached})
+            )
+            + "\n"
+        )
+    classes, tiers = class_rows(pinned), tier_rows(pinned)
+    failing = first_failing_tier(tiers)
+    separated = separation(classes)
+    escalations = escalation_rows(records)
+    _print_class_table(classes)
+    _print_class_table(tiers, tiered=True)
+    for (task_type, backend), difficulty in failing.items():
+        print(f"First failing tier: {task_type} / {backend}: {difficulty or 'none'}")
+    print()
+    for task_type, verdict in separated.items():
+        print(f"{task_type}: {verdict['verdict']}")
+        print(
+            f"  pairwise disjoint: {verdict['disjoint_pairs']}; overlapping: {verdict['overlapping_pairs']}"
+        )
+    print()
+    _markdown_table(
+        [
+            "task",
+            "answering backend",
+            "escalations",
+            "refused attempts",
+            "total wall ms",
+            "scorer",
+            "accepted",
+        ],
+        [
+            [
+                r["task_id"],
+                r["answering_backend"],
+                str(r["escalation_count"]),
+                "; ".join(r["refused_attempts"]),
+                str(r["wall_ms"]),
+                str(r["scorer"]),
+                str(r["accepted"]),
+            ]
+            for r in escalations
+        ],
+    )
+    if out:
+        out.write_text(
+            json.dumps(
+                {
+                    "sources": [str(p) for p in paths],
+                    "class_rows": classes,
+                    "tier_rows": tiers,
+                    "first_failing_tier": [
+                        {"task_type": key[0], "backend": key[1], "difficulty": value}
+                        for key, value in failing.items()
+                    ],
+                    "separation": separated,
+                    "escalation_rows": escalations,
+                    "records": records,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("results", nargs="+", type=Path)
+    parser.add_argument("results", nargs="*", type=Path)
+    parser.add_argument("--jsonl", nargs="+", type=Path)
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--alias",
+        action="append",
+        default=[],
+        metavar="FROM=TO",
+        help="Report backend FROM as backend TO (the same model on another host).",
+    )
     parser.add_argument(
         "--tier",
         default=None,
@@ -118,6 +829,14 @@ def main() -> int:
         "answer is not counted as the tier below it.",
     )
     args = parser.parse_args()
+    if bool(args.results) == bool(args.jsonl):
+        parser.error("provide either positional merged-JSON results or --jsonl FILE...")
+    if args.jsonl:
+        return _jsonl_report(
+            args.jsonl,
+            args.out,
+            dict(a.split("=", 1) for a in args.alias),
+        )
 
     records, meta = merge(args.results)
     rows = rung_table(records, args.tier)
@@ -176,3 +895,228 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# --------------------------------------------------------------------------
+# Structural features of the hard corpus (OMN-20844)
+# --------------------------------------------------------------------------
+
+# Prompt characters, measured. The receipts read about 4.1 characters per
+# token on these prompts, so "over 150k" is upward of 37k tokens, beyond a
+# 32768-token slot and toward the 65536 tokens the local-coder rung declares.
+CONTEXT_BINS: tuple[tuple[str, int], ...] = (
+    ("under 60k chars", 60_000),
+    ("60k-150k chars", 150_000),
+    ("over 150k chars", 10**9),
+)
+
+FEATURE_SPLITS: tuple[tuple[str, str, str], ...] = (
+    ("files touched", "1 file", "2-3 files"),
+    ("cross-file cause", "no", "yes"),
+)
+
+
+def bundle_features(scorer_config: dict[str, object]) -> dict[str, Any] | None:
+    """A hard task's recorded structural features, or None for any other task."""
+    features = scorer_config.get("features")
+    return dict(features) if isinstance(features, dict) else None
+
+
+def context_bin(chars: int) -> str:
+    return next(label for label, bound in CONTEXT_BINS if chars < bound)
+
+
+def feature_levels(features: dict[str, Any]) -> dict[str, str]:
+    """One level per structural feature, from a bundle's recorded features."""
+    return {
+        "files touched": "1 file"
+        if int(features["files_touched"]) == 1
+        else "2-3 files",
+        "cross-file cause": "yes" if features["cross_file_cause"] else "no",
+        "context size": context_bin(int(features["context_chars"])),
+    }
+
+
+def newcombe_difference(
+    k1: int, n1: int, k2: int, n2: int, z: float = 1.96
+) -> tuple[float, float, float]:
+    """``p2 - p1`` and its Newcombe (Wilson hybrid) 95% interval."""
+    p1 = k1 / n1 if n1 else 0.0
+    p2 = k2 / n2 if n2 else 0.0
+    l1, u1 = wilson_interval(k1, n1, z)
+    l2, u2 = wilson_interval(k2, n2, z)
+    d = p2 - p1
+    low = d - math.sqrt((p2 - l2) ** 2 + (u1 - p1) ** 2)
+    high = d + math.sqrt((u2 - p2) ** 2 + (p1 - l1) ** 2)
+    return d, low, high
+
+
+def _share(k: int, n: int) -> str:
+    if n == 0:
+        return "0/0"
+    low, high = wilson_interval(k, n)
+    return f"{k}/{n} {k / n:.0%} ({low:.0%}-{high:.0%})"
+
+
+def _correct(record: dict[str, Any]) -> bool:
+    return record.get("scorer_outcome") == "pass"
+
+
+def _answered(record: dict[str, Any]) -> bool:
+    return record.get("scorer_outcome") != "no_answer"
+
+
+def _left_local(record: dict[str, Any]) -> bool:
+    trace = record.get("ladder") or {}
+    tiers = [trace.get("answered_tier")] + [
+        attempt.get("tier") for attempt in trace.get("refused") or []
+    ]
+    return any(tier not in (None, "local") for tier in tiers)
+
+
+def feature_rows(
+    records: Sequence[dict[str, Any]],
+    features: dict[str, dict[str, Any]],
+    pinned: Sequence[str],
+    ladder: str = "unpinned-ladder",
+) -> list[dict[str, Any]]:
+    """Per feature level: failed pinned cells, failed tasks, ladder escalations.
+
+    A cell fails when the mechanical scorer did not pass its answer (no answer
+    counts as a failure); "not accepted" also counts a correct answer that the
+    delegation's own quality gate refused, and "failed, answer seen" counts
+    only cells whose answer reached the scorer (a gate that withholds the
+    answer, or a harness out of time, leaves nothing to score). A task fails
+    when fewer than half
+    of the pinned rungs that ran it produced a passing answer. The ladder
+    escalated when its receipt tried more than one rung, and left the local
+    tier when any rung it tried was not local (routing can send a large input
+    straight to a cloud rung, which tries one rung and escalates nothing).
+    """
+    levels = {task: feature_levels(f) for task, f in features.items()}
+    by_task: dict[str, list[dict[str, Any]]] = {}
+    for rec in records:
+        if rec["task_id"] in levels and rec["model_rung"] in pinned:
+            by_task.setdefault(rec["task_id"], []).append(rec)
+    ladder_recs = {
+        r["task_id"]: r
+        for r in records
+        if r["model_rung"] == ladder and r["task_id"] in levels
+    }
+    rows: list[dict[str, Any]] = []
+    for feature in ("files touched", "cross-file cause", "context size"):
+        order = [label for label, _ in CONTEXT_BINS]
+        present = {lv[feature] for lv in levels.values()}
+        ranked = (
+            [label for label in order if label in present]
+            if feature == "context size"
+            else sorted(present)
+        )
+        for level in ranked:
+            tasks = [t for t, lv in levels.items() if lv[feature] == level]
+            cells = [r for t in tasks for r in by_task.get(t, [])]
+            failed_tasks = [
+                t
+                for t in tasks
+                if by_task.get(t)
+                and sum(1 for r in by_task[t] if _correct(r)) * 2 < len(by_task[t])
+            ]
+            ran = [t for t in tasks if by_task.get(t)]
+            lad = [ladder_recs[t] for t in tasks if t in ladder_recs]
+            rows.append(
+                {
+                    "feature": feature,
+                    "level": level,
+                    "tasks": len(tasks),
+                    "cells": len(cells),
+                    "cells_failed": sum(1 for r in cells if not _correct(r)),
+                    "cells_not_accepted": sum(1 for r in cells if not r["accepted"]),
+                    "cells_answered": sum(1 for r in cells if _answered(r)),
+                    "cells_answered_failed": sum(
+                        1 for r in cells if _answered(r) and not _correct(r)
+                    ),
+                    "tasks_ran": len(ran),
+                    "tasks_failed": len(failed_tasks),
+                    "ladder_runs": len(lad),
+                    "ladder_escalated": sum(
+                        1
+                        for r in lad
+                        if (r.get("ladder") or {}).get("escalations", 0) > 0
+                    ),
+                    "ladder_left_local": sum(1 for r in lad if _left_local(r)),
+                    "ladder_failed": sum(1 for r in lad if not _correct(r)),
+                }
+            )
+    return rows
+
+
+def _difference(
+    first: dict[str, Any], last: dict[str, Any], key: str, n_key: str
+) -> str:
+    d, low, high = newcombe_difference(first[key], first[n_key], last[key], last[n_key])
+    return f"{d:+.0%} ({low:+.0%} to {high:+.0%})"
+
+
+def render_feature_table(rows: Sequence[dict[str, Any]]) -> str:
+    out = [
+        "| feature | level | tasks | pinned cells failed | failed, answer seen "
+        "| pinned cells not accepted "
+        "| tasks failed (most rungs) | ladder escalated | ladder left local "
+        "| ladder failed |",
+        "| -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+    ]
+    for r in rows:
+        out.append(
+            f"| {r['feature']} | {r['level']} | {r['tasks']} "
+            f"| {_share(r['cells_failed'], r['cells'])} "
+            f"| {_share(r['cells_answered_failed'], r['cells_answered'])} "
+            f"| {_share(r['cells_not_accepted'], r['cells'])} "
+            f"| {_share(r['tasks_failed'], r['tasks_ran'])} "
+            f"| {_share(r['ladder_escalated'], r['ladder_runs'])} "
+            f"| {_share(r['ladder_left_local'], r['ladder_runs'])} "
+            f"| {_share(r['ladder_failed'], r['ladder_runs'])} |"
+        )
+    out += [
+        "",
+        "Difference, last level minus first, with a Newcombe 95% interval:",
+        "",
+        "| feature | levels | pinned cells failed | failed, answer seen "
+        "| tasks failed | ladder escalated "
+        "| ladder left local |",
+        "| -- | -- | -- | -- | -- | -- | -- |",
+    ]
+    for feature in ("files touched", "cross-file cause", "context size"):
+        group = [r for r in rows if r["feature"] == feature]
+        if len(group) < 2:
+            continue
+        first, last = group[0], group[-1]
+
+        out.append(
+            f"| {feature} | {last['level']} vs {first['level']} "
+            f"| {_difference(first, last, 'cells_failed', 'cells')} "
+            f"| {_difference(first, last, 'cells_answered_failed', 'cells_answered')} "
+            f"| {_difference(first, last, 'tasks_failed', 'tasks_ran')} "
+            f"| {_difference(first, last, 'ladder_escalated', 'ladder_runs')} "
+            f"| {_difference(first, last, 'ladder_left_local', 'ladder_runs')} |"
+        )
+    return "\n".join(out)
+
+
+def render_feature_report(
+    records: Sequence[dict[str, Any]],
+    features: dict[str, dict[str, Any]],
+    task_types: dict[str, str],
+    pinned: Sequence[str],
+) -> str:
+    """The feature table over every hard task, then over each class alone."""
+    blocks = [
+        f"### all hard tasks ({len(features)})\n\n"
+        + render_feature_table(feature_rows(records, features, pinned))
+    ]
+    for task_type in sorted(set(task_types.values())):
+        subset = {t: f for t, f in features.items() if task_types.get(t) == task_type}
+        blocks.append(
+            f"### {task_type} ({len(subset)})\n\n"
+            + render_feature_table(feature_rows(records, subset, pinned))
+        )
+    return "\n\n".join(blocks)

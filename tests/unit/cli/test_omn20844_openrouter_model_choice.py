@@ -361,12 +361,16 @@ class TestRegisterTenantKey:
 
             class _Response:
                 api_key_ref = "cred_dev_openrouter_" + "a" * 32
+                # OMN-21014: the CLI folds the key into this machine's catalog.
+                name = "openrouter"
                 provider = "openrouter"
                 plan = None
                 model = request.model
                 # OMN-20991: the response also carries the expiry and its warning.
                 expires_at = None
                 expiry_warning = None
+                # OMN-21012: and the lab host the key is bound to.
+                bound_host = None
 
             return _Response()
 

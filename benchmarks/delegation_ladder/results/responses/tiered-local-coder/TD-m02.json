@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m02",
+  "path": "pinned",
+  "sha256": "f768cb09584cdf7b8539c2ca16d8773f728b4243db7ae87052be4c426d647758",
+  "response": "**omnimarket #3660**: Added `node_glm_allowance_compute` to track GLM Coding Plan allowance, returning rolling/weekly window stats, verdicts (`prefer_glm`, `allow_glm`, `skip_glm`, `no_glm_rung`), and chain order.\n**omnibase_spi #249**: Released v0.23.0, repinning `omnibase-core` to PyPI `>=0.46.1,<0.47.0` and removing git-source overrides.\n**omnibase_core #1869**: Enforced that bindings for merged fixes fail at the merge base with the fix reverted, ensuring tests fail only due to the missing fix.\n**omnimarket #3045**: Added `node_pr_landing_decision_compute` with TLC-checked models, S1-S20 replay fixtures, and determinism tests.\n**omnimarket #3436**: Made budget-state writes atomic in one transaction, splitting RLS migrations and adding `contracts/OMN-20613.yaml` to bind acceptance criteria to tests."
+}

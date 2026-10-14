@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m03",
+  "path": "pinned",
+  "sha256": "0b5033dfaa86ebaa2eba169b319756af9c9f4beb106e874adb347804dac683c5",
+  "response": "- **#1764** — The validate-union-usage hook now runs once over src/ (pass_filenames false), making it a whole-tree ratchet instead of a per-batch cap that reshuffled batches whenever files were added.\n- **#965** — Gate 5 bans **kwargs: object / **kwargs: Any in Protocol method signatures; scaffolds the substrate_gates package with shared AST-check infrastructure (BaseGateCheck, GateViolation, has_allow_annotation, main_for_gate).\n- **#3071** — Empty-string agent_id is now rejected on claude_hook_events / claude_agent_spans: min_length=1 on the agent_id models plus migration 0002 adding a CHECK on both tables.\n- **#3629** — Adds node_reject_skip_token_compute (contract.yaml, metadata.yaml, models, handler) and pre-commit hooks flagging text carrying a [skip-<letter> token (any case) unless a \"# skip-token-allowed: <receipt-id>\" line is present.\n- **#3310** — Pinning a non-routable BYOK row now raises ByokPinNotPermittedError with the correct catalogue code; three new tests cover the fix."
+}

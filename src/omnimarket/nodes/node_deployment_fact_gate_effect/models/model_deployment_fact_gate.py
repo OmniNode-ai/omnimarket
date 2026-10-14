@@ -10,6 +10,9 @@ from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.models.delegation.model_deployment_fact_marker import (
     ModelDeploymentFactOccurrence,
 )
+from omnimarket.nodes.node_deployment_fact_gate_effect.models.model_routing_in_code_gate import (
+    ModelNewRoutingBranch,
+)
 
 
 class ModelDeploymentFactGateRequest(BaseModel):
@@ -63,7 +66,7 @@ class ModelNewUndeclaredKey(BaseModel):
 
 
 class ModelDeploymentFactGateResult(BaseModel):
-    """What the gate found. It passes only when both finding lists are empty."""
+    """What the gate found. It passes only when every finding list is empty."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -78,9 +81,28 @@ class ModelDeploymentFactGateResult(BaseModel):
         ),
     )
 
+    new_routing_branches: tuple[ModelNewRoutingBranch, ...] = Field(
+        default=(),
+        description=(
+            "Route-selecting comparisons in the package's non-test code whose "
+            "count is above their count at the base revision (OMN-20601)."
+        ),
+    )
+    routing_branch_inventory: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Every route-selecting comparison the tree's non-test code carries: "
+            "the choices still to move to an overlay."
+        ),
+    )
+
     @property
     def passed(self) -> bool:
-        return not self.new_facts and not self.new_undeclared_keys
+        return (
+            not self.new_facts
+            and not self.new_undeclared_keys
+            and not self.new_routing_branches
+        )
 
 
 __all__: list[str] = [

@@ -40,14 +40,18 @@ from ..models import (
 from ..protocols import ProtocolMergeSweepStages
 from .handler_merge_sweep_stages_local import LocalMergeSweepStages
 
-_READ_FIELDS = ("state_path", "ledger_path", "floors_path")
+_READ_FIELDS = ("state_path", "ledger_path", "floors_path", "fleet")
 _DISPATCH_FIELDS = ("lane", "parent", "ticket", "model", "runner_script", "brief_dir")
 
 
 def unset_fields(request: ModelMergeSweepRunRequest) -> list[str]:
     """The settings this request needs and left empty: the reads always, the lane start when dispatching."""
     needed = _READ_FIELDS + (_DISPATCH_FIELDS if request.dispatch else ())
-    return [name for name in needed if not str(getattr(request, name)).strip()]
+    return [name for name in needed if not _is_set(getattr(request, name))]
+
+
+def _is_set(value: object) -> bool:
+    return bool(value.strip()) if isinstance(value, str) else bool(value)
 
 
 def supplemented(
@@ -112,7 +116,9 @@ class HandlerMergeSweepRun:
                 load1=request.load1,
                 cpus=request.cpus,
                 window_min=request.window_min,
-                max_reds=request.max_reds,
+                fleet=request.fleet,
+                non_product_repos=request.non_product_repos,
+                out_of_scope=request.out_of_scope,
                 max_age_s=request.max_age_s,
             )
         )

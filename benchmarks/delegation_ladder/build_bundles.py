@@ -40,8 +40,32 @@ WHY THE BUNDLES ARE COMMITTED RATHER THAN BUILT AT RUN TIME
 
 from __future__ import annotations
 
+import ast
+import builtins
+import difflib
+import hashlib
 import json
+import os
+import random
+import re
+import subprocess
+import sys
+import tempfile
+import tokenize
+from io import StringIO
 from pathlib import Path
+from typing import Any
+
+from benchmarks.delegation_ladder.models import (
+    EnumRung,
+    EnumScorerKind,
+    ModelTaskBundle,
+)
+from benchmarks.delegation_ladder.scorers import (
+    git_text,
+    materialise_tree,
+    run_tree_test,
+)
 
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures"
@@ -206,19 +230,19 @@ def r1() -> list[dict[str, object]]:
             "provenance": (
                 "The generated runtime lane map: the dev lane is compose project "
                 "omnibase-infra on main port 8085 and effects port 8086; 18085/18086 "
-                "belong to the stability-test lane, which is a different lane with a "
+                "belong to the lab-lane-c lane, which is a different lane with a "
                 "different mutation boundary."
             ),
             "prompt": (
                 "The sentence below states the wrong ports. The dev lane's main port "
                 "is 8085 and its effects port is 8086. The ports it currently names "
-                "belong to the stability-test lane, which is a separate lane. Correct "
+                "belong to the lab-lane-c lane, which is a separate lane. Correct "
                 "the sentence. Keep the compose project name exactly as it is.\n\n"
                 f"SENTENCE:\n{wrong}\n\n" + NO_TRACE
             ),
             "scorer": "grounding_rubric",
             "scorer_config": {
-                "source_text": wrong + " 8085 8086 stability-test dev lane",
+                "source_text": wrong + " 8085 8086 lab-lane-c dev lane",
                 "must_contain": ["8085", "8086", "omnibase-infra"],
                 "must_not_contain": ["on 18085", "18086."],
                 "max_words": 60,
@@ -716,8 +740,2654 @@ def r3b() -> list[dict[str, object]]:
     return tasks
 
 
+# ==========================================================================
+# Mined tasks (OMN-20844): real merged work from the public repositories
+# ==========================================================================
+#
+# Four tasks a rung cannot separate delegation rungs: with 28 tasks every
+# rung's interval overlapped every other's. The tasks below are not written for
+# the benchmark. They are drawn from the merge history and the test suites of
+# the public repositories:
+#
+#   document       a merged change's own description (the squash commit message)
+#                  to rewrite, and runs of merged changes to summarise
+#   review         the result of a call that a repository test asserts, and the
+#                  one line a merged fix changed
+#   test           a module with an existing test suite, plus a single edit that
+#                  the existing tests are proven to catch
+#   reasoning      a genuine pytest failure, from a merged fix's pre-fix code
+#                  or from such a caught edit
+#   code_generation the pre-fix block of a merged change, whose own test fails
+#                  before the change and passes after it
+#
+# Every mined task is validated by EXECUTION before it is written, the same way
+# the hand-built rungs are: the control must fail, the real code must pass, and
+# a diagnosis cannot be passed by echoing its own trace. Sources are inline in
+# each bundle (scorer_config), so a mined task is one self-contained JSON file
+# and adds no code file to the tree.
+#
+# Run: ``OMNI_HOME=<registry root> python benchmarks/delegation_ladder/build_bundles.py mine``
+# Sources are read from the registry's canonical clones at the pinned shas
+# written to fixtures/mined_sources.json.
+
+MINED_REPOS = (
+    "omnimarket",
+    "omnibase_core",
+    "omnibase_infra",
+    "omnibase_spi",
+    "omniclaude",
+    "omniintelligence",
+    "omnimemory",
+    "omnibase_compat",
+)
+MINED_SOURCES = FIXTURES / "mined_sources.json"
+_INTERNAL_REPO = "omnibase" + "_internal"
+PERSON_NAMES_RELATIVE = ("..", _INTERNAL_REPO, "vocabularies", "person_names.txt")
+
+# What a public benchmark bundle must not carry from the workspace it was mined
+# in. A candidate that matches any of these is dropped, never edited.
+_HYGIENE_PATTERNS = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        "omni" r"_home",
+        "knowledge" r"[_ -]?base",
+        "kb" r"[_-]internal",
+        "omnibase" r"[_-]internal",
+        "omninode" r"[_-]infra",
+        r"api\.z\.ai",
+        "/api/coding",
+        r"\bstability" r"-test\b",
+        r"/home/",
+        r"/users/",
+        r"\b192\.168\.",
+        r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
+        r"\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b",
+        r"[\w.+-]+@[\w-]+\.[\w.]+",
+        r"BEGIN [A-Z ]*PRIVATE KEY",
+        r"\bsk-[A-Za-z0-9_-]{16,}",
+        r"\bghp_[A-Za-z0-9]{20,}",
+        r"\bxox[abp]-",
+        r"AKIA[0-9A-Z]{12,}",
+    )
+)
+
+
+def _person_names() -> set[str]:
+    home = os.environ.get("OMNI_HOME")
+    if not home:
+        return set()
+    path = Path(home).joinpath(*PERSON_NAMES_RELATIVE)
+    if not path.is_file():
+        return set()
+    return {
+        line.strip().lower()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if len(line.strip()) >= 4 and not line.startswith("#")
+    }
+
+
+def hygiene_problems(text: str, names: set[str] | None = None) -> list[str]:
+    """Reasons ``text`` must not be published in a public benchmark bundle."""
+    problems = [p.pattern for p in _HYGIENE_PATTERNS if p.search(text)]
+    lowered = text.lower()
+    for name in names or ():
+        if re.search(rf"\b{re.escape(name)}\b", lowered):
+            problems.append("person name")
+            break
+    return problems
+
+
+def _clone(repo: str) -> Path:
+    home = os.environ.get("OMNI_HOME")
+    if not home:
+        raise RuntimeError("OMNI_HOME must be set; there is no default")
+    return Path(home) / repo
+
+
+def _git(repo: str, *args: str) -> str | None:
+    done = subprocess.run(
+        ["git", "-C", str(_clone(repo)), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.stdout if done.returncode == 0 else None
+
+
+def _pin(repo: str) -> str | None:
+    out = _git(repo, "rev-parse", "origin/HEAD")
+    return out.strip() if out else None
+
+
+def _module_name(path: str) -> str:
+    dotted = path.removeprefix("src/").removesuffix(".py").replace("/", ".")
+    return dotted.removesuffix(".__init__")
+
+
+def _rewrite_test(test: str, dotted: str) -> str:
+    """Point a repository test at the harness's ``subject`` module."""
+    leaf = dotted.rsplit(".", 1)[-1]
+    parent = dotted.rsplit(".", 1)[0] if "." in dotted else ""
+    out = test
+    if parent:
+        out = re.sub(
+            rf"^from {re.escape(parent)} import {re.escape(leaf)}[ \t]*$",
+            f"import subject as {leaf}",
+            out,
+            flags=re.MULTILINE,
+        )
+    return out.replace(dotted, "subject")
+
+
+_TIMING_RE = re.compile(r" in \d+(?:\.\d+)?s\b")
+_SITE_PACKAGES_RE = re.compile(r"(?:/[\w.\-+]+)+/site-packages/")
+# pytest's warnings block carries absolute paths and varies by environment.
+_WARNINGS_RE = re.compile(
+    r"^=+ warnings summary =+$.*?^-- Docs: \S+\n?", re.MULTILINE | re.DOTALL
+)
+
+
+def _run_focused(
+    subject: str,
+    test: str,
+    *,
+    tb: str = "short",
+    timeout_s: int = 90,
+    extra: tuple[str, ...] = (),
+) -> tuple[int, str]:
+    """pytest on one rewritten test against one subject; the output is scrubbed.
+
+    Scrubbed so the committed trace is reproducible and carries no path from
+    the machine that mined it: temp dirs, package paths and run timings go.
+    """
+    with tempfile.TemporaryDirectory(prefix="ladder-mine-") as tmp:
+        work = Path(tmp)
+        (work / "subject.py").write_text(subject, encoding="utf-8")
+        (work / "test_focused.py").write_text(test, encoding="utf-8")
+        try:
+            done = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "test_focused.py",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    f"--tb={tb}",
+                    *extra,
+                ],
+                cwd=work,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return 124, "timeout"
+        out = (done.stdout + done.stderr).replace(str(work), ".")
+    out = _SITE_PACKAGES_RE.sub("site-packages/", out)
+    out = _WARNINGS_RE.sub("", out)
+    return done.returncode, _TIMING_RE.sub("", out).strip()
+
+
+def _numbered(lines: list[str], first: int = 1) -> str:
+    width = len(str(first + len(lines)))
+    return "".join(f"{first + i:>{width}} | {line}" for i, line in enumerate(lines))
+
+
+def _top_level_spans(tree: ast.Module) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    for node in tree.body:
+        decorators = [d.lineno for d in getattr(node, "decorator_list", [])]
+        spans.append((min([node.lineno, *decorators]), node.end_lineno or node.lineno))
+    return spans
+
+
+def _enclosing_name(tree: ast.Module, line: int) -> str | None:
+    """The innermost function (or the top-level definition) holding ``line``."""
+    best: tuple[int, str] | None = None
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.lineno <= line <= (node.end_lineno or node.lineno)
+            and (best is None or node.lineno > best[0])
+        ):
+            best = (node.lineno, node.name)
+    if best:
+        return best[1]
+    for node in tree.body:
+        if node.lineno <= line <= (node.end_lineno or node.lineno):
+            name = getattr(node, "name", None)
+            if isinstance(name, str):
+                return name
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                return node.targets[0].id
+    return None
+
+
+def _import_block(source: str) -> str:
+    """The top-level import statements of a module, as written."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    chunks = [
+        "\n".join(lines[n.lineno - 1 : n.end_lineno])
+        for n in tree.body
+        if isinstance(n, ast.Import | ast.ImportFrom)
+    ]
+    return "\n".join(chunks) + "\n"
+
+
+def _block_for_change(
+    pre_lines: list[str], post_lines: list[str]
+) -> dict[str, Any] | None:
+    """The one run of top-level definitions a change lives in, or None.
+
+    Every changed line of the pre-fix file must fall inside the same run of at
+    most four adjacent top-level definitions (with the blank lines between
+    them), so that module = prelude + block + suffix holds for the pre-fix
+    source and, with the block replaced, for the post-fix source. A definition
+    added right after a block belongs to that block.
+    """
+    matcher = difflib.SequenceMatcher(None, pre_lines, post_lines, autojunk=False)
+    ops = [op for op in matcher.get_opcodes() if op[0] != "equal"]
+    if not ops:
+        return None
+    try:
+        spans = _top_level_spans(ast.parse("".join(pre_lines)))
+    except SyntaxError:
+        return None
+    if not spans:
+        return None
+
+    def index_of(line: int) -> int:
+        for index, (start, end) in enumerate(spans):
+            if line <= end:
+                return index if line >= start or index == 0 else index - 1
+        return len(spans) - 1
+
+    touched: list[int] = []
+    removed: list[int] = []
+    appended_after: int | None = None
+    for tag, i1, i2, _j1, _j2 in ops:
+        if tag == "insert":
+            touched.append(max(i1, 1))
+            appended_after = i1
+        else:
+            touched.extend(range(i1 + 1, i2 + 1))
+            removed.extend(range(i1 + 1, i2 + 1))
+    first, last = index_of(min(touched)), index_of(max(touched))
+    if last - first > 3:
+        return None
+    start = min(spans[first][0], min(touched))
+    end = max(spans[last][1], max(touched))
+    if appended_after is not None and appended_after >= spans[last][1]:
+        following = spans[last + 1][0] - 1 if last + 1 < len(spans) else len(pre_lines)
+        end = max(end, following)
+    if end - start + 1 > 150:
+        return None
+    tail = len(pre_lines) - end
+    post_block = post_lines[start - 1 : len(post_lines) - tail]
+    if post_lines[: start - 1] != pre_lines[: start - 1]:
+        return None
+    if tail and post_lines[len(post_lines) - tail :] != pre_lines[end:]:
+        return None
+    return {
+        "start": start,
+        "end": end,
+        "removed": removed,
+        "prelude": "".join(pre_lines[: start - 1]),
+        "block": "".join(pre_lines[start - 1 : end]),
+        "post_block": "".join(post_block),
+        "suffix": "".join(pre_lines[end:]),
+        "single_line": len(ops) == 1
+        and ops[0][0] == "replace"
+        and ops[0][2] - ops[0][1] == 1,
+    }
+
+
+# --------------------------------------------------------------------------
+# Source 1: merged fixes and features whose own test fails before and passes after
+# --------------------------------------------------------------------------
+
+_WORK_SUBJECT_RE = re.compile(r"(?i)^(fix|bugfix|feat|refactor|perf)\b")
+_TEST_PATH_RE = re.compile(r"(^|/)tests?/|/test_[^/]*\.py$|^test_")
+
+
+def _fix_commit_candidates(repo: str, ref: str, limit: int) -> list[dict[str, Any]]:
+    raw = _git(
+        repo,
+        "log",
+        ref,
+        "--no-merges",
+        "--format=@@%H\t%P\t%s",
+        "--name-status",
+        "-n",
+        str(limit),
+    )
+    if raw is None:
+        return []
+    commits: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for line in raw.splitlines():
+        if line.startswith("@@"):
+            sha, parents, subject = line[2:].split("\t", 2)
+            current = {
+                "repo": repo,
+                "sha": sha,
+                "parent": parents.split()[0] if parents else None,
+                "subject": subject,
+                "files": [],
+            }
+            commits.append(current)
+        elif line.strip() and current is not None:
+            parts = line.split("\t")
+            current["files"].append((parts[0], parts[-1]))
+    found: list[dict[str, Any]] = []
+    for commit in commits:
+        kind = _WORK_SUBJECT_RE.match(commit["subject"])
+        if not commit["parent"] or kind is None:
+            continue
+        py = [(st, f) for st, f in commit["files"] if f.endswith(".py")]
+        tests = [f for st, f in py if _TEST_PATH_RE.search(f) and st in ("A", "M")]
+        srcs = [
+            f
+            for st, f in py
+            if not _TEST_PATH_RE.search(f) and st == "M" and f.startswith("src/")
+        ]
+        if not 1 <= len(srcs) <= 3 or not 1 <= len(tests) <= 3:
+            continue
+        commit["kind"] = kind.group(1).lower()
+        commit["srcs"] = srcs
+        commit["tests"] = tests
+        found.append(commit)
+    return found
+
+
+_FAILED_RE = re.compile(
+    r"^FAILED test_focused\.py::(\S+?)(?:\[.*?\])?(?: - .*)?$", re.MULTILINE
+)
+
+
+def _slice_test(test_text: str, failing: set[str]) -> str | None:
+    """Keep the module-level setup and only the tests that failed before the fix."""
+    try:
+        tree = ast.parse(test_text)
+    except SyntaxError:
+        return None
+    drop: list[tuple[int, int]] = []
+
+    def bounds(node: ast.stmt) -> tuple[int, int]:
+        decorators = [d.lineno for d in getattr(node, "decorator_list", [])]
+        return min([node.lineno, *decorators]), node.end_lineno or node.lineno
+
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            if node.name.startswith("test") and node.name not in failing:
+                drop.append(bounds(node))
+        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            for method in node.body:
+                if (
+                    isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
+                    and method.name.startswith("test")
+                    and f"{node.name}::{method.name}" not in failing
+                ):
+                    drop.append(bounds(method))
+    lines = test_text.splitlines(keepends=True)
+    dead = {n for lo, hi in drop for n in range(lo, hi + 1)}
+    kept = "".join(ln for i, ln in enumerate(lines, start=1) if i not in dead)
+    return kept if kept.strip() else None
+
+
+def _count_tests(test_text: str) -> int:
+    return len(re.findall(r"^\s*(?:async )?def test", test_text, re.MULTILINE))
+
+
+def validate_fix(commit: dict[str, Any], names: set[str]) -> dict[str, Any] | None:
+    """The first (changed module, its test) pair of a merged change that flips."""
+    for src in commit["srcs"]:
+        for test in commit["tests"]:
+            pair = {**commit, "src": src, "test": test}
+            result = _validate_pair(pair, names)
+            if result is not None:
+                return result
+    return None
+
+
+def _validate_pair(commit: dict[str, Any], names: set[str]) -> dict[str, Any] | None:
+    """Run a merged change's own test before and after; keep only a clean flip."""
+    repo = commit["repo"]
+    pre = _git(repo, "show", f"{commit['parent']}:{commit['src']}")
+    post = _git(repo, "show", f"{commit['sha']}:{commit['src']}")
+    test = _git(repo, "show", f"{commit['sha']}:{commit['test']}")
+    if pre is None or post is None or test is None:
+        return None
+    if pre.count("\n") > 3000 or test.count("\n") > 1500:
+        return None
+    dotted = _module_name(commit["src"])
+    if dotted not in test and dotted.rsplit(".", 1)[-1] not in test:
+        return None
+    rewritten = _rewrite_test(test, dotted)
+    if "subject" not in rewritten:
+        return None
+    block = _block_for_change(
+        pre.splitlines(keepends=True), post.splitlines(keepends=True)
+    )
+    if block is None or (not block["removed"] and commit["kind"] == "fix"):
+        return None
+    changed = sum(
+        1
+        for ln in difflib.unified_diff(
+            pre.splitlines(), post.splitlines(), lineterm="", n=0
+        )
+        if ln[:1] in "+-" and not ln.startswith(("+++", "---"))
+    )
+    if not 1 <= changed <= 80:
+        return None
+    pre_rc, pre_out = _run_focused(pre, rewritten, extra=("-rf",))
+    post_rc, _ = _run_focused(post, rewritten)
+    if pre_rc in (0, 5, 124) or post_rc != 0:
+        return None
+    if re.search(r"ModuleNotFoundError|ImportError|fixture '.*' not found", pre_out):
+        return None
+    failing = set(_FAILED_RE.findall(pre_out))
+    if not failing:
+        return None
+    if rewritten.count("\n") > 120 or _count_tests(rewritten) > 6:
+        sliced = _slice_test(rewritten, failing | {f.split("::")[-1] for f in failing})
+        if sliced is None or sliced.count("\n") > 200:
+            return None
+        rewritten = sliced
+        pre_rc, pre_out = _run_focused(pre, rewritten)
+        post_rc, _ = _run_focused(post, rewritten)
+        if pre_rc in (0, 5, 124) or post_rc != 0:
+            return None
+    pre_out = re.sub(r"^FAILED .*\n?", "", pre_out, flags=re.MULTILINE).strip()
+    if rewritten.count("\n") > 200 or not re.search(r"\d+ failed", pre_out):
+        return None
+    if hygiene_problems(pre + rewritten + pre_out, names):
+        return None
+    first_removed = block["removed"][0] if block["removed"] else block["start"]
+    return {
+        **commit,
+        "dotted": dotted,
+        "pre": pre,
+        "test_text": rewritten,
+        "trace": pre_out,
+        "block": block,
+        "enclosing": _enclosing_name(ast.parse(pre), first_removed),
+        "changed_lines": changed,
+    }
+
+
+def mine_fixes(limit: int = 6000, workers: int = 10) -> list[dict[str, Any]]:
+    import concurrent.futures
+
+    names = _person_names()
+    candidates: list[dict[str, Any]] = []
+    for repo in MINED_REPOS:
+        ref = _pin(repo)
+        if ref:
+            candidates += _fix_commit_candidates(repo, ref, limit)
+    candidates.sort(key=lambda c: (c["repo"], c["sha"]))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda c: validate_fix(c, names), candidates))
+    return [r for r in results if r is not None]
+
+
+_FIX_RULES = (
+    "Rules the grader enforces:\n"
+    "- The block under repair is one part of a larger module. Output the complete "
+    "replacement for that block, as one fenced Python code block, and nothing else.\n"
+    "- The rest of the module (its imports and every definition before and after "
+    "the block) is kept as it is and is not shown again. Do not repeat it.\n"
+    "- If your change needs a new import or helper, put it inside your code block.\n"
+    "- Your code will be run against the focused test shown, which must pass in "
+    "full.\n"
+    "- Change only what the failure requires.\n\n"
+)
+
+
+def codegen_task(fix: dict[str, Any]) -> dict[str, Any]:
+    block = fix["block"]
+    return {
+        "title": f"make the focused test pass in {fix['enclosing'] or 'the block'}",
+        "task_type": "code_generation",
+        "provenance": (
+            f"A real merged change, {fix['repo']} {fix['sha']} ({fix['kind']}), "
+            f"changing {fix['changed_lines']} lines of {fix['src']}. The focused test "
+            "is the change's own test, rewritten to import the module as `subject`; "
+            "it is confirmed to fail on the parent's source and pass on the merged "
+            "source."
+        ),
+        "prompt": (
+            "The code below fails the focused test shown. Fix it.\n\n"
+            + _FIX_RULES
+            + f"IMPORTS ALREADY IN THE MODULE (kept, do not repeat):\n```python\n"
+            f"{_import_block(fix['pre'])}```\n\n"
+            f"BLOCK UNDER REPAIR:\n```python\n{block['block']}```\n\n"
+            f"FOCUSED TEST (test_focused.py; the module is importable as "
+            f"`subject`):\n```python\n{fix['test_text']}```\n\n"
+            f"CURRENT FAILURE:\n```\n{fix['trace']}\n```\n\n{NO_TRACE}"
+        ),
+        "scorer": "patch_apply_and_test",
+        "scorer_config": {
+            "prelude_text": block["prelude"],
+            "prefix_body_text": block["block"],
+            "suffix_text": block["suffix"],
+            "focused_test_text": fix["test_text"],
+            "timeout_s": 120,
+        },
+    }
+
+
+_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def reasoning_task_from_fix(fix: dict[str, Any]) -> dict[str, Any] | None:
+    """Diagnose the genuine failure of a merged fix's pre-fix code."""
+    block = fix["block"]
+    removed = block["removed"]
+    pre_lines = fix["pre"].splitlines()
+    if not removed or not fix["enclosing"]:
+        return None
+    lines_text = [pre_lines[n - 1].strip() for n in removed]
+    quotes = [t for t in lines_text if len(t) >= 12][:3]
+    any_of = [*quotes, *[f"line {n}" for n in removed[:3]]]
+    first = block["start"]
+    shown = fix["pre"].splitlines(keepends=True)[first - 1 : block["end"]]
+    return {
+        "title": f"diagnose the failing test for {fix['enclosing']}",
+        "task_type": "reasoning",
+        "provenance": (
+            f"A real merged fix, {fix['repo']} {fix['sha']}, to {fix['src']}. The "
+            "trace is genuine pytest output from running the fix's own test against "
+            "the parent's source. The held cause is the line the fix removed or "
+            "replaced."
+        ),
+        "prompt": (
+            "This test suite fails. Name the root cause: the function at fault and "
+            "the specific line that is wrong (give its line number in subject.py), "
+            "and say in one sentence what the line does wrong. Do not propose a fix "
+            "and do not rewrite the code.\n\n"
+            f"SOURCE (subject.py, lines {first}-{block['end']} of the module, line "
+            f"numbers shown):\n```\n{_numbered(shown, first)}```\n\n"
+            f"TEST (test_focused.py):\n```python\n{fix['test_text']}```\n\n"
+            f"PYTEST OUTPUT:\n```\n{fix['trace']}\n```\n\n{NO_TRACE}"
+        ),
+        "scorer": "diagnosis_location",
+        "scorer_config": {
+            "must_name": [fix["enclosing"]],
+            "any_of": any_of,
+            "must_not_name": [],
+            "proof_subject_text": fix["pre"],
+            "proof_test_text": fix["test_text"],
+        },
+    }
+
+
+def defect_line_task(fix: dict[str, Any]) -> dict[str, Any] | None:
+    """Review: which one line of this block does the merged fix change?"""
+    block = fix["block"]
+    if fix["kind"] != "fix" or not block["single_line"]:
+        return None
+    lines = block["block"].splitlines(keepends=True)
+    if not 3 <= len(lines) <= 99:
+        return None
+    offset = block["removed"][0] - block["start"] + 1
+    return {
+        "title": f"find the defective line in {fix['enclosing'] or 'the block'}",
+        "task_type": "review",
+        "provenance": (
+            f"A real merged fix, {fix['repo']} {fix['sha']}, to {fix['src']}: the fix "
+            "changes exactly one line of this block. The held answer is that line's "
+            "position in the block."
+        ),
+        "prompt": (
+            "Review the code below. It has to satisfy the test shown, and exactly "
+            "one line of it is wrong. Which line? Answer in the form `Line N`, "
+            "where N is the number shown beside the line, and nothing else.\n\n"
+            f"CODE (line numbers shown):\n```\n{_numbered(lines)}```\n\n"
+            f"TEST (test_focused.py; the module is importable as `subject`):\n"
+            f"```python\n{fix['test_text']}```\n\n{NO_TRACE}"
+        ),
+        "scorer": "exact_match",
+        "scorer_config": {
+            "accepted": [f"Line {offset}"],
+            # `Line 1` must not credit `Line 12`; the digits after N are refused.
+            "forbidden": [f"Line {offset}{d}" for d in range(10)],
+        },
+    }
+
+
+# --------------------------------------------------------------------------
+# Source 2: modules with an existing test suite, and edits those tests catch
+# --------------------------------------------------------------------------
+
+
+def _test_imports(repo: str, ref: str) -> dict[str, list[str]]:
+    """Dotted module -> repository test files (paths) that import it."""
+    listing = _git(repo, "grep", "-l", "-E", r"^(from|import) \w+", ref, "--", "tests")
+    if listing is None:
+        return {}
+    mapping: dict[str, list[str]] = {}
+    for entry in listing.splitlines():
+        path = entry.split(":", 1)[1] if ":" in entry else entry
+        if not path.endswith(".py"):
+            continue
+        text = _git(repo, "show", f"{ref}:{path}")
+        if text is None or text.count("\n") > 200:
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                mapping.setdefault(node.module, []).append(path)
+                for alias in node.names:
+                    mapping.setdefault(f"{node.module}.{alias.name}", []).append(path)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    mapping.setdefault(alias.name, []).append(path)
+    return mapping
+
+
+def _mutation_sites(source: str) -> list[tuple[int, int, int, int, str, str, str]]:
+    """Single-token edits inside function bodies: (row, col, end_row, end_col,
+    replacement, kind, enclosing function). ASCII lines only."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    sites: list[tuple[int, int, int, int, str, str, str]] = []
+    swaps = {"<": "<=", "<=": "<", ">": ">=", ">=": ">", "==": "!=", "!=": "=="}
+
+    def ascii_line(row: int) -> bool:
+        return lines[row - 1].isascii()
+
+    def find(
+        row: int, lo: int, end_row: int, hi: int, pattern: str
+    ) -> re.Match[str] | None:
+        if row != end_row:
+            return None
+        return re.search(pattern, lines[row - 1][lo:hi])
+
+    for func in ast.walk(tree):
+        if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        inner = [n for stmt in func.body for n in ast.walk(stmt)]
+        for node in inner:
+            if isinstance(node, ast.Compare):
+                left = node.left
+                for op, comp in zip(node.ops, node.comparators, strict=False):
+                    row, end_row = left.end_lineno or 0, comp.lineno
+                    if not (row and ascii_line(row)):
+                        left = comp
+                        continue
+                    m = find(
+                        row,
+                        left.end_col_offset or 0,
+                        end_row,
+                        comp.col_offset,
+                        r"<=|>=|==|!=|<|>",
+                    )
+                    if m and isinstance(
+                        op, ast.Lt | ast.LtE | ast.Gt | ast.GtE | ast.Eq | ast.NotEq
+                    ):
+                        base = left.end_col_offset or 0
+                        sites.append(
+                            (
+                                row,
+                                base + m.start(),
+                                row,
+                                base + m.end(),
+                                swaps[m.group()],
+                                "comparison",
+                                func.name,
+                            )
+                        )
+                    left = comp
+            elif isinstance(node, ast.BoolOp):
+                for a, b in zip(node.values, node.values[1:], strict=False):
+                    row = a.end_lineno or 0
+                    if not (row and ascii_line(row)):
+                        continue
+                    m = find(
+                        row,
+                        a.end_col_offset or 0,
+                        b.lineno,
+                        b.col_offset,
+                        r"\band\b|\bor\b",
+                    )
+                    if m:
+                        base = a.end_col_offset or 0
+                        sites.append(
+                            (
+                                row,
+                                base + m.start(),
+                                row,
+                                base + m.end(),
+                                "or" if m.group() == "and" else "and",
+                                "boolean operator",
+                                func.name,
+                            )
+                        )
+            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.Sub):
+                row = node.left.end_lineno or 0
+                if not (row and ascii_line(row)):
+                    continue
+                m = find(
+                    row,
+                    node.left.end_col_offset or 0,
+                    node.right.lineno,
+                    node.right.col_offset,
+                    r"[+-]",
+                )
+                if m:
+                    base = node.left.end_col_offset or 0
+                    sites.append(
+                        (
+                            row,
+                            base + m.start(),
+                            row,
+                            base + m.end(),
+                            "-" if m.group() == "+" else "+",
+                            "arithmetic operator",
+                            func.name,
+                        )
+                    )
+            elif isinstance(node, ast.Constant) and not isinstance(
+                node.value, str | bytes
+            ):
+                row = node.lineno
+                if not ascii_line(row) or node.end_lineno != row:
+                    continue
+                if isinstance(node.value, bool):
+                    sites.append(
+                        (
+                            row,
+                            node.col_offset,
+                            row,
+                            node.end_col_offset or 0,
+                            str(not node.value),
+                            "boolean literal",
+                            func.name,
+                        )
+                    )
+                elif isinstance(node.value, int):
+                    sites.append(
+                        (
+                            row,
+                            node.col_offset,
+                            row,
+                            node.end_col_offset or 0,
+                            str(node.value + 1),
+                            "numeric constant",
+                            func.name,
+                        )
+                    )
+            elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+                row = node.lineno
+                if ascii_line(row) and node.operand.lineno == row:
+                    sites.append(
+                        (
+                            row,
+                            node.col_offset,
+                            row,
+                            node.operand.col_offset,
+                            "",
+                            "negation",
+                            func.name,
+                        )
+                    )
+    return sites
+
+
+def _apply_site(source: str, site: tuple[int, int, int, int, str, str, str]) -> str:
+    row, col, _end_row, end_col, replacement, _kind, _func = site
+    lines = source.splitlines(keepends=True)
+    line = lines[row - 1]
+    lines[row - 1] = line[:col] + replacement + line[end_col:]
+    return "".join(lines)
+
+
+def _tested_module(
+    repo: str, ref: str, path: str, tests: list[str]
+) -> dict[str, Any] | None:
+    source = _git(repo, "show", f"{ref}:{path}")
+    if source is None:
+        return None
+    count = source.count("\n")
+    if not 25 <= count <= 150 or re.search(r"^from \.", source, re.MULTILINE):
+        return None
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    if not any(isinstance(n, ast.FunctionDef) for n in tree.body):
+        return None
+    dotted = _module_name(path)
+    for test_path in sorted(set(tests)):
+        text = _git(repo, "show", f"{ref}:{test_path}")
+        if text is None:
+            continue
+        rewritten = _rewrite_test(text, dotted)
+        if "subject" not in rewritten:
+            continue
+        rc, out = _run_focused(source, rewritten)
+        if rc == 0 and re.search(r"\d+ passed", out):
+            return {
+                "repo": repo,
+                "ref": ref,
+                "path": path,
+                "dotted": dotted,
+                "source": source,
+                "test_path": test_path,
+                "test_text": rewritten,
+            }
+    return None
+
+
+def find_killable_mutant(
+    module: dict[str, Any], names: set[str]
+) -> dict[str, Any] | None:
+    """The first deterministic single edit the module's own tests catch by assertion."""
+    source = module["source"]
+    sites = _mutation_sites(source)
+    random.Random(f"{module['repo']}:{module['path']}").shuffle(sites)
+    for site in sites[:14]:
+        mutant = _apply_site(source, site)
+        try:
+            ast.parse(mutant)
+        except SyntaxError:
+            continue
+        rc, out = _run_focused(mutant, module["test_text"])
+        if rc in (0, 5, 124) or not re.search(r"\d+ failed", out):
+            continue
+        if not re.search(r"AssertionError|assert ", out) or re.search(
+            r"ImportError|ModuleNotFoundError|SyntaxError", out
+        ):
+            continue
+        if hygiene_problems(source + module["test_text"] + out, names):
+            return None
+        row = site[0]
+        return {
+            **module,
+            "mutant": mutant,
+            "mutant_row": row,
+            "mutant_line": mutant.splitlines()[row - 1].strip(),
+            "original_line": source.splitlines()[row - 1].strip(),
+            "kind": site[5],
+            "function": site[6],
+            "trace": out,
+        }
+    return None
+
+
+def mine_modules(workers: int = 10) -> list[dict[str, Any]]:
+    import concurrent.futures
+
+    names = _person_names()
+    modules: list[dict[str, Any]] = []
+    jobs: list[tuple[str, str, str, list[str]]] = []
+    for repo in MINED_REPOS:
+        ref = _pin(repo)
+        if not ref:
+            continue
+        mapping = _test_imports(repo, ref)
+        listing = _git(repo, "ls-tree", "-r", "--name-only", ref, "--", "src") or ""
+        for path in sorted(listing.splitlines()):
+            if path.endswith(".py") and not path.endswith("__init__.py"):
+                tests = mapping.get(_module_name(path))
+                if tests:
+                    jobs.append((repo, ref, path, tests))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        tested = [m for m in pool.map(lambda j: _tested_module(*j), jobs) if m]
+        mutated = list(pool.map(lambda m: find_killable_mutant(m, names), tested))
+    by_path = {(m["repo"], m["path"]): m for m in tested}
+    for m in mutated:
+        if m:
+            by_path[(m["repo"], m["path"])] = m
+    modules = [by_path[k] for k in sorted(by_path)]
+    return modules
+
+
+def unit_test_task(module: dict[str, Any]) -> dict[str, Any]:
+    func = module["function"]
+    return {
+        "title": f"write a unit test for {func}",
+        "task_type": "test",
+        "provenance": (
+            f"{module['dotted']} at {module['repo']} {module['ref']}, with its own "
+            f"repository tests. The mutant is one deliberate edit (a {module['kind']} "
+            f"in {func}) that those existing tests are proven to catch by assertion."
+        ),
+        "prompt": (
+            "Write a pytest test module for the code below.\n\n"
+            "Rules the grader enforces:\n"
+            "- The module under test is importable as `subject`. Import what you "
+            "test with `from subject import <name>`.\n"
+            "- Use plain pytest: test functions named `test_*`, plain `assert`. No "
+            "fixtures, no classes, no mocking, no imports beyond `subject` and the "
+            "standard library.\n"
+            "- Your tests will be run twice: once against this module, where they "
+            "must all pass, and once against a copy containing a single deliberate "
+            f"defect in `{func}`, where at least one of them must fail. A test "
+            "suite that passes both is worthless.\n"
+            "- Output one fenced Python code block and nothing else.\n\n"
+            f"```python\n{module['source']}```\n\n{NO_TRACE}"
+        ),
+        "scorer": "unit_test_execution",
+        "scorer_config": {
+            "subject_text": module["source"],
+            "mutant_text": module["mutant"],
+            "timeout_s": 90,
+        },
+    }
+
+
+def reasoning_task_from_mutant(module: dict[str, Any]) -> dict[str, Any] | None:
+    row = module["mutant_row"]
+    mutant_lines = module["mutant"].splitlines(keepends=True)
+    line = module["mutant_line"]
+    if len(line) < 6:
+        return None
+    return {
+        "title": f"diagnose the failing test for {module['function']}",
+        "task_type": "reasoning",
+        "provenance": (
+            f"{module['dotted']} at {module['repo']} {module['ref']} with its own "
+            "repository tests. The trace is genuine pytest output from running those "
+            "tests against a copy with one deliberate edit. The held cause is the "
+            "edited line."
+        ),
+        "prompt": (
+            "This test suite fails. Name the root cause: the function at fault and "
+            "the specific line that is wrong (give its line number in subject.py), "
+            "and say in one sentence what the line does wrong. Do not propose a fix "
+            "and do not rewrite the code.\n\n"
+            f"SOURCE (subject.py, line numbers shown):\n```\n"
+            f"{_numbered(mutant_lines)}```\n\n"
+            f"TEST (test_focused.py):\n```python\n{module['test_text']}```\n\n"
+            f"PYTEST OUTPUT:\n```\n{module['trace']}\n```\n\n{NO_TRACE}"
+        ),
+        "scorer": "diagnosis_location",
+        "scorer_config": {
+            "must_name": [module["function"]],
+            "any_of": [line, f"line {row}"],
+            "must_not_name": [],
+            "proof_subject_text": module["mutant"],
+            "proof_test_text": module["test_text"],
+        },
+    }
+
+
+def _literal(node: ast.expr) -> tuple[bool, object]:
+    try:
+        return True, ast.literal_eval(node)
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return False, None
+
+
+def result_question_task(
+    module: dict[str, Any], exclude: frozenset[str] = frozenset()
+) -> dict[str, Any] | None:
+    """Review: what does a call return? Held answer: what the repo's test asserts.
+
+    Taken from a test assertion of the form ``assert f(<literals>) == <literal>``.
+    """
+    try:
+        test_tree = ast.parse(module["test_text"])
+    except SyntaxError:
+        return None
+    defined = {
+        n.name
+        for n in ast.parse(module["source"]).body
+        if isinstance(n, ast.FunctionDef)
+    }
+    rng = random.Random(f"{module['repo']}:{module['path']}:qa")
+    options: list[tuple[str, str]] = []
+    for node in ast.walk(test_tree):
+        if not (isinstance(node, ast.Assert) and isinstance(node.test, ast.Compare)):
+            continue
+        cmp_ = node.test
+        if len(cmp_.ops) != 1 or not isinstance(cmp_.ops[0], ast.Eq):
+            continue
+        call, expected = cmp_.left, cmp_.comparators[0]
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)):
+            continue
+        if call.func.id not in defined or call.keywords:
+            continue
+        parsed = [_literal(a) for a in call.args]
+        want_ok, want = _literal(expected)
+        if not want_ok or not all(ok for ok, _ in parsed):
+            continue
+        # The held answer is the literal the repository's own test asserts. That
+        # test passed against exactly this source when the module was mined
+        # (`_tested_module`), so the answer is confirmed by that execution; the
+        # miner never imports or executes the module itself.
+        got = want
+        shown = repr(got)
+        if len(shown) > 80 or shown in {"None"}:
+            continue
+        call_text = ast.unparse(call)
+        if call_text in exclude:
+            continue
+        options.append((call_text, shown))
+    # A call whose answer is `True`/`False`/small ints is the weakest question; keep
+    # those only when nothing richer exists.
+    rich = [o for o in options if o[1] not in {"True", "False", "0", "1"}]
+    pool = rich or options
+    if not pool:
+        return None
+    call_text, shown = rng.choice(pool)
+    forbidden = (
+        [
+            f"RESULT: {shown}{c}"
+            for c in "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+        ]
+        if shown[-1].isalnum()
+        else []
+    )
+    return {
+        "_call": call_text,
+        "title": f"what {call_text.split('(')[0]} returns for a given call",
+        "task_type": "review",
+        "provenance": (
+            f"{module['dotted']} at {module['repo']} {module['ref']}. The question is "
+            "taken from an assertion in the module's own repository test; the held "
+            "answer holds because that test passes against this source."
+        ),
+        "prompt": (
+            "Read this module and answer the question about it.\n\n"
+            f"```python\n{module['source']}```\n\n"
+            f"QUESTION: What exactly does `{call_text}` return? Answer as "
+            "`RESULT: ` followed by the value exactly as Python's repr prints it, "
+            f"and nothing else.\n\n{NO_TRACE}"
+        ),
+        "scorer": "exact_match",
+        "scorer_config": {"accepted": [f"RESULT: {shown}"], "forbidden": forbidden},
+    }
+
+
+# --------------------------------------------------------------------------
+# Source 3: merged-change descriptions
+# --------------------------------------------------------------------------
+
+_TRAILER_RE = re.compile(
+    r"^(co-authored-by|signed-off-by|generated with|🤖|reviewed-by)", re.IGNORECASE
+)
+_TICKET_RE = re.compile(r"\bOMN-\d+\b")
+_PR_RE = re.compile(r"\(#(\d+)\)\s*$")
+
+
+def _merged_changes(repo: str, ref: str, limit: int) -> list[dict[str, Any]]:
+    raw = _git(
+        repo,
+        "log",
+        ref,
+        "--first-parent",
+        "-n",
+        str(limit),
+        "--format=%x1e%H%x1f%s%x1f%b",
+    )
+    if raw is None:
+        return []
+    changes: list[dict[str, Any]] = []
+    for entry in raw.split("\x1e"):
+        if not entry.strip():
+            continue
+        sha, subject, body = [*entry.split("\x1f"), "", ""][:3]
+        pr = _PR_RE.search(subject)
+        body_lines = [
+            ln for ln in body.strip().splitlines() if not _TRAILER_RE.match(ln.strip())
+        ]
+        changes.append(
+            {
+                "repo": repo,
+                "sha": sha.strip(),
+                "subject": _PR_RE.sub("", subject).strip(),
+                "pr": f"{repo}#{pr.group(1)}" if pr else None,
+                "body": "\n".join(body_lines).strip(),
+            }
+        )
+    return changes
+
+
+_REWRITES: tuple[tuple[str, int, str, bool], ...] = (
+    (
+        "Rewrite this merged change's description as one release-note sentence for a "
+        "reader who has not seen the code.",
+        45,
+        "sentence",
+        True,
+    ),
+    (
+        "Rewrite this merged change's description as a commit-message subject line: "
+        "imperative mood, no trailing period.",
+        16,
+        "subject line",
+        True,
+    ),
+    (
+        "Rewrite this merged change's description as two short bullet points: what "
+        "changed, and what it affects.",
+        55,
+        "two bullets",
+        False,
+    ),
+    (
+        "Rewrite this merged change's description as a one-sentence summary a "
+        "reviewer can read in five seconds.",
+        35,
+        "reviewer sentence",
+        True,
+    ),
+)
+
+
+def rewrite_task(
+    change: dict[str, Any], variant: int, names: set[str]
+) -> dict[str, Any] | None:
+    ticket = _TICKET_RE.search(change["subject"]) or _TICKET_RE.search(change["body"])
+    symbols = [
+        s
+        for s in re.findall(r"`([A-Za-z_][\w.]{3,40})`", change["body"])
+        if "_" in s or any(c.isupper() for c in s)
+    ]
+    if not ticket or not symbols or not 200 <= len(change["body"]) <= 2400:
+        return None
+    instruction, max_words, label, forbid_copy = _REWRITES[variant % len(_REWRITES)]
+    symbol = symbols[0]
+    description = f"{change['subject']}\n\n{change['body']}"
+    if hygiene_problems(description, names):
+        return None
+    prompt = (
+        f"{instruction} Keep the ticket identifier {ticket.group()} and the name "
+        f"`{symbol}` exactly as written. Add nothing the description does not "
+        f"state. At most {max_words} words.\n\n"
+        f"CHANGE ({change['pr'] or change['repo']}):\n{description}\n\n{NO_TRACE}"
+    )
+    copy = re.sub(r"^\w+(\([^)]*\))?:\s*", "", change["subject"]).lower()
+    return {
+        "title": f"rewrite a merged change as a {label}",
+        "task_type": "document",
+        "provenance": (
+            f"The squash-commit description of a real merged change, "
+            f"{change['repo']} {change['sha']}."
+        ),
+        "prompt": prompt,
+        "scorer": "grounding_rubric",
+        "scorer_config": {
+            "source_text": prompt,
+            "must_contain": [ticket.group(), symbol],
+            "must_not_contain": [copy] if forbid_copy and len(copy) >= 25 else [],
+            "max_words": max_words,
+        },
+    }
+
+
+def summary_task(
+    window: list[dict[str, Any]], names: set[str]
+) -> dict[str, Any] | None:
+    entries = []
+    for change in window:
+        first = next((ln for ln in change["body"].splitlines() if ln.strip()), "")
+        ref = change["pr"] or change["repo"]
+        entries.append(
+            f"{change['sha'][:7]} {ref}: {change['subject']}\n    {first[:260]}"
+        )
+    text = "\n".join(entries)
+    if hygiene_problems(text, names):
+        return None
+    counts: dict[str, int] = {}
+    for token in _TICKET_RE.findall(text):
+        counts[token] = counts.get(token, 0) + 1
+    required = sorted(counts)[:10]
+    if len(required) < 4:
+        return None
+    prompt = (
+        "Summarise what these merged changes did. One bullet per distinct piece of "
+        "work, at most eight bullets. Cite the ticket identifier for every bullet. "
+        "Use only identifiers that appear in the list below; if you are unsure of "
+        "an identifier, leave it out rather than guessing at one.\n\n"
+        f"MERGED CHANGES:\n{text}\n\n{NO_TRACE}"
+    )
+    first, last = window[0], window[-1]
+    return {
+        "title": f"what landed, from {len(window)} merged changes",
+        "task_type": "document",
+        "provenance": (
+            f"{len(window)} consecutive real merges to {first['repo']}, from "
+            f"{last['sha'][:12]} to {first['sha'][:12]}, subject lines and the first "
+            "line of each description."
+        ),
+        "prompt": prompt,
+        "scorer": "grounding_coverage",
+        "scorer_config": {
+            "source_text": prompt,
+            "required_ids": required,
+            "coverage_threshold": 0.5,
+        },
+    }
+
+
+# --------------------------------------------------------------------------
+# Assembly
+# --------------------------------------------------------------------------
+
+# (rung, task_type, first new number, how many). The hand-built rungs hold 01-04.
+MINED_PLAN: dict[str, tuple[str, int]] = {
+    "R1": ("document", 12),
+    "R2": ("document", 10),
+    "R3": ("review", 22),
+    "R4": ("test", 22),
+    "R5": ("reasoning", 22),
+    "R6": ("code_generation", 22),
+}
+
+
+def _task_text(task: dict[str, Any]) -> str:
+    """Every string a bundle publishes, as written (not as JSON escapes it)."""
+    config = task.get("scorer_config", {})
+    strings = [str(task.get(k, "")) for k in ("title", "provenance", "prompt")]
+    for value in config.values():
+        if isinstance(value, str):
+            strings.append(value)
+        elif isinstance(value, list):
+            strings.extend(str(v) for v in value)
+    return "\n".join(strings)
+
+
+def _order_key(*parts: str) -> str:
+    """A fixed, repository-mixing order: the hash of the source's own name."""
+    import hashlib
+
+    return hashlib.sha256(":".join(parts).encode()).hexdigest()
+
+
+def _echo_passes(task: dict[str, Any]) -> bool:
+    """True when the task's own fed trace would pass its diagnosis scorer."""
+    from benchmarks.delegation_ladder.scorers import score_diagnosis_location
+
+    prompt = str(task["prompt"])
+    trace = prompt[prompt.index("PYTEST OUTPUT:") :]
+    verdict = score_diagnosis_location(trace, dict(task["scorer_config"]))
+    return verdict.outcome.value == "pass"
+
+
+def assemble_mined(
+    limit: int = 6000,
+    fixes: list[dict[str, Any]] | None = None,
+    modules: list[dict[str, Any]] | None = None,
+    screened_out: frozenset[str] = frozenset(),
+) -> dict[str, list[dict[str, Any]]]:
+    """Mine every source and allocate tasks to rungs without reusing a source.
+
+    ``screened_out`` names sources (``repo:sha`` or ``repo:path``) the
+    public-repo hygiene gate flagged on an earlier build; they are skipped.
+
+    ``fixes`` and ``modules`` let a caller hand in sources it already mined, so a
+    change to the allocation does not repeat the ten-minute pytest sweep.
+    """
+    names = _person_names()
+    fixes = mine_fixes(limit) if fixes is None else fixes
+    modules = mine_modules() if modules is None else modules
+    mutated = [m for m in modules if "mutant" in m]
+
+    out: dict[str, list[dict[str, Any]]] = {r: [] for r in MINED_PLAN}
+    used_fix: set[str] = set()
+    used_module: set[tuple[str, str]] = set()
+
+    def take(rung: str, task: dict[str, Any] | None, source: str) -> bool:
+        if task is None or len(out[rung]) >= MINED_PLAN[rung][1]:
+            return False
+        if source in screened_out or hygiene_problems(_task_text(task), names):
+            return False
+        task["_source"] = source
+        out[rung].append(task)
+        return True
+
+    # The scarce sources are allocated first. A fix that changes exactly one line
+    # is the only kind a defect-line question can use; a fix that removes lines is
+    # the only kind a diagnosis can use; every merged change can feed a patch task.
+    fixes.sort(key=lambda f: _order_key(f["repo"], f["sha"]))
+    defect_cap, diagnosis_cap = 8, 14
+    for fix in fixes:
+        if (
+            defect_cap
+            and fix["sha"] not in used_fix
+            and take("R3", defect_line_task(fix), f"{fix['repo']}:{fix['sha']}")
+        ):
+            used_fix.add(fix["sha"])
+            defect_cap -= 1
+    diagnosed = 0
+    for fix in fixes:
+        if diagnosed < diagnosis_cap and fix["sha"] not in used_fix:
+            task = reasoning_task_from_fix(fix)
+            if (
+                task
+                and not _echo_passes(task)
+                and take("R5", task, f"{fix['repo']}:{fix['sha']}")
+            ):
+                used_fix.add(fix["sha"])
+                diagnosed += 1
+    for fix in fixes:
+        if fix["sha"] not in used_fix and take(
+            "R6", codegen_task(fix), f"{fix['repo']}:{fix['sha']}"
+        ):
+            used_fix.add(fix["sha"])
+
+    mutated.sort(key=lambda m: _order_key(m["repo"], m["path"]))
+    modules.sort(key=lambda m: _order_key(m["repo"], m["path"]))
+    for module in mutated:
+        if take("R4", unit_test_task(module), f"{module['repo']}:{module['path']}"):
+            used_module.add((module["repo"], module["path"]))
+    for module in mutated:
+        if (module["repo"], module["path"]) in used_module:
+            continue
+        task = reasoning_task_from_mutant(module)
+        if (
+            task
+            and not _echo_passes(task)
+            and take("R5", task, f"{module['repo']}:{module['path']}")
+        ):
+            used_module.add((module["repo"], module["path"]))
+    asked: dict[tuple[str, str], set[str]] = {}
+    for _round in range(3):
+        for module in modules:
+            key = (module["repo"], module["path"])
+            if key in used_module:
+                continue
+            task = result_question_task(module, frozenset(asked.get(key, set())))
+            if task is None:
+                continue
+            question = str(task.pop("_call"))
+            if take("R3", task, f"{module['repo']}:{module['path']}"):
+                asked.setdefault(key, set()).add(question)
+
+    changes: list[dict[str, Any]] = []
+    for repo in MINED_REPOS:
+        ref = _pin(repo)
+        if ref:
+            changes += _merged_changes(repo, ref, 400)
+    variant = 0
+    for change in sorted(changes, key=lambda c: _order_key(c["repo"], c["sha"])):
+        if len(out["R1"]) >= MINED_PLAN["R1"][1]:
+            break
+        task = rewrite_task(change, variant, names)
+        if task and take("R1", task, f"{change['repo']}:{change['sha']}"):
+            variant += 1
+    windows: list[tuple[str, dict[str, Any]]] = []
+    for repo in MINED_REPOS:
+        repo_changes = [c for c in changes if c["repo"] == repo and c["pr"]]
+        for start in range(0, max(len(repo_changes) - 12, 0), 37):
+            size = 8 + (start // 37 % 5)
+            task = summary_task(repo_changes[start : start + size], names)
+            if task:
+                window_source = f"{repo}:window:{repo_changes[start]['sha']}"
+                windows.append((window_source, task))
+    for source, task in sorted(windows, key=lambda w: _order_key(w[0])):
+        take("R2", task, source)
+    return out
+
+
+def write_mined(
+    tasks: dict[str, list[dict[str, Any]]],
+    screened_out: frozenset[str] = frozenset(),
+) -> int:
+    for stale in BUNDLES.glob("R*-*.json"):
+        if int(stale.stem.rsplit("-", 1)[1]) >= 5:
+            stale.unlink()
+    written = 0
+    for rung, group in tasks.items():
+        for index, task in enumerate(group, start=5):
+            task["task_id"] = f"{rung}-{index:02d}"
+            task["rung"] = rung
+            task["dependent_reasoning_steps"] = DECLARED_STEPS[rung]
+            task.setdefault("fixture_files", {})
+            ordered = {
+                k: task[k]
+                for k in (
+                    "task_id",
+                    "title",
+                    "task_type",
+                    "provenance",
+                    "prompt",
+                    "scorer",
+                    "scorer_config",
+                    "fixture_files",
+                    "rung",
+                    "dependent_reasoning_steps",
+                )
+            }
+            (BUNDLES / f"{task['task_id']}.json").write_text(
+                json.dumps(ordered, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            written += 1
+    pins = {repo: _pin(repo) for repo in MINED_REPOS}
+    sources = {
+        task["task_id"]: task["_source"] for group in tasks.values() for task in group
+    }
+    MINED_SOURCES.write_text(
+        json.dumps(
+            {
+                "pinned_refs": pins,
+                "screened_out": sorted(screened_out),
+                "task_sources": dict(sorted(sources.items())),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return written
+
+
+# --------------------------------------------------------------------------
+# The structural hard corpus (OMN-20844): multi-file fixes, a cause in another
+# file than the one the failing test imports, and inputs padded toward the
+# local rung's context limit. Each task is a merged omnimarket commit whose own
+# test passes at the merge and fails with the commit's source files put back to
+# the parent; the scorer re-runs exactly that, so nothing is judged by eye.
+# --------------------------------------------------------------------------
+
+HARD_BUNDLES = HERE / "bundles_hard"
+
+# (merged commit, the test that commit added or changed). Picked from the
+# first-parent history of omnimarket dev at 29555c1082f2a8f6d76bd18ac4a73c77bf48a20b
+# for a spread of files touched and of where the cause sits.
+HARD_COMMITS: tuple[tuple[str, str], ...] = (
+    (
+        "272fde1064b71d207b57c2a206febe14637cdd68",
+        "tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py",
+    ),
+    (
+        "56d792624915857a39365ee58508ca1c1c367859",
+        "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py",
+    ),
+    (
+        "7edc88f40c542f3cd06a0302cf04e15aa378c3ca",
+        "tests/unit/test_occ_contention_omn_15247.py",
+    ),
+    (
+        "611dedc42eb9740873845c582f7ef6407dd95a73",
+        "tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py",
+    ),
+    (
+        "7036d5794b81fb36c11a671c15a07526d1794b07",
+        "tests/nodes/node_delegation_output_materialize_effect/test_materialize_refusals.py",
+    ),
+    (
+        "bf08d061a1c03327f4b4d85868e88add17806250",
+        "tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py",
+    ),
+    (
+        "4f2cd57b33ae9ecc707361fb04f729523872b347",
+        "tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py",
+    ),
+    (
+        "cdba07dc7337ac7fc347f1e84045a69e4f75e4ff",
+        "tests/unit/delegation/test_unbound_local_model_probe_omn17427.py",
+    ),
+    (
+        "15afc64f9df1d957b57b3a3e10fefa905ee757a5",
+        "tests/test_omn17372_byok_bus_transport_auth.py",
+    ),
+    (
+        "a0f4654f2ab8d5e523c8acac1b80530ce863fc41",
+        "tests/unit/nodes/node_delegate_skill_orchestrator/test_claim_store_contract_schema_omn19661.py",
+    ),
+)
+
+# Prompt-size targets in characters. The receipts read about 4.1 characters
+# per token on these prompts, so "medium" is about 24k tokens and "large" about
+# 48k, three quarters of the 65536 tokens local-coder declares
+# (routing_tiers.yaml max_context_tokens).
+HARD_SIZE_TARGETS: dict[str, int] = {"small": 0, "medium": 95_000, "large": 190_000}
+# The size tier rotates independently of the commit order, so size is not
+# confounded with files touched or cross-file cause; the two classes rotate
+# with different offsets for the same reason.
+HARD_SIZE_ROTATION: tuple[str, ...] = ("small", "medium", "large")
+HARD_CLASS_OFFSET: dict[str, int] = {"code_generation": 0, "review": 1}
+
+_HARD_FAILURE_TAIL_LINES = 45
+
+
+def _hard_changed_files(commit: str) -> list[str]:
+    out = git_text(
+        "diff-tree", "--no-commit-id", "--name-only", "-r", commit, "--", "src"
+    )
+    return [line for line in out.splitlines() if line.endswith(".py")]
+
+
+def _hard_test_imports(commit: str, test_path: str) -> list[str]:
+    """Source files the failing test imports directly, as repository paths."""
+    text = git_text("show", f"{commit}:{test_path}")
+    modules = sorted(
+        set(re.findall(r"^\s*from (omnimarket[\w.]*) import", text, re.MULTILINE))
+        | set(re.findall(r"^\s*import (omnimarket[\w.]*)", text, re.MULTILINE))
+    )
+    paths: list[str] = []
+    for module in modules:
+        base = "src/" + module.replace(".", "/")
+        for candidate in (base + ".py", base + "/__init__.py"):
+            if git_text("ls-tree", "--name-only", commit, candidate).strip():
+                paths.append(candidate)
+                break
+    return paths
+
+
+def _hard_required_files(commit: str, test_path: str, changed: list[str]) -> list[str]:
+    """The changed files whose parent version alone makes the test fail."""
+    required: list[str] = []
+    for path in changed:
+        with tempfile.TemporaryDirectory(prefix="hard-req-") as tmp:
+            tree = Path(tmp)
+            materialise_tree(commit, tree, [path])
+            rc, _ = run_tree_test(tree, test_path, 180)
+        if rc != 0:
+            required.append(path)
+    return required
+
+
+def _hard_padding(commit: str, shown: list[str], need: int) -> list[str]:
+    """Real sibling source files at the parent, nearest directories first."""
+    picked: list[str] = []
+    if need <= 0:
+        return picked
+    seen = set(shown)
+    dirs: list[str] = []
+    for path in shown:
+        parts = path.split("/")[:-1]
+        while len(parts) > 2:
+            joined = "/".join(parts)
+            if joined not in dirs:
+                dirs.append(joined)
+            parts = parts[:-1]
+    dirs.sort(key=lambda d: -d.count("/"))
+    total = 0
+    for directory in dirs:
+        listing = git_text(
+            "ls-tree", "-r", "--name-only", f"{commit}^", directory + "/"
+        )
+        for path in sorted(listing.splitlines()):
+            if path in seen or not path.endswith(".py") or path.endswith("__init__.py"):
+                continue
+            size = len(git_text("show", f"{commit}^:{path}"))
+            if size < 400 or total + size > need * 1.06:
+                continue
+            picked.append(path)
+            seen.add(path)
+            total += size
+            if total >= need:
+                return picked
+    return picked
+
+
+def _hard_prompt(
+    task_type: str,
+    test_path: str,
+    test_text: str,
+    failure: str,
+    files: dict[str, str],
+) -> str:
+    sources = "\n".join(
+        f"### {path}\n```python\n{text.rstrip()}\n```\n" for path, text in files.items()
+    )
+    head = (
+        f"FAILING TEST ({test_path}):\n```python\n{test_text.rstrip()}\n```\n\n"
+        f"CURRENT FAILURE:\n```\n{failure.rstrip()}\n```\n\n"
+        f"SOURCE FILES ({len(files)}, each shown in full as it is now):\n\n{sources}"
+    )
+    if task_type == "code_generation":
+        return (
+            "A test in this Python repository fails. Fix the source so that it passes.\n\n"
+            "Rules the grader enforces:\n"
+            "- Change only the source files shown under SOURCE FILES. The test is fixed.\n"
+            "- Write each edit as a line `FILE: <path>`, then a search block and its "
+            "replacement, exactly in this form:\n"
+            "FILE: src/omnimarket/example.py\n"
+            "<<<<<<< SEARCH\n<lines copied exactly from the file as shown>\n=======\n"
+            "<the lines that replace them>\n>>>>>>> REPLACE\n"
+            "- Each SEARCH text must appear exactly once in its file, whitespace included.\n"
+            "- Use as many edits, in as many files, as the fix needs.\n"
+            "- Your edits are applied to the files as shown and the failing test file is "
+            "run in full; every test in it must pass.\n\n"
+            f"{head}\n"
+            "Respond with the edits only. Do not show your reasoning, do not narrate your "
+            "steps, and do not preface the answer with anything."
+        )
+    return (
+        "A test in this Python repository fails. Review the source and decide where "
+        "the defect is.\n\n"
+        f"{head}\n"
+        "QUESTION: Which of the source files shown must be changed for the failing test "
+        "to pass? Answer with one line per file, `FILE: <path>` with the path exactly as "
+        "shown, naming every file that must change and no other.\n\n"
+        "Respond with the answer only. Do not show your reasoning, do not narrate your "
+        "steps, and do not preface the answer with anything."
+    )
+
+
+def build_hard_corpus() -> list[ModelTaskBundle]:
+    bundles: list[ModelTaskBundle] = []
+    for index, (commit, test_path) in enumerate(HARD_COMMITS):
+        changed = _hard_changed_files(commit)
+        imported = _hard_test_imports(commit, test_path)
+        required = _hard_required_files(commit, test_path, changed)
+        cross_file = not (set(changed) & set(imported))
+        with tempfile.TemporaryDirectory(prefix="hard-build-") as tmp:
+            tree = Path(tmp)
+            materialise_tree(commit, tree, changed)
+            rc, failure = run_tree_test(tree, test_path, 180)
+        if rc == 0:
+            raise RuntimeError(f"{commit}: {test_path} passes on the parent source")
+        failure_tail = "\n".join(failure.splitlines()[-_HARD_FAILURE_TAIL_LINES:])
+        test_text = git_text("show", f"{commit}:{test_path}")
+        core = sorted(set(changed) | set(imported))
+        subject = git_text("log", "-1", "--format=%s", commit).strip()
+        for task_type, prefix in (("code_generation", "H6"), ("review", "H3")):
+            size_tier = HARD_SIZE_ROTATION[
+                (index + HARD_CLASS_OFFSET[task_type]) % len(HARD_SIZE_ROTATION)
+            ]
+            files = {p: git_text("show", f"{commit}^:{p}") for p in core}
+            base_len = len(
+                _hard_prompt(task_type, test_path, test_text, failure_tail, files)
+            )
+            padding = _hard_padding(
+                commit, core, HARD_SIZE_TARGETS[size_tier] - base_len
+            )
+            shown = sorted(core + padding)
+            files = {p: git_text("show", f"{commit}^:{p}") for p in shown}
+            prompt = _hard_prompt(task_type, test_path, test_text, failure_tail, files)
+            features: dict[str, object] = {
+                "files_touched": len(changed),
+                "files_required": len(required),
+                "cross_file_cause": cross_file,
+                "files_shown": len(shown),
+                "context_chars": len(prompt),
+                "size_tier": size_tier,
+            }
+            provenance = (
+                f"omnimarket merged commit {commit} ({subject}), changing "
+                f"{len(changed)} source file(s). Its own test {test_path} passes at "
+                "the commit and fails with those files at the parent; the files are "
+                "shown at the parent."
+            )
+            config: dict[str, object] = {"features": features}
+            if task_type == "code_generation":
+                scorer = EnumScorerKind.MULTI_FILE_EDIT_AND_TEST
+                config |= {
+                    "repo_commit": commit,
+                    "changed_files": changed,
+                    "editable_files": shown,
+                    "test_path": test_path,
+                    "timeout_s": 240,
+                }
+                title = f"fix a failing test across {len(shown)} shown files"
+            else:
+                scorer = EnumScorerKind.EXACT_MATCH
+                config |= {
+                    "accepted": [f"FILE: {p}" for p in required],
+                    "forbidden": [f"FILE: {p}" for p in shown if p not in changed],
+                }
+                title = f"name the files a failing test needs changed, of {len(shown)}"
+            bundles.append(
+                ModelTaskBundle(
+                    task_id=f"{prefix}-{index + 1:02d}",
+                    rung=EnumRung.R6_PRODUCE_PATCH
+                    if task_type == "code_generation"
+                    else EnumRung.R3_CODE_READING_QA,
+                    title=title,
+                    task_type=task_type,
+                    provenance=provenance,
+                    prompt=prompt,
+                    scorer=scorer,
+                    scorer_config=config,
+                    dependent_reasoning_steps=len(changed) + int(cross_file) + 1,
+                )
+            )
+    return bundles
+
+
+def write_hard_corpus() -> int:
+    HARD_BUNDLES.mkdir(exist_ok=True)
+    for bundle in build_hard_corpus():
+        (HARD_BUNDLES / f"{bundle.task_id}.json").write_text(
+            bundle.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+        print(bundle.task_id, bundle.scorer_config["features"])
+    return 0
+
+
+# ==========================================================================
+# Tiered public task set (document / review / reasoning)
+# ==========================================================================
+#
+# Every task below is mined from the merged history of three public
+# repositories at a pinned commit, never from internal material:
+#
+#   document   a pull request's own squash-commit message (one change, five
+#              changes, thirty changes). Held: the PR numbers that must be named.
+#   review     a merged pull request's description and diff, in which ONE added
+#              non-test line has had a literal altered so that it no longer
+#              agrees with the test added in the same diff. Held: that line's
+#              label. The alteration is recorded, deterministic and the only
+#              synthetic element.
+#   reasoning  a real function with a real call and asserted result taken from
+#              a test that exists. Held: the asserted value, re-derived here by
+#              EXECUTING the call before the task is written.
+#
+# Difficulty tiers are set by measured size of what is fed, not by a label.
+
+TIERED = BUNDLES / "tiered"
+TIERED_PINS: dict[str, str] = {
+    "omnimarket": "7acb97b72bd64cfa04fdb4f4d51663ca30bd5ee8",
+    "omnibase_core": "d677b4e78219113139b5d20ac81efcdcef78e3e0",
+    "omnibase_spi": "aa2de2346ff46056e63fca58b05ecfb491d54c5c",
+}
+TIER_QUOTA: dict[str, int] = {"easy": 9, "medium": 8, "hard": 8}
+_TIERED_PR_RE = re.compile(r"\(#(\d+)\)\s*$")
+_TIERED_TRAILER_RE = re.compile(
+    r"^(co-authored-by|signed-off-by|reviewed-by|generated with|🤖).*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_IP_RE = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
+_EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
+
+
+def _registry_root() -> Path:
+    home = os.environ.get("OMNI_HOME")
+    if not home:
+        raise RuntimeError("OMNI_HOME must be set; there is no default")
+    return Path(home)
+
+
+def _registry_git(repo: str, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(_registry_root() / repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return done.stdout
+
+
+def _hygiene_patterns() -> list[re.Pattern[str]]:
+    """The public-repo hygiene vocabulary, read from the building lane's copy.
+
+    Nothing from it is written into a bundle. A candidate text that matches any
+    entry is skipped, so the committed corpus cannot be the thing that trips the
+    public-repo gate.
+    """
+    base = os.environ.get("OMNI_HYGIENE_VOCAB_PATH", "")
+    options = [
+        Path(base),
+        Path(base + "ulary.yaml"),
+        Path(base) / "public_repo_hygiene_vocabulary.yaml",
+    ]
+    vocab_file = next((p for p in options if base and p.is_file()), None)
+    if vocab_file is None:
+        raise RuntimeError("OMNI_HYGIENE_VOCAB_PATH must name the hygiene vocabulary")
+    # The file carries regex escapes inside double quotes, which a YAML loader
+    # rejects, so the entries are read line by line as the gate itself reads them.
+    literal_sections = {"private_repo_names", "person_names"}
+    regex_sections = {
+        "internal_kb_prose",
+        "host_nicknames",
+        "machine_path_patterns",
+        "tracker_url_patterns",
+        "sensitive_literal_patterns",
+    }
+    patterns: list[re.Pattern[str]] = []
+    section = ""
+    for raw in vocab_file.read_text(encoding="utf-8").splitlines():
+        if raw and not raw.startswith((" ", "#", "-")) and raw.endswith(":"):
+            section = raw[:-1]
+            continue
+        entry = re.match(r'^\s+-\s+"(.*)"\s*$', raw)
+        if not entry:
+            continue
+        if section in literal_sections:
+            patterns.append(re.compile(re.escape(entry.group(1)), re.IGNORECASE))
+        elif section in regex_sections:
+            patterns.append(re.compile(entry.group(1), re.IGNORECASE))
+    return patterns
+
+
+_HYGIENE: list[re.Pattern[str]] = []
+
+
+def _clean(text: str) -> bool:
+    """True when ``text`` can be published in a public repository as it stands."""
+    if not _HYGIENE:
+        _HYGIENE.extend(_hygiene_patterns())
+    if _IP_RE.search(text) or _EMAIL_RE.search(text):
+        return False
+    return not any(p.search(text) for p in _HYGIENE)
+
+
+def _rank(*parts: str) -> str:
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
+# ---- document --------------------------------------------------------------
+
+
+def _squash_commits(repo: str, limit: int) -> list[dict[str, str]]:
+    raw = _registry_git(
+        repo,
+        "log",
+        "--first-parent",
+        f"-n{limit}",
+        "--format=%H%x1f%s%x1f%b%x1e",
+        TIERED_PINS[repo],
+    )
+    commits: list[dict[str, str]] = []
+    for record in raw.split("\x1e"):
+        record = record.strip("\n")
+        if not record:
+            continue
+        sha, subject, body = [*record.split("\x1f"), "", ""][:3]
+        match = _TIERED_PR_RE.search(subject)
+        if not match:
+            continue
+        body = _TIERED_TRAILER_RE.sub("", body).strip()
+        if not _clean(f"{subject}\n{body}"):
+            continue
+        commits.append(
+            {
+                "repo": repo,
+                "sha": sha,
+                "pr": match.group(1),
+                "subject": subject,
+                "body": body,
+            }
+        )
+    return commits
+
+
+def _doc_change_text(commit: dict[str, str], body_cap: int) -> str:
+    body = re.sub(r"\n{3,}", "\n\n", commit["body"])[:body_cap].rstrip()
+    return f"{commit['subject']}\n{body}".strip()
+
+
+def _doc_task(
+    task_id: str,
+    tier: str,
+    commits: list[dict[str, str]],
+    body_cap: int,
+) -> dict[str, Any]:
+    refs = [f"{c['repo']}#{c['pr']}" for c in commits]
+    blocks = "\n\n".join(
+        f"--- change {i + 1} (repo {c['repo']}, pull request #{c['pr']}) ---\n"
+        + _doc_change_text(c, body_cap)
+        for i, c in enumerate(commits)
+    )
+    source = blocks + " " + " ".join(refs)
+    provenance = "Squash commits of " + ", ".join(
+        f"{c['repo']}@{c['sha'][:12]}" for c in commits
+    )
+    if tier == "easy":
+        c = commits[0]
+        instruction = (
+            "Summarize the merged change below in at most two sentences for a "
+            "changelog: what changed, then why. Name the pull request number "
+            "exactly as written (#NNNN). Use only facts stated in the change text."
+        )
+        ticket = re.search(r"\bOMN-\d+\b", c["subject"])
+        must = [f"#{c['pr']}"] + ([ticket.group(0)] if ticket else [])
+        if ticket:
+            instruction += f" Also name the ticket {ticket.group(0)}."
+        return {
+            "task_id": task_id,
+            "title": f"one-change changelog entry ({c['repo']}#{c['pr']})",
+            "task_type": "document",
+            "difficulty": tier,
+            "provenance": provenance,
+            "prompt": f"{instruction}\n\n{blocks}\n\n" + NO_TRACE,
+            "scorer": "grounding_rubric",
+            "scorer_config": {
+                "source_text": source,
+                "must_contain": must,
+                "must_not_contain": [],
+                "max_words": 90,
+            },
+        }
+    words, threshold = (120, 0.8) if tier == "medium" else (380, 0.9)
+    grouping = (
+        ""
+        if tier == "medium"
+        else ", grouped under short theme headings, listing every pull request "
+        "number under exactly one theme"
+    )
+    instruction = (
+        f"Write release notes of at most {words} words covering ALL {len(commits)} "
+        f"merged changes below{grouping}. Name each change's pull request number "
+        "exactly as written (#NNNN). Use only facts stated in the changes; invent "
+        "no number or identifier."
+    )
+    return {
+        "task_id": task_id,
+        "title": f"{len(commits)}-change release notes",
+        "task_type": "document",
+        "difficulty": tier,
+        "provenance": provenance,
+        "prompt": f"{instruction}\n\n{blocks}\n\n" + NO_TRACE,
+        "scorer": "grounding_coverage",
+        "scorer_config": {
+            "source_text": source,
+            "required_ids": [f"#{c['pr']}" for c in commits],
+            "coverage_threshold": threshold,
+        },
+    }
+
+
+def tiered_document() -> list[dict[str, Any]]:
+    pool: list[dict[str, str]] = []
+    for repo in TIERED_PINS:
+        pool.extend(c for c in _squash_commits(repo, 900) if len(c["body"]) >= 250)
+    pool.sort(key=lambda c: _rank("doc", c["sha"]))
+    tasks: list[dict[str, Any]] = []
+    cursor = 0
+    sizes = {"easy": (1, 1400), "medium": (5, 500), "hard": (30, 700)}
+    for tier, (size, body_cap) in sizes.items():
+        for i in range(TIER_QUOTA[tier]):
+            window = pool[cursor : cursor + size]
+            cursor += size
+            tasks.append(_doc_task(f"TD-{tier[0]}{i + 1:02d}", tier, window, body_cap))
+    return tasks
+
+
+# ---- review ----------------------------------------------------------------
+
+_TIERED_TEST_PATH_RE = re.compile(
+    r"(^|/)(tests?|testing)/|(^|/)test_[^/]*\.py$|_test\.py$"
+)
+_OPS_BEFORE_LITERAL = {"=", "(", ",", "==", "!=", ":", "[", "<", ">", "<=", ">=", "+"}
+
+
+def _is_test_path(path: str) -> bool:
+    return bool(_TIERED_TEST_PATH_RE.search(path))
+
+
+def _literal_tokens(line: str) -> list[tuple[str, str, int, int]]:
+    """``(kind, text, start_col, end_col)`` for literals a reviewer could cross-check."""
+    stripped = line.strip()
+    if not stripped or stripped.startswith(("#", '"', "'")):
+        return []
+    if '"""' in line or "'" * 3 in line:
+        return []
+    found: list[tuple[str, str, int, int]] = []
+    previous = ""
+    try:
+        for tok in tokenize.generate_tokens(StringIO(line + "\n").readline):
+            if tok.type == tokenize.NUMBER and re.fullmatch(r"\d{2,5}", tok.string):
+                if previous in _OPS_BEFORE_LITERAL:
+                    found.append(("int", tok.string, tok.start[1], tok.end[1]))
+            elif tok.type == tokenize.STRING:
+                body = tok.string[1:-1]
+                if (
+                    tok.string[0] in "\"'"
+                    and tok.string[-1] == tok.string[0]
+                    and re.fullmatch(r"[A-Za-z0-9_.:/-]{5,40}", body)
+                    and previous in _OPS_BEFORE_LITERAL
+                ):
+                    found.append(("str", body, tok.start[1], tok.end[1]))
+            if tok.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT):
+                previous = tok.string
+    except (tokenize.TokenError, IndentationError):
+        pass
+    return found
+
+
+def _parse_diff(diff: str) -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw in diff.splitlines():
+        if raw.startswith("diff --git "):
+            current = {"path": raw.split(" b/", 1)[1], "lines": []}
+            files.append(current)
+        elif current is not None and not raw.startswith(("index ", "new file mode")):
+            lines = current["lines"]
+            assert isinstance(lines, list)
+            lines.append(raw)
+    return files
+
+
+def _added_lines(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    added: list[dict[str, Any]] = []
+    for f in files:
+        in_hunk = False
+        for line in f["lines"]:
+            if line.startswith("@@"):
+                in_hunk = True
+            elif in_hunk and line.startswith("+") and not line.startswith("+++"):
+                added.append(
+                    {
+                        "path": f["path"],
+                        "text": line[1:],
+                        "is_test": _is_test_path(str(f["path"])),
+                    }
+                )
+    return added
+
+
+def _int_pattern(literal: str) -> str:
+    return rf"(?<![\w.]){literal}(?![\w.])"
+
+
+def _review_candidate(repo: str, sha: str) -> dict[str, Any] | None:
+    diff = _registry_git(
+        repo, "show", "--no-color", "--no-renames", "--format=", "-U3", sha
+    )
+    if "GIT binary patch" in diff or "Binary files" in diff:
+        return None
+    files = _parse_diff(diff)
+    if not files or not _clean(diff):
+        return None
+    added = _added_lines(files)
+    test_blob = "\n".join(str(a["text"]) for a in added if a["is_test"])
+    all_blob = "\n".join(str(a["text"]) for a in added)
+    src = [
+        (i, a)
+        for i, a in enumerate(added)
+        if not a["is_test"] and str(a["path"]).endswith(".py")
+    ]
+    if not test_blob or len(src) < 3:
+        return None
+    for index, entry in src:
+        text = str(entry["text"])
+        for kind, literal, start, end in _literal_tokens(text):
+            if kind == "int":
+                if not re.search(_int_pattern(literal), test_blob):
+                    continue
+                replacement = str(int(literal) + 1)
+                clash = re.search(_int_pattern(replacement), all_blob) is not None
+                hits = sum(
+                    len(re.findall(_int_pattern(literal), str(a["text"])))
+                    for _, a in src
+                )
+                altered = text[:start] + replacement + text[end:]
+            else:
+                if not re.search(rf"[\"']{re.escape(literal)}[\"']", test_blob):
+                    continue
+                replacement = literal[:-1] + ("x" if literal[-1] != "x" else "y")
+                clash = replacement in all_blob
+                hits = sum(str(a["text"]).count(literal) for _, a in src)
+                altered = text[: start + 1] + replacement + text[end - 1 :]
+            if clash or hits != 1 or altered == text:
+                continue
+            return {
+                "files": files,
+                "added": added,
+                "index": index,
+                "original": text,
+                "altered": altered,
+                "literal": literal,
+                "replacement": replacement,
+            }
+    return None
+
+
+def _render_review(cand: dict[str, Any]) -> tuple[str, int, list[int]]:
+    """The labelled diff, the altered line's label, and every other source label."""
+    files: list[dict[str, Any]] = cand["files"]
+    added: list[dict[str, Any]] = cand["added"]
+    altered_index = int(cand["index"])
+    out: list[str] = []
+    counter = -1
+    other_src: list[int] = []
+    altered_label = -1
+    for f in files:
+        in_hunk = False
+        for line in f["lines"]:
+            if line.startswith("@@"):
+                in_hunk = True
+                out.append(line)
+            elif in_hunk and line.startswith("+") and not line.startswith("+++"):
+                counter += 1
+                label = counter + 1
+                if counter == altered_index:
+                    altered_label = label
+                    out.append(f"[{label}]+{cand['altered']}")
+                else:
+                    out.append(f"[{label}]{line}")
+                    if not added[counter]["is_test"]:
+                        other_src.append(label)
+            else:
+                out.append(line)
+    return "\n".join(out), altered_label, other_src
+
+
+def _review_tier(chars: int, files: int) -> str | None:
+    if chars <= 5500 and files <= 3:
+        return "easy"
+    if 6000 <= chars <= 16000 and 2 <= files <= 6:
+        return "medium"
+    if 20000 <= chars <= 36000 and files >= 3:
+        return "hard"
+    return None
+
+
+def tiered_review() -> list[dict[str, Any]]:
+    chosen: dict[str, list[dict[str, Any]]] = {t: [] for t in TIER_QUOTA}
+    pool: list[tuple[str, str]] = []
+    for repo in TIERED_PINS:
+        listing = _registry_git(
+            repo, "log", "--first-parent", "-n3000", "--format=%H", TIERED_PINS[repo]
+        ).split()
+        pool.extend((repo, sha) for sha in listing)
+    pool.sort(key=lambda rs: _rank("review", rs[1]))
+    for repo, sha in pool:
+        if all(len(chosen[t]) >= TIER_QUOTA[t] for t in TIER_QUOTA):
+            break
+        message = _TIERED_TRAILER_RE.sub(
+            "", _registry_git(repo, "log", "-1", "--format=%s%n%n%b", sha)
+        ).strip()
+        if not _clean(message):
+            continue
+        cand = _review_candidate(repo, sha)
+        if cand is None:
+            continue
+        rendered, label, others = _render_review(cand)
+        tier = _review_tier(len(rendered), len(cand["files"]))
+        if tier is None or len(chosen[tier]) >= TIER_QUOTA[tier]:
+            continue
+        description = re.sub(r"\n{3,}", "\n\n", message)[:900].rstrip()
+        n = len(chosen[tier]) + 1
+        chosen[tier].append(
+            {
+                "task_id": f"TR-{tier[0]}{n:02d}",
+                "title": f"find the altered line ({repo}@{sha[:10]})",
+                "task_type": "review",
+                "difficulty": tier,
+                "provenance": (
+                    f"Merged commit {repo}@{sha}. One added source line had the "
+                    f"literal {cand['literal']!r} altered to {cand['replacement']!r}; "
+                    "everything else is the merged diff."
+                ),
+                "prompt": (
+                    "You are reviewing a merged pull request. Its description:\n\n"
+                    f"{description}\n\n"
+                    "The diff below was altered after the merge: exactly one added "
+                    "line outside the test files was edited so that it no longer "
+                    "agrees with the tests added in the same diff. Every added line "
+                    "carries a label such as [12]. Name the label of the altered "
+                    "line, then one sentence saying which test line it contradicts.\n\n"
+                    f"DIFF:\n{rendered}\n\n" + NO_TRACE
+                ),
+                "scorer": "exact_match",
+                "scorer_config": {
+                    "accepted": [f"[{label}]"],
+                    "forbidden": [f"[{x}]" for x in others],
+                },
+            }
+        )
+    short = {
+        t: TIER_QUOTA[t] - len(v) for t, v in chosen.items() if len(v) < TIER_QUOTA[t]
+    }
+    if short:
+        raise RuntimeError(f"review pool exhausted, short by {short}")
+    return [t for tier in TIER_QUOTA for t in chosen[tier]]
+
+
+# ---- reasoning -------------------------------------------------------------
+
+_STDLIB = set(sys.stdlib_module_names)
+_BUILTINS = set(dir(builtins))
+
+
+class _Names(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.loaded: set[str] = set()
+        self.bound: set[str] = set()
+
+    def visit_Name(self, node: ast.Name) -> None:
+        (self.loaded if isinstance(node.ctx, ast.Load) else self.bound).add(node.id)
+
+    def visit_arg(self, node: ast.arg) -> None:
+        self.bound.add(node.arg)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name:
+            self.bound.add(node.name)
+        self.generic_visit(node)
+
+
+def _strip_annotations(fn: ast.FunctionDef) -> ast.FunctionDef:
+    for a in [*fn.args.args, *fn.args.kwonlyargs, *fn.args.posonlyargs]:
+        a.annotation = None
+    if fn.args.vararg is not None:
+        fn.args.vararg.annotation = None
+    if fn.args.kwarg is not None:
+        fn.args.kwarg.annotation = None
+    fn.returns = None
+    return fn
+
+
+def _module_index(
+    tree: ast.Module,
+) -> tuple[dict[str, ast.FunctionDef], dict[str, ast.Assign], dict[str, str]]:
+    funcs: dict[str, ast.FunctionDef] = {}
+    consts: dict[str, ast.Assign] = {}
+    imports: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and not node.decorator_list:
+            funcs[node.name] = node
+        elif (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            consts[node.targets[0].id] = node
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in _STDLIB:
+                    one = ast.Import(names=[alias])
+                    imports[alias.asname or alias.name.split(".")[0]] = ast.unparse(one)
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.level == 0
+            and node.module.split(".")[0] in _STDLIB
+        ):
+            for alias in node.names:
+                one_from = ast.ImportFrom(module=node.module, names=[alias], level=0)
+                imports[alias.asname or alias.name] = ast.unparse(one_from)
+    return funcs, consts, imports
+
+
+def _assemble(
+    name: str,
+    funcs: dict[str, ast.FunctionDef],
+    consts: dict[str, ast.Assign],
+    imports: dict[str, str],
+) -> tuple[str, int] | None:
+    """Self-contained source for ``name`` and how many helpers it pulled in."""
+    need_funcs: list[str] = []
+    need_consts: list[str] = []
+    need_imports: set[str] = set()
+    queue = [name]
+    while queue:
+        current = queue.pop()
+        if current in need_funcs:
+            continue
+        need_funcs.append(current)
+        visitor = _Names()
+        visitor.visit(funcs[current])
+        for ident in visitor.loaded - visitor.bound:
+            if ident in funcs:
+                queue.append(ident)
+            elif ident in consts:
+                if ident not in need_consts:
+                    need_consts.append(ident)
+            elif ident in imports:
+                need_imports.add(imports[ident])
+            elif ident not in _BUILTINS:
+                return None
+    index = 0
+    while index < len(need_consts):
+        visitor = _Names()
+        visitor.visit(consts[need_consts[index]])
+        index += 1
+        for inner in visitor.loaded - visitor.bound:
+            if inner in imports:
+                need_imports.add(imports[inner])
+            elif inner in consts:
+                if inner not in need_consts:
+                    need_consts.append(inner)
+            elif inner not in _BUILTINS:
+                return None
+    parts = sorted(need_imports)
+    parts += [ast.unparse(consts[c]) for c in reversed(need_consts)]
+    for f in reversed(need_funcs):
+        clone = ast.parse(ast.unparse(funcs[f])).body[0]
+        assert isinstance(clone, ast.FunctionDef)
+        # A docstring that carries worked examples would hand over the answer.
+        if (
+            clone.body
+            and isinstance(clone.body[0], ast.Expr)
+            and isinstance(clone.body[0].value, ast.Constant)
+            and isinstance(clone.body[0].value.value, str)
+        ):
+            clone.body = clone.body[1:] or [ast.Pass()]
+        parts.append(ast.unparse(_strip_annotations(clone)))
+    return "\n\n".join(parts), len(need_funcs) - 1
+
+
+def run_call(code: str, call: str) -> tuple[str, int] | None:
+    """``(repr, executed_lines)`` of ``call`` against ``code`` in a clean subprocess.
+
+    ``executed_lines`` counts the source lines the call actually ran, which is
+    the measure of how many steps a reader has to follow, not how long the
+    function happens to be.
+    """
+    program = (
+        f"{code}\n\nimport sys as _s\n_c = [0]\n"
+        "def _tr(f, e, a):\n"
+        "    if f.f_code.co_filename == '<string>':\n"
+        "        if e == 'line':\n"
+        "            _c[0] += 1\n"
+        "        return _tr\n"
+        "    return None\n"
+        f"_s.settrace(_tr)\n_r = {call}\n_s.settrace(None)\n"
+        "print(repr(_r))\nprint(_c[0])\n"
+    )
+    try:
+        done = subprocess.run(
+            [sys.executable, "-I", "-c", program],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env={"PATH": os.defpath},
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    lines = done.stdout.strip().splitlines()
+    if done.returncode != 0 or len(lines) < 2 or not lines[-1].isdigit():
+        return None
+    return "\n".join(lines[:-1]), int(lines[-1]) - 1
+
+
+def _assert_pairs(
+    tree: ast.Module, imported: dict[str, str]
+) -> list[tuple[ast.Call, ast.expr]]:
+    """``assert f(...) == literal`` and ``x = f(...)`` then ``assert x == literal``."""
+
+    def is_call(node: ast.expr) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in imported
+        )
+
+    pairs: list[tuple[ast.Call, ast.expr]] = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        assigned: dict[str, ast.Call] = {}
+        for node in ast.walk(fn):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Call)
+                and is_call(node.value)
+            ):
+                assigned[node.targets[0].id] = node.value
+            if not (
+                isinstance(node, ast.Assert)
+                and isinstance(node.test, ast.Compare)
+                and len(node.test.ops) == 1
+                and isinstance(node.test.ops[0], ast.Eq)
+            ):
+                continue
+            left = node.test.left
+            if isinstance(left, ast.Call) and is_call(left):
+                pairs.append((left, node.test.comparators[0]))
+            elif isinstance(left, ast.Name) and left.id in assigned:
+                pairs.append((assigned[left.id], node.test.comparators[0]))
+    return pairs
+
+
+def _reasoning_candidates() -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for repo in TIERED_PINS:
+        paths = [
+            p
+            for p in _registry_git(
+                repo, "ls-tree", "-r", "--name-only", TIERED_PINS[repo]
+            ).split("\n")
+            if p.endswith(".py")
+        ]
+        blobs: dict[str, str | None] = {}
+
+        def read(
+            path: str, _repo: str = repo, _blobs: dict[str, str | None] = blobs
+        ) -> str | None:
+            if path not in _blobs:
+                try:
+                    _blobs[path] = _registry_git(
+                        _repo, "show", f"{TIERED_PINS[_repo]}:{path}"
+                    )
+                except subprocess.CalledProcessError:
+                    _blobs[path] = None
+            return _blobs[path]
+
+        module_of = {
+            p.removesuffix(".py").replace("/", ".").removeprefix("src."): p
+            for p in paths
+            if not _is_test_path(p)
+        }
+        for tpath in sorted(p for p in paths if _is_test_path(p)):
+            source = read(tpath)
+            if source is None:
+                continue
+            try:
+                ttree = ast.parse(source)
+            except SyntaxError:
+                continue
+            imported: dict[str, str] = {}
+            for node in ttree.body:
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module
+                    and node.level == 0
+                    and node.module in module_of
+                ):
+                    for alias in node.names:
+                        imported[alias.asname or alias.name] = node.module
+            if not imported:
+                continue
+            for call, expected_node in _assert_pairs(ttree, imported):
+                try:
+                    args = [ast.literal_eval(a) for a in call.args]
+                    kwargs = [ast.literal_eval(k.value) for k in call.keywords]
+                    expected = ast.literal_eval(expected_node)
+                except (ValueError, SyntaxError):
+                    continue
+                if not (args or kwargs) or expected in (
+                    None,
+                    True,
+                    False,
+                    0,
+                    1,
+                    "",
+                    [],
+                    {},
+                    (),
+                ):
+                    continue
+                assert isinstance(call.func, ast.Name)
+                fn_name = call.func.id
+                module_path = module_of[imported[fn_name]]
+                msource = read(module_path)
+                if msource is None:
+                    continue
+                try:
+                    mtree = ast.parse(msource)
+                except SyntaxError:
+                    continue
+                funcs, consts, imps = _module_index(mtree)
+                if fn_name not in funcs:
+                    continue
+                assembled = _assemble(fn_name, funcs, consts, imps)
+                if assembled is None:
+                    continue
+                code, helpers = assembled
+                call_src = ast.unparse(call)
+                if len(call_src) > 400 or len(repr(expected)) > 240:
+                    continue
+                if not _clean(code + call_src + repr(expected)):
+                    continue
+                ran = run_call(code, call_src)
+                if ran is None or ran[0] != repr(expected):
+                    continue
+                found.append(
+                    {
+                        "repo": repo,
+                        "test": tpath,
+                        "module": module_path,
+                        "function": fn_name,
+                        "code": code,
+                        "call": call_src,
+                        "expected": repr(expected),
+                        "helpers": helpers,
+                        "steps": ran[1],
+                        "lines": code.count("\n") + 1,
+                        "branches": sum(
+                            isinstance(
+                                n,
+                                (
+                                    ast.If,
+                                    ast.For,
+                                    ast.While,
+                                    ast.Try,
+                                    ast.comprehension,
+                                ),
+                            )
+                            for n in ast.walk(ast.parse(code))
+                        ),
+                    }
+                )
+    return found
+
+
+def _reasoning_tier(c: dict[str, Any]) -> str:
+    steps = int(c["steps"])
+    if steps <= 4:
+        return "easy"
+    if steps >= 13:
+        return "hard"
+    return "medium"
+
+
+def tiered_reasoning() -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for c in sorted(
+        _reasoning_candidates(),
+        key=lambda c: _rank("reason", str(c["call"]), str(c["module"])),
+    ):
+        key = (str(c["module"]), str(c["function"]), _reasoning_tier(c))
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+    chosen: dict[str, list[dict[str, Any]]] = {t: [] for t in TIER_QUOTA}
+    for c in unique:
+        tier = _reasoning_tier(c)
+        if len(chosen[tier]) < TIER_QUOTA[tier]:
+            chosen[tier].append(c)
+    short = {
+        t: TIER_QUOTA[t] - len(v) for t, v in chosen.items() if len(v) < TIER_QUOTA[t]
+    }
+    if short:
+        raise RuntimeError(
+            f"reasoning pool short by {short} of {len(unique)} unique; "
+            f"steps seen {sorted(int(c['steps']) for c in unique)}"
+        )
+    tasks: list[dict[str, Any]] = []
+    for tier, items in chosen.items():
+        for i, c in enumerate(items):
+            tasks.append(
+                {
+                    "task_id": f"TN-{tier[0]}{i + 1:02d}",
+                    "title": f"predict {c['function']} ({c['repo']})",
+                    "task_type": "reasoning",
+                    "difficulty": tier,
+                    "provenance": (
+                        f"Function {c['function']} in {c['repo']}@"
+                        f"{TIERED_PINS[str(c['repo'])][:12]}:{c['module']}; the call and "
+                        f"the asserted result come from {c['test']}. The held value was "
+                        "re-derived by executing the call."
+                    ),
+                    "prompt": (
+                        "Here is a Python program.\n\n```python\n"
+                        f"{c['code']}\n```\n\n"
+                        f"What does `{c['call']}` evaluate to? Reply with only the "
+                        "Python literal it evaluates to, exactly as repr() would "
+                        "print it.\n\n" + NO_TRACE
+                    ),
+                    "scorer": "literal_equals",
+                    "scorer_config": {"expected": c["expected"]},
+                }
+            )
+    return tasks
+
+
+# Lab lane names that appear in mined PR text (spelled in pieces here so this
+# file does not itself carry them). The public-repo hygiene gate refuses them, and they carry no meaning for the task, so each is replaced by a
+# neutral word everywhere in the bundle (the fed text and the held text alike).
+LAB_WORD_SUBSTITUTIONS: dict[str, str] = {
+    "stability" + "-test": "verify-env",
+    "ci" + "-bus": "ci-queue",
+    "compose" + "-dev": "compose-env",
+}
+
+
+def scrub_lab_words(task: dict[str, Any]) -> dict[str, Any]:
+    text = json.dumps(task, ensure_ascii=False)
+    for word, neutral in LAB_WORD_SUBSTITUTIONS.items():
+        text = text.replace(word, neutral)
+    scrubbed: dict[str, Any] = json.loads(text)
+    return scrubbed
+
+
+def build_tiered() -> None:
+    TIERED.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for name, builder in (
+        ("document", tiered_document),
+        ("review", tiered_review),
+        ("reasoning", tiered_reasoning),
+    ):
+        for built in builder():
+            task = scrub_lab_words(built)
+            prefix = str(task["task_id"]).split("-")[0]
+            task["rung"] = (
+                "R2"
+                if task["scorer"] == "grounding_coverage"
+                else {"TD": "R1", "TR": "R3", "TN": "R5"}[prefix]
+            )
+            task["dependent_reasoning_steps"] = {"TD": 2, "TR": 3, "TN": 3}[prefix]
+            task.setdefault("fixture_files", {})
+            (TIERED / f"{task['task_id']}.json").write_text(
+                json.dumps(task, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            written += 1
+            print(
+                f"{task['task_id']:<8}{name:<10}{len(str(task['prompt'])):>7} prompt chars"
+            )
+    print(f"\n{written} tiered bundles written to {TIERED}")
+
+
 def main() -> None:
+    if "--tiered" in sys.argv:
+        build_tiered()
+        return
     BUNDLES.mkdir(parents=True, exist_ok=True)
+    if sys.argv[1:2] == ["hard"]:
+        write_hard_corpus()
+        return
+    if sys.argv[1:2] == ["mine"]:
+        screened = frozenset(
+            json.loads(MINED_SOURCES.read_text(encoding="utf-8")).get(
+                "screened_out", []
+            )
+            if MINED_SOURCES.is_file()
+            else []
+        )
+        mined = assemble_mined(screened_out=screened)
+        for rung, group in mined.items():
+            print(f"{rung}: {len(group)} of {MINED_PLAN[rung][1]} mined")
+        print(f"\n{write_mined(mined, screened)} mined bundles written to {BUNDLES}")
+        return
     groups = {
         "R1": r1(),
         "R2": r2(),

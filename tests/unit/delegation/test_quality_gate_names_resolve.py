@@ -22,6 +22,7 @@ from omnimarket.delegation.content_grounding import (
     evaluate_name_resolution,
     resolve_name_resolution_policy,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     SUPPORTED_DETERMINISTIC_CHECKS,
     delta,
@@ -36,6 +37,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 pytestmark = pytest.mark.unit
 
 _FENCE = "`" * 3
+# OMN-21077: passing run evidence isolates the name-resolution verdict.
+_PASSED_RUN = ModelNamedTestRun(
+    test_ids=("tests/test_total.py::test_total",), exit_code=0
+)
 
 _INVENTED_HELPER = (
     f"{_FENCE}python\n"
@@ -69,6 +74,7 @@ def test_a_name_bound_nowhere_fails_the_gate_deterministically() -> None:
     result = delta(
         _code_input(_INVENTED_HELPER),
         grounding_source="Write total(rows) returning the sum of the rows.",
+        named_test_run=_PASSED_RUN,
     )
 
     assert result.passed is False
@@ -84,6 +90,7 @@ def test_a_name_the_prompt_mentions_resolves() -> None:
     result = delta(
         _code_input(_INVENTED_HELPER),
         grounding_source="Use summed_with_retry from utils to implement total(rows).",
+        named_test_run=_PASSED_RUN,
     )
 
     assert result.passed is True, result.failure_reasons

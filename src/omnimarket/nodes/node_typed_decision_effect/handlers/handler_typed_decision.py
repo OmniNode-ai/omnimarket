@@ -16,14 +16,11 @@ No endpoint, model id or key literal lives in this module.
 
 Order of operations, and why:
 
-1. The work unit's repository must be public, resolved live. A missing
-   attribution, a private or absent repository, and any resolution failure all
-   refuse, and nothing is sent to the decision backend. This is the
-   public-repository-only scoping the third-party call requires. The read
-   carries a GitHub token when the secret store resolves one (anonymous reads
-   are capped at 60 an hour), and a real 200 that reports the repository public
-   is remembered for the contract's TTL. Only that positive answer is ever
-   remembered, so a miss always falls through to a live read (OMN-20149).
+1. The work unit's repository must be named and must not be on the contract's
+   refused list, which holds SHA-256 digests of the refused repository names. A
+   missing attribution or a refused repository refuses, and nothing is sent to
+   the decision backend. Every other repository, private included, reaches the
+   backend (RULING 2026-10-13T18:34:53Z); GitHub is never read.
 2. The backend and its key must resolve; otherwise refuse.
 3. One POST, verbatim, to the resolved endpoint. Any HTTP, transport or shape
    failure hands the decision to the optional incumbent, or returns no answer
@@ -35,25 +32,20 @@ Order of operations, and why:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_api_key_loop_safe,
-)
-from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_typed_decision_effect.handlers.visibility_cache import (
-    VisibilityCache,
 )
 from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision import (
     EnumTypedDecisionDecider,
@@ -97,9 +89,9 @@ class ModelWorkUnitScoping(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    require_public_repository: bool
-    visibility_timeout_ms: int = Field(..., ge=100, le=60000)
-    visibility_cache_ttl_seconds: int = Field(..., ge=0, le=86400)
+    refused_repositories: tuple[
+        Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")], ...
+    ] = Field(..., min_length=1)
 
 
 def _load_contract_block(name: str) -> dict[str, Any]:
@@ -120,8 +112,7 @@ class HandlerTypedDecision:
         secret_store: ProtocolSecretStore | None = None,
         bifrost_config_path: Path | None = None,
         bifrost_overlay_path: Path | None = None,
-        visibility_cache_path: Path | None = None,
-        clock: Callable[[], float] = time.time,
+        refused_repositories: tuple[str, ...] | None = None,
     ) -> None:
         self._transport = transport
         self._secret_store = secret_store
@@ -133,16 +124,14 @@ class HandlerTypedDecision:
         self._scoping = ModelWorkUnitScoping.model_validate(
             _load_contract_block("work_unit_scoping")
         )
-        self._visibility_cache = VisibilityCache(
-            ttl_seconds=self._scoping.visibility_cache_ttl_seconds,
-            clock=clock,
-            path=visibility_cache_path,
+        self._refused_digests = frozenset(
+            refused_repositories
+            if refused_repositories is not None
+            else self._scoping.refused_repositories
         )
-        self._github_token: str | None = None
-        self._github_token_resolved = False
 
     def handle(self, request: ModelTypedDecisionRequest) -> ModelTypedDecisionResult:
-        refusal = self._refuse_unless_public(request)
+        refusal = self._refuse_unless_permitted(request)
         if refusal is not None:
             return refusal
 
@@ -244,89 +233,29 @@ class HandlerTypedDecision:
 
     # ------------------------------------------------------------------ scoping
 
-    def _refuse_unless_public(
+    def _refuse_unless_permitted(
         self, request: ModelTypedDecisionRequest
     ) -> ModelTypedDecisionResult | None:
-        if not self._scoping.require_public_repository:
-            return None
-        if request.work_unit_repository is None:
+        repository = request.work_unit_repository
+        if repository is None:
             return self._incumbent(
                 request,
                 EnumTypedDecisionDecider.INCUMBENT_REFUSED,
                 EnumTypedDecisionReason.NO_REPOSITORY_ATTRIBUTION,
                 detail="the request names no work-unit repository",
             )
-        if self._visibility_cache.is_public(request.work_unit_repository):
-            return None
-        # A token only widens what the read can SEE, never what counts as
-        # public: the verdict below is the ``private`` field of a 200, so an
-        # authenticated 200 for a private repository is still a refusal.
-        url = f"{GITHUB_REST_URL}/repos/{request.work_unit_repository}"
-        headers = {"Accept": "application/vnd.github+json"}
-        token = self._visibility_token()
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        try:
-            with httpx.Client(
-                transport=self._transport,
-                timeout=self._scoping.visibility_timeout_ms / 1000.0,
-            ) as client:
-                response = client.get(url, headers=headers)
-        except httpx.HTTPError as exc:
-            return self._visibility_unresolved(request, type(exc).__name__)
-        if response.status_code == 404:
+        # The request model guarantees an ``owner/name`` slug. Slugs are
+        # case-insensitive on GitHub, so the comparison is too.
+        name = repository.rsplit("/", 1)[-1].lower()
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()
+        if f"sha256:{digest}" in self._refused_digests:
             return self._incumbent(
                 request,
                 EnumTypedDecisionDecider.INCUMBENT_REFUSED,
-                EnumTypedDecisionReason.REPOSITORY_NOT_PUBLIC,
-                detail=f"{request.work_unit_repository} is private or does not exist",
+                EnumTypedDecisionReason.REPOSITORY_REFUSED,
+                detail=f"{repository} is on the contract's refused repository list",
             )
-        if response.status_code != 200:
-            return self._visibility_unresolved(
-                request, f"visibility read returned HTTP {response.status_code}"
-            )
-        try:
-            payload = response.json()
-        except ValueError:
-            return self._visibility_unresolved(request, "visibility read was not JSON")
-        if not isinstance(payload, dict) or payload.get("private") is not False:
-            return self._incumbent(
-                request,
-                EnumTypedDecisionDecider.INCUMBENT_REFUSED,
-                EnumTypedDecisionReason.REPOSITORY_NOT_PUBLIC,
-                detail=f"{request.work_unit_repository} is not reported public",
-            )
-        self._visibility_cache.record_public(request.work_unit_repository)
         return None
-
-    def _visibility_token(self) -> str | None:
-        """The GitHub token for the visibility read, or None to read anonymously.
-
-        Optional by contract: no token, or a store that cannot answer, means an
-        anonymous read, which is the same guard at the lower rate cap.
-        """
-        if not self._github_token_resolved:
-            self._github_token_resolved = True
-            try:
-                secret = resolve_api_key_loop_safe(
-                    contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN"),
-                    store=self._secret_store,
-                    required=False,
-                )
-            except SecretResolutionError:
-                secret = None
-            self._github_token = secret.get_secret_value() if secret else None
-        return self._github_token
-
-    def _visibility_unresolved(
-        self, request: ModelTypedDecisionRequest, detail: str
-    ) -> ModelTypedDecisionResult:
-        return self._incumbent(
-            request,
-            EnumTypedDecisionDecider.INCUMBENT_REFUSED,
-            EnumTypedDecisionReason.REPOSITORY_VISIBILITY_UNRESOLVED,
-            detail=detail,
-        )
 
     # ------------------------------------------------------------------ mapping
 

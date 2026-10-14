@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20717"
+title: "The decisions exposure serves the cost the store holds, in both serving modes"
+summary: "Tests only. The decisions exposure already serves cost_usd; these tests show a non-zero stored cost comes back unchanged through the local store and the real dashboard app, that the served costs of a day add up to the stored costs, and that the row republished to the bus snapshot carries the cost the store returned."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-decisions-cost-matches-the-store"
+    statement: |-
+      The per-call exposure serves each call's own cost unchanged, so a sum over the call rows can be compared with the Usage page's figure.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: decisions.v1 declares `cost_usd`, and a priced call's row returns the same `cost_usd` that `delegation_events` stores -- falsifier: uv run pytest on the exposure test shows the column missing or a different value
+      - id: "AC2"
+        statement: |-
+          AC2: an unpriced call returns null, never 0 -- falsifier: the same test finds 0.0 for an unpriced call
+evidence_requirements:
+  - kind: "tests"
+    description: "A non-zero stored cost is served unchanged in both serving modes, and a row with no cost is served as null; with cost_usd dropped from the exposure every test fails, and with the writer storing a constant zero the republish tests fail."
+    command: "uv run pytest tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20717-decisions-cost-matches-the-store"
+    description: "Through the local store and the real dashboard app, two calls with non-round costs are served with the stored value, the served costs add up to the stored costs, and a row with no cost is served as null and left out of the sum. Through the real terminal write path, the row republished to the decisions snapshot carries the cost the store returned. AC2 is proved for the local store; in Postgres the column cannot be null, which is a separate ticket."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

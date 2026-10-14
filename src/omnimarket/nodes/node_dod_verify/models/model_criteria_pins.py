@@ -30,6 +30,15 @@ class ModelCriterionPin(BaseModel):
     )
 
 
+class ModelCriterionClaim(BaseModel):
+    """One item's claim on one criterion label, through binds_ac or ac_bindings."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    item_id: str = Field(..., min_length=1, description="The dod_evidence item id.")
+    label: str = Field(..., min_length=1, description="Canonical criterion label.")
+
+
 class ModelCriteriaPins(BaseModel):
     """The criteria a ticket contract recorded, read from the contract alone."""
 
@@ -49,6 +58,28 @@ class ModelCriteriaPins(BaseModel):
             "ids, binding records and binds_ac entries."
         ),
     )
+    declared_labels: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Labels the contract's requirements declare. The requirements block "
+            "is not append-only, so a declaration is edited away, never retired."
+        ),
+    )
+    claims: tuple[ModelCriterionClaim, ...] = Field(
+        default=(),
+        description="Every item claim on a label, before any retirement (OMN-18406).",
+    )
+    retired: tuple[ModelCriterionClaim, ...] = Field(
+        default=(),
+        description="Claims a supersedes_ac_binding entry withdrew outright.",
+    )
+    retired_if_absent: tuple[ModelCriterionClaim, ...] = Field(
+        default=(),
+        description=(
+            "Independently accepted claims a no_longer_applicable entry withdraws "
+            "only when the live ticket no longer carries the label."
+        ),
+    )
 
 
-__all__ = ["ModelCriteriaPins", "ModelCriterionPin"]
+__all__ = ["ModelCriteriaPins", "ModelCriterionClaim", "ModelCriterionPin"]

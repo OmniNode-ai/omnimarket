@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m01",
+  "path": "pinned",
+  "sha256": "14d1a76ac5e7c0638eaa607e82028404adc4dc1d93cbadaa6e779bafece8ad97",
+  "response": "**Label [45]** — `max_tokens: int = 4097` contradicts line [132], `assert req.max_tokens == 4096`, which expects the default in `test_minimal_instantiation` to be 4096."
+}

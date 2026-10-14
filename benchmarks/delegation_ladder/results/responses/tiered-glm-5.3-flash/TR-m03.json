@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m03",
+  "path": "pinned",
+  "sha256": "b035160045190172790e4210ad42f0d784ba4b02a938765c63aa53dd837c92da",
+  "response": "[69] — `severity=\"CRITICAx\"` contradicts the test's `assert non_durable[0].severity == \"CRITICAL\"` at line [120]."
+}

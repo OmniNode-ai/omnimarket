@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m04",
+  "path": "pinned",
+  "sha256": "a3ca0601d2fe598ceea9d66b8f1bbfca9d71d55826ca8536471b7d4a60065834",
+  "response": "[71] contradicts test line 102 (and line 95): the handler's `_READ_FIELDS` tuple uses `state_patx` (missing 'h') while the test sets `state_path` and expects the error message to name `state_path`."
+}

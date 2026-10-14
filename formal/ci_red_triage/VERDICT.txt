@@ -1,0 +1,38 @@
+CiRedTriage model verdict (OMN-20730)
+=====================================
+
+Reviewer: Codex (codex-cli 0.159.2, its configured default model, reasoning effort high),
+run read-only in the lane's worktree as an adversarial reviewer of the model, its configs,
+the TLC results, the design note (README.txt) and the test. The rule given to the reviewer:
+APPROVE only with no BLOCKER and no MAJOR finding.
+
+Rounds
+------
+
+round 1  model sha256=b28227a902cdff5877b1771138fc779eed996a2d8764c4df29212390bc5d0d34  REJECT  4 MAJOR, 3 MINOR
+         (poll visibility, retry and dead-letter boundary, start checkpoint and column
+         ownership, a false cache claim in the note, the M7 witness, output-unbound test,
+         conflicting verdict lines)
+round 2  model sha256=9d3d45b34be238b1b4cceb44c24df83e70f1d928344f363ab4ba91e7eb0e7b56  REJECT  3 MAJOR, 2 MINOR
+         (column ownership against the dispatcher's status write, receiver recovery
+         claimed but unmodelled, cache order in the note, M1 description, poll as the
+         only recovery)
+round 3  model sha256=3cc76886d5a8c451bd59307051d9476d8c4da887a45caeb644c75592ef5f40cb  REJECT  1 MAJOR, 1 MINOR
+         (retry exhaustion gated on a global failure count)
+round 4  model sha256=157fe1d35304197bbc19ce1c3225cc9353ecdf2c1fe0592557849fa6694fa3a6  APPROVE 0 MAJOR, 2 MINOR
+
+After round 4 the note's retry-exhaustion bullet was reworded for MINOR 1 (the model
+permits, and does not require, dead-lettering at the limit). The model and every config
+are unchanged since the round-4 review.
+
+Round 4 review, as returned
+---------------------------
+
+The round-3 retry fix is correct: failures accrue to the next uncommitted event, survive restart, and reset on Ack or DeadLetter. No BLOCKER or MAJOR findings. Properties are nonvacuous within the documented scope; fairness assumes continued processing and eventual writer availability. All eleven mutants change one real design knob and have matching failure evidence. Present-code claims check out. Digest and verdict rejection checks passed using in-memory substitutions; no files were edited.
+
+1. **MINOR — formal/ci_red_triage/README.txt:88; formal/ci_red_triage/CiRedTriage.tla:223.** The note says reaching the retry limit causes dead-lettering. The model permits it but also permits successful Process followed by Ack after exhaustion. Mandatory dead-lettering at the limit is therefore not modelled. This does not invalidate the checked safety or recovery properties.
+
+2. **MINOR — tests/formal/test_ci_red_triage_model.py:165.** VERDICT.txt is absent, so the verdict test currently fails. This is the expected pending artifact identified in the review instructions; all ten other test functions pass.
+
+
+verdict: APPROVE model=CiRedTriage.tla sha256=157fe1d35304197bbc19ce1c3225cc9353ecdf2c1fe0592557849fa6694fa3a6

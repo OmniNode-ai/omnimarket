@@ -1,0 +1,66 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21062"
+title: "A binding is accepted by a second lane that reruns its check: named, wired proof in node_dod_verify"
+summary: >-
+  The ruling of 2026-10-03T00:40:00Z says a binding is never accepted by its
+  author, and that a second lane reruns the bound check and accepts it.
+  node_dod_verify already enforces it; its cases carried no name a required job
+  runs. A new test file names three cases against the real handler and collector,
+  and the required lint job and a pre-commit hook run each one.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-independent-acceptance"
+    statement: |-
+      node_dod_verify treats a binding accepted by its own author as a proposal, refuses an acceptance by another lane that has no passing rerun of the bound check, and passes an acceptance by another lane whose rerun passed. The cases run in the required lint job and in a pre-commit hook.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the required lint job and the pre-commit hook dod-verify-independent-acceptance each run the self_accepted_is_proposal, acceptance_without_rerun_refused and independent_rerun_accepted selectors of test_independent_acceptance.py, one run per selector -- falsifier: uv run pytest tests/ci/test_dod_verify_independent_acceptance_wiring_omn21062.py -q -p no:randomly --no-cov -n 0 fails at the merge base
+evidence_requirements:
+  - kind: "tests"
+    description: "The three named cases and the wiring test pass."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_independent_acceptance.py tests/ci/test_dod_verify_independent_acceptance_wiring_omn21062.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21062-ac1-self-accepted-is-proposal"
+    description: "A binding accepted by its own author is reported by name, its check is not rerun and the verdict does not verify."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_independent_acceptance.py -q -p no:randomly --no-cov -n 0 -k self_accepted_is_proposal"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21062-ac2-no-rerun-refused"
+    description: "An acceptance by another lane with a skipped, failed, unrunnable or absent rerun does not verify."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_independent_acceptance.py -q -p no:randomly --no-cov -n 0 -k acceptance_without_rerun_refused"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21062-ac3-independent-rerun-accepted"
+    description: "An acceptance by another lane whose rerun passed verifies, including a second lane's appended re-acceptance of the author's record."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_independent_acceptance.py -q -p no:randomly --no-cov -n 0 -k independent_rerun_accepted"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21062-wiring"
+    description: "The required lint job and the pre-commit hook run each selector, one run per selector."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dod_verify_independent_acceptance_wiring_omn21062.py -q -p no:randomly --no-cov -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21062-ac4-occ-leg"
+    description: "The change-control self-accepted rule (ac_binding_self_accepted in ac_binding_acceptance.py) passes its own test in the onex_change_control clone. Hosted CI has no change-control clone; the local Done gate runs this check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn_17427_self_accepted_binding.py -q -p no:randomly --no-cov -n 0"
+        cwd: "${OMNI_HOME}/onex_change_control"

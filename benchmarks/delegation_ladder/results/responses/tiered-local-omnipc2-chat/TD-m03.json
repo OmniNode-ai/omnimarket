@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m03",
+  "path": "pinned",
+  "sha256": "f3530861f4d15546a80a971bc64eb922bf923279b553bee927330367f09bcaf9",
+  "response": "**omnibase_core**\n- #1764: Fixed validate-union-usage to run once over src/ instead of per-batch, preventing false failures from file shuffling.\n- #965: Added substrate_gates package with BaseGateCheck, GateViolation, has_allow_annotation, and main_for_gate for AST-check infrastructure.\n\n**omnimarket**\n- #3071: Rejected empty-string agent_id on claude_hook_events and claude_agent_spans via min_length=1 and a CHECK constraint.\n- #3629: Added node_reject_skip_token_compute to scan staged files and commit messages for skip tokens, enforcing receipt annotations.\n- #3310: Raised ByokPinNotPermittedError for non-routable BYOK pins, aligning delegation behavior with registration refusal logic."
+}

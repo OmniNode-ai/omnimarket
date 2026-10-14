@@ -5,7 +5,8 @@
 The request names where the sweep's facts are and how its lanes are started. Nothing about the
 deployment is packaged: the state, ledger, tick-log and floors paths, the runner script, the brief
 directory, the sweep's own lane and parent, the ticket and the model all arrive on the request, read
-by the caller from its overlay.
+by the caller from its overlay. So do the repositories: the fleet the sweep reads, the non-product
+repositories and the out-of-scope rulings.
 
 ``supplement`` carries the facts the PR watcher's state does not record (a PR's changed files, its
 last ready_for_review time, a merge's changed files) when the caller has a richer source. Without
@@ -15,7 +16,9 @@ counts as a product merge.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.models.merge_sweep import ModelMergeSweepUnread
 from omnimarket.models.merge_sweep.model_merge_sweep_effect import MAX_AGE_S
@@ -42,7 +45,8 @@ class ModelMergeSweepRunRequest(BaseModel):
 
     ``max_lanes``, ``retries`` and ``retry_wait_min`` read None as the default and clamp a value
     out of range, as the sweep read its arguments. ``dispatch`` false plans the sweep and starts
-    no lane.
+    no lane. ``fleet`` and ``non_product_repos`` also read a comma-separated string, the form an
+    overlay's environment reference expands to; an empty fleet is refused by name.
     """
 
     model_config = _FROZEN
@@ -55,7 +59,9 @@ class ModelMergeSweepRunRequest(BaseModel):
     load1: float | None = None
     cpus: int | None = None
     window_min: int = 60
-    max_reds: int = 40
+    fleet: list[str] = Field(default_factory=list)
+    non_product_repos: list[str] = Field(default_factory=list)
+    out_of_scope: dict[str, str] = Field(default_factory=dict)
     max_age_s: float = Field(default=MAX_AGE_S, gt=0)
     supplement: ModelMergeSweepSupplement | None = None
     lane: str
@@ -70,6 +76,13 @@ class ModelMergeSweepRunRequest(BaseModel):
     retry_wait_min: int | None = None
     claim_check_command: str | None = None
     dispatch: bool = True
+
+    @field_validator("fleet", "non_product_repos", mode="before")
+    @classmethod
+    def _comma_separated(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [repo.strip() for repo in value.split(",") if repo.strip()]
+        return value
 
 
 class ModelMergeSweepRetriedAfter(BaseModel):

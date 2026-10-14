@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """One delegated answer with its resolved rubric and supplied evidence."""
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,6 +19,7 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_tool_use
 
 class ModelRubricCheckRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
+    operation: Literal["delegation_rubric_check"] = "delegation_rubric_check"
     task_class: str = Field(min_length=1)
     request_text: str
     answer_text: str

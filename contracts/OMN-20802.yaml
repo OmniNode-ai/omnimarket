@@ -22,6 +22,11 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: the exposure answers a typed read through node_projection_read_effect against the local SQLite store -- falsifier: uv run pytest tests -q -k automation_liveness_exposure_read"
+  - id: "req-reader"
+    statement: "Each bus-backed exposure has a declared reader: the status page reads all three through typed backend_readers entries."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the status page reads the liveness, run-history and alarm exposures through their declared backend_readers slots -- falsifier: uv run pytest tests/test_omn20802_automation_liveness_reader.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the fixture stream folds into the expected row per declared process."
@@ -32,6 +37,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3: the typed read serves the writer's rows from the local SQLite store."
     command: "uv run pytest tests/test_automation_liveness_exposure_read.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: the status page reads each exposure through its declared slot and refuses an undeclared one."
+    command: "uv run pytest tests/test_omn20802_automation_liveness_reader.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -68,3 +76,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_automation_liveness/handlers/handler_automation_liveness_writer.py?ref=$(git rev-parse HEAD)\" --jq '[.content | match(\"[A-Za-z0-9+/=]+\"; \"g\").string] | join(\"\") | @base64d | contains(\"class AutomationLivenessProjectionWriter(BaseProjectionRunner)\")' | grep -qx true"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20802-ac4-reader"
+    description: "AC4: the status page reads the three automation-liveness exposures through declared backend_readers slots."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20802_automation_liveness_reader.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

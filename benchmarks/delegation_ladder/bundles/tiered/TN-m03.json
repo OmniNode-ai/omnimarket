@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m03",
+  "title": "predict _heading_to_anchor (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function _heading_to_anchor in omnibase_core@d677b4e78219:src/omnibase_core/nodes/node_markdown_links_check_compute/matcher_markdown_links.py; the call and the asserted result come from tests/unit/nodes/node_markdown_links_check_compute/test_matcher_markdown_links_ported.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport re\n\ndef _heading_to_anchor(heading):\n    anchor = heading.replace('`', '')\n    anchor = re.sub('!\\\\[[^\\\\]]*\\\\]\\\\([^)]*\\\\)', '', anchor)\n    anchor = re.sub('\\\\[([^\\\\]]+)\\\\]\\\\([^)]*\\\\)', '\\\\1', anchor)\n    anchor = anchor.lower()\n    anchor = anchor.replace(' ', '-')\n    anchor = re.sub('[^\\\\w\\\\-]', '', anchor)\n    anchor = anchor.strip('-')\n    return anchor\n```\n\nWhat does `_heading_to_anchor('Hello, World!')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'hello-world'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

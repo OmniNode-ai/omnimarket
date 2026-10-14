@@ -119,6 +119,7 @@ class HandlerLocalSecretStore:
             value,
             plan=request.plan,
             model=request.model,
+            model_chosen_by=request.model_chosen_by,
             db_path=store.db_path,
         )
         tenant_id = resolve_or_mint_local_deployment_tenant_id(None)

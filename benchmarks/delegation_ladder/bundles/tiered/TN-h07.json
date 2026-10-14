@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h07",
+  "title": "predict highest_published (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function highest_published in omnimarket@7acb97b72bd6:scripts/ci/decide_release_cut.py; the call and the asserted result come from tests/unit/scripts/test_decide_release_cut.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport re\n\n_RELEASE_TAG = re.compile('^v(\\\\d+)\\\\.(\\\\d+)\\\\.(\\\\d+)$')\n\ndef highest_published(tags):\n    parsed: list[tuple[tuple[int, int, int], str]] = []\n    for tag in tags:\n        match = _RELEASE_TAG.match(tag.strip())\n        if match is None:\n            continue\n        key = (int(match.group(1)), int(match.group(2)), int(match.group(3)))\n        parsed.append((key, tag.strip()))\n    if not parsed:\n        return ''\n    return max(parsed)[1]\n```\n\nWhat does `highest_published(['v0.4.9', 'v0.4.18', 'v0.4.17'])` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'v0.4.18'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

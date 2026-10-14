@@ -40,6 +40,27 @@ def savings_per_measured_run(
     return str(quotient)
 
 
+def savings_pct_of_counterfactual(
+    savings_usd: Decimal | None, counterfactual_usd: Decimal | None
+) -> str | None:
+    """Savings as a share of what the baseline would have cost, to the millionth.
+
+    0.42 means 42% below the baseline. It is a ratio of two figures already on
+    the row, written here so the dashboard never divides money. With no saving,
+    no counterfactual, or a counterfactual of 0 there is nothing to compare
+    against: null, never zero. A negative saving (spend above the baseline)
+    stays negative.
+    """
+    if savings_usd is None or counterfactual_usd is None or counterfactual_usd == 0:
+        return None
+    with localcontext() as ctx:
+        ctx.prec = 28
+        share = (savings_usd / counterfactual_usd).quantize(
+            _MICRO_USD, rounding=ROUND_HALF_EVEN
+        )
+    return str(share)
+
+
 class HandlerProjectionMeteringSummary:
     """Fold a complete recorded snapshot into daily and all-time rows."""
 
@@ -105,6 +126,9 @@ class HandlerProjectionMeteringSummary:
                     savings_usd=payload["savings_usd"],
                     savings_per_measured_run_usd=savings_per_measured_run(
                         summary.savings_usd, summary.runs_measured
+                    ),
+                    savings_pct_of_counterfactual=savings_pct_of_counterfactual(
+                        summary.savings_usd, summary.counterfactual_usd
                     ),
                     # OMN-20226: no metering record carries a raw or compressed
                     # token count or a semantic-cache answer, so there is

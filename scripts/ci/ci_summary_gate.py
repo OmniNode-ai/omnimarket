@@ -325,6 +325,10 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # sweep, and this row makes a skipped or absent conclusion fail closed too.
     # Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Release Staleness (OMN-18010)",  # release-staleness
+    # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
+    # change to the generic test job's selection cannot drop them. Registered
+    # on the same terms as the rows above; unconditional in ci.yml.
+    "BYOK Customer Chooses Model (OMN-20844)",  # byok-customer-chooses-model
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
@@ -983,7 +987,8 @@ def evaluate(
     # OMN-16662: derive docs_only from the in-run marker job, never from a
     # caller-supplied argument. ONLY a marker that ran and concluded success
     # relaxes anything — absent / in_progress / skipped / cancelled / failure
-    # all leave every gate strict. See the DOCS_ONLY_MARKER_JOB block above for
+    # all leave every gate strict. A running marker leaves a tier skip pending
+    # until its classification is known. See the DOCS_ONLY_MARKER_JOB block for
     # why the bit travels as a job rather than as `needs.<job>.outputs`.
     marker_state = latest.get(docs_only_marker)
     docs_only = (
@@ -999,6 +1004,18 @@ def evaluate(
         if docs_only
         else frozenset()
     )
+    # The tier can skip before the marker finishes on another runner. Only
+    # postpone a skipped tier gate while that marker is visibly in flight;
+    # failures and terminal/absent markers retain the strict verdict.
+    pending_docs_only_skips = frozenset(
+        g
+        for g in frozenset(docs_only_gates) & frozenset(strict_gates)
+        if marker_state is not None
+        and marker_state.status != "completed"
+        and (st := latest.get(g)) is not None
+        and st.status == "completed"
+        and st.conclusion == "skipped"
+    )
 
     # (1) Strict aggregate gates: present + completed + conclusion == success.
     #     Members of `relaxed` widen to success/skipped for THIS run only; a
@@ -1010,6 +1027,7 @@ def evaluate(
             (st := latest.get(g)) is not None
             and st.status == "completed"
             and g not in provisional_names
+            and g not in pending_docs_only_skips
             and (
                 st.conclusion not in GOOD_CONCLUSIONS
                 if g in relaxed
@@ -1061,7 +1079,11 @@ def evaluate(
     gate_missing_or_pending = [
         g
         for g in (*strict_gates, *skippable_gates)
-        if (latest.get(g) is None or latest[g].status != "completed")
+        if (
+            latest.get(g) is None
+            or latest[g].status != "completed"
+            or g in pending_docs_only_skips
+        )
     ]
 
     all_failures = strict_failures + skippable_failures + sweep_failures

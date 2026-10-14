@@ -38,6 +38,7 @@ from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     REF,
     FakeOpenRouter,
     _bind,
+    _ref_is_catalogue_picked,
     _request,
     effect,
 )
@@ -51,6 +52,7 @@ from tests.unit.nodes.node_delegate_skill_orchestrator.test_local_dispatch_escal
 
 pytestmark = pytest.mark.unit
 _SHARED_AUTOUSE_FIXTURE = _isolated_effects
+_CATALOGUE_PICKED_CREDENTIAL = _ref_is_catalogue_picked
 
 
 @pytest.fixture
@@ -121,7 +123,11 @@ def test_failed_terminal_records_the_registered_credential(
         resolve_api_key_with_source_loop_safe,
     )
     customer_ref = register_local_byok_credential(
-        "openrouter", KEY, model=GEMMA, db_path=db_path
+        "openrouter",
+        KEY,
+        model=GEMMA,
+        model_chosen_by="catalogue",
+        db_path=db_path,
     )
     # The chain harness's final successor is keyless, so its absent source is
     # honest. Bind the port's final attempt to the registered customer route.

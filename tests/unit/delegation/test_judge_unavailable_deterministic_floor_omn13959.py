@@ -1,23 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Judge-unavailable deterministic-floor acceptance on the BUS path (OMN-13959).
+"""An untested code answer is refused on the BUS path (OMN-21077).
 
-Parity with the bus-less local port fix: the bus orchestrator's
-``handle_gate_result`` applies the task-class ``required_bar`` to the gate score.
-For ``code_generation`` (bar 0.85) a judge outage (429 → ``JUDGE_FAILED``) leaves
-the deterministic-only graded score (~0.733) below the bar, because the judge's
-0.4 adequacy band is absent. Before OMN-13959 the orchestrator rejected a valid
-LOCAL artifact and escalated (or terminated) during a cloud-judge outage.
+``code_generation`` is a code class: it is accepted on its deterministic checks
+and an executed test run, never on a score. The bus carries no named test run,
+so a valid ``code_generation`` artifact is refused as INSUFFICIENT and the
+ladder stops on the first rung: no costlier rung can supply the missing tests.
 
-OMN-13959: when the gate result carries ``score_source=deterministic_acceptance``
-for a verifiable class (deterministic floor passed, judge NOT combined) the
-orchestrator falls back to the deterministic-floor verdict instead of the
-un-meetable combined bar, so a valid local artifact COMPLETES on the local tier.
-When the judge IS reachable the score is ``combined`` and the full bar still
-applies (proven by the OMN-13642/OMN-13470 suites).
-
-Every hop is the REAL handler; only the judge inference is an injected bridge that
-raises (the ``JUDGE_LLM_CALL_FAILED`` path a live z.ai GLM 429 drives).
+Every hop uses the real handler; acceptance never calls the judge (OMN-20164).
 """
 
 from __future__ import annotations
@@ -29,6 +19,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.models.delegation.wire import (
+    EnumQualityScoreComparison,
     ModelInferenceIntent,
     ModelInferenceResponseData,
     ModelQualityGateIntent,
@@ -37,11 +28,17 @@ from omnibase_core.models.delegation.wire import (
 from pydantic import BaseModel
 
 from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
+from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+    handler_delegation_workflow as workflow_mod,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
@@ -50,6 +47,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
@@ -67,7 +65,7 @@ pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 # A good-but-mechanically-incomplete code answer: clears the code_generation
 # deterministic floor (compiles / final-artifact-only / non-empty) but carries none
 # of the convention/regression heuristic markers -> deterministic-only ~0.733,
-# below the 0.85 code_generation bar without the judge.
+# below the declared 0.85 code_generation bar.
 _GOOD_CODE = "### ANSWER\ndef add(a: int, b: int) -> int:\n    return a + b"
 
 # Self-contained bifrost contract: ``code_generation`` routes (tier_order
@@ -183,7 +181,7 @@ def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
 
 @pytest.mark.unit
 class TestJudgeUnavailableFloorRealDispatchPath:
-    """Valid code completes through the bus chain on its deterministic floor."""
+    """Valid code below the required bar is refused through the bus chain."""
 
     @pytest.fixture(autouse=True)
     def _bifrost_contract(
@@ -224,7 +222,12 @@ class TestJudgeUnavailableFloorRealDispatchPath:
         return gate_result, terminal_events, bridge
 
     @pytest.mark.asyncio
-    async def test_judge_unavailable_completes_on_local_tier(self) -> None:
+    async def test_untested_code_answer_is_refused_on_local_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Keep the terminal evidence covered with a single draft and no next tier.
+        monkeypatch.setattr(workflow_mod, "is_free_tier", lambda _tier: False)
+        monkeypatch.setattr(workflow_mod, "next_eligible_tier", lambda *_a, **_k: None)
         workflow = HandlerDelegationWorkflow(workflows={})
         request = ModelDelegationRequest(
             prompt="Write add(a, b).",
@@ -239,23 +242,21 @@ class TestJudgeUnavailableFloorRealDispatchPath:
 
         # Acceptance never calls the judge (OMN-20164).
         assert bridge.calls == 0
-        assert gate_result.passed is True
+        # OMN-21077: no named test run reached the gate, so the code answer is
+        # not checked and is refused, and no rung can cure that.
+        assert gate_result.passed is False
         assert gate_result.score_source == "deterministic_acceptance"
-        assert gate_result.quality_score < 0.85
-        # OMN-13959: the orchestrator falls back to the deterministic floor and
-        # COMPLETES on the local tier instead of escalating during the judge outage.
-        assert TOPIC_ID_DELEGATION_COMPLETED in _terminal_topics(terminal_events)
+        assert NO_NAMED_TEST_RUN_REASON in gate_result.failure_reasons
+        assert gate_result.no_rung_can_satisfy is True
+        assert TOPIC_ID_DELEGATION_FAILED in _terminal_topics(terminal_events)
+        assert TOPIC_ID_DELEGATION_COMPLETED not in _terminal_topics(terminal_events)
         terminal = next(
             event
             for event in terminal_events
-            if isinstance(event, ModelDelegationCompleted)
+            if isinstance(event, ModelDelegationFailed)
         )
-        # The combined 0.85 bar was not applied while its judge band was
-        # unavailable. Omitting the pair is the typed, honest representation of
-        # deterministic-floor authority; carrying BELOW_BAR with a passed verdict
-        # would contradict the terminal truth contract.
-        assert terminal.required_quality_bar is None
-        assert terminal.score_vs_required_bar is None
-        assert terminal.failed_acceptance_criteria == ()
+        assert terminal.required_quality_bar == 0.85
+        assert terminal.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR
+        assert NO_NAMED_TEST_RUN_REASON in terminal.failed_acceptance_criteria
         wf = workflow.workflows[request.correlation_id]
-        assert wf.state == EnumDelegationState.COMPLETED
+        assert wf.state == EnumDelegationState.FAILED

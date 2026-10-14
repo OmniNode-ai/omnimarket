@@ -1,0 +1,6 @@
+{
+  "task_id": "TN-m07",
+  "path": "pinned",
+  "sha256": "4ca23ee7e68abfeb0831adc5b3654487ea9de68eaaf6a5282185358a1f2f31ed",
+  "response": "'def foo(): pass'"
+}

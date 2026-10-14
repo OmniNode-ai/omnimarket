@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m06",
+  "title": "predict _supersede_sequence (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function _supersede_sequence in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py; the call and the asserted result come from tests/unit/nodes/node_dod_verify/test_durable_gate_attempt_scoped_supersede_omn_19121.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef _supersede_sequence(token):\n    if token is None:\n        return None\n    parts = token.split('.')\n    if not all((part.isdigit() for part in parts)):\n        return None\n    return tuple((int(part) for part in parts))\n```\n\nWhat does `_supersede_sequence('2751.0002')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "(2751, 2)"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

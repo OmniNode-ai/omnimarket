@@ -429,6 +429,12 @@ jobs:
       # SYNC with pre-commit hook 'github-token-env-gate'.
       - name: GitHub-token env-read gate (enforce)
         run: uv run python scripts/ci/check_github_token_env_reads.py
+      # OMN-20915: source-control nodes (node directories named *github*) never
+      # shell out to the gh CLI or hand-write an api.github.com URL; the test
+      # plants a violation and requires the scan to refuse it.
+      # SYNC with pre-commit hook 'scm-nodes-no-gh-cli'.
+      - name: Source-control nodes do not use the gh CLI (OMN-20915)
+        run: uv run pytest tests/ci/test_scm_nodes_no_gh_cli_omn20915.py -q -n 0 -p no:randomly --no-cov
       # OMN-17372: house inference-credential gate. Fails CI if a delegation
       # backend re-declares `api_key_env`, or if any omnimarket source reads a
       # house provider key from the process environment (bare os.environ, or
@@ -488,12 +494,27 @@ jobs:
       # SYNC with pre-commit hook 'typed-decision-shadow-calibration'.
       - name: Typed decision shadow calibration (OMN-19136)
         run: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
+      # OMN-20780: rulings 2026-10-13T18:34:53Z and 2026-10-13T20:50:03Z, a typed
+      # decision may be asked for a private code repository and only the contract's
+      # refused list is refused. SYNC with pre-commit hook 'typed-decision-repository-scope'.
+      - name: Typed decision refuses only the listed repositories (OMN-20780)
+        run: uv run pytest tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision.py tests/ci/test_typed_decision_repository_scope_wiring_omn20780.py -q -p no:randomly --no-cov
       # OMN-21002: paired with the imperative-contract-guard-caller hook.
       - name: Imperative guard caller regression (OMN-21002)
         run: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+      # OMN-20910: paired with the review-voter-model-from-overlay hook.
+      - name: Review voter model comes from the overlay (OMN-20910)
+        run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
       # OMN-20967: paired with the anthropic-key-prefix-workflows hook.
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
+
+      # OMN-20601: the house routing-overlay write command has a producer and
+      # the node contract declares its runtime profile. Paired with the
+      # house-routing-overlay-publisher hook. This tests the publisher's own
+      # output; it does not scan omnimarket code for routing tables.
+      - name: House routing-overlay publisher (OMN-20601)
+        run: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q -n 0
 
       # Paired with ticket-contract-prerequisite-regression (pre-commit).
       - name: Ticket contract authoring refusal controls (OMN-20864)
@@ -522,6 +543,54 @@ jobs:
       # 'dod-verify-every-criterion-bound'.
       - name: dod_verify refuses partly bound criteria (OMN-20032)
         run: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+      # OMN-21062: a binding is accepted by a second lane that reruns its check
+      # (ruling 2026-10-03T00:40:00Z). One run per selector, so a renamed or
+      # deleted case selects nothing and fails. SYNC with pre-commit hook
+      # 'dod-verify-independent-acceptance'.
+      - name: dod_verify independent acceptance (OMN-21062)
+        run: |
+          for selector in self_accepted_is_proposal acceptance_without_rerun_refused independent_rerun_accepted; do
+            uv run pytest tests/unit/nodes/node_dod_verify/test_independent_acceptance.py -q -p no:randomly --no-cov -n 0 -k "$selector"
+          done
+          uv run pytest tests/ci/test_dod_verify_independent_acceptance_wiring_omn21062.py -q -p no:randomly --no-cov -n 0
+      # OMN-20780: a criterion binding is never accepted by the lane that authored it
+      # (ruling 2026-10-03T00:40:00Z); node_dod_verify demotes a self-accepted binding.
+      # SYNC with pre-commit hook 'dod-verify-self-accepted-bindings'.
+      - name: dod_verify demotes self-accepted bindings (OMN-20780)
+        run: uv run pytest tests/test_occ_falsifier_checks.py tests/test_dod_verify_acceptance_basis.py tests/ci/test_dod_verify_self_accepted_wiring_omn20780.py -q -p no:randomly --no-cov
+      # OMN-20912: the gh shim refuses a lane's gh write only while the write
+      # effect's operations block and SCM_VERBS name its onex scm replacement
+      # (ruling 2026-10-10T18:32:46Z). SYNC with pre-commit hook 'scm-operation-table'.
+      - name: onex scm operation table names every lane gh write (OMN-20912)
+        run: uv run pytest tests/ci/test_scm_operation_table_omn20912.py -q -p no:randomly --no-cov
+      # OMN-20730: red CI emits ci-run-failed and the lifecycle orchestrator triages it on
+      # receipt (ruling 2026-10-08T14:27:26Z); the five contract legs of that chain stay
+      # connected. SYNC with pre-commit hook 'red-ci-event-chain'.
+      - name: red CI bus chain stays connected (OMN-20730)
+        run: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
+      # OMN-20914: the gh shim refuses a lane's gh write only while the contract
+      # operations and the onex scm verb table it reads stay readable and served
+      # (ruling 2026-10-10T18:32:46Z). SYNC with pre-commit hook 'gh-shim-coverage-table'.
+      - name: gh shim coverage table stays served (OMN-20914)
+        run: uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py tests/unit/handlers/scm/test_onex_scm_command.py::test_every_contract_operation_has_exactly_one_verb tests/unit/handlers/scm/test_onex_scm_command.py::test_no_refused_verb_is_also_served -q -p no:randomly --no-cov
+      # OMN-20001: the drift check reads omniclaude at the pin, a pin move needs the
+      # integration step, both drift directions stay strict, and the two OMN-13146
+      # tests stay present and uninverted. SYNC with pre-commit hook
+      # 'omniclaude-pin-drift'.
+      - name: Event registry drift reads the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+      # OMN-20730: the red CI triage model (formal/ci_red_triage) passes its design
+      # config, each property fails on a one-knob mutation, the results match the
+      # committed model, configs and outputs, and the verdict approves the model's
+      # digest. SYNC with pre-commit hook 'ci-red-triage-model'.
+      - name: Red CI triage model and verdict (OMN-20730)
+        run: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-20601: routing decisions come from overlays, never from omnimarket code
+      # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
+      # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
+      # 'routing-sources-omn20601'.
+      - name: Routing sources, overlay precedence and routing-in-code ratchet (OMN-20601)
+        run: uv run pytest tests/test_routing_sources_omn20601.py tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly --no-cov
       # SYNC with pre-commit hook 'same-model-sibling-quality-gate'.
       - name: Same-model sibling quality gate (OMN-19215)
         run: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_same_model_sibling_omn19215.py -q -p no:randomly
@@ -1959,6 +2028,12 @@ jobs:
         run: uv sync --locked
       - name: Validate event registry drift
         run: uv run python -m omnimarket.validators.event_registry_drift --omniclaude-root ../omniclaude
+      # OMN-20001: a pin move merges only with the omniclaude-coupled tests passing
+      # against the new version. This job is "Event Registry Drift" in CI Summary's
+      # strict set and clones omniclaude at the one pin, so moving the literal above
+      # makes this step run against the new version in the same PR.
+      - name: Integration suite against the pinned omniclaude (OMN-20001)
+        run: uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov
 
   # ============================================================================
   # RUNTIME SWEEP GATE (OMN-8611)
@@ -3524,6 +3599,28 @@ jobs:
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
               python -m omnibase_core.validators.canonical_file_shape --head HEAD
           fi
+
+  # OMN-20844: bring-your-own-key customers choose their OpenRouter model; the
+  # system never picks one. Names the tests that guard it so the generic split
+  # `test` job's selection cannot silently drop them. Same command as the
+  # `byok-customer-chooses-model` pre-commit hook. Unconditional (no `if:`, no
+  # `needs:`); registered in ci_summary_gate.py STRICT_GATE_JOBS.
+  byok-customer-chooses-model:
+    name: BYOK Customer Chooses Model (OMN-20844)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - name: Run the customer-chooses-model tests
+        run: >-
+          uv run pytest
+          tests/unit/cli/test_omn20844_openrouter_model_choice.py
+          tests/test_omn20844_chosen_model_never_re_aimed.py
+          tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py
+          -q -p no:randomly
 
   # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
   # option (b) of the addendum's section 11 question 2 (B3): enforce release

@@ -1,0 +1,36 @@
+{
+  "payload": {
+    "event": "pull_request",
+    "delivery_id": "72d3162e-cc78-11e3-81ab-4c9367dc0958",
+    "signature_256": "sha256=bd9b2b4b555d4da3ea2115a91c0618fd8efc7607a9d43f64a60525644405913d",
+    "body_b64": "ewogICJhY3Rpb24iOiAiY2xvc2VkIiwKICAicmVwb3NpdG9yeSI6IHsKICAgICJmdWxsX25hbWUiOiAiT21uaU5vZGUtYWkvb21uaWNsYXVkZSIKICB9LAogICJwdWxsX3JlcXVlc3QiOiB7CiAgICAibnVtYmVyIjogNywKICAgICJzdGF0ZSI6ICJjbG9zZWQiLAogICAgIm1lcmdlZCI6IHRydWUsCiAgICAiZHJhZnQiOiBmYWxzZSwKICAgICJ0aXRsZSI6ICJmaXgoT01OLTEpOiB4IiwKICAgICJjbG9zZWRfYXQiOiAiMjAyNi0wOS0yN1QyMjo1OTozMFoiLAogICAgIm1lcmdlZF9hdCI6ICIyMDI2LTA5LTI3VDIyOjU5OjMwWiIsCiAgICAibWVyZ2VfY29tbWl0X3NoYSI6ICJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwKICAgICJoZWFkIjogewogICAgICAicmVmIjogImpvbmFoL29tbi0xLXgiLAogICAgICAic2hhIjogImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiCiAgICB9LAogICAgImJhc2UiOiB7CiAgICAgICJyZWYiOiAiZGV2IgogICAgfQogIH0KfQ==",
+    "received_at": "2026-09-28T00:00:00+00:00"
+  },
+  "envelope_id": "0b6a7c9e-6f7e-4f39-9f0b-5d0c8f0e1a2b",
+  "envelope_timestamp": "2026-09-28T00:00:00+00:00",
+  "correlation_id": "72d3162e-cc78-11e3-81ab-4c9367dc0958",
+  "tenant_id": "beta-gateway-canary-79afa7263852",
+  "source_tool": "onex-api-github-webhook",
+  "metadata": {
+    "headers": {},
+    "tags": {
+      "source_tenant_id": "79afa726-3852-464f-b7a4-d4b8b9c75ee7",
+      "source_tenant_principal_id": "t-79afa7263852464fb7a4d4b8b9c75ee7",
+      "github_event": "pull_request",
+      "github_delivery_id": "72d3162e-cc78-11e3-81ab-4c9367dc0958"
+    }
+  },
+  "event_type": "github.webhook-delivery",
+  "priority": 5,
+  "retry_count": 0,
+  "onex_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "envelope_version": {
+    "major": 2,
+    "minor": 1,
+    "patch": 0
+  }
+}

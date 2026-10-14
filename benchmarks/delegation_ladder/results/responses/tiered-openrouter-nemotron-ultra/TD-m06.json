@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m06",
+  "path": "pinned",
+  "sha256": "d0e9fc22b61223ce4ebdf500968da30034419203c631f665a3bbc42d5eb2a0fd",
+  "response": "- **#206** (omnibase_spi): Ports change-aware test selection from omnibase_core; enables selective test execution via `ENABLE_SMART_TESTS=true` with new adjacency mapping for all top-level modules.\n- **#3702** (omnimarket): Adds `node_pr_title_check_compute` COMPUTE node to handle PR title check-title decision, ported from bash step in `onex_change_control` workflow.\n- **#3651** (omnimarket): Introduces `node_merge_sweep_orchestrator` with contract.yaml, metadata.yaml, and `HandlerMergeSweepRun`; orchestrates `load_facts`, `read_fleet`, `plan_lanes`, `render_brief`, `run_lane` execution graph.\n- **#1920** (omnibase_core): Replaces hand-picked key extraction with full Pydantic validation using `ModelContractContent.model_validate`; adds `ModelEventBusSubcontract` and `ModelHandlerRoutingSubcontract`; removes silent malformed input dropping.\n- **#2923** (omnimarket): Fixes `PostgresSyncProjectionAdapter` to use contract-declared schema with `search_path`; resolves `UndefinedTable` errors by setting proper schema for claim store projections."
+}

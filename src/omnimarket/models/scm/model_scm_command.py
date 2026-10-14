@@ -19,7 +19,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 
 class EnumScmNode(StrEnum):
@@ -40,6 +40,12 @@ class EnumScmLocalRead(StrEnum):
     # OMN-20977: every PR's head commit and merge outcome, from the clone's
     # remote refs and base-branch history, overlaid with the watcher state.
     PR_HEADS = "pr_heads"
+    # Reads the watcher and the gateway node hold no operation for: answered
+    # from the clone (or the watcher's head-keyed CI record) alone.
+    PR_COMMITS = "pr_commits"
+    FILE_CONTENTS = "file_contents"
+    COMMIT_VIEW = "commit_view"
+    COMMIT_CHECKS = "commit_checks"
 
 
 class ModelScmVerb(BaseModel):
@@ -55,6 +61,21 @@ class ModelScmVerb(BaseModel):
         default=None,
         description="Answered from the watcher state and clones before the bus.",
     )
+
+
+class ModelScmLocalVerb(BaseModel):
+    """A verb answered from the watcher state and the clones alone.
+
+    No source-control node contract declares an operation for it, so a read the
+    local sources cannot answer is reported unanswered; it is never sent to the
+    bus and never read from GitHub.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verb: str = Field(pattern=r"^[a-z][a-z-]*$")
+    read: EnumScmLocalRead
+    replaces: str = Field(min_length=1, description="The gh verb this replaces.")
 
 
 class ModelScmRefusedVerb(BaseModel):
@@ -88,6 +109,39 @@ class ModelScmLocalReadRequest(BaseModel):
         pattern=r"^[0-9a-f]{40}$",
         description="pr_heads: PRs whose head is this commit.",
     )
+    ref: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+        description="file_contents, commit_view: a branch, tag or commit.",
+    )
+    path: str | None = Field(
+        default=None, min_length=1, description="file_contents: a file or directory."
+    )
+    sha: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{7,40}$",
+        description="commit_checks: the head commit, whole or abbreviated.",
+    )
+    max_bytes: int = Field(
+        default=262144, gt=0, description="file_contents: the most bytes returned."
+    )
+
+    @field_validator("ref")
+    @classmethod
+    def _ref_names_one_object(cls, value: str | None) -> str | None:
+        if value is not None and (".." in value or value.endswith((".", "/", ".lock"))):
+            raise ValueError(f"ref {value!r} is not a single branch, tag or commit")
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def _path_stays_in_the_tree(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parts = value.strip("/").split("/")
+        if value.startswith("/") or "\x00" in value or ".." in parts or "" in parts:
+            raise ValueError(f"path {value!r} is not inside the repository tree")
+        return "/".join(parts)
 
 
 class ModelScmLocalReadResult(BaseModel):
@@ -157,13 +211,29 @@ class ModelScmAnswer(BaseModel):
     result: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class ModelScmLocalAnswer(BaseModel):
+    """What a local-only verb prints: one answer from the watcher or a clone."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verb: str
+    read: EnumScmLocalRead
+    repo: str
+    source: Literal["watcher", "clone"]
+    outcome: Literal["completed"] = "completed"
+    watcher_tick: str | None = None
+    result: dict[str, JsonValue] = Field(default_factory=dict)
+
+
 __all__: list[str] = [
     "EnumScmLocalRead",
     "EnumScmNode",
     "ModelScmAnswer",
     "ModelScmBusReceipt",
+    "ModelScmLocalAnswer",
     "ModelScmLocalReadRequest",
     "ModelScmLocalReadResult",
+    "ModelScmLocalVerb",
     "ModelScmRefusedVerb",
     "ModelScmTerminal",
     "ModelScmTopics",

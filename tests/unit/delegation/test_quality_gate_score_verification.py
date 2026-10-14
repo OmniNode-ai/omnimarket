@@ -9,10 +9,9 @@ at ``quality_score`` 1.0 then failed their ticket's own DoD check, and nothing
 on those results told them apart from a checked answer. The gate's checks can
 refute an answer (it does not parse, it refuses, it states a number its input
 does not hold); only an EXECUTED check can establish that one is right, and the
-one such check the contract names, ``passes_existing_tests``, has no executor
-in the gate (OMN-13850). So today no gate result may read verified, and these
-tests pin both that and the derivation that will let one read verified once an
-executed check passes.
+one such check the contract names, ``passes_existing_tests``, reads execution
+evidence supplied to the gate. Code answers require that evidence (OMN-21077);
+an accepted result reads verified when it passed and no checks were skipped.
 """
 
 from __future__ import annotations
@@ -23,7 +22,9 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
     SCORE_VERIFYING_CHECKS,
     UNVERIFIED_GATE_FAILED,
     UNVERIFIED_NO_EXECUTED_CHECK,
@@ -146,12 +147,15 @@ def test_the_verifying_set_names_only_checks_the_contract_declares() -> None:
 
 @pytest.mark.parametrize("task_type", sorted(_ACCEPTED_ANSWERS))
 @pytest.mark.parametrize("with_source", [False, True])
-def test_no_accepted_gate_result_reads_verified_today(
-    task_type: str, with_source: bool
+@pytest.mark.parametrize("with_run", [False, True])
+def test_gate_acceptance_and_verification_require_execution_evidence_for_code(
+    task_type: str, with_source: bool, with_run: bool
 ) -> None:
-    """Every class, both paths: an accepted answer is never a verified one."""
+    """Code can be accepted and verified; rubric answers keep their authority."""
+    # OMN-21077: code needs a passing run and can now read verified with no skips.
     answer = _ACCEPTED_ANSWERS[task_type]
     deterministic, heuristic = resolve_task_class_dod_checks(task_type)
+    is_code = task_type in ("code_generation", "refactor")
     result = delta(
         ModelQualityGateInput(
             correlation_id=uuid4(),
@@ -161,11 +165,35 @@ def test_no_accepted_gate_result_reads_verified_today(
             dod_heuristic=heuristic,
         ),
         grounding_source=answer if with_source else None,
+        named_test_run=(
+            ModelNamedTestRun(test_ids=("tests/test_add.py::test_add",), exit_code=0)
+            if is_code and with_run
+            else None
+        ),
     )
 
-    assert result.passed is True, result.failure_reasons
-    assert result.score_verified is False
-    assert UNVERIFIED_NO_EXECUTED_CHECK in result.score_unverified_because
+    if is_code and not with_run:
+        assert result.passed is False
+        assert result.fail_category == "fail_deterministic"
+        assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
+        assert result.no_rung_can_satisfy is True
+        assert result.score_verified is False
+        assert UNVERIFIED_GATE_FAILED in result.score_unverified_because
+        assert UNVERIFIED_NO_EXECUTED_CHECK in result.score_unverified_because
+    elif is_code:
+        assert result.passed is True, result.failure_reasons
+        assert result.score_verified is with_source
+        assert result.score_unverified_because == (
+            () if with_source else ("skipped:names_resolve",)
+        )
+        evaluation = next(
+            e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+        )
+        assert evaluation.passed is True
+    else:
+        assert result.passed is True, result.failure_reasons
+        assert result.score_verified is False
+        assert UNVERIFIED_NO_EXECUTED_CHECK in result.score_unverified_because
 
 
 @pytest.mark.parametrize("stem", ["r1_a830efbc", "r4b_da7c8591"])

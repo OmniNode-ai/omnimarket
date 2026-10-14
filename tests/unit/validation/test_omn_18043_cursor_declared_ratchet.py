@@ -392,6 +392,7 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_projection_runner_fleet::runner_fleet_liveness#0",
         "node_projection_topic_activity::topic_activity#0",
         "node_projection_usage_by_model_day::usage_by_model_day#0",
+        "node_projection_run_trace::run_trace#0",
         # OMN-18769: the lab lane-health exposure declares `cursor_column: lane`
         # from its first commit. `lane` is the primary key, so it is unique and
         # stable -- which is what a cursor needs and what `projected_at` would
@@ -440,8 +441,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 70 as of OMN-19793: delegation_eval_results does the same.
 # 71 as of OMN-20007: metering_summary declares its cursor in the same change
 # as the exposure, so the measured backlog remains unchanged.
-# OMN-20802 adds three cursor-bearing exposures without growing the gap.
-_AC3_TOTAL_EXPOSURES = 74
+# OMN-19987 adds one cursor-bearing run-trace exposure and OMN-20802 adds
+# three automation-liveness exposures; neither grows the measured gap.
+_AC3_TOTAL_EXPOSURES = 75
 _AC3_MEASURED_GAP = 55
 
 

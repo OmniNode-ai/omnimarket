@@ -27,6 +27,8 @@ class ModelMergeSweepLoadRequest(BaseModel):
     is read from GitHub. ``ledger_path`` is the rolling work ledger, ``ticks_path`` the landing
     controller's tick log (absent on a host the controller does not run on) and ``floors_path`` the
     per-repository merge floors. ``load1`` and ``cpus`` default to this host's own reading.
+    ``fleet``, ``non_product_repos`` and ``out_of_scope`` are the caller's deployment facts, passed
+    to the reading as they arrive; a load with no fleet is refused.
     """
 
     model_config = _FROZEN
@@ -39,7 +41,9 @@ class ModelMergeSweepLoadRequest(BaseModel):
     load1: float | None = None
     cpus: int | None = None
     window_min: int = 60
-    max_reds: int = 40
+    fleet: list[str] = Field(default_factory=list)
+    non_product_repos: list[str] = Field(default_factory=list)
+    out_of_scope: dict[str, str] = Field(default_factory=dict)
     max_age_s: float = Field(default=MAX_AGE_S, gt=0)
     claim_check_pr: str | None = None
 

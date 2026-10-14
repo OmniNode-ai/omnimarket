@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e02",
+  "path": "pinned",
+  "sha256": "a3935b5c8f9861199dd30a4b988cce868efeec40c1266a9e5bb9c8aa0a0b9aab",
+  "response": "[47] — The enum value `\"tech_debt_triagx\"` on line 47 contradicts the test assertion on line 51 that expects `\"tech_debt_triage\"` (and the iteration check on line 55 that verifies `\"tech_debt_triage\"` is present)."
+}

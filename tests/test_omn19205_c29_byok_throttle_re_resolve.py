@@ -10,6 +10,7 @@ backend with the same key. Fakes only, no network.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -24,14 +25,22 @@ from omnimarket.enums.enum_delegation_failure_class import (
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.inference import local_byok_credential_adapter as credentials
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing import byok_model_discovery as discovery
+from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (
     house_openrouter_rung,
     run_local_delegation,
+    store_model_credential,
     use_local_store,
 )
 from tests.chains.local.test_chain_l6_typed_credential_refusals_omn18698 import (
@@ -45,6 +54,38 @@ from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _passing_named_tests(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # OMN-21077: these chain assertions need executed tests for their code happy path.
+    def passing_runner(request: ModelNamedTestRunRequest) -> ModelNamedTestRunResult:
+        return ModelNamedTestRunResult(
+            status=EnumNamedTestRunStatus.COMPLETED,
+            run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+        )
+
+    monkeypatch.setattr(
+        local_chain_harness,
+        "LocalDelegationDispatchPort",
+        partial(
+            local_chain_harness.LocalDelegationDispatchPort,
+            named_test_runner=passing_runner,
+        ),
+    )
+    monkeypatch.setattr(
+        local_chain_harness,
+        "ModelDelegateSkillRequest",
+        partial(
+            local_chain_harness.ModelDelegateSkillRequest,
+            metadata={
+                "named_tests": "test_answer.py::test_answer",
+                "named_tests_answer_path": "answer.py",
+                "named_tests_workspace": str(tmp_path),
+            },
+        ),
+    )
+
 
 # The OMN-20157 autouse fixture (local store, healthy endpoint) applies here too.
 _SHARED_AUTOUSE_FIXTURE = _isolated_effects
@@ -71,6 +112,14 @@ OK_BODY = {
     ],
     "usage": {"prompt_tokens": 1, "completion_tokens": 1},
 }
+
+
+@pytest.fixture(autouse=True)
+def _ref_is_catalogue_picked(tmp_path: Path) -> None:
+    """OMN-21078: only a credential that records a catalogue pick is re-aimed."""
+    store_model_credential(
+        tmp_path / "delegation.sqlite", REF, model=GEMMA, model_chosen_by="catalogue"
+    )
 
 
 def _openrouter() -> Any:
@@ -225,7 +274,7 @@ async def test_the_receipt_carries_one_rejected_and_one_accepted_attempt(
         resolve_api_key_with_source_loop_safe,
     )
     credentials.register_local_byok_credential(
-        "openrouter", KEY, model=GEMMA, db_path=db_path
+        "openrouter", KEY, model=GEMMA, model_chosen_by="catalogue", db_path=db_path
     )
     _ladder_with_every_successor(
         monkeypatch,

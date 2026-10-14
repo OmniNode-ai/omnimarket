@@ -85,6 +85,15 @@ class ModelEscalationDecisionRequest(BaseModel):
             "None. Required when the ladder is exhausted; ignored otherwise."
         ),
     )
+    pinned_backend_ref: str | None = Field(
+        default=None,
+        description=(
+            "The backend the caller pinned the delegation to (OMN-20844). A "
+            "pinned run never moves to another backend: when set, a retryable "
+            "failure terminates with ``pinned_backend_failed`` instead of "
+            "escalating. ``None`` means the run is not pinned."
+        ),
+    )
 
 
 __all__ = ["ModelEscalationDecisionRequest"]

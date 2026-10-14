@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h05",
+  "title": "predict parse_evidence_source (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function parse_evidence_source in omnibase_core@d677b4e78219:src/omnibase_core/validation/validator_receipt_gate.py; the call and the asserted result come from tests/unit/validation/test_receipt_gate_canonical_evidence_block.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport re\n\n_FENCE_LINE_PATTERN = re.compile('^\\\\s*(`{3,}|~{3,})')\n\nEVIDENCE_SOURCE_OCC_PR_PATTERN = re.compile('^Evidence-Source: OCC#(\\\\d+)$', re.IGNORECASE | re.MULTILINE)\n\nEVIDENCE_SOURCE_SHA_PATTERN = re.compile('^Evidence-Source: ([0-9a-f]{7,40})$', re.IGNORECASE | re.MULTILINE)\n\ndef strip_noncanonical_regions(pr_body):\n    out: list[str] = []\n    in_fence = False\n    fence_char = ''\n    for line in pr_body.splitlines():\n        fence = _FENCE_LINE_PATTERN.match(line)\n        if fence is not None:\n            marker_char = fence.group(1)[0]\n            if not in_fence:\n                in_fence = True\n                fence_char = marker_char\n            elif marker_char == fence_char:\n                in_fence = False\n                fence_char = ''\n            out.append('')\n            continue\n        if in_fence:\n            out.append('')\n            continue\n        if line.lstrip().startswith('>'):\n            out.append('')\n            continue\n        out.append(line)\n    return '\\n'.join(out)\n\ndef parse_evidence_source(pr_body):\n    for line in strip_noncanonical_regions(pr_body).splitlines():\n        if not line.lower().startswith('evidence-source:'):\n            continue\n        if (m_pr := EVIDENCE_SOURCE_OCC_PR_PATTERN.fullmatch(line)):\n            return (m_pr.group(1), None)\n        if (m_sha := EVIDENCE_SOURCE_SHA_PATTERN.fullmatch(line)):\n            return (None, m_sha.group(1))\n        break\n    return (None, None)\n```\n\nWhat does `parse_evidence_source('> Evidence-Source: OCC#1234')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "(None, None)"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

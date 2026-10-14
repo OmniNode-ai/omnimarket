@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m05",
+  "path": "pinned",
+  "sha256": "5bf1d7db85abbe355e1643172973590d5be5ace4296ad9b7c1384fca90523856",
+  "response": "- **#1301** (omnibase_core): ArtifactStore Phase 1 hardening adds retention classes (ephemeral/session/ticket/permanent) with configurable TTL, quota enforcement (max per-write/total size) raising `ArtifactQuotaExceededError`, redaction, and restricted-tier read.\n- **#1146** (omnibase_core): Introduces `ModelKnowledgeContextBundle` with frozen Pydantic models `ModelAntipatternEntry`, `ModelAntipatternExample`, `ModelAntipatternRegistry` for antipattern detection; includes `pattern_type`/`vector_enabled` validation.\n- **#3331** (omnimarket): Fills routing test gaps covering complexity thresholds, token/count boundaries, empty/oversized prompts, dependency caps, refusal cases, and routing outcomes (preferred/fallback/tier override).\n- **#3686** (omnimarket): Wires PR landing orchestrator config from `contract.yaml` `landing_config` block with `github_mode`, `dry_run_operations` (rerun_runs, update_branch, disarm), and head-checks.\n- **#265** (omnibase_spi): Updates `actions/setup-python` from v6 to v7."
+}

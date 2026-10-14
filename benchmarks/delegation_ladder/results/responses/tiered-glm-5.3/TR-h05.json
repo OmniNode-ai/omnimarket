@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h05",
+  "path": "pinned",
+  "sha256": "bd7289e6d922dfb24e9dfff2741af16d010f32e9492a45080ce05c555051d49f",
+  "response": "**[70]** — the validator module's docstring says `:8086/ready` refused, contradicting test line **[303]** in `tests/test_local_ingress_alias_collision_gate.py` (which, like the PR description and the pre-commit comment at [37], records the 2026-09-16 outage as `:8085/ready` refusing)."
+}

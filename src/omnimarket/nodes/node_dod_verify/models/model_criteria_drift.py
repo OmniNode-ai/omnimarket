@@ -35,7 +35,18 @@ class ModelCriterionDrift(BaseModel):
                 f"{(self.pinned_hash or '')[:12]}, live {(self.live_hash or '')[:12]})"
             )
         if self.kind is EnumCriteriaDriftKind.DELETED:
-            return f"{self.label} deleted from the ticket"
+            unretired = (
+                f" (unretired claims: items {', '.join(self.item_ids)}; retire each "
+                "with a supersedes_ac_binding entry)"
+                if self.item_ids
+                else ""
+            )
+            return f"{self.label} deleted from the ticket{unretired}"
+        if self.kind is EnumCriteriaDriftKind.RETIRED_LIVE:
+            return (
+                f"{self.label} retired while the ticket still carries it (accepted "
+                f"bindings on items {', '.join(self.item_ids)})"
+            )
         if self.kind is EnumCriteriaDriftKind.ADDED:
             return (
                 f"{self.label} added to the ticket (live {(self.live_hash or '')[:12]})"
@@ -101,6 +112,19 @@ class ModelCriteriaCheck(BaseModel):
     )
     known_labels: tuple[str, ...] = Field(
         default=(), description="Labels the contract claims, in contract order."
+    )
+    retired_labels: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Criteria the live ticket no longer carries whose every claim a "
+            "supersedes_ac_binding entry retired (OMN-18406)."
+        ),
+    )
+    retired_item_ids: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Items that claim only retired criteria; their results do not count."
+        ),
     )
 
     @property

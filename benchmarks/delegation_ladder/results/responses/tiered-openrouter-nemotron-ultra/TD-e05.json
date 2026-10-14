@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e05",
+  "path": "pinned",
+  "sha256": "1c7d8fa6e34df44929c1426df344d9927e93600bb952fe67b9fe2232a50fdd51",
+  "response": "Pull request #2884 (OMN-19514) adds a nullable ticket_id column to delegation_events with a partial index, enabling the projection to carry the ticket its terminal carried so that a DoD verdict can be joined to the delegated attempt it judged. The fix ensures the projection decodes any ticket value as text, allowing step 2 to declare str on the response without a type override."
+}

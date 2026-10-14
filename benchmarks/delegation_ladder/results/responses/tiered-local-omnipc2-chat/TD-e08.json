@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e08",
+  "path": "pinned",
+  "sha256": "8e037b71e96d91a52d98646e0bfc9dac6c85dd6dea21ebe52c80aa3a6a73b5b4",
+  "response": "Pull request #970 added ModelCanaryTier and ModelCanaryTierAssignments to the omnibase_core.models.governance namespace for ticket OMN-10250. This change was made to port these models from onex_change_control.canary.schema as part of the Wave 3 migration."
+}

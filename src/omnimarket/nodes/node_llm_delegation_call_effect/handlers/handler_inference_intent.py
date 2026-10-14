@@ -43,6 +43,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.inference.local_byok_credential_adapter import (
+    MODEL_CHOSEN_BY_CATALOGUE,
+    resolve_local_byok_model_chooser,
+)
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_ERROR_MESSAGE,
@@ -79,7 +83,6 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
-    catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -899,6 +902,10 @@ class HandlerInferenceIntent:
         model's whole preference family. The backend and key stay the same.
         With no other listed family the first failure stands unchanged; a
         second failure names both attempts. Every house route stays one call.
+
+        OMN-21078: where the customer chooses the model, re-aims require a
+        credential that records a catalogue pick. A customer's chosen model,
+        including a ``:free`` one, or one with no chooser record gets one call.
         """
         byok = _customer_byok_row(intent)
         if byok is None or not api_key:
@@ -914,7 +921,13 @@ class HandlerInferenceIntent:
                     EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
                     model_not_chosen_message(byok.provider),
                 )
-            if not catalogue_prefers_model(byok, intent.model):
+            # OMN-21078: a chosen :free model matches a preference pattern;
+            # the pattern is not evidence of who chose it. No record means
+            # customer choice, including hosted refs and older local rows.
+            if (
+                resolve_local_byok_model_chooser(intent.api_key_ref)
+                != MODEL_CHOSEN_BY_CATALOGUE
+            ):
                 return self._call_llm(
                     intent,
                     call_id,

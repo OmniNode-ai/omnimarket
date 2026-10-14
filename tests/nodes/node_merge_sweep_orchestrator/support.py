@@ -18,7 +18,13 @@ from omnimarket.nodes.node_merge_sweep_orchestrator.models import (
     ModelMergeSweepSupplement,
 )
 
-from ..node_merge_sweep_reading_compute.sweep_scenarios import write_files
+from ..node_merge_sweep_reading_compute.sweep_scenarios import (
+    load_recorded,
+    repository_facts,
+    write_files,
+)
+
+REPOSITORIES = {"repositories": load_recorded()["repositories"]}
 
 
 class ScriptedRunner:
@@ -88,7 +94,8 @@ def run_request(
     root: Path,
     **overrides: Any,
 ) -> ModelMergeSweepRunRequest:
-    """The request that runs a recorded scenario's files; the scenario supplies what the watcher lacks."""
+    """The request that runs a recorded scenario's files; the scenario supplies what the watcher lacks
+    and the repositories the script read it with."""
     paths = write_files(base, spec, root)
     fields: dict[str, Any] = {
         "state_path": str(paths["state"]),
@@ -99,10 +106,9 @@ def run_request(
         "load1": spec["load1"],
         "cpus": spec["cpus"],
         "window_min": spec["window_min"],
-        "max_reds": spec["max_reds"],
+        **repository_facts(REPOSITORIES, spec),
         "supplement": ModelMergeSweepSupplement(
             files=spec.get("files", {}),
-            ready_at=spec.get("ready_at", {}),
             merge_files=spec.get("merge_files", {}),
         ),
         "lane": "sweep-0",

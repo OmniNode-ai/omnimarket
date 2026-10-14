@@ -152,6 +152,8 @@ def test_credential_registered_event_never_carries_a_secret_field() -> None:
         "set_at",
         # OMN-20991: the key's expiry date, so routing can skip a lapsed key.
         "expires_at",
+        # OMN-21012: the lab host whose Claude account owns the key.
+        "bound_host",
     }
     assert set(ModelCredentialRegisteredEvent.model_fields) == allowed_fields
 

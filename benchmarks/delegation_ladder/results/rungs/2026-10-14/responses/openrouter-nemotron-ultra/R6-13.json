@@ -1,0 +1,1 @@
+{"task_id": "R6-13", "model_rung": "openrouter-nemotron-ultra", "sha256": "41bdb7d4ff3f7c5207e4042cb6e9bab4d0681612460dd3ea682e606b4858f495", "response": "```python\nfrom omnibase_core.cli.cli_init import init_group\n\ncli.add_command(new_group, \"new\")\ncli.add_command(init_group, \"init\")\n```"}

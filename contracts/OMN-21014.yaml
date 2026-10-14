@@ -1,0 +1,93 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21014"
+title: "Claude review gateway node: an OpenAI-compatible voter endpoint on a lab host that spends only the keys bound to that host, fill-first, and answers 503 when none can serve"
+summary: "Operator rulings 2026-10-11T14:41:11Z, 17:57:01Z, 17:58:45Z and 23:55:58Z: code review moves to the Claude API on the operator's own keys, each key bound to the machine whose Claude Code account owns it. node_claude_review_gateway_effect is the Hostile Review voter endpoint for one host (onex models review-gateway): it checks the transport's shared-secret HMAC signature, reads the tenant's catalogued anthropic keys bound to its own host (tenant_inference_credentials.bound_host, OMN-21012), resolves the first key's value through the secret store and forwards the review to the BYOK catalogue's anthropic chat endpoint with the model pinned and sampling fields dropped. Fill-first by key name, never round-robin. No key, a provider rate limit, overload, server error or timeout answer 503, so the overlay's overflow list moves the review to the next host and then a local model; a refused or credit-exhausted key is set aside and the next key on the host serves. --dry-run plans one review with no upstream call. register-tenant-key now also folds the registered row into this machine's catalog, so the host's gateway sees its own keys. Not here: the per-key budget ledger and reserve, native-Messages prompt caching, and the overlay entry."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21014-key-choice"
+    statement: |-
+      The gateway spends only this host's live anthropic keys of its tenant, first by name.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the gateway chooses the first live anthropic key of its tenant bound to its own host, by name order, and never a revoked, expired, other-host or other-provider key -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -k key_choice
+  - id: "req-omn21014-fail-over"
+    statement: |-
+      No servable key or a busy provider answers 503; a refused or exhausted key yields to the next key on the host.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: with no key that can serve it answers 503 and makes no upstream call; an upstream rate limit, overload, server error or timeout answers 503; a credit-exhausted or refused key is set aside and the next key on the host serves the same request -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -k fails_over
+  - id: "req-omn21014-signature"
+    statement: |-
+      Unsigned calls are refused before any key is read, and no key value leaves the process.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a request without a valid shared-secret HMAC signature is refused with 401 before any key is read, and no key value appears in any response or log line -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -k signature
+  - id: "req-omn21014-dry-run"
+    statement: |-
+      The dry run plans one review with no upstream call.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: the dry-run command prints the host, the chosen key reference and the translated request, and makes no upstream call -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -k dry_run
+evidence_requirements:
+  - kind: "tests"
+    description: "The gateway suite passes at the head; on the base the node does not exist and the module fails to import."
+    command: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q"
+  - kind: "tests"
+    description: "The register-tenant-key suites still pass with the local catalog fold."
+    command: "uv run pytest tests/unit/cli -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21014-ac1-key-choice"
+    description: "Only this host's live anthropic keys of the tenant are candidates, ordered by name; three reviews in a row spend the first key only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -k key_choice -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21014-ac2-fail-over"
+    description: "No key bound here answers 503 with no upstream call and no key read; 429, 529, 500 and a timeout answer 503 after one call; 401, a credit-balance 400 and a spend-limit 429 set the key aside and the next key serves."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -k fails_over -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21014-ac3-signature"
+    description: "A missing, malformed or wrong-secret signature answers 401 with no key read; an unset gateway secret answers 503; a served review and /v1/models carry no key value and no log line does."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -k signature -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21014-ac4-dry-run"
+    description: "The plan names the host, the chosen reference and the body without temperature; the CLI dry run reads this machine's catalog and store and patches the upstream to fail if called."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -k dry_run -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21014-deploy-probe-node"
+    description: "Deploy probe: the gateway handler GitHub serves at the checked-out commit defines select_host_keys; the node does not exist at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_claude_review_gateway_effect/handlers/handler_claude_review_gateway.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def select_host_keys(\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
