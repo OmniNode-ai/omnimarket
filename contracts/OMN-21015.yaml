@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21015"
+title: "The local dashboard shows the demo's in-scope figures on Overview, Runs and Usage, and meets four dashboard requirements not yet built"
+summary: "The omnimarket half of AC2. The delegation model-routing view lists, under each tier in by_tier, the models routed under it with their run count, their share on the tier's own denominator, their cost summed from delegation_events.cost_usd and the count of runs with no cost (migration 0060 on Postgres; store step omn21015_model_routing_tier_models on the local store), as Jonah ruled on 2026-10-14. The Overview's Tier mix panel that renders it is omnidash's half. AC3 and the table half of AC4 land in their own changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criterion this change serves, as declared on the OMN-21015 ticket body, read on 2026-10-14. The ticket body is the source and this block is the copy.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: Overview's Tier mix lists each model under its tier with its share of runs and its cost -- falsifier: a fixture with two models in one tier renders one row, or model shares that do not sum to the tier's share
+evidence_requirements:
+  - kind: "tests"
+    description: "Served through the real local dashboard app over a SQLite store: two models in one tier are two entries; model shares on the tier's denominator sum to the tier's share; a group with no cost serves null with its unmeasured count; a measured zero is zero; another tenant never enters; the existing tier keys are unchanged. Before the store step 5 of the 6 fail."
+    command: "uv run pytest tests/projection/test_omn21015_tier_models_served.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Migration 0060 applied with every node_projection_delegation migration on real Postgres: the same entries, shares and costs; the column cost_usd refuses NULL there, so the unmeasured count reads 0 (pinned); another tenant never enters; existing keys and security_invoker unchanged. Without 0060, 5 of the 7 fail."
+    command: "uv run pytest tests/test_omn21015_tier_models_real_postgres.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21015-tier-models-local-store"
+    description: "On the local store, served through the dashboard app: for 3 qwen-a and 1 unpriced qwen-b runs on the local tier, 2 priced gemini runs on cheap_cloud and 1 not-tier-routed run, each tier lists its models with count, share on the tier's denominator (summing to the tier's share), summed cost (null with an unmeasured count when no run has one, 0 when measured as 0); another tenant's runs never enter; the existing tier keys are unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn21015_tier_models_served.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21015-tier-models-real-postgres"
+    description: "Migration 0060 applied with every node_projection_delegation migration to a scratch schema on real Postgres: the same model entries, shares and summed costs per tier; the view keeps security_invoker; another tenant never enters; and cost_usd refuses NULL on Postgres, so an unpriced run cannot be told from a measured zero there (pinned, so making the column nullable is noticed)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21015_tier_models_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
