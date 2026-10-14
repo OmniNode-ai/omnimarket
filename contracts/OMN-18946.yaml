@@ -9,6 +9,9 @@ summary: >-
   assistant_message_count as columns (migration 0007). A refusal row shares its
   tool_use_id with the refused call's PreToolUse, so the guard joins to the call;
   a session's token total is the sum of its AssistantUsage rows.
+  CI checkout refs derive from uv.lock. The migration compatibility check
+  accepts a higher floor while requiring a released pin within the declared
+  range and a floor at least 0.38.71.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
