@@ -366,6 +366,7 @@ def _delegate_command(
         json.dumps(response_contract, sort_keys=True, separators=(",", ":")),
         "--bus",
         _LOCUS_BUS[locus],
+        "--json",
     ]
     if locus == LOCUS_DEPLOYED_LANE:
         command += ["--lane", "dev"]
