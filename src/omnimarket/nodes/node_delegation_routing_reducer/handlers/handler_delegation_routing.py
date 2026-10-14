@@ -1471,7 +1471,8 @@ def _prompt_waived_rules(
 ) -> tuple[str, ...]:
     """Heuristic rules whose own declaration says this prompt's layout waives them.
 
-    OMN-19432. A rule declares ``waived_when_prompt_matches`` under
+    OMN-19432. A rule declares ``waived_when_prompt_matches`` (and, OMN-20844,
+    ``waived_unless_prompt_matches``: the input it needs) under
     ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
     what the model is told and what the gate enforces stay one list. Returns the
     waived names in band order. A rule the contract does not declare, or a
@@ -1489,12 +1490,24 @@ def _prompt_waived_rules(
         if not isinstance(rule, dict):
             continue
         patterns = rule.get("waived_when_prompt_matches")
-        if not isinstance(patterns, list):
+        if isinstance(patterns, list) and any(
+            isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE)
+            for pattern in patterns
+        ):
+            waived.append(name)
             continue
-        for pattern in patterns:
-            if isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE):
-                waived.append(name)
-                break
+        # OMN-20844: the input the rule judges. A rule that declares what its
+        # input looks like applies only to a prompt carrying some; a malformed
+        # declaration (no readable pattern) leaves the rule in force.
+        needed = rule.get("waived_unless_prompt_matches")
+        if not isinstance(needed, list):
+            continue
+        input_patterns = [pattern for pattern in needed if isinstance(pattern, str)]
+        if input_patterns and not any(
+            re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE)
+            for pattern in input_patterns
+        ):
+            waived.append(name)
     return tuple(waived)
 
 

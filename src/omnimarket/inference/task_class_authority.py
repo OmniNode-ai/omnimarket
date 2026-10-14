@@ -158,7 +158,23 @@ class ModelQualityRule(BaseModel):
         ),
     )
 
-    @field_validator("waived_when_prompt_matches")
+    waived_unless_prompt_matches: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Case-insensitive, multi-line `re` patterns for the input this rule "
+            "judges (OMN-20844). The rule applies only when the prompt matches at "
+            "least one; a prompt that matches none carries nothing for the rule to "
+            "be about, and the rule leaves the request's HEURISTIC band exactly as "
+            "a `waived_when_prompt_matches` match does. `cites_specific_lines` "
+            "declares what a numbered line looks like: a workflow-selection task "
+            "has no lines to cite, and a rule that demands them refuses the "
+            "correct answer while its directive tells the model to invent a "
+            "citation. Empty means the rule needs no such input. A prompt that "
+            "is not given (None) never waives."
+        ),
+    )
+
+    @field_validator("waived_when_prompt_matches", "waived_unless_prompt_matches")
     @classmethod
     def _waiver_patterns_compile(cls, patterns: tuple[str, ...]) -> tuple[str, ...]:
         for pattern in patterns:
@@ -166,8 +182,8 @@ class ModelQualityRule(BaseModel):
                 re.compile(pattern)
             except re.error as exc:
                 raise ValueError(
-                    f"waived_when_prompt_matches pattern {pattern!r} is not a "
-                    f"valid regular expression: {exc}"
+                    f"waiver pattern {pattern!r} is not a valid regular "
+                    f"expression: {exc}"
                 ) from exc
         return patterns
 

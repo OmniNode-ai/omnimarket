@@ -356,6 +356,25 @@ quality_rules:
       - "\\bonly (?:one |a )?json\\b"
       - "\\banswer one word then\\b"
       - "\\bone line per\\b"
+    # OMN-20844: the rule judges input that HAS lines to point at. Measured
+    # 2026-10-14 (28-task ladder, omnimarket 525dab336): all four R3b
+    # workflow-selection tasks (a catalogue and a situation, no code) were
+    # refused on every onex rung for "missing specific line citations", and on
+    # the R3 module questions (code with no line numbers) the directive above
+    # made models append invented citations such as "(line 24, line 25, line
+    # 27)" to a 20-line module. The rule applies when the prompt carries line
+    # numbers: a numbered listing (`12: code`, `12| code`, `cat -n`), a diff hunk
+    # header, a `line N` / `L12` / `file.py:12` reference, or the words "line
+    # numbers". A prompt matching none is waived, the directive is not stated to
+    # the model, and a review of input WITH lines is refused for citing nothing,
+    # as before. Markdown list syntax (`1. item`) is not a line number.
+    waived_unless_prompt_matches:
+      - '^@@ -\d+'
+      - '^[ \t]*\d{1,6}(?:[ \t]*[:|]|\t)'
+      - '\blines?\s+\d+'
+      - '\bL\d+\b'
+      - '\.[A-Za-z]{1,5}:\d+\b'
+      - '\bline numbers?\b'
     rationale: >-
       The code-review counterpart of cites_sources. A review that points at
       nothing specific cannot be acted on.

@@ -33,10 +33,22 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: workflow action comparisons accept added uses of characterized action/commit pairs in the same workflow while refusing missing uses, moved pins, unknown actions and unknown workflows; release-staleness checks require unconditional jobs and steps, one strict CI Summary registration and no skippable registration, ordered after Canonical File Shape and before CI Summary, regardless of unrelated jobs added around it, with positive and negative controls.
+  - id: "req-review-gate-input-without-lines"
+    statement: "The review gate does not refuse a correct answer to a review task whose input carries no line numbers, and still refuses an answer that cites nothing on input that does."
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the cause is named with two quoted refused answers from the omn20844-bnch stored responses and the cites_specific_lines rule line that refused each: the R3b prompts carry no line numbers -- falsifier: a refused answer whose prompt carries line numbers, or a refusing rule other than cites_specific_lines.
+      - id: "AC8"
+        statement: |-
+          AC8: re-scoring the benchmark's stored review answers with the fixed gate shows no R3b answer refused by cites_specific_lines on any rung, and a cites-nothing answer on numbered input still refused -- falsifier: an R3b answer refused by the rule after the fix, or a numbered-input prompt whose cites-nothing answer passes.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
     command: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC7 and AC8: the real R3b prompts and two stored refused answers pass the fixed gate; numbered listing, cat -n listing, diff hunk, line N and path:N inputs keep the rule and an answer citing nothing is refused; an empty stored answer stays refused."
+    command: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py tests/unit/delegation/test_omn19432_rule_waived_by_prompt_layout.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -87,3 +99,25 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn20844-ac7-line-rule-cause"
+    description: "AC7: the R3b prompts carry no line numbers, so the rule that refused the stored answers had nothing to cite; the test fails on the unfixed resolver and passes on the fixed one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py -q -p no:randomly -k 'workflow_selection_prompt or correct_answer_the_gate_refused or waiver_is_recorded'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20844-ac8-correct-answers-pass-negative-control"
+    description: "AC8: the stored answers pass; numbered input keeps the rule and a cites-nothing answer there is still refused, as is an empty stored answer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py -q -p no:randomly -k 'InputThatCarriesLines or empty_answer or no_prompt_resolves or markdown_list'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20844-review-gate-deploy-probe"
+    description: "Deploy probe. The rule's waived_unless_prompt_matches declaration exists in the packaged task-class contract at the checked-out commit, which the deploy agent rolls onto the dev lane; the probe reads the contract from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq waived_unless_prompt_matches'"
