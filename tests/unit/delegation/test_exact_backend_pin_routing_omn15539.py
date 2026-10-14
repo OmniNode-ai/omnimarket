@@ -8,10 +8,10 @@ previously used a temporary ``_PinnedDelegationRequest`` subclass to stay
 testable against the pre-release core pin; that shim is gone, because a subclass
 seam would keep passing even if the field were dropped from the canonical model.
 
-A caller pin has precedence over task/tier selection for the initial decision
-only.  The immutable request remains on the workflow during escalation, so a
-non-None pin must be deliberately ignored whenever ``min_tier_name`` is set;
-otherwise every retry deterministically returns to the failed pinned backend.
+A caller pin has precedence over task/tier selection.  OMN-20844: it holds on
+escalation too.  A re-route past the pin's tier refuses instead of resolving a
+different backend under the pin's name; the workflow ends a pinned run with a
+typed ``pinned_backend_failed`` rather than asking for that re-route.
 """
 
 from __future__ import annotations
@@ -125,17 +125,13 @@ def test_initial_route_selects_exact_caller_backend_before_task_tier_policy(
 
 
 @pytest.mark.unit
-def test_escalation_after_pinned_attempt_resumes_contract_tier_routing(
+def test_escalation_after_pinned_attempt_refuses_instead_of_moving(
     exact_pin_routing: None,
 ) -> None:
     request = _request(backend_id="caller-pin")
 
-    decision = routing.delta(request, min_tier_name="cheap_cloud")
-
-    assert decision.selected_backend_ref == "cloud-fallback"
-    assert decision.selected_model == "cloud-fallback-model"
-    assert decision.tier_name == "cheap_cloud"
-    assert "Caller-pinned" not in decision.rationale
+    with pytest.raises(ProtocolConfigurationError, match="caller-pin"):
+        routing.delta(request, min_tier_name="cheap_cloud")
 
 
 @pytest.mark.unit

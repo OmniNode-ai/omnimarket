@@ -2693,13 +2693,13 @@ def delta(
     exhausted provider route (OMN-15503); it remains a no-op for tiers that do not
     declare an excluded backend.
 
-    When the request carries a non-None ``backend_id`` (OMN-15539), the initial
-    route selects that exact configured ``backend_ref`` before task capability,
+    When the request carries a non-None ``backend_id`` (OMN-15539), the route
+    selects that exact configured ``backend_ref`` before task capability,
     tier-order, contract-policy, or ROI preference.  A pin that cannot be
     resolved fails loudly instead of silently falling back to another backend.
-    The pin applies only when ``min_tier_name`` is None: retry/escalation calls
-    resume the normal contract-driven ladder so the immutable request cannot
-    keep returning to a backend that already failed.
+    OMN-20844: the pin holds on retry calls too (``min_tier_name`` set), so a
+    same-tier retry re-selects the pin, and a pin that is excluded or sits in a
+    tier before ``min_tier_name`` raises rather than resolving another backend.
 
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
@@ -2945,16 +2945,13 @@ def delta(
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
     raw_backend_id = getattr(request, "backend_id", None)
-    requested_backend_ref = (
-        raw_backend_id
-        if min_tier_name is None and isinstance(raw_backend_id, str)
-        else None
-    )
-    # An explicit backend pin is stronger than task-class tier policy on the
-    # initial attempt.  Search the routing config's declaration order so a
-    # backend outside this task's closed tier_order remains directly reachable.
-    # Escalation deliberately ignores the immutable request pin and restores the
-    # closed, contract-declared order below (OMN-15539).
+    requested_backend_ref = raw_backend_id if isinstance(raw_backend_id, str) else None
+    # An explicit backend pin is stronger than task-class tier policy.  Search
+    # the routing config's declaration order so a backend outside this task's
+    # closed tier_order remains directly reachable.  OMN-20844: the pin holds on
+    # every re-route as well, so a same-tier retry stays on the pin, and a
+    # re-route past the pin's tier or with the pin excluded refuses below
+    # instead of resolving another backend under the pin's name.
     tiers = (
         config.tiers
         if requested_backend_ref is not None
