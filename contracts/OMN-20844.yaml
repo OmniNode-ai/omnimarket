@@ -72,27 +72,27 @@ requirements:
   - id: "req-rung-benchmark-driver-and-tiers"
     statement: "The delegation ladder's own runner carries the rung benchmark, with a tested per-rung, per-class result table, difficulty tiers for the test and code_generation classes, and the unpinned-ladder trace of the hard tier."
     acceptance:
-      - id: "AC15"
-        statement: |-
-          AC15: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
       - id: "AC16"
         statement: |-
-          AC16: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
+          AC16: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
+      - id: "AC17"
+        statement: |-
+          AC17: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
   - id: "req-structural-hard-corpus"
     statement: "A hard tier for code_generation and review that is hard by structure (files touched, a cause in another file than the one the test imports, input size near the local rung's context limit), run on every pinned rung and the unpinned ladder, with failure and escalation reported per structural feature."
     acceptance:
-      - id: "AC17"
-        statement: |-
-          AC17: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
       - id: "AC18"
         statement: |-
-          AC18: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
+          AC18: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
+      - id: "AC19"
+        statement: |-
+          AC19: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
   - id: "req-unpinned-credential-chain-control"
     statement: "The L6 credential chains distinguish terminal credential refusals from retryable provider outages on an unpinned run."
     acceptance:
-      - id: "AC19"
+      - id: "AC15"
         statement: |-
-          AC19: all four L6 credential chains start on the declared house tier without a backend pin; rejected and absent credentials retain their typed refusals and leave every successor untouched, while the outage first fails on the customer BYOK backend with MODEL_UNAVAILABLE and reaches a declared successor with escalation_count >= 1.
+          AC15: all four L6 credential chains start on the declared house tier without a backend pin; rejected and absent credentials retain their typed refusals and leave every successor untouched, while the outage first fails on the customer BYOK backend with MODEL_UNAVAILABLE and reaches a declared successor with escalation_count >= 1.
   - id: "req-declared-literal-answer-not-content-free"
     statement: "The quality gate does not refuse a correct short answer that matches the shape its prompt declared, as content-free."
     acceptance:
@@ -116,7 +116,7 @@ evidence_requirements:
     description: "AC13 and AC14: the local port's quality-refused terminal names its stop reason on the hard-tier fixture, the budget case and the already-tried-route case."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_ladder_stop_reason_omn20844.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC15: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
+    description: "AC16: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
     command: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -p no:randomly"
   - kind: "tests"
     description: "AC30: the declared-literal shape, the literals the gate accepts under it, and the empty, filler, refusal and undeclared-prompt controls that stay refused."
@@ -224,31 +224,31 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq ladder_stop_reason'"
   - id: "dod-omn20844-ac15-driver-tested"
-    description: "AC15: the tier thresholds fill every tier of the test and code_generation classes with at least eight committed tasks, the tier table and the first-failing-tier rule have negative controls, and the unpinned-ladder command carries no backend pin."
+    description: "AC16: the tier thresholds fill every tier of the test and code_generation classes with at least eight committed tasks, the tier table and the first-failing-tier rule have negative controls, and the unpinned-ladder command carries no backend pin."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC15"]
+    binds_ac: ["AC16"]
   - id: "dod-omn20844-ac15-rerun-reproduces-a-cell"
-    description: "AC15: the committed results rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model. The check rescores one committed task's cells on every rung; the full rescore runs in the test suite."
+    description: "AC16: the committed results rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model. The check rescores one committed task's cells on every rung; the full rescore runs in the test suite."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14 --only R4-01"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC15"]
+    binds_ac: ["AC16"]
   - id: "dod-omn20844-ac16-tier-table-and-minimum"
-    description: "AC16: the committed tier table is the table the committed records give, and each tier of the test and code_generation classes holds at least eight tasks for every rung. The full-rescore test is left to the test suite, past the per-check budget."
+    description: "AC17: the committed tier table is the table the committed records give, and each tier of the test and code_generation classes holds at least eight tasks for every rung. The full-rescore test is left to the test suite, past the per-check budget."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov -k 'not every_saved_response_rescores'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC16"]
+    binds_ac: ["AC17"]
   - id: "dod-omn20844-ac17-hard-corpus-scored-mechanically"
-    description: "AC17: every hard task records its structural features; the merged change passes a hard code_generation task and a no-op edit fails it; an edit to a file not shown is refused."
+    description: "AC18: every hard task records its structural features; the merged change passes a hard code_generation task and a no-op edit fails it; an edit to a file not shown is refused."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -257,9 +257,9 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k merged_change_passes"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC17"]
+    binds_ac: ["AC18"]
   - id: "dod-omn20844-ac18-feature-table-from-records"
-    description: "AC18: the committed hard-tier feature table is the one the committed records render, and the cells of the two review tasks the findings rest on (H3-08, H3-10) rescore to their recorded verdicts from the saved responses."
+    description: "AC19: the committed hard-tier feature table is the one the committed records render, and the cells of the two review tasks the findings rest on (H3-08, H3-10) rescore to their recorded verdicts from the saved responses."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -268,15 +268,15 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14-hard --only H3-08 H3-10"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC18"]
+    binds_ac: ["AC19"]
   - id: "dod-omn20844-unpinned-credential-chain-control"
-    description: "AC19: the L6 golden chain and two credential refusals retain their assertions; the outage positive control names its first failed BYOK attempt and the successor it reaches on an unpinned run."
+    description: "AC15: the L6 golden chain and two credential refusals retain their assertions; the outage positive control names its first failed BYOK attempt and the successor it reaches on an unpinned run."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/chains/local/test_chain_l6_typed_credential_refusals_omn18698.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC19"]
+    binds_ac: ["AC15"]
   - id: "dod-omn20844-ac30-declared-literal"
     description: "AC30: the TN-h05 shape of prompt declares an exact literal, a non-string Python literal passes the gate under it, and empty, filler, refusal and undeclared-prompt answers are still refused."
     source: "manual"
