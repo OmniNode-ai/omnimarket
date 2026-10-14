@@ -550,7 +550,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -k test_manifest_includes_contracts_outside_the_active_lane"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC33"]
-  - id: "dod-omn17427-ac34-hostile-reviewer-retry-budget-pin"
+  - id: "dod-omn17427-ac34-retry-budget-pin"
     description: "The Hostile Reviewer clones omniintelligence at the merge commit of omniintelligence#1072."
     source: "manual"
     checks:
