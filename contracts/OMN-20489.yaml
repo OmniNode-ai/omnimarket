@@ -27,10 +27,41 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "AC4: graded with the real gate the way production builds it, the grader agrees with the careful reading on at least 99 of 120 -- falsifier: an agreement count below 99"
+  - id: "req-text-answer-needs-independent-judge"
+    statement: |-
+      A text-class answer is accepted only when its contract checks pass and an independent judge of another model family accepts its content; no verdict, an unparseable verdict or a same-family judge refuses it.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: text gate over 120 labelled answers -- falsifier: a labelled row whose contract or judge verdict is a reject is accepted, or of the 19 rows a careful reading rejects the gate passes other than 7 where the grader alone passed 17
+  - id: "req-code-answer-needs-named-tests"
+    statement: |-
+      A code-class answer is accepted only when its contract checks pass and its named tests ran against it and passed.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: code gate -- falsifier: an answer whose named pytest test fails in a workspace copy is accepted, or one whose test passes is refused
+  - id: "req-rejection-escalates-and-is-recorded"
+    statement: |-
+      A gate rejection fails the quality-gate result with fallback recommended, and the judge or test verdict is recorded in rule_evaluations; the in-process dispatch refuses a summary its judge rejects or whose judge call fails.
+    acceptance:
+      - id: "AC8"
+        statement: |-
+          AC8: dispatch applies the gate -- falsifier: with a judge wired, a summary the judge rejects completes, or a summary the judge accepts fails
+  - id: "req-no-routing-change"
+    statement: |-
+      No routing contract or overlay change cites this ticket.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: no routing, contract or overlay change cites this ticket -- falsifier: git log of the bifrost contract path shows a commit citing this ticket
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC4: the fixture-driven agreement and named-case tests and the controls for the real disclaimers, the other classes and the sentence counter."
     command: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0"
+  - kind: "tests"
+    description: "Answer gate over the labelled rows, the code gate with real named tests, and the in-process dispatch with a judge wired."
+    command: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -71,3 +102,35 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq -- \"- within_sentence_limit\"'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20489-gate1-text-gate"
+    description: "Every labelled row is accepted exactly when its contract and judge verdicts both accept; the judge veto cuts the careful-reject answers passed from 17 to 7; a same-family, unknown-family, absent or unparseable judge refuses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0 -k 'text or judge or labelled or fixture'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20489-gate2-code-gate"
+    description: "A slugify answer whose named pytest test passes in a workspace copy is accepted; one whose test fails is refused with the failing test id; no test run is refused as INSUFFICIENT."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0 -k code"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20489-gate3-dispatch"
+    description: "The in-process dispatch with a judge wired completes a summary its judge accepts, fails one its judge rejects or whose judge call raises, and leaves the verdict unchanged with no judge wired."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0 -k 'dispatch or rejection or acceptance'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20489-ac3-no-routing-change"
+    description: "No commit touching the bifrost routing contract cites this ticket."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c '! git log --format=%B -- src/omnimarket/configs/bifrost_delegation.yaml | grep -q OMN-20489'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
