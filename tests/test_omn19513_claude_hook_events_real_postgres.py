@@ -50,6 +50,7 @@ _MIGRATIONS = (
     _NODE_DIR / "migrations" / "0003_add_span_model_and_description.sql",
     _NODE_DIR / "migrations" / "0005_add_goal_id.sql",
     _NODE_DIR / "migrations" / "0006_add_lane_model_host_exit_code.sql",
+    _NODE_DIR / "migrations" / "0007_add_guard_refusal_and_token_usage.sql",
 )
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "claude_hook_capture"
 _SCHEMA = "omn19513_claude_hook_events_write_path_test"
@@ -147,6 +148,17 @@ async def _event_rows(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
         # code. A SubagentStart may carry a sidecar model, which is promoted.
         for column in ("lane", "host", "exit_code", "model"):
             record.pop(column)
+        # OMN-18946: no scenario event is a refusal or a usage event.
+        for column in (
+            "guard",
+            "refusal_reason",
+            "input_tokens",
+            "output_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+            "assistant_message_count",
+        ):
+            assert record.pop(column) is None, column
         record["event_id"] = str(record["event_id"])
         record["correlation_id"] = str(record["correlation_id"])
         record["causation_id"] = (
@@ -346,6 +358,94 @@ async def test_lane_model_host_and_exit_code_read_back_from_their_columns() -> N
             _scoped(
                 (
                     _NODE_DIR / "migrations" / "0006_add_lane_model_host_exit_code.sql"
+                ).read_text("utf-8")
+            )
+        )
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_a_refused_call_joins_its_guard_and_a_session_total_is_readable() -> None:
+    """OMN-18946: the two questions the new columns exist to answer.
+
+    Which guard refused this call, and how many tokens did this session use.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        writer = _scoped_writer(conn)
+        topic = SOURCE_TOPIC
+        pre = json.loads((_FIXTURES / "events" / "PreToolUse.json").read_text("utf-8"))
+        refusal = json.loads(
+            (_FIXTURES / "events" / "GuardRefusal.json").read_text("utf-8")
+        )
+        refusal["lineage"]["tool_use_id"] = pre["lineage"]["tool_use_id"]
+        refusal["lineage"]["causation_id"] = pre["payload"]["tool_call_key"]
+        refusal["payload"]["tool_call_key"] = pre["payload"]["tool_call_key"]
+        allowed = json.loads(
+            json.dumps(pre).replace(pre["lineage"]["tool_use_id"], "toolu-allowed")
+        )
+        allowed["event_id"] = "11111111-1111-5111-8111-111111111111"
+        usage = json.loads(
+            (_FIXTURES / "events" / "AssistantUsage.json").read_text("utf-8")
+        )
+        later = json.loads(json.dumps(usage))
+        later["event_id"] = "22222222-2222-5222-8222-222222222222"
+        later["payload"]["input_tokens"] = 100
+        later["payload"]["output_tokens"] = 1000
+        later["payload"]["message_count"] = 4
+        for event in (pre, allowed, refusal, usage, later):
+            await writer._project(topic, event)
+
+        refused = await conn.fetch(
+            f"SELECT p.tool_use_id, r.guard, r.refusal_reason "
+            f"FROM {_SCHEMA}.claude_hook_events p "
+            f"LEFT JOIN {_SCHEMA}.claude_hook_events r "
+            "  ON r.session_id = p.session_id AND r.tool_use_id = p.tool_use_id "
+            "  AND r.hook_event_name = 'GuardRefusal' "
+            "WHERE p.hook_event_name = 'PreToolUse' ORDER BY p.tool_use_id"
+        )
+        by_call = {r["tool_use_id"]: (r["guard"], r["refusal_reason"]) for r in refused}
+        assert by_call[pre["lineage"]["tool_use_id"]] == (
+            "pre_tool_use_worktree_guard.sh",
+            "worktree-add-refused",
+        )
+        assert by_call["toolu-allowed"] == (None, None)
+
+        total = await conn.fetchrow(
+            f"SELECT sum(input_tokens) AS i, sum(output_tokens) AS o, "
+            "sum(cache_creation_input_tokens) AS cc, "
+            "sum(cache_read_input_tokens) AS cr, "
+            "sum(assistant_message_count) AS n, max(model) AS m "
+            f"FROM {_SCHEMA}.claude_hook_events "
+            "WHERE session_id = $1 AND hook_event_name = 'AssistantUsage'",
+            usage["lineage"]["session_id"],
+        )
+        assert total is not None
+        assert (total["i"], total["o"], total["cc"], total["cr"], total["n"]) == (
+            112,
+            1345,
+            12,
+            156,
+            6,
+        )
+        assert total["m"] == "model-fixture-1"
+
+        # A replay changes nothing, and the migration replays without error.
+        for event in (refusal, usage, later):
+            await writer._project(topic, event)
+        again = await conn.fetchval(
+            f"SELECT sum(output_tokens) FROM {_SCHEMA}.claude_hook_events"
+        )
+        assert again == 1345
+        await conn.execute(
+            _scoped(
+                (
+                    _NODE_DIR
+                    / "migrations"
+                    / "0007_add_guard_refusal_and_token_usage.sql"
                 ).read_text("utf-8")
             )
         )

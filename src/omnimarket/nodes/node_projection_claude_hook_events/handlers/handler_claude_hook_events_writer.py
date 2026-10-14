@@ -66,12 +66,14 @@ _INSERT_EVENT = f"""
         hook_event_name, tool_use_id, tool_name, prompt_id, turn_id,
         correlation_id, causation_id, emitted_at, payload, content_ref_ids,
         source_topic, goal_id, parent_goal_id, lane, model, host, exit_code,
-        ingested_at
+        guard, refusal_reason, input_tokens, output_tokens,
+        cache_creation_input_tokens, cache_read_input_tokens,
+        assistant_message_count, ingested_at
     )
     VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23, $24, $25, $26,
-        NOW()
+        $27, $28, $29, $30, $31, $32, $33, NOW()
     )
     ON CONFLICT (event_id) DO NOTHING
     RETURNING event_id, projection_cursor, ingested_at
@@ -172,6 +174,13 @@ def _event_params(row: ModelClaudeHookEventRow) -> tuple[Any, ...]:
         row.model,
         row.host,
         row.exit_code,
+        row.guard,
+        row.refusal_reason,
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_creation_input_tokens,
+        row.cache_read_input_tokens,
+        row.assistant_message_count,
     )
 
 

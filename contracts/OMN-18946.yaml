@@ -1,15 +1,31 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-18946"
-title: "Infra release checks accept newer locked releases"
+title: "claude_hook_events names the guard that refused a call and carries token use"
 summary: >-
-  CI checkout refs derive from uv.lock. The migration compatibility check
-  accepts a higher floor while requiring a released pin within the declared
-  range and a floor at least 0.38.71. This check-only change unblocks the
-  0.38.72 migration dependency in omnimarket PR 3881.
+  The omnimarket half. node_projection_claude_hook_events accepts two derived
+  events the omniclaude plugin journals, GuardRefusal and AssistantUsage, and
+  stores guard, refusal_reason, input_tokens, output_tokens,
+  cache_creation_input_tokens, cache_read_input_tokens and
+  assistant_message_count as columns (migration 0007). A refusal row shares its
+  tool_use_id with the refused call's PreToolUse, so the guard joins to the call;
+  a session's token total is the sum of its AssistantUsage rows.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+  - "omninode_internal.claude_hook_events gains seven nullable columns"
 requirements:
+  - id: "req-omn18946-projection"
+    statement: "claude_hook_events states which guard refused a call and how many tokens a session used."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A GuardRefusal event folds to a row naming its guard and reason class with the refused call's tool_use_id and causation, a refusal missing either is refused rather than stored, and no content key is accepted -- falsifier: uv run pytest tests/test_omn18946_claude_hook_events_refusal_usage.py -k refusal fails on the head without this change
+      - id: "AC2"
+        statement: >-
+          AC2: An AssistantUsage event folds to a row with input, output and cache tokens, the message count and the API's model id, every count must be a non-negative integer, and every other hook leaves the columns NULL -- falsifier: uv run pytest tests/test_omn18946_claude_hook_events_refusal_usage.py -k "usage or null or count" fails on the head without this change
+      - id: "AC3"
+        statement: >-
+          AC3: Migration 0007 adds the seven columns idempotently with shape assertions, the writer inserts them, and against real Postgres a refused call joins its guard and a session's token total sums from its AssistantUsage rows -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_real_postgres.py -k refused_call fails on the head without this change
   - id: "req-omn18946-ci-release-checks"
     statement: "CI checks the locked infra release and permits later migration floors."
     acceptance:
@@ -26,6 +42,9 @@ requirements:
           pins. Falsifier: the resolver tests reject a static v0.38.71 checkout.
 evidence_requirements:
   - kind: "tests"
+    description: "The fold, the wire refusals, the writer's insert and the migration, and the capture contract pins."
+    command: "uv run pytest tests/test_omn18946_claude_hook_events_refusal_usage.py tests/test_omn19513_claude_hook_events_projection.py tests/test_golden_chain_projection_claude_hook_events.py -q -n 0"
+  - kind: "tests"
     description: "Focused compatibility, sibling checkout and overlay wiring checks."
     command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py tests/ci/test_sibling_pins_omn20001.py tests/ci/test_ci_bus_overlay_parity.py -q"
 emergency_bypass:
@@ -33,6 +52,33 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn18946-ac1-refusal-row"
+    description: "A GuardRefusal event folds to a row naming the guard and reason class; a refusal without either is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18946_claude_hook_events_refusal_usage.py -q -n 0 -k refusal"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18946-ac2-usage-row"
+    description: "An AssistantUsage event folds to a row with token counts and the API model; bad counts are refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18946_claude_hook_events_refusal_usage.py tests/test_omn19513_claude_hook_events_projection.py -q -n 0"
+    binds_ac: ["AC2"]
+  - id: "dod-omn18946-ac3-migration-and-writer"
+    description: "The migration and the writer's insert carry every new column; the real-Postgres join and total are proven where a database is reachable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18946_claude_hook_events_refusal_usage.py tests/test_golden_chain_projection_claude_hook_events.py -q -n 0 -k 'column or migration or params'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn18946-deploy-probe"
+    description: "Deploy probe: the migration read from GitHub at the checked-out commit adds the refusal_reason column. A head without this change has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0007_add_guard_refusal_and_token_usage.sql?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'ADD COLUMN IF NOT EXISTS refusal_reason TEXT'"
   - id: "dod-omn18946-ci-floor"
     description: "Compatible newer floors pass, inconsistent release bounds fail, and CI resolves their locked releases."
     source: "manual"
