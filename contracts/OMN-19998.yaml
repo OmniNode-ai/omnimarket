@@ -39,7 +39,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn19998-repo-contracts-bind-pytest-evidence"
-    description: "The repo evidence test checks every bound criterion. OMN-20737's two AC1-bound items now also name focused tests in the required uv run pytest form, retaining their frozen test and container commands. The original OMN-20074 rejection and deploy evidence remains."
+    description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-20074.yaml binds AC10 to a command-only deploy probe."
     source: "manual"
     checks:
       - check_type: "test_passes"
