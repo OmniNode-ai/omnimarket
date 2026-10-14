@@ -67,3 +67,14 @@ dod_evidence:
   - check_type: command
     check_value: sh -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "from uuid import uuid4; from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import ModelRepoWriteRequest as M; assert \"claim\" in M.model_fields; M(correlation_id=uuid4(), operation=\"pr_close\", repo=\"OmniNode-ai/omnimarket\", idempotency_key=\"deploy-probe-1\", requested_by_lane=\"probe\", requested_by_run=\"probe\", pr_number=1, expected_head_sha=\"a\" * 40)"'
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21067-deploy-hosted-runtime-smoke
+  description: Hosted smoke over the packaged write effect through RuntimeDispatch, contract discovery and
+    the in-memory bus. The carried claim must produce a completed terminal without a runtime registry claim.
+    The test fails when the claim field or handler support is absent. This runs at the PR head; the separate
+    local Done-gate probe still reads the deployed container after rollout.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_github_repo_write_effect.py -q -k
+      "a_close_carrying_the_callers_claim_crosses_the_bus_and_completes"
