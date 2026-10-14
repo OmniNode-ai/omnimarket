@@ -51,6 +51,15 @@ requirements:
       - id: "AC10"
         statement: |-
           AC10: the tiered set holds at least 25 tasks per class for document, review and reasoning, at least 8 per tier, each mined from merged public history and scored mechanically with a held answer that is re-derived, and every scorer fails its negative control -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly.
+  - id: "req-rescore-28-task-benchmark"
+    statement: "The earlier 28-task benchmark is rescored with the scorers that write no bytecode, and the verdicts that changed are listed."
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: every saved cell of the 28-task benchmark (28 local and 28 cloud responses) is rescored with the fixed scorers -- falsifier: the count of rescored cells differs from the count of saved cells.
+      - id: "AC12"
+        statement: |-
+          AC12: the committed flip list is the diff of the recorded and the rescored verdicts of those cells -- falsifier: a cell whose recorded and rescored verdicts differ and is not listed, or a listed cell whose verdicts agree.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -61,6 +70,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC9 and AC10: the class table, driver plumbing, tiered corpus and scorer controls."
     command: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC11 and AC12: the committed rescore covers every saved cell and its flip list equals the diff of recorded and rescored verdicts, with a negative control."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -141,3 +153,11 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9", "AC10"]
+  - id: "dod-omn20844-ac11-ac12-rescore-28-task"
+    description: "AC11 and AC12: all 56 saved cells of the 28-task benchmark are rescored and the flip list equals the diff of recorded and rescored verdicts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11", "AC12"]
