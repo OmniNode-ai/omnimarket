@@ -42,11 +42,11 @@ from .handler_morning_phase_bus import HandlerMorningPhaseBus, decode_phase_resu
 AGENT_TOOLS = ("claude", "claude-login")
 #: ModelLabWorkUnitRequest bounds each argv word; a longer brief is split.
 ARGV_WORD_CHARS = 20_000
-#: The pool host runs no shell; this repo file, run by python3 in the unit's
-#: checkout of the run's labWork sha, joins the brief words and feeds the agent.
+#: The pool host runs no shell; the delegation call effect's standalone handler
+#: joins the brief words and owns the agent transport in the unit's checkout.
 AGENT_LAUNCHER = (
-    "src/omnimarket/nodes/node_morning_ground_state_orchestrator/handlers/"
-    "phase_agent_stdin.py"
+    "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/"
+    "handler_agent_session.py"
 )
 #: Two advertisement cadences of the lab-work contract plus slack, as ``onex lab-work run``.
 ADVERTISEMENT_WINDOW_SECONDS = 22.0

@@ -1,39 +1,18 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Pool-host entry of a morning phase agent: brief chunks on argv, brief on stdin.
+"""Compatibility import for the delegation effect's agent-session entrypoint.
 
-A pool host runs no shell and bounds each argv word, and a phase brief (with the
-PR watcher inventory) is far longer than one word, so the lab work unit carries
-the brief as bounded words and this file, run as ``python3 <this file>`` in the
-unit's checkout, joins them and hands the brief to the headless agent CLI on
-stdin. Standard library only: the checkout has no environment of its own.
+Pool hosts execute the effect's standalone handler directly; the morning
+orchestrator owns no model-call transport.
 """
 
-from __future__ import annotations
-
-import subprocess
 import sys
 
-AGENT_ARGV = (
-    "claude",
-    "-p",
-    "--permission-mode",
-    "bypassPermissions",
-    "--output-format",
-    "text",
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_agent_session import (
+    main,
 )
 
-
-def main(argv: list[str]) -> int:
-    """Run the agent on the joined brief; its exit code is the unit's."""
-    if len(argv) < 2:
-        sys.stderr.write("usage: phase_agent_stdin.py <model> <brief chunk>...\n")
-        return 64
-    model, chunks = argv[0], argv[1:]
-    done = subprocess.run(
-        [*AGENT_ARGV, "--model", model], input="".join(chunks), text=True, check=False
-    )
-    return done.returncode
+__all__ = ["main"]
 
 
 if __name__ == "__main__":
