@@ -1,0 +1,1 @@
+{"task_id": "R6-13", "model_rung": "glm-5.3", "sha256": "9d25f612ebfc66f24e02a757a9ebe3de4d5c95cb851faab111e67075cc41ca49", "response": "```python\nfrom omnibase_core.cli.cli_init import init\n\ncli.add_command(new_group, \"new\")\ncli.add_command(init, \"init\")\n```"}

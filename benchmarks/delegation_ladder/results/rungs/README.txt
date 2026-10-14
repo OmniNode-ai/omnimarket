@@ -17,6 +17,7 @@ What is here
 | `2026-10-14/tiers.txt` | the same by difficulty tier for the test and code_generation classes, and the tier where each rung starts failing |
 | `2026-10-14-ladder/` | the hard tier of both classes run once through the unpinned ladder, with each run's trace (`ladder.txt`) |
 | `2026-10-14-ladder-easy-medium/` | the same run over the easy and medium tiers |
+| `2026-10-14-glm-timeout-rerun/` | a side measurement: the 30 test and code_generation cells whose first GLM attempt hit the harness's call budget (23 on glm-5.3-flash, 7 on glm-5.3), run once more at concurrency 2; merged into no table |
 | `2026-10-14-first-attempts/` | the first attempt of every plumbing failure that was run once more, kept apart from the results |
 
 Which rungs ran which tasks
