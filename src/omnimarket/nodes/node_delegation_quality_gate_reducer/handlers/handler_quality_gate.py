@@ -1260,6 +1260,8 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
                 f"TASK_MISMATCH: pytest.{node.attr} does not exist; "
                 "test module would fail to import"
             )
+    if _reads_unbound_pytest(tree):
+        return _UNBOUND_PYTEST
     scopes: list[ast.Module | ast.ClassDef] = [tree]
     for node in ast.walk(tree):
         if isinstance(
@@ -1274,6 +1276,40 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
         if any(_is_unit_marker_assignment(statement) for statement in scope.body):
             return None
     return _MISSING_UNIT_MARK
+
+
+_UNBOUND_PYTEST = (
+    "TASK_MISMATCH: the module reads pytest but never imports it; "
+    "test module would fail to import (NameError)"
+)
+
+
+def _reads_unbound_pytest(tree: ast.Module) -> bool:
+    """OMN-20844: whether a module with its own imports reads an unbound ``pytest``.
+
+    A module that imports anything is a whole test module, so a ``pytest`` it
+    reads (``@pytest.mark.unit``) and binds nowhere raises ``NameError`` when
+    pytest collects it. A fragment with no import at all may be pasted into a
+    module that imports pytest, so its binding cannot be judged and it is not.
+    The prompt naming pytest binds nothing in the answer, which is why
+    ``names_resolve`` passes this: the name occurs in the grounding source.
+    """
+    has_import = False
+    reads = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            has_import = True
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                if bound == "pytest":
+                    return False
+        elif isinstance(node, ast.Name) and node.id == "pytest":
+            if not isinstance(node.ctx, ast.Load):
+                return False
+            reads = True
+        elif isinstance(node, ast.arg) and node.arg == "pytest":
+            return False
+    return has_import and reads
 
 
 def _is_unit_mark(node: ast.expr) -> bool:

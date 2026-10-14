@@ -93,6 +93,15 @@ requirements:
       - id: "AC30"
         statement: |-
           AC30: a prompt whose last lines say "Reply with only the Python literal it evaluates to" resolves to a declared shape, and under that shape a non-string Python literal answer ((None, None), None, False, 42, [], a fenced literal) is not refused as an ultra-short content-free response, while an empty answer, a filler word, a quoted filler word, a refusal and the same literal under a prompt that declares no shape are still refused -- falsifier: a listed literal refused under the declared shape, or a listed filler answer accepted, or the literal accepted under an undeclared prompt.
+  - id: "req-test-gate-unbound-pytest"
+    statement: "The test-class gate refuses a whole test module that reads pytest and never imports it, and still accepts every stored answer the scorer passed that carries the unit mark."
+    acceptance:
+      - id: "AC16"
+        statement: |-
+          AC16: the three stored local-qwen3.8-27b test answers R4-08, R4-10 and R4-11 that the gate accepted on the deterministic floor and the scorer failed with NameError for pytest are refused by uses_pytest_mark_unit -- falsifier: one of the three accepted by the rule.
+      - id: "AC17"
+        statement: |-
+          AC17: no stored test answer that the scorer passed and that the rule accepted before the change is refused after it, and a fragment with no import of its own is not judged on the binding -- falsifier: a scorer-passed stored answer refused, or a no-import fragment refused.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -115,6 +124,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC30: the declared-literal shape, the literals the gate accepts under it, and the empty, filler, refusal and undeclared-prompt controls that stay refused."
     command: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC16 and AC17: the three stored answers that read pytest without importing it are refused; four scorer-passed stored answers to the same tasks and a no-import fragment are accepted."
+    command: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py tests/unit/delegation/test_pytest_attribute_resolves_omn12717.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -257,3 +269,29 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC30"]
+  - id: "dod-omn20844-ac16-unbound-pytest-refused"
+    description: "AC16: the three stored answers that read pytest without importing it are refused by uses_pytest_mark_unit; the test fails on the unfixed check and passes on the fixed one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py -q -p no:randomly -k 'without_import'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac17-passed-answers-kept"
+    description: "AC17: scorer-passed stored answers that carry the unit mark, any import binding pytest, and a no-import fragment are accepted while the stored unbound-pytest answers are refused; the paired refusal controls fail on the unfixed handler."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
+  - id: "dod-omn20844-unbound-pytest-deploy-probe"
+    description: "Deploy probe. Read the packaged quality-gate handler at the checked-out commit through the GitHub contents API and require its unbound-pytest check call; the same source assertion fails on origin/dev, which lacks the call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"if _reads_unbound_pytest(tree):\" >/dev/null'"
+    binds_ac: ["AC16", "AC17"]
