@@ -1671,6 +1671,31 @@ repos:
 
       # OMN-18932: the release bar is checked here and in ci.yml.
       # OMN-20282: each hook runs one focused file; both are paired with ci.yml.
+      # OMN-20278: each hook runs one focused file, also run by CI's lint job.
+      - id: lab-work-receipt-mapping
+        name: Lab work receipt STATUS mapping
+        entry: uv run --frozen pytest tests/unit/nodes/node_work_ledger_bus_mirror/test_lab_work_receipt_mapping.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/(model_work_ledger_bus_mirror_request\.py|work_ledger_append/)|nodes/(node_work_ledger_bus_mirror/|node_lab_work_unit_effect/|node_work_ledger_append_effect/)|lab_work/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_bus_mirror/|work_ledger_bus/)|tests/ci/test_lab_work_receipt_gates\.py|contracts/OMN-20278\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      - id: lab-work-receipt-redelivery
+        name: Lab work receipt redelivery
+        entry: uv run --frozen pytest tests/unit/work_ledger_bus/test_lab_work_receipt_mirror.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/(model_work_ledger_bus_mirror_request\.py|work_ledger_append/)|nodes/(node_work_ledger_bus_mirror/|node_lab_work_unit_effect/|node_work_ledger_append_effect/)|lab_work/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_bus_mirror/|work_ledger_bus/)|tests/ci/test_lab_work_receipt_gates\.py|contracts/OMN-20278\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      - id: lab-work-receipt-gates
+        name: Lab work receipt gate wiring
+        entry: uv run --frozen pytest tests/ci/test_lab_work_receipt_gates.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/(model_work_ledger_bus_mirror_request\.py|work_ledger_append/)|nodes/(node_work_ledger_bus_mirror/|node_lab_work_unit_effect/|node_work_ledger_append_effect/)|lab_work/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_bus_mirror/|work_ledger_bus/)|tests/ci/test_lab_work_receipt_gates\.py|contracts/OMN-20278\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       - id: work-ledger-principal-auth
         name: Work-ledger signature and operator-only consent
         entry: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
