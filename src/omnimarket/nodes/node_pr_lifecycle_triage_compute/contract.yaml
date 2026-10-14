@@ -124,7 +124,7 @@ operations:
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_list_cancelled_checks"
   - name: "apply_reviewer_pool"
     description: >-
-      Which reviewer-pool reds earn their one rerun now, oldest first while the reviewer endpoint has free slots; every other one is presented as pending. Pure, no I/O.
+      Which reviewer-pool reds earn their one rerun now, oldest first while the reviewer endpoint has free slots; one at a head already rerun is presented as the PR's own (product) red, and every other one as pending. Pure, no I/O.
     input_model:
       name: "ModelReviewerPoolFacts"
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_pool_facts"
