@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19855"
+title: "The attempt record accepts backend_pinned before it is emitted (consumer first)"
+summary: "A run pinned with --backend-id enters its tier on the pinned backend, not on a weighted spread draw, and the spread-peer health check counted those tier entries as draws. The delegate-skill attempt record now accepts and drops a forthcoming backend_pinned key, so the released consumer decodes it before the producer that marks the pinned attempt merges. Each acceptance criterion is bound to the pull request's own tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-backend-pinned-consumer-first"
+    statement: |-
+      The released delegate-skill attempt consumer must decode an attempt carrying backend_pinned before any producer emits it, and must still refuse any other unknown key.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an attempt carrying backend_pinned as true, false or null decodes and the key is dropped, backend_pinned is a forthcoming attempt key only, and any other unknown key is still refused -- falsifier: uv run pytest tests/unit/delegation/test_consumer_first_backend_pinned_omn19855.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "The backend_pinned consumer-first test."
+    command: "uv run pytest tests/unit/delegation/test_consumer_first_backend_pinned_omn19855.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-backend-pinned-ac1"
+    description: "An attempt carrying backend_pinned decodes with the key dropped, the key is forthcoming only, and any other unknown key is still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_backend_pinned_omn19855.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

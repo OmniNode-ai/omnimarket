@@ -60,6 +60,15 @@ requirements:
       - id: "AC12"
         statement: |-
           AC12: the committed flip list is the diff of the recorded and the rescored verdicts of those cells -- falsifier: a cell whose recorded and rescored verdicts differ and is not listed, or a listed cell whose verdicts agree.
+  - id: "req-ladder-stop-reason"
+    statement: "A quality-refused local delegation ladder reaches the next eligible free tier past a paid tier it cannot use, and ends with a typed stop reason on its terminal, never an empty one."
+    acceptance:
+      - id: "AC13"
+        statement: |-
+          AC13: on a hard-tier fixture (free local tier, paid tier, free cloud tier) with every answer refused by the gate, the local port attempts the local and free cloud tiers and not the paid tier, and its failed terminal carries terminal_failure_reason and failure_reason starting with the no-higher-tier token and naming the free cloud tier as the current tier -- falsifier: a paid-tier attempt, a missing free cloud attempt, or a terminal with no terminal_failure_reason.
+      - id: "AC14"
+        statement: |-
+          AC14: a spent escalation budget ends with terminal_failure_reason max_escalation_attempts_reached, and a next rung that resolves to an already-tried route ends with a reason naming the next tier and the already-tried backend -- falsifier: either terminal carrying no reason, or the budget case calling the no-higher-tier description.
   - id: "req-declared-literal-answer-not-content-free"
     statement: "The quality gate does not refuse a correct short answer that matches the shape its prompt declared, as content-free."
     acceptance:
@@ -79,6 +88,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC11 and AC12: the committed rescore covers every saved cell and its flip list equals the diff of recorded and rescored verdicts, with a negative control."
     command: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC13 and AC14: the local port's quality-refused terminal names its stop reason on the hard-tier fixture, the budget case and the already-tried-route case."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_ladder_stop_reason_omn20844.py -q -p no:randomly"
   - kind: "tests"
     description: "AC30: the declared-literal shape, the literals the gate accepts under it, and the empty, filler, refusal and undeclared-prompt controls that stay refused."
     command: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
@@ -170,6 +182,20 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11", "AC12"]
+  - id: "dod-omn20844-ladder-stop-reason"
+    description: "AC13 and AC14: the hard-tier fixture reaches the free cloud tier past the paid tier and ends with a typed stop reason; the budget and already-tried-route cases name theirs. The tests fail on the parent commit, whose terminal carries no terminal_failure_reason."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_ladder_stop_reason_omn20844.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13", "AC14"]
+  - id: "dod-omn20844-ladder-stop-reason-deploy-probe"
+    description: "Deploy probe. The packaged local port at the checked-out commit carries the terminal_failure_reason on its quality-refused terminal; the probe reads the module from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq ladder_stop_reason'"
   - id: "dod-omn20844-ac30-declared-literal"
     description: "AC30: the TN-h05 shape of prompt declares an exact literal, a non-string Python literal passes the gate under it, and empty, filler, refusal and undeclared-prompt answers are still refused."
     source: "manual"
