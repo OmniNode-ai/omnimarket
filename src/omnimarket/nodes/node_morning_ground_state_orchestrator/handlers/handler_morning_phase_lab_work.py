@@ -42,10 +42,11 @@ from .handler_morning_phase_bus import HandlerMorningPhaseBus, decode_phase_resu
 AGENT_TOOLS = ("claude", "claude-login")
 #: ModelLabWorkUnitRequest bounds each argv word; a longer brief is split.
 ARGV_WORD_CHARS = 20_000
-#: The brief travels as argv words and reaches the agent on stdin.
-AGENT_SHELL = (
-    'model="$1"; shift; printf %s "$@" | claude -p --model "$model" '
-    "--permission-mode bypassPermissions --output-format text"
+#: The pool host runs no shell; this repo file, run by python3 in the unit's
+#: checkout of the run's labWork sha, joins the brief words and feeds the agent.
+AGENT_LAUNCHER = (
+    "src/omnimarket/nodes/node_morning_ground_state_orchestrator/handlers/"
+    "phase_agent_stdin.py"
 )
 #: Two advertisement cadences of the lab-work contract plus slack, as ``onex lab-work run``.
 ADVERTISEMENT_WINDOW_SECONDS = 22.0
@@ -118,7 +119,7 @@ class HandlerMorningPhaseLabWork(HandlerMorningPhaseBus):
             target_host=placement.host_name,
             repo=target.repo,
             commit_sha=target.commit_sha,
-            argv=["sh", "-c", AGENT_SHELL, "sh", phase.model, *chunks],
+            argv=["python3", AGENT_LAUNCHER, phase.model, *chunks],
             kind="other",
             timeout_seconds=MAX_TIMEOUT_SECONDS,
             lane=target.lane,

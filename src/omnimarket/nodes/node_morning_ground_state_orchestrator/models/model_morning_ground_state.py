@@ -71,8 +71,9 @@ class ModelMorningLabWorkTarget(BaseModel):
     """Where a run's phase agents run as lab work: one repository at one pushed sha.
 
     The headless agent session of each phase starts in a detached checkout of
-    this commit on the pool host the unit is placed on. Supplied by the caller
-    of the run, never held by the node.
+    this commit on the pool host the unit is placed on, launched by the phase
+    agent entry this node ships, so the commit is an omnimarket commit that
+    carries it. Supplied by the caller of the run, never held by the node.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

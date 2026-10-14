@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -29,6 +31,9 @@ from omnimarket.nodes.node_lab_work_unit_effect.models import (
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
 )
+from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers import (
+    phase_agent_stdin,
+)
 from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_ground_state import (
     HandlerMorningGroundState,
 )
@@ -37,6 +42,7 @@ from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_mo
     MorningPhaseCapabilityPendingError,
 )
 from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_phase_lab_work import (
+    AGENT_LAUNCHER,
     HandlerMorningPhaseLabWork,
     MorningPhaseLabWorkError,
 )
@@ -46,6 +52,7 @@ from omnimarket.nodes.node_morning_ground_state_orchestrator.models import (
 
 from .helpers import public_overlay, request
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
 SHA = "28219cf929b32bf51e0a83ac21d89caeed1a27d5"
 TARGET: dict[str, JsonValue] = {
     "labWork": {
@@ -181,10 +188,11 @@ def test_a_phase_is_sent_as_a_headless_agent_lab_work_unit() -> None:
     assert unit.commit_sha == SHA
     assert unit.lane == "morning-ground-state"
     assert unit.need_tools == ["claude", "claude-login"]
-    words = " ".join(unit.argv)
-    assert "claude -p" in words
-    assert '--model "$model"' in unit.argv[2]
-    assert unit.argv[4] == "opus"
+    # No shell on a pool host: python3 runs the node's launcher from the checkout.
+    assert unit.argv[0] == "python3"
+    assert unit.argv[1] == AGENT_LAUNCHER
+    assert (REPO_ROOT / AGENT_LAUNCHER).is_file()
+    assert unit.argv[2] == "opus"
     assert "fixture brief" in "".join(unit.argv)
     # A rerun of the same phase of the same run is the same unit id.
     again = Caller(json.dumps(STUB))
@@ -286,3 +294,24 @@ def test_reconcile_runs_through_lab_work_too() -> None:
         )
     )
     assert "ledger-reconcile-tool --apply" in "".join(caller.sent[0].argv)
+
+
+@pytest.mark.unit
+def test_the_launcher_hands_the_joined_brief_to_the_agent_on_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[list[str], str]] = []
+
+    def run(
+        args: list[str], *, input: str, text: bool, check: bool
+    ) -> subprocess.CompletedProcess[str]:
+        seen.append((args, input))
+        return subprocess.CompletedProcess(args, 3)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert phase_agent_stdin.main(["sonnet", "first ", "second"]) == 3
+    ((args, brief),) = seen
+    assert args[:2] == ["claude", "-p"]
+    assert args[-2:] == ["--model", "sonnet"]
+    assert brief == "first second"
+    assert phase_agent_stdin.main(["sonnet"]) == 64

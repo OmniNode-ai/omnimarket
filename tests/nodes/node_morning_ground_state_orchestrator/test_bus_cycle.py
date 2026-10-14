@@ -263,7 +263,7 @@ async def drive(
         await stop()
     await bus.close()
     assert all(unit.need_tools == ["claude", "claude-login"] for unit in agent.units)
-    assert all(unit.argv[:2] == ["sh", "-c"] for unit in agent.units)
+    assert all(unit.argv[0] == "python3" for unit in agent.units)
     return completed, failed, agent.asked
 
 
