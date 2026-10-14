@@ -12,7 +12,14 @@ triages it on receipt; polling stays as the backstop. The chain is five contract
 4. node_pr_lifecycle_orchestrator publishes ci-red-triage-decided;
 5. node_pr_lifecycle_state_reducer consumes ci-red-triage-decided.
 
-``chain_violations`` reads those five legs from the node contracts. A dropped subscription, a
+A dev push run that goes red names no PR, so it rides a second chain to the same orchestrator:
+
+6. node_pr_state_emit_effect consumes branch-head and routes it to its dev-head red detector;
+7. node_pr_state_emit_effect publishes dev-head-red;
+8. node_pr_lifecycle_orchestrator consumes dev-head-red and routes it to the cause-lane dispatcher;
+9. node_pr_lifecycle_orchestrator publishes dev-cause-lane-requested and dev-head-red-decided.
+
+``chain_violations`` reads those legs from the node contracts. A dropped subscription, a
 dropped publication, a missing route or a handler module that no longer exists is a violation,
 and the planted-violation tests prove each leg is refused. The wiring tests prove the required
 ``lint`` job and the pre-commit hook run this file, check-only.
@@ -31,6 +38,10 @@ import yaml
 from omnimarket.events.topics import (
     CI_RED_TRIAGE_DECIDED_TOPIC_V1,
     CI_RUN_FAILED_TOPIC_V1,
+    DEV_CAUSE_LANE_REQUESTED_TOPIC_V1,
+    DEV_HEAD_RED_DECIDED_TOPIC_V1,
+    DEV_HEAD_RED_TOPIC_V1,
+    GITHUB_BRANCH_HEAD_TOPIC_V1,
     PR_STATE_OBSERVED_TOPIC_V1,
 )
 
@@ -114,6 +125,23 @@ def chain_violations(contracts: dict[str, dict[str, Any]]) -> list[str]:
         violations.append(
             f"{_REDUCER} does not subscribe to {CI_RED_TRIAGE_DECIDED_TOPIC_V1}"
         )
+
+    for node, contract, consumed in (
+        (_EMITTER, emitter, GITHUB_BRANCH_HEAD_TOPIC_V1),
+        (_ORCHESTRATOR, orchestrator, DEV_HEAD_RED_TOPIC_V1),
+    ):
+        if not _subscribes(contract, consumed):
+            violations.append(f"{node} does not subscribe to {consumed}")
+        routed = _routed_handler(contract, consumed)
+        if routed is None or not _handler_module_exists(routed):
+            violations.append(f"{node} routes {consumed} to no existing handler")
+    for node, contract, published in (
+        (_EMITTER, emitter, DEV_HEAD_RED_TOPIC_V1),
+        (_ORCHESTRATOR, orchestrator, DEV_CAUSE_LANE_REQUESTED_TOPIC_V1),
+        (_ORCHESTRATOR, orchestrator, DEV_HEAD_RED_DECIDED_TOPIC_V1),
+    ):
+        if not _publishes(contract, published):
+            violations.append(f"{node} does not publish {published}")
     return violations
 
 
@@ -185,6 +213,34 @@ _PLANTED = {
     "reducer stops consuming the decision": (
         _drop_subscription(_REDUCER, CI_RED_TRIAGE_DECIDED_TOPIC_V1),
         f"{_REDUCER} does not subscribe to {CI_RED_TRIAGE_DECIDED_TOPIC_V1}",
+    ),
+    "emitter stops consuming branch-head": (
+        _drop_subscription(_EMITTER, GITHUB_BRANCH_HEAD_TOPIC_V1),
+        f"{_EMITTER} does not subscribe to {GITHUB_BRANCH_HEAD_TOPIC_V1}",
+    ),
+    "emitter loses its dev-head red detector route": (
+        _drop_route(_EMITTER, GITHUB_BRANCH_HEAD_TOPIC_V1),
+        f"{_EMITTER} routes {GITHUB_BRANCH_HEAD_TOPIC_V1} to no existing handler",
+    ),
+    "emitter stops publishing dev-head-red": (
+        _drop_publication(_EMITTER, DEV_HEAD_RED_TOPIC_V1),
+        f"{_EMITTER} does not publish {DEV_HEAD_RED_TOPIC_V1}",
+    ),
+    "orchestrator stops consuming dev-head-red": (
+        _drop_subscription(_ORCHESTRATOR, DEV_HEAD_RED_TOPIC_V1),
+        f"{_ORCHESTRATOR} does not subscribe to {DEV_HEAD_RED_TOPIC_V1}",
+    ),
+    "orchestrator dispatch route names a deleted module": (
+        _point_route_at_a_missing_module(_ORCHESTRATOR, DEV_HEAD_RED_TOPIC_V1),
+        f"{_ORCHESTRATOR} routes {DEV_HEAD_RED_TOPIC_V1} to no existing handler",
+    ),
+    "orchestrator stops asking for the cause lane": (
+        _drop_publication(_ORCHESTRATOR, DEV_CAUSE_LANE_REQUESTED_TOPIC_V1),
+        f"{_ORCHESTRATOR} does not publish {DEV_CAUSE_LANE_REQUESTED_TOPIC_V1}",
+    ),
+    "orchestrator stops publishing the dev-head decision": (
+        _drop_publication(_ORCHESTRATOR, DEV_HEAD_RED_DECIDED_TOPIC_V1),
+        f"{_ORCHESTRATOR} does not publish {DEV_HEAD_RED_DECIDED_TOPIC_V1}",
     ),
 }
 

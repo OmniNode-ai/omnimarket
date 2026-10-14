@@ -12,7 +12,7 @@ node_version:
   minor: 1
   patch: 0
 node_not_implemented: false
-description: OMN-19999. Types a watcher observation and emits pr.state.observed through node_event_emit_effect. Delivery identity is its digest; partition key is repo#pr_number. Emits ci-run-failed from a watcher observation (schema version 1 or 2) or from a webhook check-run conclusion.
+description: OMN-19999. Types a watcher observation and emits pr.state.observed through node_event_emit_effect. Delivery identity is its digest; partition key is repo#pr_number. Emits ci-run-failed from a watcher observation (schema version 1 or 2) or from a webhook check-run conclusion, and dev-head-red from a red landing-branch head verdict (OMN-20730).
 handler:
   module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit
   class: HandlerPrStateEmit
@@ -51,9 +51,20 @@ handler_routing:
     handler:
       name: HandlerRecordWorkflowRun
       module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_record_workflow_run
+  - operation: detect_dev_head_red
+    topic: onex.evt.github.branch-head.v1
+    message_category: event
+    event_model:
+      name: ModelDetectDevHeadRedRequest
+      module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_dev_head_red
+    handler:
+      name: HandlerDetectDevHeadRed
+      module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_detect_dev_head_red
 published_events:
 - event_type: CiRunFailedEvent
   topic: onex.evt.omnimarket.ci-run-failed.v1
+- event_type: DevHeadRedEvent
+  topic: onex.evt.omnimarket.dev-head-red.v1
 input_model:
   name: ModelPrStateEmitRequest
   module: omnimarket.events.pr_state
@@ -83,11 +94,13 @@ event_bus:
   - onex.evt.omnimarket.pr-state-observed.v1
   - onex.evt.github.check-run.v1
   - onex.evt.github.workflow-run.v1
+  - onex.evt.github.branch-head.v1
   publish_topics:
   - onex.evt.omnimarket.pr-state-observed.v1
   - onex.evt.omnimarket.pr-state-emit-completed.v1
   - onex.evt.omnimarket.pr-state-emit-failed.v1
   - onex.evt.omnimarket.ci-run-failed.v1
+  - onex.evt.omnimarket.dev-head-red.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.pr-state-emit-completed.v1
 - onex.evt.omnimarket.pr-state-emit-failed.v1
@@ -96,6 +109,13 @@ externally_produced_topics:
   producer: node_github_webhook_ingress_effect, which folds check_run deliveries
 - topic: onex.evt.github.workflow-run.v1
   producer: node_github_webhook_ingress_effect, which folds workflow_run deliveries
+- topic: onex.evt.github.branch-head.v1
+  producer: node_github_webhook_ingress_effect, which folds a watched branch's summary check run into its head verdict
+# OMN-20730: a red summary verdict on one of these branches' heads is a dev-head red (a push run
+# names no PR, so ci-run-failed never carries it). Merge-group verdicts are never a head's.
+dev_head_red:
+  branches:
+  - dev
 metadata:
   transport_type: kafka
 event_type: pr.state.observed
