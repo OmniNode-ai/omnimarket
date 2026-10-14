@@ -151,3 +151,27 @@ def test_literal_equals_is_type_strict() -> None:
         score_literal_equals("[1, 2]", {"expected": "[2, 1]"}).outcome
         is EnumOutcome.FAIL
     )
+
+
+def test_committed_results_measure_every_rung_on_at_least_25_tasks_per_class() -> None:
+    from benchmarks.delegation_ladder import summarise_results as tables
+
+    results = TIERED.parent.parent / "results"
+    # A rerun file overrides the cells of its main file, in this order.
+    paths = sorted(
+        results.glob("tiered-*.jsonl"),
+        key=lambda p: (p.stem.endswith("-rerun"), p.name),
+    )
+    records = [
+        r
+        for r in tables.load_jsonl(paths)
+        if r.get("backend") not in (None, "unpinned")
+    ]
+    for record in records:
+        if record["backend"] == "local-omnipc2-chat":
+            record["backend"] = "local-coder"
+    rows = tables.class_rows([r for r in records if not tables.is_unreached(r)])
+    backends = {row["backend"] for row in rows}
+    assert len(backends) >= 5
+    for row in rows:
+        assert row["n"] >= 25, (row["task_type"], row["backend"], row["n"])

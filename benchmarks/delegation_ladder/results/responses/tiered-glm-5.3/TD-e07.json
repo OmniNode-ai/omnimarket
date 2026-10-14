@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e07",
+  "path": "pinned",
+  "sha256": "dd9b2a173257747ed969914c5d485fd4605794b1a7d9a0073f2b8c6206e3154b",
+  "response": "Added `EnumFileZone` (a StrEnum with six directory-role values: production, test, config, generated, docs, build), together with a symlink-resolving `classify_path()` classifier and a frozen Pydantic `ModelZonePolicy` for per-zone QA gate settings, in pull request #987 for ticket OMN-10351. This enables tiered QA gate classification by a file's directory role — distinct from `EnumFileType`, which classifies by extension/format — so gates like lint, test, review, and security_scan can be configured per zone."
+}

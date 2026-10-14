@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e09",
+  "path": "pinned",
+  "sha256": "f3414eb39baaaed78edffa17771359df675a68d85deb83d8384b57a975e15b4b",
+  "response": "#3549 (OMN-20712) hosts the lab-fill selection and lab disk hygiene nodes in omnimarket — `node_lab_fill_selection_compute` (operations `select_lab_fill_work` and `mark_approved_work_done`) and `node_lab_disk_hygiene_effect` (operation `run_lab_disk_hygiene`), copied from the operator tooling repository — with their deployment facts moved out of code into overlays: the lab-fill repository roles become a required typed `ModelLabFillDeployment` field validated via `ModelLabFillDeployment.from_overlay`, and the disk-hygiene census comes from the request or the overlay key `census_path` resolved from `OMNIMARKET_LAB_DISK_HYGIENE_OVERLAY` or `<root>/node_lab_disk_hygiene_effect/overlay.yaml` per root in `ONEX_SKILL_OVERLAY_ROOTS`. The selection and hygiene logic is unchanged — only the deployment facts moved — and both nodes are called in process with an experimental lifecycle (no bus topics, no `onex.nodes` entry point in pyproject.toml), with no census anywhere meaning no container is removed while the prunes still run."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m05",
+  "path": "pinned",
+  "sha256": "1bae19988c6a712115ede41a15ff07f325ac927384bae71e59a5e46d39ef00af",
+  "response": "**[72]** contradicts **line 159** (the test sets `disallowedTools` but the code expects `disallowedToolx`)."
+}

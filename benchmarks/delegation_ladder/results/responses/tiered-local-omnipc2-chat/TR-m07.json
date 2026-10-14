@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m07",
+  "path": "pinned",
+  "sha256": "8909b5376b58fed789af5f3efa00701d25e9eea8e6423c3ae9f7fdf7f2e6d38c",
+  "response": "**[25]** contradicts the test at **line 189** (`assert len(self_accepted_bindings(items)) == 2`), which expects a changed `criterion_hash` to prevent the second-lane record from clearing the self-accepted binding, whereas `[25]` (`return len(hashes) <= 1`) allows a single non-empty hash to satisfy the compatibility check regardless of whether the hashes match."
+}

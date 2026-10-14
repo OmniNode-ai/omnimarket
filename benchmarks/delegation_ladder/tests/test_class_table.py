@@ -392,8 +392,12 @@ def test_escalation_rows_do_not_hide_refused_attempts() -> None:
         "attempts": got.attempts,
         "escalation_count": 1,
         "wall_ms": 1234,
+        "score": {"outcome": "fail"},
+        "accepted": True,
     }
     row = tables.escalation_rows([raw])[0]
+    # The gate accepted what the scorer failed: a false accept is visible here.
+    assert (row["scorer"], row["accepted"]) == ("fail", True)
     assert row["answering_backend"] == "local-coder"
     assert row["escalation_count"] == 1
     assert row["refused_attempts"] == ["first:refuse:below gate"]
@@ -639,7 +643,18 @@ def test_a_cell_that_never_reached_a_model_is_not_a_wrong_answer() -> None:
     )
     assert tables.is_unreached(timeout)
     assert tables.is_unreached(_reached(score={"outcome": "harness_error"}))
-    assert tables.is_unreached(_reached(score={"outcome": "refused"}))
+    assert tables.is_unreached(
+        _reached(score={"outcome": "refused"}, notes="no receipt; rc=1")
+    )
+    # Running out of the time budget is the rung failing to deliver.
+    assert not tables.is_unreached(
+        _reached(
+            score={"outcome": "refused"}, notes="outcome=run-failed; timed_out=True"
+        )
+    )
+    assert not tables.is_unreached(
+        _reached(score={"outcome": "refused"}, notes="client exceeded 420s")
+    )
     # Negative controls: a wrong answer, and a gate refusal, are measurements.
     assert not tables.is_unreached(_reached(score={"outcome": "fail"}))
     assert not tables.is_unreached(
@@ -698,3 +713,14 @@ def test_one_rung_is_not_separated_from_nothing() -> None:
     rows = tables.class_rows(records("only", 25))
     assert tables.separation(rows)["reasoning"]["separated"] == []
     assert tables.separation(rows)["reasoning"]["verdict"] == "none separated"
+
+
+def test_a_gate_veto_with_no_answer_is_counted_apart_from_a_wrong_answer() -> None:
+    vetoed = records("a", 0, 2)
+    for record in vetoed:
+        record.update({"quality_gate_passed": False, "response_chars": 0})
+    wrong = records("a", 0, 1)
+    wrong[0].update({"task_id": "w", "quality_gate_passed": True, "response_chars": 9})
+    row = tables.class_rows(vetoed + wrong)[0]
+    assert row["gate_no_answer"] == 2
+    assert row["failed"] == 3

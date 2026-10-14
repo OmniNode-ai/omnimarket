@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h07",
+  "path": "pinned",
+  "sha256": "c1402a448313dc8feb11b29b741c8df4089b175866d81afe23d9506cd1e1df4b",
+  "response": "**[130]** — `MAX_LAG_SECONDS = 61`.\n\nIt contradicts test line [739] (`assert sla[\"max_lag_seconds\"] == 60` in `test_freshness_sla_in_contract`), because the constant's own comment ([129]) declares it mirrors the contract's `freshness_sla`, which that test pins at 60 (matching the PR's \"max_lag=60s\")."
+}

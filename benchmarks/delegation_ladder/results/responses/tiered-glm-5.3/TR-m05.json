@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m05",
+  "path": "pinned",
+  "sha256": "4970fef3c1d29df22bd40e223e753a70d34e285e4c57c21616db1a35c0b23140",
+  "response": "**Line [72]** — `alias=\"disallowedToolx\"` (in the `disallowed_tools` Field definition) — contradicts test line [159], `minimal_config_data[\"disallowedTools\"] = [\"Bash\", \"Edit\"]`, which expects the alias to be `disallowedTools` so that line [161]'s assertion `config.disallowed_tools == [\"Bash\", \"Edit\"]` passes."
+}

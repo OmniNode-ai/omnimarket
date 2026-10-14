@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e03",
+  "path": "pinned",
+  "sha256": "94abcd485bd4b6669bb41e5c983cba1118d9d23bef697507fc65cadacc8493e4",
+  "response": "**[18]** — `extra=\"ignorx\",` (a typo for `extra=\"ignore\"`) contradicts test line [30], `assert not hasattr(contract, \"unknown_field\")`, since the invalid config value would make `ModelHandlerContract` raise at definition/construction time instead of silently dropping the unknown field as the test (and the docstring at [20]) requires."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e09",
+  "path": "pinned",
+  "sha256": "02f4f5ac8f8627371b37f123be1250fd56a92905d9c741efe2f380dd25c54948",
+  "response": "[27] — it sets the publish phase result to `\"succesx\"` instead of `\"success\"`, contradicting test line [87], which asserts `result.phase_results[\"publish\"] == \"success\"`."
+}

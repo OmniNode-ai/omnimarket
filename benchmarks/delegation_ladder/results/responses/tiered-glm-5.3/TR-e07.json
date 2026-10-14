@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e07",
+  "path": "pinned",
+  "sha256": "11d00729ba3543ad8d6235e1196ec50bcd35ab41abc7a6e4680d0d7828ac68f3",
+  "response": "**[8]** — it uses the mistyped key `duplicates['with_single_commanx']`, so the run would raise a KeyError (or render a wrong/garbled figure) instead of producing the exact string asserted at lines [77]–[78]: `\"- duplicate terminals (single command): 1 [correlation ids with more than one terminal: 2]\"` in `test_headline_is_the_single_command_figure`."
+}

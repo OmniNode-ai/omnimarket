@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e02",
+  "path": "pinned",
+  "sha256": "e5a333e9120b677c82576761a3a2653db4f73fe347faef71e4d35f23ec36b576",
+  "response": "[47] — it sets `TECH_DEBT_TRIAGE = \"tech_debt_triagx\"` (misspelled value), which contradicts test line [51], `assert EnumAgentCapability.TECH_DEBT_TRIAGE.value == \"tech_debt_triage\"` (and likewise [55]'s assertion that `\"tech_debt_triage\"` is among the capability values)."
+}

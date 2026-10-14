@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m08",
+  "path": "pinned",
+  "sha256": "36035c515e8afc0008eca53477ef37344be71fddee291037354206613f00e99d",
+  "response": "[197] — it renames the CLI flag to `--checx` (while `args.check` is still read at [205]), so the `--check` invocation in test line [321] would fail with an argparse error (exit code 2) instead of the asserted `returncode == 0`."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e01",
+  "path": "pinned",
+  "sha256": "59c284ac504cd20a6145670a22d75678ac4a8982d19d8f6aa4cb5078a6d9a921",
+  "response": "[12] — it sets `source_tool=\"pr_lifecycle_orchestratox\"` (corrupted spelling), contradicting test line [30] `assert envelope.source_tool == \"pr_lifecycle_orchestrator\"`."
+}

@@ -144,13 +144,16 @@ def is_unreached(record: dict[str, Any]) -> bool:
     A model that answered wrongly has a response or an attempt with a verdict;
     a request refused before any rung ran, or a client that timed out, has
     neither. Harness (GLM) cells carry no attempt list, so they are judged by
-    their own recorded outcome instead.
+    their own recorded outcome instead. A call that ran out of its time budget
+    is a failure to deliver, not an unreached cell.
     """
     if record["score"]["outcome"] == "harness_error":
         return True
     notes = str(record.get("notes", ""))
     if record["score"]["outcome"] == "refused":
-        return True
+        # Running out of the call budget is the rung failing to deliver, so it
+        # stays in n; a refusal before any attempt is the route's own.
+        return not ("client exceeded" in notes or "timed_out=True" in notes)
     if notes.startswith("status=") and not record.get("attempts"):
         return bool(record.get("response_chars", 0) == 0)
     return False
@@ -187,6 +190,12 @@ def _class_metrics(group: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "failed": sum(r["score"]["outcome"] == "fail" for r in group),
         "refused": sum(r["score"]["outcome"] == "refused" for r in group),
+        # The node's gate vetoed the answer and returned none, so the scorer saw
+        # nothing: not accepted, but not evidence the model was wrong either.
+        "gate_no_answer": sum(
+            r.get("quality_gate_passed") is False and r.get("response_chars", 0) == 0
+            for r in group
+        ),
         "median_model_latency_ms": statistics.median(latencies) if latencies else None,
         "median_wall_s": statistics.median(r["wall_ms"] for r in group) / 1000,
         "cost_usd": sum(costs) if costs else None,
@@ -322,6 +331,8 @@ def escalation_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     if a.get("acceptance_decision") != "accept"
                 ],
                 "wall_ms": record["wall_ms"],
+                "scorer": record["score"]["outcome"],
+                "accepted": record.get("accepted"),
             }
         )
     return sorted(rows, key=lambda row: row["task_id"])
@@ -351,6 +362,7 @@ def _print_class_table(rows: list[dict[str, Any]], *, tiered: bool = False) -> N
             "median model latency ms",
             "median wall s",
             "cost",
+            "gate-refused, no answer",
         ]
     )
     cells: list[list[str]] = []
@@ -373,6 +385,7 @@ def _print_class_table(rows: list[dict[str, Any]], *, tiered: bool = False) -> N
                 str(latency) if latency is not None else "—",
                 f"{row['median_wall_s']:.1f}",
                 cost,
+                str(row["gate_no_answer"]),
             ]
         )
     _markdown_table(headers, cells)
@@ -425,6 +438,8 @@ def _jsonl_report(
             "escalations",
             "refused attempts",
             "total wall ms",
+            "scorer",
+            "accepted",
         ],
         [
             [
@@ -433,6 +448,8 @@ def _jsonl_report(
                 str(r["escalation_count"]),
                 "; ".join(r["refused_attempts"]),
                 str(r["wall_ms"]),
+                str(r["scorer"]),
+                str(r["accepted"]),
             ]
             for r in escalations
         ],

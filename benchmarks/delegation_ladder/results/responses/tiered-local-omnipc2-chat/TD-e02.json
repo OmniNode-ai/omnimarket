@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e02",
+  "path": "pinned",
+  "sha256": "cfa2affb452acd665809b22699515cb032f047f48a4eb73438138df71f1e1b79",
+  "response": "Pull request #3373 adds a CI guard that enforces a single savings definition in SQL to prevent the reintroduction of hard-coded baselines or unchecked token-price multiplications. This change ensures the live views remain clean by verifying that savings are defined only in node_metering_summary_compute, addressing the risk that migrations could revert to inconsistent definitions."
+}

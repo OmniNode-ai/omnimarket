@@ -1,0 +1,6 @@
+{
+  "task_id": "TN-h06",
+  "path": "pinned",
+  "sha256": "0d98804f60c7cfb01d22f48eb594df1014b3d5e82fec67f8eeb0f9b99cc2ba1c",
+  "response": "{'target_repo': 'omnimarket', 'dry_run': True}"
+}

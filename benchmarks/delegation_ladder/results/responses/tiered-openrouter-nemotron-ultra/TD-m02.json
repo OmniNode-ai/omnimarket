@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m02",
+  "path": "pinned",
+  "sha256": "edab62f4b41cb15cf1a8e4a55aff540a0b8d006a2a941310ea6ee6030d6f4c98",
+  "response": "- **#3660**: Added GLM allowance compute node returning rolling/weekly stats, verdicts (prefer_glm, allow_glm, skip_glm, no_glm_rung), chain order, skipped rungs.\n- **#249**: Released omnibase_spi v0.23.0; repinned omnibase-core to PyPI >=0.46.1,<0.47.0.\n- **#1869**: Binding gate reads Binds-Merged-Fix trailer, reverts fix at merge base so tests fail only from missing fix; refuses non-reverting fixes.\n- **#3045**: Added landing decision compute node from TLC-checked LandingController.tla with S1-S20 replay fixtures and per-guard tests.\n- **#3436**: Budget-state write now single DB transaction counting each event once; added contract binding AC1-AC4 and column-reconciling migration."
+}

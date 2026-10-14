@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e02",
+  "path": "pinned",
+  "sha256": "93054cf34ffd98476602894467e16f55c703806c1d9f0dfdd151a1febcabfbcf",
+  "response": "OMN-19980: #3373 adds a CI guard (tests/test_single_savings_definition.py, run as a named blocking step in ci.yml) that keeps savings defined only in node_metering_summary_compute, failing on a string literal feeding a baseline_model column, a hard-coded baseline in the last migration defining any of the three savings views, 'claude-opus-4.1' appearing outside the five frozen history migrations, and any SQL multiplying a token column by a price elsewhere. Nothing previously stopped a second definition from coming back — a later migration could reintroduce a hard-coded baseline or multiply tokens by a price without any check noticing — and since the live views are already clean, the guard proves that rather than assuming it, with Python price arithmetic asserted as a known gap outside the ticket's SQL scope."
+}

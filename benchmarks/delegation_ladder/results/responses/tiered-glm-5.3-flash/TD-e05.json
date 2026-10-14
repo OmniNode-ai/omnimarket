@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e05",
+  "path": "pinned",
+  "sha256": "8beaede149cb8fd9ee9db370de0ba761b7bb45b9c60055dc0a4bacef591f3d5e",
+  "response": "OMN-19514 (#2884): `delegation_events` now carries a nullable `ticket_id` — added by migration 0047 with a partial index — decoded from the delegate-skill response by the terminal projection (which decodes any ticket value as text, so step 2 declares `str`) and persisted via the handler fold and effect writers, with the column allowlisted as a server-side join key. This joins a delegation run to the ticket it worked, so a DoD verdict for that ticket can be joined to the delegated attempt it judged."
+}
