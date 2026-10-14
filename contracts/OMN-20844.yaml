@@ -107,7 +107,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py -q -p no:randomly -k 'workflow_selection_prompt or correct_answer_the_gate_refused or waiver_is_recorded'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
-  - id: "dod-omn20844-ac8-correct-answers-pass-negative-control"
+  - id: "dod-omn20844-ac8-answers-pass-negative-control"
     description: "AC8: the stored answers pass; numbered input keeps the rule and a cites-nothing answer there is still refused, as is an empty stored answer."
     source: "manual"
     checks:
