@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-h07",
+  "path": "unpinned",
+  "sha256": "8525c4eb61739e473575d6e2a991f927758a990f55de97421d63d1123938c143",
+  "response": "## CI & Infrastructure\n#1951, #1028, #1579, #1321, #1667, #1016, #3786, #2920\n\n## Observability & Diagnostics\n#1361, #3417, #3736, #3810\n\n## Delegation & Throughput\n#3767, #3563, #3674, #3275, #2900\n\n## Event & Protocol Governance\n#257, #170, #123, #1253, #1471, #1337, #1014\n\n## Release & Deployment\n#1577, #2980\n\n## Refactoring & Cleanup\n#170, #1253, #1471"
+}

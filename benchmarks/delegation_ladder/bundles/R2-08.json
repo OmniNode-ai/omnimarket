@@ -1,0 +1,21 @@
+{
+  "task_id": "R2-08",
+  "title": "what landed, from 8 merged changes",
+  "task_type": "document",
+  "provenance": "8 consecutive real merges to omnimemory, from 22939b4100b8 to 1eb3a007cebe, subject lines and the first line of each description.",
+  "prompt": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n1eb3a00 omnimemory#607: chore: release omnimemory 0.18.5 (OMN-18595)\n    * chore: release omnimemory 0.18.5 (OMN-18595)\n5ae1c76 omnimemory#609: feat(OMN-20074): retire the skip-token approvals registry; a skip token is always rejected\n    * feat(OMN-20074): retire the skip-token approvals registry; a skip token is always rejected\n5a603b3 omnimemory#618: chore(deps): refresh omninode sibling locks [bot]\n    \n2276343 omnimemory#617: chore(deps): bump omnibase_infra to 0.38.71\n    Automated dependency cascade — updates uv.lock and pyproject.toml pins.\n6d8b633 omnimemory#616: chore(ci): bump omnibase_core pin to bac865f4f32a [bot] [OMN-9050]\n    Onex-Workflow: Publish downstream pin bumps\n7be7aa9 omnimemory#615: fix(OMN-21045): route expire-memory to HandlerMemoryExpire\n    * fix(OMN-21045): route expire-memory to HandlerMemoryExpire\nbf00c6e omnimemory#614: chore(deps): refresh omninode sibling locks [bot]\n    \n22939b4 omnimemory#613: chore(deps): bump omnibase_infra to 0.38.70\n    Automated dependency cascade — updates uv.lock and pyproject.toml pins.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_coverage",
+  "scorer_config": {
+    "source_text": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n1eb3a00 omnimemory#607: chore: release omnimemory 0.18.5 (OMN-18595)\n    * chore: release omnimemory 0.18.5 (OMN-18595)\n5ae1c76 omnimemory#609: feat(OMN-20074): retire the skip-token approvals registry; a skip token is always rejected\n    * feat(OMN-20074): retire the skip-token approvals registry; a skip token is always rejected\n5a603b3 omnimemory#618: chore(deps): refresh omninode sibling locks [bot]\n    \n2276343 omnimemory#617: chore(deps): bump omnibase_infra to 0.38.71\n    Automated dependency cascade — updates uv.lock and pyproject.toml pins.\n6d8b633 omnimemory#616: chore(ci): bump omnibase_core pin to bac865f4f32a [bot] [OMN-9050]\n    Onex-Workflow: Publish downstream pin bumps\n7be7aa9 omnimemory#615: fix(OMN-21045): route expire-memory to HandlerMemoryExpire\n    * fix(OMN-21045): route expire-memory to HandlerMemoryExpire\nbf00c6e omnimemory#614: chore(deps): refresh omninode sibling locks [bot]\n    \n22939b4 omnimemory#613: chore(deps): bump omnibase_infra to 0.38.70\n    Automated dependency cascade — updates uv.lock and pyproject.toml pins.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "required_ids": [
+      "OMN-18595",
+      "OMN-20074",
+      "OMN-21045",
+      "OMN-9050"
+    ],
+    "coverage_threshold": 0.5
+  },
+  "fixture_files": {},
+  "rung": "R2",
+  "dependent_reasoning_steps": 2
+}

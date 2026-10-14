@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e06",
+  "path": "pinned",
+  "sha256": "4a96585228702a68852e862fb5dcf14cd883e6d1e561fa97502f2c7afaeb36c8",
+  "response": "**[27]** — that line adds `\"provider_ix\"` to `_FORTHCOMING_ATTEMPT_KEYS`, but test line [66] (`_ATTEMPT | {\"provider_id\": \"zai\", \"http_status\": 429, \"provider_code\": \"1302\"}`) validates with the key `provider_id`, which the released set no longer discards, so `test_an_attempt_carrying_the_provider_facts_decodes` would fail with an extra-forbidden error instead of decoding."
+}

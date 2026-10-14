@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e08",
+  "path": "pinned",
+  "sha256": "240be59a2d39821aecec5cb1c975cc220619e345828b4ae311148c0cebaf4c51",
+  "response": "**[5]** — the parser decodes with `value.decode(\"utf-x\")`, which contradicts test line [47] (`envelope.model_dump_json().encode(\"utf-8\")`), where the test fixture encodes the envelope as UTF-8 and expects it to parse successfully."
+}

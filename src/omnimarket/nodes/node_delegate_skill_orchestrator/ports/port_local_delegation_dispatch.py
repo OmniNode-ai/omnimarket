@@ -219,8 +219,10 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
     delta as evaluate_quality_gate,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    NO_HIGHER_TIER_REASON_TOKEN,
     backend_id_for_tier,
     credential_withheld_rung,
+    describe_no_higher_tier_available,
     first_eligible_tier,
     is_free_tier,
     measure_grounding_input_tokens,
@@ -344,6 +346,13 @@ _DELEGATION_EVENTS_TABLE = "delegation_events"
 # without a contract-declared budget still escalates the same bounded number of
 # times on both paths.
 _DEFAULT_MAX_ESCALATIONS = 2
+
+# OMN-20844: the ``terminal_failure_reason`` values a quality-refused ladder
+# stops with, spelled as the bus orchestrator spells them
+# (``handler_escalation_decision`` and ``handler_delegation_workflow``), so a
+# receipt from either path keys the same way.
+_MAX_ESCALATION_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"
+_NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
 
 # OMN-13943: failure classes that must NOT trigger an up-tier escalation retry.
 # Mirrors the bus orchestrator's ``_should_escalate_inference_error`` posture
@@ -555,6 +564,29 @@ def derive_attempt_acceptance(
         EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR,
         detail,
     )
+
+
+PINNED_BACKEND_FAILED_REASON = "pinned_backend_failed"
+
+
+def _pinned_failure_fields(
+    pinned_backend_id: str | None, message: str
+) -> dict[str, object]:
+    """Typed terminal fields for a pinned run that failed on its pin (OMN-20844).
+
+    Empty for an unpinned run. For a pinned one the terminal names
+    ``pinned_backend_failed`` and the pin, so a caller reads why the run ended
+    on the pinned backend instead of moving to another.
+    """
+    if pinned_backend_id is None:
+        return {}
+    return {
+        "terminal_failure_reason": PINNED_BACKEND_FAILED_REASON,
+        "error_message": (
+            f"{PINNED_BACKEND_FAILED_REASON}: the run is pinned to backend "
+            f"'{pinned_backend_id}' and does not move to another backend: {message}"
+        ),
+    }
 
 
 def _settle_final_rung_as_terminate(attempts: list[dict[str, object]]) -> None:
@@ -1353,10 +1385,9 @@ class LocalDelegationDispatchPort:
         # default) preserves the exact pre-existing cheapest-first task_type +
         # tier_order resolution — see ``_resolve_initial_backend``. A non-None
         # value bypasses tier_order selection entirely for the INITIAL attempt
-        # only; it does NOT change escalation behavior — see the
-        # ``_resolve_initial_backend`` docstring's "Escalation-interaction note"
-        # for the observed pin+failure interaction (a transport failure on the
-        # pinned backend still excludes its WHOLE tier, not just that backend).
+        # only. OMN-20844: a pinned run never moves off the pin afterwards: a
+        # failure on it takes no sibling hop and no escalation, and the run
+        # ends with ``pinned_backend_failed`` (``_pinned_failure_fields``).
         #
         # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
         # (fail-open None when no ROI projection is wired). Threaded as a pure input
@@ -1364,6 +1395,7 @@ class LocalDelegationDispatchPort:
         # is demoted from BOTH the initial resolution and every escalation hop, with
         # the same overlay across the whole dispatch for a deterministic decision.
         roi_overlay = self._roi_overlay_reader(task_type)
+        pinned_backend_id = backend_id
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM), refined by OMN-14349: prefer a
         # caller-supplied verified tenant_id (would only be non-None if something
         # upstream of this genuinely bus-less path stamped one -- structurally
@@ -1666,7 +1698,7 @@ class LocalDelegationDispatchPort:
                 excluded_tiers.add(current_tier)
                 excluded_backend_refs.add(backend.backend_id)
                 over_budget_next: ModelResolvedDelegationBackend | None = None
-                if escalation_count < max_escalations:
+                if pinned_backend_id is None and escalation_count < max_escalations:
                     over_budget_next = self._resolve_next_backend(
                         current_tier=current_tier,
                         task_type=task_type,
@@ -1714,6 +1746,9 @@ class LocalDelegationDispatchPort:
                             provenance.model_dump(mode="json")
                             if provenance is not None
                             else None
+                        ),
+                        **_pinned_failure_fields(
+                            pinned_backend_id, over_budget_message
                         ),
                     }
                 escalation_count += 1
@@ -1806,7 +1841,8 @@ class LocalDelegationDispatchPort:
                         byok_retry_counts[backend.backend_id] = spent + 1
                         byok_same_backend_retry = True
                 may_move_on = (
-                    _is_retryable_transport_failure(transport_failure_class)
+                    pinned_backend_id is None
+                    and _is_retryable_transport_failure(transport_failure_class)
                     and not byok_same_backend_retry
                     and not (customer_route and typed_refusal)
                 )
@@ -2030,6 +2066,9 @@ class LocalDelegationDispatchPort:
                         provenance.model_dump(mode="json")
                         if provenance is not None
                         else None
+                    ),
+                    **_pinned_failure_fields(
+                        pinned_backend_id, transport_failure_message
                     ),
                 }
 
@@ -2438,7 +2477,7 @@ class LocalDelegationDispatchPort:
             # keeps same-model siblings, since unavailability is what they are for.
             gate_sibling = (
                 None
-                if ladder_stopped_by_veto
+                if ladder_stopped_by_veto or pinned_backend_id is not None
                 else self._resolve_sibling_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2485,7 +2524,14 @@ class LocalDelegationDispatchPort:
                 continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
-            if not ladder_stopped_by_veto and escalation_count < max_escalations:
+            # OMN-20844: why the ladder stopped, in the bus orchestrator's
+            # precedence (veto, then budget, then ladder), for the terminal.
+            ladder_stop_reasons: list[str] = []
+            if ladder_stopped_by_veto:
+                ladder_stop_reasons.append(_NO_RUNG_CAN_SATISFY_REASON)
+            elif escalation_count >= max_escalations:
+                ladder_stop_reasons.append(_MAX_ESCALATION_ATTEMPTS_REACHED_REASON)
+            elif pinned_backend_id is None:
                 next_backend = self._resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2494,9 +2540,16 @@ class LocalDelegationDispatchPort:
                     excluded_backend_refs=frozenset(excluded_backend_refs),
                     spread_key=str(correlation_id),
                     quota_state=self._quota_snapshot(quota_observations),
+                    stop_reasons=ladder_stop_reasons,
                 )
 
             if next_backend is None:
+                ladder_stop_reason = (
+                    ladder_stop_reasons[-1]
+                    if ladder_stop_reasons
+                    else f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+                    f"current_tier='{current_tier}'"
+                )
                 # Cannot escalate (budget exhausted or no higher eligible tier):
                 # terminal FAILED, carrying the cumulative metered cost of every
                 # attempt made so far.
@@ -2584,6 +2637,11 @@ class LocalDelegationDispatchPort:
                     "quality_gate_passed": False,
                     "quality_score": gate_result.quality_score,
                     "quality_gates_failed": list(gate_result.failure_reasons),
+                    # OMN-20844: the typed stop reason. ``failure_reason`` is
+                    # what the handler reads into the receipt's
+                    # ``error_message``, which was empty on this terminal.
+                    "terminal_failure_reason": ladder_stop_reason,
+                    "failure_reason": ladder_stop_reason,
                     "delegation_latency_ms": result.latency_ms,
                     "input_tokens": result.tokens_in,
                     "output_tokens": result.tokens_out,
@@ -2596,6 +2654,9 @@ class LocalDelegationDispatchPort:
                         provenance.model_dump(mode="json")
                         if provenance is not None
                         else None
+                    ),
+                    **_pinned_failure_fields(
+                        pinned_backend_id, "; ".join(gate_result.failure_reasons)
                     ),
                 }
 
@@ -2737,14 +2798,10 @@ class LocalDelegationDispatchPort:
         pin means the caller asked for a backend that doesn't exist, and hiding
         that behind a silent fallback would defeat the whole point of pinning.
 
-        Escalation-interaction note (OMN-15156, P0 readback requirement): this pin
-        affects ONLY the initial attempt. If the pinned backend's transport call
-        fails, the existing escalation loop in ``dispatch()`` still excludes the
-        pinned backend's WHOLE TIER (via ``tier_for_backend(backend.backend_id)``)
-        and re-resolves the next hop through the normal closed-set ``tier_order``
-        — NOT back to the pin, and NOT to a different backend within the same
-        tier. This ticket does not redesign escalation; a single-backend (rather
-        than whole-tier) exclusion semantics is out of scope here.
+        Escalation-interaction note (OMN-20844): this resolves the initial
+        attempt, and ``dispatch()`` never moves a pinned run off it. A failure on
+        the pinned backend takes no same-tier sibling hop and no escalation; the
+        run ends with ``pinned_backend_failed``.
 
         OMN-14001: when ``roi_overlay`` demotes a proven-failing tier,
         ``first_eligible_tier`` returns the cheapest tier NOT ROI-suppressed, so a
@@ -2936,8 +2993,14 @@ class LocalDelegationDispatchPort:
         excluded_backend_refs: frozenset[str] = frozenset(),
         spread_key: str | None = None,
         quota_state: ModelProviderQuotaSnapshot | None = None,
+        stop_reasons: list[str] | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
+
+        OMN-20844: ``stop_reasons``, when given, receives one typed reason for
+        a ``None`` return, prefixed with ``NO_HIGHER_TIER_REASON_TOKEN`` as the
+        bus orchestrator's terminal is, so the caller's terminal can say why
+        the ladder stopped instead of carrying no reason at all.
 
         OMN-19432: ``spread_key`` (the run's correlation id) lets the tier's
         first-choice pick be spread across same-model peers, as the bus path's
@@ -2984,10 +3047,29 @@ class LocalDelegationDispatchPort:
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
         )
+
+        def stopped(reason: str) -> None:
+            if stop_reasons is not None:
+                stop_reasons.append(reason)
+
         if next_tier is None:
+            stopped(
+                describe_no_higher_tier_available(
+                    current_tier,
+                    excluded_tiers,
+                    task_type=task_type,
+                    excluded_backend_refs=excluded_backend_refs,
+                    correlation_id=spread_key,
+                )
+            )
             return None
+        stop_prefix = (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+            f"current_tier='{current_tier}'; next tier '{next_tier}'"
+        )
         backend_id = backend_id_for_tier(next_tier, task_type, spread_key=spread_key)
         if backend_id is None:
+            stopped(f"{stop_prefix} selects no backend for the task class")
             return None
         if backend_id in excluded_backend_refs:
             # Defensive backstop (OMN-15803): next_eligible_tier judged this
@@ -3003,6 +3085,7 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 task_type,
             )
+            stopped(f"{stop_prefix} re-selects already-tried backend '{backend_id}'")
             return None
         try:
             escalated = resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -3017,6 +3100,7 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 task_type,
             )
+            stopped(f"{stop_prefix} backend '{backend_id}' has no resolvable endpoint")
             return None
         if escalated.backend_id in excluded_backend_refs:
             # OMN-20157: the next tier's house rung is substituted to a customer
@@ -3029,6 +3113,10 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 escalated.backend_id,
                 task_type,
+            )
+            stopped(
+                f"{stop_prefix} backend '{backend_id}' resolves to already-tried "
+                f"backend '{escalated.backend_id}'"
             )
             return None
         return escalated

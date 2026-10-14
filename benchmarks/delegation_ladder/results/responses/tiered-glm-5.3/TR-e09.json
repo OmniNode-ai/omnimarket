@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e09",
+  "path": "pinned",
+  "sha256": "e2045a23349da4b4c281a1003728617734b17397b4cdad48dadfff615fdf3c42",
+  "response": "**[27]** — it sets an in-progress `publish` phase to `\"succesx\"`, contradicting test line [87] (`assert result.phase_results[\"publish\"] == \"success\"`), which expects it normalized to `\"success\"`."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m01",
+  "path": "pinned",
+  "sha256": "089a9ff6492a67cb498fff0198d35368aaaea94e2dc93eca045ecc8a164162ae",
+  "response": "**Release Notes**\n\n**#3026**: Scheduled heals now update release-window reds and re-run vendor-parity reds once their cause is gone.\n\n**#1169**: Documented 47 undocumented BLE001 suppressions and fixed 2 invalid noqa directives.\n\n**#3875**: A customer's chosen OpenRouter model, including a :free one, is now called once and never re-aimed.\n\n**#1374**: onex run-node now fails fast with an actionable message instead of bare tracebacks for Kafka errors.\n\n**#3666**: The must-fail runner now reads the source's objects when the source is shallow, preventing infra_error results."
+}

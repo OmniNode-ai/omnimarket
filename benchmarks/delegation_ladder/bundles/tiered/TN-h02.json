@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h02",
+  "title": "predict escape_markdown (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function escape_markdown in omnibase_core@d677b4e78219:src/omnibase_core/rendering/renderer_report_markdown.py; the call and the asserted result come from tests/unit/rendering/test_renderer_report_markdown.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nMARKDOWN_ESCAPE_CHARS = (('\\\\', '\\\\\\\\'), ('|', '\\\\|'), ('*', '\\\\*'), ('_', '\\\\_'), ('`', '\\\\`'), ('[', '\\\\['), (']', '\\\\]'), ('\\n', ' '), ('\\r', ''))\n\ndef escape_markdown(text):\n    result = text\n    for char, replacement in MARKDOWN_ESCAPE_CHARS:\n        result = result.replace(char, replacement)\n    return result\n```\n\nWhat does `escape_markdown('value_with_underscores')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'value\\\\_with\\\\_underscores'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

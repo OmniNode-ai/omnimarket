@@ -1,0 +1,44 @@
+{
+  "task_id": "TR-e08",
+  "title": "find the altered line (omnimarket@bfbc125eae)",
+  "task_type": "review",
+  "difficulty": "easy",
+  "provenance": "Merged commit omnimarket@bfbc125eae032ee276d068870fe048bbf02d4af6. One added source line had the literal 'utf-8' altered to 'utf-x'; everything else is the merged diff.",
+  "prompt": "You are reviewing a merged pull request. Its description:\n\nfix(OMN-12442): parse pattern-b terminal envelopes (#995)\n\nThe diff below was altered after the merge: exactly one added line outside the test files was edited so that it no longer agrees with the tests added in the same diff. Every added line carries a label such as [12]. Name the label of the altered line, then one sentence saying which test line it contradicts.\n\nDIFF:\n--- a/src/omnimarket/adapters/codex/runtime_client.py\n+++ b/src/omnimarket/adapters/codex/runtime_client.py\n@@ -13,7 +13,7 @@ import sys\n from collections.abc import Awaitable, Callable\n from datetime import UTC, datetime\n from pathlib import Path\n-from typing import Protocol, cast\n[1]+from typing import Any, Protocol, cast\n from uuid import UUID\n \n from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope\n@@ -485,7 +485,32 @@ def _parse_terminal_result(value: bytes) -> ModelDispatchBusTerminalResult | Non\n         ].model_validate_json(value)\n         return envelope.payload\n     except Exception:\n[2]+        pass\n[3]+\n[4]+    try:\n[5]+        raw = json.loads(value.decode(\"utf-x\"))\n[6]+    except (json.JSONDecodeError, UnicodeDecodeError):\n[7]+        return None\n[8]+    if not isinstance(raw, dict):\n[9]+        return None\n[10]+    raw_payload = raw.get(\"payload\")\n[11]+    if not isinstance(raw_payload, dict):\n         return None\n[12]+    try:\n[13]+        return ModelDispatchBusTerminalResult.model_validate(\n[14]+            _coerce_terminal_result_payload(raw_payload)\n[15]+        )\n[16]+    except ValidationError:\n[17]+        return None\n[18]+\n[19]+\n[20]+def _coerce_terminal_result_payload(\n[21]+    payload: dict[str, Any],\n[22]+) -> dict[str, Any]:\n[23]+    result = dict(payload)\n[24]+    if isinstance(result.get(\"completed_at\"), str):\n[25]+        result.pop(\"completed_at\", None)\n[26]+    return result\n \n \n def _build_dispatch_command(\n--- a/tests/test_codex_runtime_client.py\n+++ b/tests/test_codex_runtime_client.py\n@@ -805,6 +805,35 @@ def test_default_response_topic_env(monkeypatch: pytest.MonkeyPatch) -> None:\n     )\n \n \n[27]+def test_parse_terminal_result_accepts_deployed_dict_payload() -> None:\n[28]+    correlation_id = uuid4()\n[29]+    terminal_payload = {\n[30]+        \"correlation_id\": str(correlation_id),\n[31]+        \"status\": \"completed\",\n[32]+        \"payload\": {\"status\": \"halted\", \"dispatch_queue\": []},\n[33]+        \"error_message\": None,\n[34]+        \"completed_at\": datetime.now(UTC).isoformat(),\n[35]+    }\n[36]+    envelope = ModelEventEnvelope[object](\n[37]+        payload=terminal_payload,\n[38]+        correlation_id=correlation_id,\n[39]+        envelope_timestamp=datetime.now(UTC),\n[40]+        event_type=\"onex.evt.omnimarket.pattern-b-dispatch-completed.v1\",\n[41]+        source_tool=\"pattern-b-broker\",\n[42]+        target_tool=\"pattern-b-client\",\n[43]+        payload_type=\"ModelDispatchBusTerminalResult\",\n[44]+    )\n[45]+\n[46]+    result = runtime_client._parse_terminal_result(\n[47]+        envelope.model_dump_json().encode(\"utf-8\")\n[48]+    )\n[49]+\n[50]+    assert result is not None\n[51]+    assert result.correlation_id == correlation_id\n[52]+    assert result.status == \"completed\"\n[53]+    assert result.payload == {\"status\": \"halted\", \"dispatch_queue\": []}\n[54]+\n[55]+\n def test_default_requester_env(monkeypatch: pytest.MonkeyPatch) -> None:\n     monkeypatch.setenv(\"ONEX_PATTERN_B_REQUESTER\", \"codex-test\")\n     assert default_requester() == \"codex-test\"\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "[5]"
+    ],
+    "forbidden": [
+      "[1]",
+      "[2]",
+      "[3]",
+      "[4]",
+      "[6]",
+      "[7]",
+      "[8]",
+      "[9]",
+      "[10]",
+      "[11]",
+      "[12]",
+      "[13]",
+      "[14]",
+      "[15]",
+      "[16]",
+      "[17]",
+      "[18]",
+      "[19]",
+      "[20]",
+      "[21]",
+      "[22]",
+      "[23]",
+      "[24]",
+      "[25]",
+      "[26]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

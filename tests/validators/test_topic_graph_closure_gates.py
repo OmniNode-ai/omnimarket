@@ -193,46 +193,60 @@ class TestNoBaselineRefreeze:
         assert len(problems) == len(no_baseline_refreeze.DELETED_BASELINES)
         assert all("is BACK" in p for p in problems)
 
-    def test_refuses_a_peer_fenced_baseline_that_grew(self, tmp_path: Path) -> None:
-        for relative, (_, rows) in no_baseline_refreeze.PEER_FENCED_BASELINES.items():
-            path = tmp_path / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            grown = [{"contract": c, "topic": k} for c, k in rows]
-            grown.append({"contract": "some_new_node", "topic": "onex.evt.x.y.v1"})
-            path.write_text(yaml.safe_dump({"rows": grown}))
+    def test_no_peer_fenced_baseline_remains(self) -> None:
+        """OMN-17038: every baseline is deleted, so the pin table is empty."""
+        assert no_baseline_refreeze.PEER_FENCED_BASELINES == {}
+
+    def test_refuses_a_peer_fenced_baseline_that_grew(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The table is empty today, so pin one row to keep the grow-check's machinery
+        # exercised: a pin the live table no longer needs must still refuse growth.
+        relative = "config/validation/example_peer_fenced_baseline.yaml"
+        rows = (("owned_node", "onex.evt.example.owned.v1"),)
+        monkeypatch.setattr(
+            no_baseline_refreeze,
+            "PEER_FENCED_BASELINES",
+            {relative: ("a peer lane", rows)},
+        )
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        grown = [{"contract": c, "topic": k} for c, k in rows]
+        path.write_text(yaml.safe_dump({"rows": grown}))
+        assert [
+            p for p in no_baseline_refreeze.check(tmp_path) if "NOT peer-fenced" in p
+        ] == []
+        grown.append({"contract": "some_new_node", "topic": "onex.evt.x.y.v1"})
+        path.write_text(yaml.safe_dump({"rows": grown}))
         problems = no_baseline_refreeze.check(tmp_path)
-        assert len(problems) == len(no_baseline_refreeze.PEER_FENCED_BASELINES)
-        assert all("is NOT peer-fenced" in p for p in problems)
+        assert len([p for p in problems if "is NOT peer-fenced" in p]) == 1
 
 
 class TestPeerFencedBaselinesHoldOnlyPeerRows:
-    """The two baselines that survive carry ONLY rows owned outside this change.
+    """The baselines that survive carry ONLY rows owned outside this change (none today).
 
     Ledger CLAIM docs/tracking/ROLLING_WORK_LEDGER.md:3904 (lane dev-lane-fsm-residuals,
     OMN-16939 / OMN-17888). Both files are deleted, and --baseline dropped from the hook
     and the CI job, the moment that lane lands its rows.
     """
 
-    def test_subscriber_dispatcher_baseline_is_only_the_fenced_rows(self) -> None:
-        """2 node_e2e_orchestrator rows, nothing else.
+    def test_subscriber_dispatcher_baseline_is_gone(self) -> None:
+        """OMN-17038: the file's exit condition, asserted by absence.
 
-        node_e2e_orchestrator is not peer-owned: it needs a handler class extracted from
-        its standalone consumer.py, which is a node refactor rather than a category or
-        alias fix. Deleting its subscribe declarations instead was tried and rejected --
-        the node-orphan-graph gate then classifies the node PRODUCER_ONLY and hard-fails.
-
-        OMN-17296 AC2 removed the four node_redeploy_orchestrator rows and OMN-17888
-        removed the node_redeploy_deploy_effect row. Both are asserted absent rather than
-        merely uncounted, because this file is shrink-only and a row naming a residual
-        that is closed is a false statement about the contract graph.
+        Its last two rows were node_e2e_orchestrator's subscriptions, which had no
+        route because the node ran as a standalone consumer. The node now routes both
+        topics to a definition-B handler, so the file carries nothing. Earlier
+        burn-downs: OMN-17296 AC2 removed the four node_redeploy_orchestrator rows and
+        OMN-17888 removed the node_redeploy_deploy_effect row.
         """
         path = (
             REPO_ROOT
             / "config/validation/subscriber_dispatcher_resolution_baseline.yaml"
         )
-        rows = yaml.safe_load(path.read_text())["known_unresolved_subscriptions"]
-        assert {r["contract"] for r in rows} == {"node_e2e_orchestrator"}
-        assert len(rows) == 2
+        assert not path.exists(), (
+            f"{path} came back; an exemption file with no live row is a general "
+            "exemption list waiting to be re-frozen"
+        )
 
     def test_mixed_category_baseline_is_gone(self) -> None:
         """OMN-17888: the file's own exit condition, asserted by absence.

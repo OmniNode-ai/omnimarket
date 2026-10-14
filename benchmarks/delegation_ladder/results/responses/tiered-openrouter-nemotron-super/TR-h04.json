@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h04",
+  "path": "pinned",
+  "sha256": "88926fcea6bcc499b62e2054412c6f4e4a1a7878e59f9dd4f5b5b5e6c6483f3d",
+  "response": "[219] — The constant `REQUIRED_CHECKS_MANIFEST_PATH = \".github/required-checks.yamx\"` (label [219] in `scripts/ci/detect_test_paths.py`) uses a `.yamx` extension, but the test added at [240] in `tests/unit/scripts/ci/test_detect_test_paths.py` passes `changed_files=[\".github/required-checks.yaml\"]` (line 242), so the equality check `set(changed_files) == {REQUIRED_CHECKS_MANIFEST_PATH}` will never match."
+}

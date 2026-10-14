@@ -830,7 +830,27 @@ def _check_signature_preserved(content: str) -> str | None:
     return None
 
 
-def _check_no_refusal(content: str) -> str | None:
+def _is_declared_literal_answer(content: str) -> bool:
+    """Whether ``content`` is a bare Python literal that is not a string.
+
+    OMN-20844. ``(None, None)``, ``None``, ``False``, ``42`` and ``[]`` are what
+    ``repr()`` prints for an answer, and every word in them is a negation token
+    or a bracket. A string literal stays out: ``'none'`` is the declination in
+    quotes, and a quoted filler word is still filler.
+    """
+    candidate = _strip_markdown_code_fence(content.strip()).strip()
+    if not candidate:
+        return False
+    try:
+        value = ast.literal_eval(candidate)
+    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+        return False
+    return not isinstance(value, str | bytes)
+
+
+def _check_no_refusal(
+    content: str, *, declared_literal_shape: bool = False
+) -> str | None:
     """Heuristic: no refusal phrases and no ultra-short content-free response.
 
     Two-pass refusal pre-filter (OMN-13409):
@@ -850,12 +870,20 @@ def _check_no_refusal(content: str) -> str | None:
     "as an ai", "error:", "traceback") and the OMN-13409 additions that cover
     common model soft-refusal patterns ("cannot be fulfilled", "unable to complete",
     "not possible", etc.).
+
+    OMN-20844: ``declared_literal_shape`` is True only when the request's band
+    carries ``short_form_adequacy``, which the contract selects from the
+    PROMPT's declared shape and never from the response. For such a request a
+    response that is itself a non-string Python literal is the answer, not a
+    declination: Pass 1 does not apply to it. Pass 2 still does.
     """
     stripped = content.strip()
 
     # Pass 1: ultra-short content-free response pre-pass.
     words = stripped.split()
-    if 0 < len(words) <= _REFUSAL_SHORT_WORD_THRESHOLD:
+    if 0 < len(words) <= _REFUSAL_SHORT_WORD_THRESHOLD and not (
+        declared_literal_shape and _is_declared_literal_answer(stripped)
+    ):
         # Normalize each token: lowercase, strip surrounding punctuation.
         normalized_tokens = [word.lower().strip(".,;:!?\"'()[]{}`-") for word in words]
         # A response whose every token is a negation word (or empty after stripping)
@@ -1232,6 +1260,8 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
                 f"TASK_MISMATCH: pytest.{node.attr} does not exist; "
                 "test module would fail to import"
             )
+    if _reads_unbound_pytest(tree):
+        return _UNBOUND_PYTEST
     scopes: list[ast.Module | ast.ClassDef] = [tree]
     for node in ast.walk(tree):
         if isinstance(
@@ -1246,6 +1276,40 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
         if any(_is_unit_marker_assignment(statement) for statement in scope.body):
             return None
     return _MISSING_UNIT_MARK
+
+
+_UNBOUND_PYTEST = (
+    "TASK_MISMATCH: the module reads pytest but never imports it; "
+    "test module would fail to import (NameError)"
+)
+
+
+def _reads_unbound_pytest(tree: ast.Module) -> bool:
+    """OMN-20844: whether a module with its own imports reads an unbound ``pytest``.
+
+    A module that imports anything is a whole test module, so a ``pytest`` it
+    reads (``@pytest.mark.unit``) and binds nowhere raises ``NameError`` when
+    pytest collects it. A fragment with no import at all may be pasted into a
+    module that imports pytest, so its binding cannot be judged and it is not.
+    The prompt naming pytest binds nothing in the answer, which is why
+    ``names_resolve`` passes this: the name occurs in the grounding source.
+    """
+    has_import = False
+    reads = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            has_import = True
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                if bound == "pytest":
+                    return False
+        elif isinstance(node, ast.Name) and node.id == "pytest":
+            if not isinstance(node.ctx, ast.Load):
+                return False
+            reads = True
+        elif isinstance(node, ast.arg) and node.arg == "pytest":
+            return False
+    return has_import and reads
 
 
 def _is_unit_mark(node: ast.expr) -> bool:
@@ -1878,6 +1942,9 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
 )
 
 
+# The adequacy authority a contract-declared response shape puts in the band.
+_SHORT_FORM_ADEQUACY_CHECK = "short_form_adequacy"
+
 # Dispatch table: named heuristic check → checker function (content → failure message or None)
 _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "no_refusal": _check_no_refusal,
@@ -2204,11 +2271,17 @@ def _evaluate_heuristic_checks(
             evaluations.append(_rule_evaluation(check, reason))
             continue
         grounding_aware = _GROUNDING_AWARE_ADEQUACY_CHECKS.get(check)
-        reason = (
-            grounding_aware(content, grounding_source)
-            if grounding_aware is not None
-            else _apply_heuristic_check(check, content)
-        )
+        if check == "no_refusal" and _SHORT_FORM_ADEQUACY_CHECK in dod_heuristic:
+            # OMN-20844: the band was replaced by a prompt-declared shape (only
+            # a shape_overrides entry puts short_form_adequacy here), so a bare
+            # literal answer is what was asked for.
+            reason = _check_no_refusal(content, declared_literal_shape=True)
+        else:
+            reason = (
+                grounding_aware(content, grounding_source)
+                if grounding_aware is not None
+                else _apply_heuristic_check(check, content)
+            )
         if reason is None and check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
             if m:

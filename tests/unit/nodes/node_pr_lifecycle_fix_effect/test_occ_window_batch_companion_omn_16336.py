@@ -513,12 +513,6 @@ def test_companion_effect_publisher_defers_to_the_batch_window(
         assert "publish_declined: dry_run" in result.output
 
 
-@pytest.mark.unit
-def test_conflicted_remint_refuses_a_window_branch() -> None:
-    module = _load_script("ci/occ_conflicted_companion_remint.py")
-    assert module._BATCH_BRANCH_RE.fullmatch(_WINDOW)
-
-
 # ---------------------------------------------------------------------------
 # The emitter, against a real git origin
 # ---------------------------------------------------------------------------

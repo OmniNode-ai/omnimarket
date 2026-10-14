@@ -34,6 +34,7 @@ test until it is removed from the list in the same change.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -109,10 +110,26 @@ def _field_max_length(field_name: str) -> int:
 
 
 def _manifest() -> ModelAutoWiringManifest:
-    discovered = discover_contracts_from_paths(sorted(_NODES.glob("*/contract.yaml")))
+    # This gate checks every package's contracts, including those outside the
+    # caller's active lane. Otherwise discovery hides a known wiring failure
+    # and the shrink-only baseline incorrectly reports that failure as fixed.
+    with pytest.MonkeyPatch.context() as environment:
+        environment.delenv("ONEX_ACTIVE_RUNTIME_PACKAGES", raising=False)
+        discovered = discover_contracts_from_paths(
+            sorted(_NODES.glob("*/contract.yaml"))
+        )
     assert not discovered.errors, discovered.errors
     assert discovered.contracts, f"no contracts discovered under {_NODES}"
     return ModelAutoWiringManifest(contracts=tuple(discovered.contracts))
+
+
+def test_manifest_includes_contracts_outside_the_active_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_ACTIVE_RUNTIME_PACKAGES", "omnimarket")
+    manifest = _manifest()
+    assert "node_memory_storage_effect" in {c.name for c in manifest.contracts}
+    assert os.environ["ONEX_ACTIVE_RUNTIME_PACKAGES"] == "omnimarket"
 
 
 def _shrink_only(actual: dict[str, str], listed: dict[str, str], what: str) -> None:

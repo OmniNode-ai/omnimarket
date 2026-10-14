@@ -1,0 +1,25 @@
+| task | class | answered by | escalations | accepted | wall s | refused rungs (why) |
+| -- | -- | -- | -- | -- | -- | -- |
+| R4-05 | test | local-h202-chat | 1 | yes | 232.9 | local-h202-chat: deterministic_floor_failed |
+| R4-07 | test | local-coder | 0 | yes | 191.9 | - |
+| R4-12 | test | local-h202-chat | 1 | no | 135.3 | local-h202-chat: deterministic_floor_failed |
+| R4-14 | test | local-coder | 1 | no | 108.9 | local-coder: deterministic_floor_failed |
+| R4-17 | test | local-coder | 0 | no | 38.5 | - |
+| R4-22 | test | local-coder | 0 | yes | 24.9 | - |
+| R4-23 | test | none | 1 | no | 78.5 | local-h202-chat: deterministic_floor_failed; local-h202-chat: deterministic_floor_failed |
+| R4-24 | test | local-h202-chat | 0 | no | 62.5 | - |
+| R6-12 | code_generation | local-coder | 0 | no | 31.3 | - |
+| R6-14 | code_generation | local-h202-chat | 0 | no | 36.5 | - |
+| R6-16 | code_generation | local-coder | 0 | yes | 30.6 | - |
+| R6-17 | code_generation | local-h202-chat | 0 | yes | 32.2 | - |
+| R6-21 | code_generation | local-coder | 0 | yes | 22.7 | - |
+| R6-22 | code_generation | local-h202-chat | 0 | yes | 33.9 | - |
+| R6-23 | code_generation | local-coder | 0 | yes | 45.7 | - |
+| R6-24 | code_generation | local-coder | 0 | yes | 23.1 | - |
+
+tasks: 16
+- local-coder answered 9 of 16
+- local-h202-chat answered 6 of 16
+- no rung answered 1 of 16
+climbed at least once: 4 of 16
+gate accepted, scorer failed: 6 of 16

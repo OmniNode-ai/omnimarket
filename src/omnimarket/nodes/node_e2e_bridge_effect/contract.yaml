@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - E2E bridge effect (CI read and evidence writes)
+name: node_e2e_bridge_effect
+contract_name: node_e2e_bridge_effect
+node_name: node_e2e_bridge_effect
+description: >
+  EFFECT: the I/O of node_e2e_orchestrator. A CI read request reads the required-check state of each
+  PR through the typed GitHub gateway's ci_checks request (no gh subprocess; the token is resolved at
+  the gateway boundary) after waiting out not_before, and answers with every PR's reading and the
+  request's context. An evidence write request puts JSON files under
+  <state root>/e2e-runs/<correlation_id>/ in the runtime's declared state root.
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+
+input_model:
+  name: ModelE2eCiReadRequest
+  module: omnimarket.models.e2e_bridge.model_e2e_bridge
+  description: "Read CI for a build's PRs once."
+output_model:
+  name: ModelE2eCiReadCompleted
+  module: omnimarket.models.e2e_bridge.model_e2e_bridge
+  description: "The readings, with the request's context echoed."
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - onex.cmd.omnimarket.build-bridge-ci-read-requested.v1
+    - onex.cmd.omnimarket.build-bridge-evidence-write-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.build-bridge-ci-read-completed.v1
+    - onex.evt.omnimarket.build-bridge-evidence-written.v1
+
+published_events:
+  - event_type: "E2eCiReadCompleted"
+    topic: onex.evt.omnimarket.build-bridge-ci-read-completed.v1
+    description: "Every PR's required-check reading at read_at."
+  - event_type: "E2eEvidenceWritten"
+    topic: onex.evt.omnimarket.build-bridge-evidence-written.v1
+    description: "The files a write request put on disk."
+
+# The write confirmation leaves the ONEX node graph here: the evidence directory is the artifact.
+externally_consumed_topics:
+  - onex.evt.omnimarket.build-bridge-evidence-written.v1
+
+handler:
+  module: omnimarket.nodes.node_e2e_bridge_effect.handlers.handler_e2e_bridge
+  class: HandlerE2eBridgeEffect
+  input_model: omnimarket.models.e2e_bridge.model_e2e_bridge.ModelE2eCiReadRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: e2e.read_ci
+      message_category: command
+      handler:
+        name: HandlerE2eBridgeEffect
+        module: omnimarket.nodes.node_e2e_bridge_effect.handlers.handler_e2e_bridge
+      event_model:
+        name: ModelE2eCiReadRequest
+        module: omnimarket.models.e2e_bridge.model_e2e_bridge
+      topic: onex.cmd.omnimarket.build-bridge-ci-read-requested.v1
+      description: "Read the required-check state of each PR through the gateway's ci_checks request."
+    - operation: e2e.write_evidence
+      message_category: command
+      handler:
+        name: HandlerE2eBridgeEffect
+        module: omnimarket.nodes.node_e2e_bridge_effect.handlers.handler_e2e_bridge
+      event_model:
+        name: ModelE2eEvidenceWriteRequest
+        module: omnimarket.models.e2e_bridge.model_e2e_bridge
+      topic: onex.cmd.omnimarket.build-bridge-evidence-write-requested.v1
+      description: "Write the run's evidence files under e2e-runs/<correlation_id>/."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # Resolved at the GitHub gateway boundary, never read here.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for the read-only ci_checks request."
+    required: true

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h06",
+  "path": "unpinned",
+  "sha256": "62d0a93525764ad070679a0497fcab8f280e49b00b2c209055a6231820d91b96",
+  "response": "The altered line is `line 137` (`extra_args=[\"--batch-modx\", \"off\"],`), which contradicts `line 558` of the test (`assert \"--batch-mode\" not in argv`) because the typo `--batch-modx` instead of `--batch-mode` means the per-PR path does not use the correct flag, while the test verifies the window path does not use the flag."
+}

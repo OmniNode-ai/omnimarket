@@ -198,7 +198,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 64b950973a5686d33e0b439fb80749d66362d06d
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 3fcbf795087a79081c0ceeb676216bf64c5d49ae
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core

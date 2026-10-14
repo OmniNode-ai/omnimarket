@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e09",
+  "path": "pinned",
+  "sha256": "d1f2d93521b139dca3bce437c84018c9a0dc95a0271e3aa79aa8788bbac244df",
+  "response": "#3549 (OMN-20712) hosts lab-fill selection and lab disk hygiene nodes with deployment overlays to move deployment facts out of the nodes while keeping selection and hygiene logic unchanged."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m04",
+  "path": "pinned",
+  "sha256": "c73ef851c788a6ed59a56c6878e76a9148d98e4536c5e75042a13dce7237cf25",
+  "response": "**Line 71**\nThe field name `state_patx` in the `_READ_FIELDS` tuple contradicts the test assertion on line 102, which expects the error message to contain `state_path`."
+}

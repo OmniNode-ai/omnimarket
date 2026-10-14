@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m04",
+  "path": "pinned",
+  "sha256": "4cc9456d73be20ae80c09bf3657043c5160cda47cb831569b2f5c0cd1487b486",
+  "response": "- **#1032 (omnibase_core):** Extracted a shared contract-to-topics resolver into `cli_resolve_contract_topics.py`, with reusable functions mapping an entry-point name to `contract.yaml` (raising `ModelOnexError`) and resolving command/terminal topics from `subscribe_topics`.\n- **#1564 (omnibase_core):** Bumped OmniNode-ai/omniclaude's `required-check-skip-guard-reusable.yml` from 9604842 to bc923a7.\n- **#83 (omnibase_spi):** Added frozen delegation output contracts: `ContractDelegatedResponse`, `ContractDelegationAttribution`, `ContractAttachment`, and `ContractComplianceResult`.\n- **#3135 (omnimarket):** Advanced OCC gate caller pins (`call-occ-preflight.yml`, `call-receipt-gate.yml`, and required-checks cross_repo_ref) to omnibase_core#1820's squash 52851458622f, carrying the writer-app pin-only exemption.\n- **#3598 (omnimarket):** Added the morning ground-state orchestrator node with a deployment overlay, declaring start, completed/failed, and delegation topics."
+}

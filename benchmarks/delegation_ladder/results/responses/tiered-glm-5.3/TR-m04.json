@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m04",
+  "path": "pinned",
+  "sha256": "0596c9dc1490c1e7e3d8417cd10e6798798112a69b88ecaed2bf5d7f5e0f1bfb",
+  "response": "**[71]** — `_READ_FIELDS = (\"state_patx\", ...)` misspells the field name, contradicting the test's assertion at line [102] that the refusal reason is `\"request not configured: state_path, ledger_path, floors_path are empty\"`."
+}

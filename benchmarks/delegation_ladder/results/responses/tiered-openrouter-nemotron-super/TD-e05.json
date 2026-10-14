@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e05",
+  "path": "pinned",
+  "sha256": "5d1b77d68f09c3cb8cc90c9e9c57b280f0f1222ed8bbf269e564b2ea2c2aff96",
+  "response": "Pull request #2884 adds a nullable delegation_events.ticket_id column with a partial index (migration 0047) and updates the terminal projection to accept ticket_id as raw JSON, with a fold handling well-formed, absent, and malformed values, enabling delegation runs to be joined to their tickets. This supports the consumer half of the decision-workflow eval plan Task 4 so a DoD verdict for a ticket can be joined to the delegated attempt it judged, and fixes the projection to decode any ticket value as text so step 2 declares str without a type override."
+}

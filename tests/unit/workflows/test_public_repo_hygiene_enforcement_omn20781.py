@@ -81,14 +81,30 @@ def test_workflow_pin_is_past_added_lines_support() -> None:
     assert pin != PRE_ADDED_LINES_PIN
 
 
+def _assert_staged_paths_only(hook: dict[str, Any]) -> None:
+    """OMN-17427: the only narrowing a hygiene hook may carry is the staged paths.
+
+    The exported hook scans the whole tracked tree on every commit (~15 to 35 s).
+    Under ``enforce_scope: added-lines`` the verdict is the findings on the lines
+    the index adds, and every such line sits in a staged file, so the commit is
+    handed the staged paths (``--staged``). Any other override would let a
+    literal through, and a whole-tree config would make ``--staged`` narrow it.
+    """
+    assert hook.get("args") == ["--staged"]
+    assert hook.get("pass_filenames") is True
+    assert hook.get("always_run") is False
+    assert hook.get("stages") == ["pre-commit"]
+    for narrowing in ("files", "exclude", "types", "entry"):
+        assert narrowing not in hook, narrowing
+    config = yaml.safe_load((ROOT / ".public-repo-hygiene.yaml").read_text())
+    assert config["enforce_scope"] == "added-lines"
+
+
 def test_precommit_hook_runs_the_gate_at_the_workflow_pin() -> None:
     repo, hook = _precommit_hygiene_hook()
     assert repo["rev"].split()[0] == _workflow_pin()
     assert hook.get("require_serial") is True
-    # No narrowing: the manifest runs the gate always, over the staged added
-    # lines, and any override of these fields would let a literal through.
-    for narrowing in ("args", "files", "exclude", "types", "stages", "entry"):
-        assert narrowing not in hook, narrowing
+    _assert_staged_paths_only(hook)
 
 
 def test_hygiene_context_is_asserted_by_the_ci_summary() -> None:
@@ -130,8 +146,7 @@ def test_precommit_runs_the_deployment_config_hook_at_the_workflow_pin() -> None
     assert len(matches) == 1, "exactly one deployment-config hook is declared"
     repo, hook = matches[0]
     assert repo["rev"].split()[0] == _workflow_pin()
-    for narrowing in ("args", "files", "exclude", "types", "stages", "entry"):
-        assert narrowing not in hook, narrowing
+    _assert_staged_paths_only(hook)
 
 
 def test_deployment_config_context_is_asserted_by_the_ci_summary() -> None:

@@ -10,7 +10,7 @@
       "task_id": "R5-02",
       "rung": "R5",
       "path": "cloud",
-      "delegation_id": "f03a4422-2230-43c7-8b81-008c2c672772",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -44,7 +44,7 @@
       "task_id": "R5-03",
       "rung": "R5",
       "path": "cloud",
-      "delegation_id": "c759302a-9933-4a12-a307-ec0a6d539e25",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -77,7 +77,7 @@
       "task_id": "R5-04",
       "rung": "R5",
       "path": "cloud",
-      "delegation_id": "d52da58f-fd85-4634-8771-dc22f501665f",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -110,7 +110,7 @@
       "task_id": "R6-01",
       "rung": "R6",
       "path": "cloud",
-      "delegation_id": "05c782d9-467f-47ca-a9d2-5080369ec110",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -143,7 +143,7 @@
       "task_id": "R6-02",
       "rung": "R6",
       "path": "cloud",
-      "delegation_id": "40006f1c-30a5-4273-9271-0987448c1e42",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -176,7 +176,7 @@
       "task_id": "R6-03",
       "rung": "R6",
       "path": "cloud",
-      "delegation_id": "92fd789b-e758-47b5-8728-0aaba990402e",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -227,12 +227,12 @@
         "outcome": "refused",
         "score": 0.0,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; submitted delegation 0b1cdb37-8c52-4307-96dc-3b5388039ae4\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem.",
+        "detail": "gateway refused or failed; rc=1; submitted delegation <uuid>\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem.",
         "sub_scores": {},
         "checklist": {}
       },
       "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "notes": "gateway refused or failed; rc=1; submitted delegation 0b1cdb37-8c52-4307-96dc-3b5388039ae4\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem."
+      "notes": "gateway refused or failed; rc=1; submitted delegation <uuid>\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem."
     }
   ]
 }

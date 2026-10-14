@@ -5,6 +5,7 @@
 from omnimarket.models.model_host_reconcile import (
     ModelHostReconcileDecisions,
     ModelHostReconcileEvaluateRequest,
+    ModelImportDriftVerdict,
     ModelSurfaceDecision,
     ModelSurfaceFact,
 )
@@ -27,6 +28,13 @@ class HandlerHostReconcileCompute:
                     else self._remedy(fact.surface, verdict, request),
                     owner=fact.owner,
                     detail=detail,
+                    import_drift=ModelImportDriftVerdict(
+                        component_name=fact.component_name,
+                        installed_revision=fact.installed_revision,
+                        expected_revision=fact.expected_revision,
+                    )
+                    if fact.kind == "installed_revision" and verdict == "IMPORT_DRIFT"
+                    else None,
                 )
             )
         failures = [
@@ -74,6 +82,15 @@ class HandlerHostReconcileCompute:
 
     @staticmethod
     def _verdict(fact: ModelSurfaceFact, workspace_root: str) -> tuple[str, str]:
+        if fact.kind == "installed_revision":
+            if fact.installed_revision != fact.expected_revision:
+                return "IMPORT_DRIFT", (
+                    f"{fact.component_name}: installed revision {fact.installed_revision} "
+                    f"differs from expected repo revision {fact.expected_revision}"
+                )
+            return "ALREADY_AT_TARGET", (
+                f"{fact.component_name}: installed revision matches {fact.expected_revision}"
+            )
         if fact.kind == "movement":
             before, after, target = fact.before, fact.after, fact.target
             if not after:
@@ -157,6 +174,7 @@ class HandlerHostReconcileCompute:
                 "clone:omnimarket",
                 "clone-surface",
                 "venv-surface",
+                "installed-copy",
             }
         )
 

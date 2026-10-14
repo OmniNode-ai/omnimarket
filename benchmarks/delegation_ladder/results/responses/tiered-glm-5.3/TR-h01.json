@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h01",
+  "path": "pinned",
+  "sha256": "99c4ccc0741f4a4a0f6871ed7540e744fc2b19261bebd89b96921698fcfde5dc",
+  "response": "**[24]** — `_GH_SUBPROCESS_TIMEOUT_SECONDS = 91`.\n\nIt contradicts test line [96] (`raise subprocess.TimeoutExpired(cmd=[\"gh\"], timeout=90)` in `_raise_timeout`), which — like the code's own comment (\"90s is generous\") and the PR description (\"timeout=90s\") — pins the gh bound at 90 seconds, a value the edited constant no longer matches."
+}

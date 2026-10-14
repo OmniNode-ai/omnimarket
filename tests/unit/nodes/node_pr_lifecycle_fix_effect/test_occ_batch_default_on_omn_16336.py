@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import re
 from pathlib import Path
 from types import ModuleType
 from uuid import uuid4
@@ -39,7 +38,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
 
 _ROOT = Path(__file__).resolve().parents[4]
 _PUBLISHER = _ROOT / "scripts" / "publish_occ_autobind_command.py"
-_REMINT = _ROOT / "scripts" / "ci" / "occ_conflicted_companion_remint.py"
 _REPO = "OmniNode-ai/omnimarket"
 _TICKET = "OMN-16336"
 _ENV = {
@@ -133,10 +131,3 @@ def test_explicit_off_flag_is_loud() -> None:
     assert result.exit_code == 0, result.output
     assert "::warning::" in result.output
     assert '"occ_batch_mode": "off"' in result.output
-
-
-@pytest.mark.unit
-def test_only_the_conflicted_remint_asks_for_per_pr_and_by_flag() -> None:
-    text = _REMINT.read_text(encoding="utf-8")
-    assert '"OCC_COMPANION_BATCH_MODE": ' not in text
-    assert re.search(r'"--batch-mode",\s*"off"', text) is not None

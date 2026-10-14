@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h03",
+  "title": "predict excerpt_lines (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function excerpt_lines in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_delegated_test_loop_orchestrator/handlers/handler_delegated_test_loop_orchestrator.py; the call and the asserted result come from tests/nodes/node_delegated_test_loop_orchestrator/test_loop_branch_behaviors.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef excerpt_lines(text, ranges, path):\n    if not ranges:\n        return text\n    lines = text.splitlines()\n    parts = []\n    for start, end in ranges:\n        lo, hi = (max(start, 1), min(end, len(lines)))\n        if lo > hi:\n            continue\n        parts.append(f'# --- {path} lines {lo}-{hi} ---')\n        parts.extend(lines[lo - 1:hi])\n    return '\\n'.join(parts) + '\\n'\n```\n\nWhat does `excerpt_lines('one\\ntwo\\n', ((3, 5), (-3, 0), (2, 2)), 'src/a.py')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'# --- src/a.py lines 2-2 ---\\ntwo\\n'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

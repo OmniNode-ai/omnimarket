@@ -15,6 +15,12 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: A gate suspension with no gate_reasons is refused at validation -- falsifier: test_unnamed_gate_suspension_is_refused failing
+  - id: "req-host-reconcile-import-drift"
+    statement: "A stale installed copy is a typed host-reconcile refusal."
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: node_host_reconcile_compute returns IMPORT_DRIFT with the installed and expected revisions for a stale installed copy, refuses unread revision facts, and keeps matching revisions eligible for the dispatch floor -- falsifier: tests/test_host_reconcile_class3_import_drift.py failing
   - id: "req-no-silent-green-pr"
     statement: "Every green, CLEAN, open PR gets a merge or a named skip."
     acceptance:
@@ -53,6 +59,23 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py -q -p no:randomly -k 'unnamed'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20865-ac6-import-drift"
+    description: "AC6: the class-3 host-reconcile tests exercise stale and matching installed copies and refuse unread revision facts. This test file is added by this pull request and fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_host_reconcile_class3_import_drift.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      # Deploy probe: the handler at the checked-out commit carries the IMPORT_DRIFT
+      # return literal, absent at the merge base. Runtime readout after the omnimarket
+      # deploy: node_host_reconcile_compute returning IMPORT_DRIFT for a stale installed
+      # copy on a lab host, with the installed and expected revisions, exit_code 2 and
+      # stamp_floor false.
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_reconcile_compute/handlers/handler_host_reconcile_compute.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cF 'return "IMPORT_DRIFT", ('
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
   - id: "dod-omn20865-ac2-coverage"
     description: "AC2: the fleet coverage tests pass."
     source: "manual"

@@ -1,0 +1,28 @@
+{
+  "task_id": "R3-06",
+  "title": "find the defective line in ModelIntentClassifiedEvent",
+  "task_type": "review",
+  "provenance": "A real merged fix, omnimemory bf08200fc6c9d3327240ba843883b4d2b785e23c, to src/omnimemory/models/events/model_intent_classified_event.py: the fix changes exactly one line of this block. The held answer is that line's position in the block.",
+  "prompt": "Review the code below. It has to satisfy the test shown, and exactly one line of it is wrong. Which line? Answer in the form `Line N`, where N is the number shown beside the line, and nothing else.\n\nCODE (line numbers shown):\n```\n 1 | class ModelIntentClassifiedEvent(BaseModel):\n 2 |     \"\"\"Incoming event from omniintelligence intent classifier.\n 3 | \n 4 |     Note: Uses extra=\"ignore\" to allow forward compatibility - if\n 5 |     omniintelligence adds new fields, this consumer won't reject them.\n 6 | \n 7 |     TODO(OMN-future): Consider migrating to omnibase_core.models.events\n 8 |     once cross-repo event schemas are standardized. This is logically\n 9 |     an omniintelligence-owned event; omnimemory is a consumer.\n10 |     \"\"\"\n11 | \n12 |     model_config = ConfigDict(frozen=True, extra=\"ignore\")\n13 | \n14 |     event_type: Literal[\"IntentClassified\"] = Field(\n15 |         \"IntentClassified\", description=\"Event type discriminator for message routing\"\n16 |     )\n17 |     session_id: str = Field(..., min_length=1, description=\"Session identifier\")\n18 |     correlation_id: UUID = Field(..., description=\"Correlation ID for tracing\")\n19 |     intent_category: str = Field(\n20 |         ..., min_length=1, description=\"Classified intent category\"\n21 |     )\n22 |     confidence: float = Field(\n23 |         ..., ge=0.0, le=1.0, description=\"Classification confidence score\"\n24 |     )\n25 |     keywords: tuple[str, ...] = Field(\n26 |         default=(),\n27 |         description=\"Extracted keywords (forward-compatible with OMN-1626)\",\n28 |     )\n29 |     timestamp: datetime = Field(..., description=\"Event timestamp\")\n```\n\nTEST (test_focused.py; the module is importable as `subject`):\n```python\n# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.\n# SPDX-License-Identifier: MIT\n\n\"\"\"Tests for ModelIntentClassifiedEvent JSON deserialization.\n\nThese tests validate that the model correctly handles JSON-deserialized payloads\nfrom Kafka, where UUIDs and datetimes arrive as strings rather than native types.\n\"\"\"\n\nimport json\n\nimport pytest\n\nfrom subject import (\n    ModelIntentClassifiedEvent,\n)\n\n\n@pytest.mark.unit\nclass TestModelIntentClassifiedEventJsonDeserialization:\n    \"\"\"Tests for JSON deserialization behavior (the Kafka use case).\"\"\"\n\n\n\n\n\n    def test_accepts_null_correlation_id(self) -> None:\n        \"\"\"Ensure null correlation_id is accepted (OMN-2841).\n\n        omniintelligence publishes ModelPatternLifecycleEvent with\n        correlation_id: UUID | None. This consumer must not fail when\n        the upstream omits correlation_id or sends null.\n        \"\"\"\n        data = {\n            \"event_type\": \"IntentClassified\",\n            \"session_id\": \"sess-null-corr\",\n            \"correlation_id\": None,\n            \"intent_category\": \"debugging\",\n            \"confidence\": 0.9,\n            \"timestamp\": \"2026-01-27T18:00:00+00:00\",\n        }\n        event = ModelIntentClassifiedEvent.model_validate(data)\n\n        assert event.correlation_id is None\n        assert event.session_id == \"sess-null-corr\"\n\n    def test_accepts_absent_correlation_id(self) -> None:\n        \"\"\"Ensure missing correlation_id defaults to None (OMN-2841).\n\n        If the upstream event omits the field entirely, deserialization\n        must succeed with correlation_id defaulting to None.\n        \"\"\"\n        data = {\n            \"event_type\": \"IntentClassified\",\n            \"session_id\": \"sess-no-corr\",\n            \"intent_category\": \"debugging\",\n            \"confidence\": 0.88,\n            \"timestamp\": \"2026-01-27T18:30:00+00:00\",\n        }\n        event = ModelIntentClassifiedEvent.model_validate(data)\n\n        assert event.correlation_id is None\n        assert event.session_id == \"sess-no-corr\"\n\n\n@pytest.mark.unit\nclass TestModelIntentClassifiedEventValidation:\n    \"\"\"Tests for validation constraints.\"\"\"\n\n\n\n\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "Line 18"
+    ],
+    "forbidden": [
+      "Line 180",
+      "Line 181",
+      "Line 182",
+      "Line 183",
+      "Line 184",
+      "Line 185",
+      "Line 186",
+      "Line 187",
+      "Line 188",
+      "Line 189"
+    ]
+  },
+  "fixture_files": {},
+  "rung": "R3",
+  "dependent_reasoning_steps": 2
+}

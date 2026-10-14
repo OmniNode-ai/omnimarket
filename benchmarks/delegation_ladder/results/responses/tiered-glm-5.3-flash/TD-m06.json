@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m06",
+  "path": "pinned",
+  "sha256": "a811f4dbca73dc173a73f7a02c4f0f92298a62418d90b590b65e7b798e40f5b7",
+  "response": "**omnibase_spi** — Port the change-aware selective test system from omnibase_core: with `ENABLE_SMART_TESTS=true`, CI maps changed source modules to their reverse-dep test directories instead of running the full suite (#206).\n\n**omnibase_core** — `UtilContractLoader` now validates complete contract documents via `ModelContractContent.model_validate`, adds event-bus and handler-routing subcontracts, serializes the full parsed contract for cache reads, and lets Pydantic validate declared dependency lists (#1920).\n\n**omnimarket** — Add `node_pr_title_check_compute`, a definition-B COMPUTE node hosting the pr-title check-title decision (#3702); add `node_merge_sweep_orchestrator` with an execution-graph wiring plan and `HandlerMergeSweepRun` (#3651); fix the Postgres claim store to write the contract-declared schema, resolving UndefinedTable bus-delegation failures caused by claims defaulting to public (#2923)."
+}

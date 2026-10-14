@@ -142,6 +142,13 @@ requirements:
       - id: "AC24"
         statement: |-
           AC24: the gate runs as a blocking step in the ci.yml lint job, the node-auto-wiring-in-process pre-commit hook and before uv build in release.yml and release-cut.yml, reads each limit from ModelDispatchRoute's field metadata, derives ids with infra's own derivation, wires all contracts with a real container and the checked-in local topology, and fails on any unlisted failure or any listed contract that now passes -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails, or emptying either exception list leaves it green (the two 206-character judged route ids must fail)
+  - id: "req-auto-wiring-manifest-ignores-active-lane"
+    statement: |-
+      The repository auto-wiring check discovers every package's contracts even when the caller supplies an active runtime package filter, and restores that filter after discovery.
+    acceptance:
+      - id: "AC33"
+        statement: |-
+          AC33: with ONEX_ACTIVE_RUNTIME_PACKAGES set to omnimarket, the manifest includes node_memory_storage_effect and leaves the caller's filter unchanged -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -k test_manifest_includes_contracts_outside_the_active_lane
   - id: "req-morning-overlay-at-run"
     statement: |-
       The morning ground-state and friction-sweep handlers read their deployment overlay when a run starts, so a runtime without the overlay wires every other node and refuses only that run, instead of failing auto-wiring and crash-looping the effects runtime.
@@ -194,6 +201,20 @@ requirements:
       - id: "AC32"
         statement: |-
           AC32: a pull request citing a ticket with no contract passes the prerequisite when its merge-base diff is the root CHANGELOG.md with optional pyproject.toml and uv.lock, and still fails when the diff adds any other path, lacks the root CHANGELOG.md, or the base cannot be read -- falsifier: uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q fails at the merge base
+  - id: "req-hostile-reviewer-retry-budget-pin"
+    statement: |-
+      The Hostile Reviewer clones omniintelligence at the revision whose retry of an unparseable review reply gets 8192 tokens instead of 4096.
+    acceptance:
+      - id: "AC34"
+        statement: |-
+          AC34: hostile-reviewer.yml clones omniintelligence at 3fcbf795087a79081c0ceeb676216bf64c5d49ae, the merge commit of omniintelligence#1072 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py -q fails over the merge base's workflow, which pins 64b950973a5686d33e0b439fb80749d66362d06d
+  - id: "req-omn17427-precommit-commit-path"
+    statement: "A commit no longer pays for whole-repo scans that CI runs on every pull request, and the staged-paths hygiene scan returns the whole-tree verdict."
+    acceptance:
+      - id: "AC35"
+        statement: "AC35: check-direct-model-call and topic-naming-lint run at the pre-push stage, with the direct-model-call --base taken from the merge base with origin/dev, and the ci.yml jobs that back them run on every pull request -- falsifier: uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
+      - id: "AC36"
+        statement: "AC36: the commit-stage public-repo-hygiene and deployment-config hooks are handed the staged paths, nothing else narrows them, .public-repo-hygiene.yaml still enforces added lines, and each has a whole-tree caller job -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -276,6 +297,15 @@ evidence_requirements:
   - kind: "tests"
     description: "The AC28 deploy probe is its one command check and binds no criterion; AC28 keeps the Codex headroom pytest."
     command: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn20864.py -q"
+  - kind: "tests"
+    description: "The Hostile Reviewer clones omniintelligence at the retry-budget revision."
+    command: "uv run pytest tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py -q"
+  - kind: "tests"
+    description: "The two whole-repo scans run at push and their ci.yml jobs run on every pull request."
+    command: "uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
+  - kind: "tests"
+    description: "The commit-stage hygiene hooks take the staged paths and keep a whole-tree caller job."
+    command: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -525,3 +555,35 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC32"]
+  - id: "dod-omn17427-ac33-manifest-active-filter"
+    description: "The auto-wiring manifest includes contracts outside the active lane and restores the caller's package filter after discovery."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -k test_manifest_includes_contracts_outside_the_active_lane"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC33"]
+  - id: "dod-omn17427-ac34-retry-budget-pin"
+    description: "The Hostile Reviewer clones omniintelligence at the merge commit of omniintelligence#1072."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC34"]
+  - id: "dod-omn17427-ac34-precommit-push-scans"
+    description: "check-direct-model-call and topic-naming-lint run at push; the CI jobs backing them run on every pull request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC35"]
+  - id: "dod-omn17427-ac35-hygiene-staged-paths"
+    description: "The commit-stage hygiene hooks take the staged paths, and the whole-tree caller job remains."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC36"]

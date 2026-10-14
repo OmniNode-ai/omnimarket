@@ -494,6 +494,11 @@ jobs:
       # SYNC with pre-commit hook 'typed-decision-shadow-calibration'.
       - name: Typed decision shadow calibration (OMN-19136)
         run: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
+      # OMN-20780: rulings 2026-10-13T18:34:53Z and 2026-10-13T20:50:03Z, a typed
+      # decision may be asked for a private code repository and only the contract's
+      # refused list is refused. SYNC with pre-commit hook 'typed-decision-repository-scope'.
+      - name: Typed decision refuses only the listed repositories (OMN-20780)
+        run: uv run pytest tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision.py tests/ci/test_typed_decision_repository_scope_wiring_omn20780.py -q -p no:randomly --no-cov
       # OMN-21002: paired with the imperative-contract-guard-caller hook.
       - name: Imperative guard caller regression (OMN-21002)
         run: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
@@ -574,6 +579,12 @@ jobs:
       # 'omniclaude-pin-drift'.
       - name: Event registry drift reads the pinned omniclaude (OMN-20001)
         run: uv run pytest tests/ci/test_omniclaude_pin_drift_omn20001.py -q -p no:randomly --no-cov
+      # OMN-20001: an omniclaude release reaches omnimarket as a pin bump PR (ruling
+      # 2026-10-01T21:43:10Z (3)); the bump node refuses a release candidate, a
+      # backwards version and a split pin. SYNC with pre-commit hook
+      # 'omniclaude-release-notice'.
+      - name: Omniclaude release notice (OMN-20001)
+        run: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
       # OMN-20730: the red CI triage model (formal/ci_red_triage) passes its design
       # config, each property fails on a one-knob mutation, the results match the
       # committed model, configs and outputs, and the verdict approves the model's
@@ -601,6 +612,13 @@ jobs:
       # OMN-20282: paired with the work-ledger-principal-cli pre-commit hook.
       - name: Work-ledger signing configuration and bus round-trip
         run: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
+      # OMN-20278: paired with the lab-work-receipt pre-commit hooks.
+      - name: Lab work receipt STATUS mapping
+        run: uv run --frozen pytest tests/unit/nodes/node_work_ledger_bus_mirror/test_lab_work_receipt_mapping.py -q -p no:randomly --no-cov
+      - name: Lab work receipt redelivery
+        run: uv run --frozen pytest tests/unit/work_ledger_bus/test_lab_work_receipt_mirror.py -q -p no:randomly --no-cov
+      - name: Lab work receipt gate wiring
+        run: uv run --frozen pytest tests/ci/test_lab_work_receipt_gates.py -q -p no:randomly --no-cov
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.
@@ -636,6 +654,9 @@ jobs:
       - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
         run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
 
+      # OMN-20865: SYNC with pre-commit hook class3-installed-copy-drift.
+      - name: Class 3 installed-copy drift node regression (OMN-20865)
+        run: uv run --frozen pytest tests/test_host_reconcile_class3_import_drift.py -q -p no:randomly
       - name: Scheduled merge sweep bus cycle (OMN-20676)
         run: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_bus_cycle_merge_sweep_orchestrator.py -q
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
@@ -3369,21 +3390,6 @@ jobs:
           ref: 51e1cb356453ad325d76aea57ab371cf975df3a4
           persist-credentials: false
           path: .contract-graph-checkouts/omniintelligence
-
-      # onex_change_control moved from INSTALLED_PACKAGES to CHECKOUT_PACKAGES
-      # when omnimarket dropped its runtime dependency on the governance repo.
-      # Its contracts still matter for census completeness — a topic whose
-      # producer lives in an unscanned package looks like an orphan to every
-      # consumer the graph can see — but reading packaged YAML never justified
-      # a runtime pin, and resolving it by import is what quietly required the
-      # dependency that has now been removed.
-      - name: Checkout onex_change_control (census-only, full topic coverage)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-        with:
-          repository: OmniNode-ai/onex_change_control
-          ref: 6adc28168d023d027bf9c1172f262ac03c9d9055
-          persist-credentials: false
-          path: .contract-graph-checkouts/onex_change_control
 
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4

@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m01",
+  "path": "pinned",
+  "sha256": "7984c24c8c2b3a029777d732992e591d38f6de142889129212c2af1ddb3982ec",
+  "response": "**omnimarket**\n- Scheduled heals clear release-window and vendor-parity reds once their cause is gone: a branch update pinned to `expected_head_sha` or a gate rerun, decided by `pr_stale_red_heal.py` (#3026).\n- A customer-chosen OpenRouter model, a `:free` one included, is called once and never re-aimed (#3875).\n- The must-fail runner checks out the earlier commit from a shallow source, reading the source's objects so must-fail controls return verdicts instead of `infra_error` (#3666).\n\n**omnibase_core**\n- 47 undocumented BLE001 suppressions are now documented: 45 bare directives across 26 files gained justification comments, and 2 invalid `noqa` directives in `topics.py` were converted to plain comments (suppression count 508→506) (#1169).\n- `onex run-node` fails fast with an actionable `SkillRoutingError` for unset `KAFKA_BOOTSTRAP_SERVERS` or an unreachable broker, instead of `confluent_kafka.KafkaException` or `KeyError` (#1374)."
+}

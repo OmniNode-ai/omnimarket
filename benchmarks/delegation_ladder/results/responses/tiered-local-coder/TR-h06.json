@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h06",
+  "path": "pinned",
+  "sha256": "84b9fa2fbb153f3d491cd0b13e18c909256899681cbd43bec6c8e46edc3c7c05",
+  "response": "**[137]**\nThe test at line 558 asserts that the `--batch-mode` flag is not present in the argv for the window publish path, which contradicts the added line [137] that explicitly passes `[\"--batch-modx\", \"off\"]` (a typo for `--batch-mode`) in the `publish_autobind` method."
+}

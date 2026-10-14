@@ -1,0 +1,26 @@
+{
+  "task_id": "R2-14",
+  "title": "what landed, from 10 merged changes",
+  "task_type": "document",
+  "provenance": "10 consecutive real merges to omnibase_core, from dda135d2d422 to a97287d2f9b0, subject lines and the first line of each description.",
+  "prompt": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\na97287d omnibase_core#1693: fix(OMN-18205): the remaining cross-repo reusables test the wrong thing too\n    #1690 corrected the Receipt Gate's selector and stopped there. The same\n0c536dc omnibase_core#1692: chore(OMN-18371): remove the Repowise MCP server config\n    Repowise is being removed from the developer toolchain (OMN-18371). This\n936f63c omnibase_core#1691: feat(OMN-15622): register the five delegation terminal topics in the canonical registry\n    Scoped slice of OMN-15622 (plan Task 1.2): the delegation terminal family\na01c205 omnibase_core#1690: fix(OMN-18205): the Receipt Gate's untrusted test is the fork test\n    receipt-gate.yml is a cross-repo reusable whose job surfaces as the required\n7d6915c omnibase_core#1689: chore(OMN-17474): remove pre-commit hooks measured at zero fires\n    Each hook removed here was proven live by the OMN-17474 replay\ncde3aaa omnibase_core#1688: fix(OMN-18033): make config propagation target-aware\n    * fix(OMN-18033): make config propagation target-aware\nb2348e1 omnibase_core#1687: feat(OMN-18334): listen for a description edit on the companion-effect caller\n    * feat(OMN-18334): listen for a description edit on the companion-effect caller\n0614ca6 omnibase_core#1686: feat(OMN-18295): carry per-rule quality evidence on the delegation terminal\n    * feat(OMN-18295): carry per-rule quality evidence on the delegation terminal\n2b8bf73 omnibase_core#1685: test(OMN-18235): cascade bumps carry machine-readable provenance, asserted by the generator's own test\n    The dependency-cascade generator already emits a provenance block naming the\ndda135d omnibase_core#1684: fix(OMN-18219): allow larger dod evidence ledgers\n    \n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_coverage",
+  "scorer_config": {
+    "source_text": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\na97287d omnibase_core#1693: fix(OMN-18205): the remaining cross-repo reusables test the wrong thing too\n    #1690 corrected the Receipt Gate's selector and stopped there. The same\n0c536dc omnibase_core#1692: chore(OMN-18371): remove the Repowise MCP server config\n    Repowise is being removed from the developer toolchain (OMN-18371). This\n936f63c omnibase_core#1691: feat(OMN-15622): register the five delegation terminal topics in the canonical registry\n    Scoped slice of OMN-15622 (plan Task 1.2): the delegation terminal family\na01c205 omnibase_core#1690: fix(OMN-18205): the Receipt Gate's untrusted test is the fork test\n    receipt-gate.yml is a cross-repo reusable whose job surfaces as the required\n7d6915c omnibase_core#1689: chore(OMN-17474): remove pre-commit hooks measured at zero fires\n    Each hook removed here was proven live by the OMN-17474 replay\ncde3aaa omnibase_core#1688: fix(OMN-18033): make config propagation target-aware\n    * fix(OMN-18033): make config propagation target-aware\nb2348e1 omnibase_core#1687: feat(OMN-18334): listen for a description edit on the companion-effect caller\n    * feat(OMN-18334): listen for a description edit on the companion-effect caller\n0614ca6 omnibase_core#1686: feat(OMN-18295): carry per-rule quality evidence on the delegation terminal\n    * feat(OMN-18295): carry per-rule quality evidence on the delegation terminal\n2b8bf73 omnibase_core#1685: test(OMN-18235): cascade bumps carry machine-readable provenance, asserted by the generator's own test\n    The dependency-cascade generator already emits a provenance block naming the\ndda135d omnibase_core#1684: fix(OMN-18219): allow larger dod evidence ledgers\n    \n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "required_ids": [
+      "OMN-15622",
+      "OMN-17474",
+      "OMN-18033",
+      "OMN-18205",
+      "OMN-18219",
+      "OMN-18235",
+      "OMN-18295",
+      "OMN-18334",
+      "OMN-18371"
+    ],
+    "coverage_threshold": 0.5
+  },
+  "fixture_files": {},
+  "rung": "R2",
+  "dependent_reasoning_steps": 2
+}

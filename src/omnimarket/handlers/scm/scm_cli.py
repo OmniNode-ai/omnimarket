@@ -22,7 +22,9 @@ A lane does GitHub work through this command and no ``gh`` verb:
   workflow-run) publish node_github_repo_write_effect's typed request. Its
   guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready and pr-close take the expected head from the
-  watcher state when ``--head-sha`` is not given.
+  watcher state when ``--head-sha`` is not given. pr-close reads the claim the
+  caller took from the caller's own claim registry and carries it on the
+  command: the effect runs elsewhere and cannot read that directory.
 - **merge, arm, rerun, update-branch** have no node operation and are refused,
   naming the landing controller that does them.
 
@@ -48,6 +50,7 @@ import re
 import sys
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, cast
 
@@ -70,6 +73,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import (
 from omnimarket.handlers.scm.handler_scm_local_state import (
     CLONE_ROOT_ENV,
     HandlerScmLocalState,
+    default_claims_dir,
     default_clone_path,
     default_watcher_state_path,
 )
@@ -87,8 +91,12 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
 )
+from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
+    HandlerPrClaimLookup,
+)
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     EnumRepoWriteOperation,
+    ModelRepoWriteClaim,
     ModelRepoWriteRequest,
 )
 
@@ -504,8 +512,10 @@ _OPTION_DECORATORS: Final[
     "claims_dir": click.option(
         "--claims-dir",
         envvar="ONEX_PR_CLAIMS_DIR",
-        required=True,
-        help="The claim registry directory the effect reads ($ONEX_PR_CLAIMS_DIR).",
+        default=None,
+        help="Where this host's claim registry keeps the claim you took "
+        "($ONEX_PR_CLAIMS_DIR, else $ONEX_STATE_DIR/pr-queue/claims). The claim "
+        "is read here and sent on the command; the directory itself is not.",
     ),
     "workflow": click.option("--workflow", required=True),
     "ref": click.option("--ref", required=True),
@@ -513,6 +523,44 @@ _OPTION_DECORATORS: Final[
         "--input", "inputs", multiple=True, help="KEY=VALUE, repeatable."
     ),
 }
+
+
+def _carried_claim(
+    claims_dir: str | None, repo: str, number: int | None
+) -> ModelRepoWriteClaim | None:
+    """The live claim the caller took on the PR, read from the caller's registry.
+
+    None when there is none or it lacks a field the effect checks; the close is
+    then sent without one and the effect refuses it, with the same typed
+    ``claim_not_held`` event a lane reads.
+    """
+    directory = claims_dir or (str(path) if (path := default_claims_dir()) else None)
+    pr_key = f"{repo.lower()}#{number}"
+    if directory is None:
+        click.echo(
+            f"no claim registry to read {pr_key} from; give --claims-dir", err=True
+        )
+        return None
+    held = HandlerPrClaimLookup().active_claim(
+        claims_dir=directory,
+        pr_key=pr_key,
+        now=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    if held is None:
+        click.echo(f"no live claim on {pr_key} in {directory}", err=True)
+        return None
+    try:
+        return ModelRepoWriteClaim(
+            pr_key=pr_key,
+            lane_id=held.lane_id or "",
+            claimed_by_run=held.claimed_by_run or "",
+            action=held.action or "",
+            claimed_at=held.claimed_at or "",
+            last_heartbeat_at=held.last_heartbeat_at,
+        )
+    except ValidationError as exc:
+        click.echo(f"the claim on {pr_key} in {directory} is unusable: {exc}", err=True)
+        return None
 
 
 def _write_command(spec: ModelScmVerb) -> click.Command:
@@ -547,6 +595,14 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 raise click.UsageError(f"--input {item!r} is not KEY=VALUE")
             inputs[key] = value
         run = fields.pop("run", None)
+        claims_dir = fields.pop("claims_dir", None)
+        claim = (
+            _carried_claim(
+                claims_dir if isinstance(claims_dir, str) else None, repo, number
+            )
+            if spec.operation == EnumRepoWriteOperation.PR_CLOSE
+            else None
+        )
         given: dict[str, JsonValue] = {
             name: value
             for name, value in fields.items()
@@ -577,6 +633,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 expected_head_sha=head_sha,
                 inputs=inputs,
                 dry_run=dry_run,
+                claim=claim,
                 **given,
             )
         except ValidationError as exc:
