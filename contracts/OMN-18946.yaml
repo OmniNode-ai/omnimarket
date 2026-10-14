@@ -34,11 +34,13 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn18946-ci-floor"
-    description: "Compatible newer floors pass and inconsistent release bounds fail."
+    description: "Compatible newer floors pass, inconsistent release bounds fail, and CI resolves their locked releases."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q -k infra_release_floor"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k every_infra_checkout_resolves_a_new_lock_release"
     binds_ac: ["AC4"]
   - id: "dod-omn18946-ci-pins"
     description: "Every checkout resolver follows the lock and refuses invalid sources."
