@@ -324,7 +324,7 @@ def test_r6_reports_a_harness_error_when_the_focused_test_cannot_discriminate() 
 
 def test_every_committed_bundle_parses_and_names_its_fixtures() -> None:
     paths = sorted(BUNDLES.glob("*.json"))
-    assert len(paths) == 28, "seven rungs of four tasks"
+    assert len(paths) >= 28, "seven rungs of four hand-built tasks, plus the mined ones"
     for path in paths:
         bundle = ModelTaskBundle.model_validate(
             json.loads(path.read_text(encoding="utf-8"))
@@ -337,14 +337,17 @@ def test_every_committed_bundle_parses_and_names_its_fixtures() -> None:
             )
 
 
-def test_every_rung_carries_four_tasks() -> None:
-    counts: dict[str, int] = {}
+def test_every_rung_carries_its_four_hand_built_tasks() -> None:
+    """The hand-built tasks (01-04) are the original ladder; mined tasks (05+)
+    were added beside them under OMN-20844, never in place of them."""
+    hand_built: dict[str, int] = {}
     for path in sorted(BUNDLES.glob("*.json")):
         bundle = ModelTaskBundle.model_validate(
             json.loads(path.read_text(encoding="utf-8"))
         )
-        counts[bundle.rung.value] = counts.get(bundle.rung.value, 0) + 1
-    assert counts == {
+        if int(bundle.task_id.rsplit("-", 1)[1]) <= 4:
+            hand_built[bundle.rung.value] = hand_built.get(bundle.rung.value, 0) + 1
+    assert hand_built == {
         "R1": 4,
         "R2": 4,
         "R3": 4,

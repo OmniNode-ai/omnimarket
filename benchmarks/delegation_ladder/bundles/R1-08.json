@@ -1,0 +1,22 @@
+{
+  "task_id": "R1-08",
+  "title": "rewrite a merged change as a reviewer sentence",
+  "task_type": "document",
+  "provenance": "The squash-commit description of a real merged change, omnibase_core 2a5ac713abf15c465fe64c07ef94125b3721b4ac.",
+  "prompt": "Rewrite this merged change's description as a one-sentence summary a reviewer can read in five seconds. Keep the ticket identifier OMN-16677 and the name `run_harness_workflow` exactly as written. Add nothing the description does not state. At most 35 words.\n\nCHANGE (omnibase_core#1603):\nfeat(OMN-16677): expose the tier-0 local runtime harness as `onex run`\n\nThe infra-free local runtime harness (OMN-13420) is the documented first-run\nexperience, but was reachable only as:\n\n    ./.venv/bin/python -m omnibase_core.runtime.harness.harness_cli delegation ...\n\nThat is not a product surface — it leaks an internal module path, assumes the\nvenv layout, and is invisible to `onex --help`. `[project.scripts] onex` already\npointed at the click group; the harness was simply never registered on it.\n\nAdds `onex run <delegation|sea>` with the same options the harness CLI already\naccepted. The argparse core is refactored into one shared callable,\n`run_harness_workflow`, which both the new click command and the existing\n`python -m` shim call. There is no second copy of the logic and no behavior\nchange: the `python -m` path keeps working exactly as before.\n\n`run-node` (remote Kafka dispatch) is untouched; both commands now carry one\nhelp line naming which runtime they target, so they are not confusable.\n\nRefs: OMN-16677\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Rewrite this merged change's description as a one-sentence summary a reviewer can read in five seconds. Keep the ticket identifier OMN-16677 and the name `run_harness_workflow` exactly as written. Add nothing the description does not state. At most 35 words.\n\nCHANGE (omnibase_core#1603):\nfeat(OMN-16677): expose the tier-0 local runtime harness as `onex run`\n\nThe infra-free local runtime harness (OMN-13420) is the documented first-run\nexperience, but was reachable only as:\n\n    ./.venv/bin/python -m omnibase_core.runtime.harness.harness_cli delegation ...\n\nThat is not a product surface — it leaks an internal module path, assumes the\nvenv layout, and is invisible to `onex --help`. `[project.scripts] onex` already\npointed at the click group; the harness was simply never registered on it.\n\nAdds `onex run <delegation|sea>` with the same options the harness CLI already\naccepted. The argparse core is refactored into one shared callable,\n`run_harness_workflow`, which both the new click command and the existing\n`python -m` shim call. There is no second copy of the logic and no behavior\nchange: the `python -m` path keeps working exactly as before.\n\n`run-node` (remote Kafka dispatch) is untouched; both commands now carry one\nhelp line naming which runtime they target, so they are not confusable.\n\nRefs: OMN-16677\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "must_contain": [
+      "OMN-16677",
+      "run_harness_workflow"
+    ],
+    "must_not_contain": [
+      "expose the tier-0 local runtime harness as `onex run`"
+    ],
+    "max_words": 35
+  },
+  "fixture_files": {},
+  "rung": "R1",
+  "dependent_reasoning_steps": 1
+}

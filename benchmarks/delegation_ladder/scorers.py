@@ -139,6 +139,21 @@ def _number(config: dict[str, object], key: str, default: float) -> float:
     return float(value) if isinstance(value, (int, float)) else default
 
 
+def _fixture_text(
+    config: dict[str, object], fixtures: Path, file_key: str, text_key: str
+) -> str:
+    """A fixture's text: inline in the bundle when it carries it, else from a file.
+
+    The mined tasks (OMN-20844) carry their sources inside the bundle, so a task
+    drawn from a real merged change is one JSON file that can be read, diffed and
+    rescored without a sibling fixture; the hand-built rungs keep their files.
+    """
+    inline = config.get(text_key)
+    if isinstance(inline, str):
+        return inline
+    return (fixtures / _text(config, file_key)).read_text(encoding="utf-8")
+
+
 # --------------------------------------------------------------------------
 # Identifier grounding
 # --------------------------------------------------------------------------
@@ -391,8 +406,8 @@ def score_unit_test_execution(
             checklist={"produced_code": False},
         )
 
-    subject = (fixtures / _text(config, "subject_file")).read_text(encoding="utf-8")
-    mutant = (fixtures / _text(config, "mutant_file")).read_text(encoding="utf-8")
+    subject = _fixture_text(config, fixtures, "subject_file", "subject_text")
+    mutant = _fixture_text(config, fixtures, "mutant_file", "mutant_text")
     timeout_s = int(_number(config, "timeout_s", 90))
 
     with tempfile.TemporaryDirectory(prefix="ladder-r4-") as tmp:
@@ -515,25 +530,34 @@ def score_patch_apply_and_test(
             checklist={"produced_code": False},
         )
 
-    prelude = (fixtures / _text(config, "prelude_file")).read_text(encoding="utf-8")
-    prefix_body = (fixtures / _text(config, "prefix_body_file")).read_text(
-        encoding="utf-8"
+    prelude = _fixture_text(config, fixtures, "prelude_file", "prelude_text")
+    prefix_body = _fixture_text(
+        config, fixtures, "prefix_body_file", "prefix_body_text"
     )
-    focused_test = (fixtures / _text(config, "focused_test_file")).read_text(
-        encoding="utf-8"
+    focused_test = _fixture_text(
+        config, fixtures, "focused_test_file", "focused_test_text"
     )
     timeout_s = int(_number(config, "timeout_s", 90))
+    # A mined task repairs one block of a larger module. It declares the code
+    # that follows the block (`suffix_text`, possibly empty), and the module is
+    # prelude + block + suffix. The hand-built rungs repair everything below the
+    # imports, so their module is prelude + block.
+    block_layout = "suffix_text" in config
+    suffix = _text(config, "suffix_text")
+
+    def assemble(block: str) -> str:
+        if block_layout:
+            return prelude + block.rstrip("\n") + "\n" + suffix
+        return prelude + "\n\n" + block
 
     with tempfile.TemporaryDirectory(prefix="ladder-r6-") as tmp:
         workdir = Path(tmp)
         (workdir / "test_focused.py").write_text(focused_test, encoding="utf-8")
 
-        (workdir / "subject.py").write_text(
-            prelude + "\n\n" + prefix_body, encoding="utf-8"
-        )
+        (workdir / "subject.py").write_text(assemble(prefix_body), encoding="utf-8")
         control_rc, control_out = _run_pytest(workdir, "test_focused.py", timeout_s)
 
-        (workdir / "subject.py").write_text(prelude + "\n\n" + code, encoding="utf-8")
+        (workdir / "subject.py").write_text(assemble(code), encoding="utf-8")
         patched_rc, patched_out = _run_pytest(workdir, "test_focused.py", timeout_s)
 
     control_collected = _collected_any(control_out)

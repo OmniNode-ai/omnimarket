@@ -1,0 +1,22 @@
+{
+  "task_id": "R1-09",
+  "title": "rewrite a merged change as a sentence",
+  "task_type": "document",
+  "provenance": "The squash-commit description of a real merged change, omnimemory 018d95bdf998367b87648930a06c45505a4d9dcf.",
+  "prompt": "Rewrite this merged change's description as one release-note sentence for a reader who has not seen the code. Keep the ticket identifier OMN-9049 and the name `on.pull_request` exactly as written. Add nothing the description does not state. At most 45 words.\n\nCHANGE (omnimemory#266):\nci(handshake): drop path filter so gate runs on every PR [OMN-9049]\n\nDrop the `paths:` filter on `on.push` and `on.pull_request` so the architecture\nhandshake gate fires on every PR, not only PRs that modify the handshake file\nitself. SHA pin bumps are owned separately by OMN-9050.\n\nParent epic: OMN-9048.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Rewrite this merged change's description as one release-note sentence for a reader who has not seen the code. Keep the ticket identifier OMN-9049 and the name `on.pull_request` exactly as written. Add nothing the description does not state. At most 45 words.\n\nCHANGE (omnimemory#266):\nci(handshake): drop path filter so gate runs on every PR [OMN-9049]\n\nDrop the `paths:` filter on `on.push` and `on.pull_request` so the architecture\nhandshake gate fires on every PR, not only PRs that modify the handshake file\nitself. SHA pin bumps are owned separately by OMN-9050.\n\nParent epic: OMN-9048.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "must_contain": [
+      "OMN-9049",
+      "on.pull_request"
+    ],
+    "must_not_contain": [
+      "drop path filter so gate runs on every pr [omn-9049]"
+    ],
+    "max_words": 45
+  },
+  "fixture_files": {},
+  "rung": "R1",
+  "dependent_reasoning_steps": 1
+}

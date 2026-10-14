@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import statistics
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +34,12 @@ if str(HERE.parent.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent.parent))
 
 RUNG_ORDER = ["R1", "R2", "R3", "R3b", "R4", "R5", "R6"]
+
+# The five task classes the delegation benchmark reports, in report order.
+CLASS_ORDER = ["document", "review", "test", "reasoning", "code_generation"]
+
+# The smallest class a separation claim may rest on (OMN-20844 AC2).
+MINIMUM_TASKS_PER_CLASS = 25
 
 
 def merge(paths: list[Path]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
@@ -105,6 +114,178 @@ def rung_table(
             }
         )
     return rows
+
+
+# --------------------------------------------------------------------------
+# Per-class, per-rung table (OMN-20844)
+# --------------------------------------------------------------------------
+
+
+def wilson_interval(passes: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Two-sided Wilson score interval for a share. ``(0, 1)`` when ``n`` is 0.
+
+    Wilson rather than the normal approximation: at shares near 0 or 1 and at
+    n of a few dozen the normal interval leaves [0, 1], and an interval that
+    does is not an interval anyone should compare rungs by.
+    """
+    if n <= 0:
+        return 0.0, 1.0
+    p = passes / n
+    denominator = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denominator
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def _median(values: Sequence[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def class_rung_table(
+    records: Sequence[dict[str, Any]],
+    rung_order: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """One row per (task class, delegation rung) over rung-run records.
+
+    Each record is one task answered by one ``model_rung``. A task that came
+    back with no answer is a row member that did not pass: dropping it would
+    raise a rung's share by the very failures that distinguish it.
+
+    ``accepted`` is the share the benchmark quotes: delivered past the
+    delegation quality gate AND passed by the class scorer.
+    ``answer_correct`` is the scorer's verdict alone, so a correct answer the
+    gate refused is visible as ``gate_refused_correct`` and is neither counted
+    as accepted nor mistaken for a wrong answer.
+    """
+    classes = [c for c in CLASS_ORDER if any(r["task_type"] == c for r in records)]
+    classes += sorted({r["task_type"] for r in records} - set(CLASS_ORDER))
+    seen: list[str] = []
+    for record in records:
+        if record["model_rung"] not in seen:
+            seen.append(record["model_rung"])
+    order = list(rung_order) if rung_order else seen
+    order += [name for name in seen if name not in order]
+
+    rows: list[dict[str, Any]] = []
+    for task_type in classes:
+        for model_rung in order:
+            group = [
+                r
+                for r in records
+                if r["task_type"] == task_type and r["model_rung"] == model_rung
+            ]
+            if not group:
+                continue
+            n = len(group)
+            accepted = sum(1 for r in group if r["accepted"])
+            correct = sum(1 for r in group if r["scorer_outcome"] == "pass")
+            low, high = wilson_interval(accepted, n)
+            latencies = [
+                r["model_latency_ms"] / 1000
+                for r in group
+                if r.get("model_latency_ms") is not None
+            ]
+            costs = [r["cost_usd"] for r in group if r.get("cost_usd") is not None]
+            rows.append(
+                {
+                    "task_type": task_type,
+                    "model_rung": model_rung,
+                    "tasks": n,
+                    "accepted": accepted,
+                    "accepted_share": accepted / n,
+                    "interval_low": low,
+                    "interval_high": high,
+                    "answer_correct": correct,
+                    "gate_refused_correct": sum(
+                        1
+                        for r in group
+                        if r["scorer_outcome"] == "pass" and not r["accepted"]
+                    ),
+                    "no_answer": sum(
+                        1 for r in group if r["scorer_outcome"] == "no_answer"
+                    ),
+                    "median_wall_s": _median([r["wall_ms"] / 1000 for r in group]),
+                    "median_model_latency_s": _median(latencies),
+                    "model_latency_receipts": len(latencies),
+                    "cost_usd": sum(costs) if costs else None,
+                    "cost_receipts": len(costs),
+                    "meets_minimum_tasks": n >= MINIMUM_TASKS_PER_CLASS,
+                }
+            )
+    return rows
+
+
+def class_separation(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Which rungs, per class, have an interval that clears every other rung's.
+
+    Two rungs are separated when their 95% intervals do not overlap. A rung is
+    named ``separated`` only when it is disjoint from *every* other rung in the
+    class: being clear of one rung and tangled with another is not a ranking.
+    ``disjoint_pairs`` lists each disjoint pair as ``(higher, lower)``.
+    """
+    by_class: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_class.setdefault(row["task_type"], []).append(row)
+
+    result: dict[str, dict[str, Any]] = {}
+    for task_type, group in by_class.items():
+        pairs: list[tuple[str, str]] = []
+        for a in group:
+            for b in group:
+                if a is b:
+                    continue
+                if a["interval_low"] > b["interval_high"]:
+                    pairs.append((a["model_rung"], b["model_rung"]))
+        separated: list[str] = []
+        if len(group) > 1:
+            for row in group:
+                name = row["model_rung"]
+                others = [r["model_rung"] for r in group if r is not row]
+                if all((name, o) in pairs or (o, name) in pairs for o in others):
+                    separated.append(name)
+        result[task_type] = {
+            "separated": separated,
+            "disjoint_pairs": pairs,
+            "tasks": min(r["tasks"] for r in group),
+        }
+    return result
+
+
+def render_table(
+    rows: Sequence[dict[str, Any]], separation: dict[str, dict[str, Any]]
+) -> str:
+    """Markdown the report quotes verbatim: nothing in it is typed by hand."""
+    lines: list[str] = []
+    current: str | None = None
+    for row in rows:
+        if row["task_type"] != current:
+            current = row["task_type"]
+            info = separation.get(current, {})
+            verdict = (
+                "separated: " + ", ".join(info["separated"])
+                if info.get("separated")
+                else "separated: none (every rung's interval overlaps another's)"
+            )
+            lines += [
+                "",
+                f"### {current} ({info.get('tasks', row['tasks'])} tasks) - {verdict}",
+                "",
+                "| rung | accepted | share | 95% interval | answer correct "
+                "| no answer | median wall s | median model s | cost USD |",
+                "| -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+            ]
+        latency = row["median_model_latency_s"]
+        cost = row["cost_usd"]
+        lines.append(
+            f"| {row['model_rung']} | {row['accepted']}/{row['tasks']} "
+            f"| {row['accepted_share']:.0%} "
+            f"| {row['interval_low']:.0%}-{row['interval_high']:.0%} "
+            f"| {row['answer_correct']} | {row['no_answer']} "
+            f"| {row['median_wall_s']:.1f} "
+            f"| {'n/a' if latency is None else f'{latency:.1f}'} "
+            f"| {'not measured' if cost is None else f'{cost:.4f} ({row["cost_receipts"]} receipts)'} |"
+        )
+    return "\n".join(lines).strip() + "\n"
 
 
 def main() -> int:

@@ -1,0 +1,20 @@
+{
+  "task_id": "R1-07",
+  "title": "rewrite a merged change as a two bullets",
+  "task_type": "document",
+  "provenance": "The squash-commit description of a real merged change, omnibase_infra 71b04b64fa38b24f2e911e72c533ac618cf124b7.",
+  "prompt": "Rewrite this merged change's description as two short bullet points: what changed, and what it affects. Keep the ticket identifier OMN-20600 and the name `node_authorize` exactly as written. Add nothing the description does not state. At most 55 words.\n\nCHANGE (omnibase_infra#4587):\nfeat(OMN-20600): map the authorize skill to node_authorize\n\n* feat(OMN-20600): map the authorize skill to node_authorize\n\n- Maps skill `authorize` to `node_authorize` in skill_mapping.yaml, result model AuthorizeResult\n- Defaults mirror the skill's own: scope src/**,tests/**,docs/**, tools Edit,Write, ttl-seconds 14400\n- Adds test_authorize_registered_and_wired and test_authorize_payload_validates_against_request_model, both red before the entry\n- `onex skill authorize` no longer returns Unknown skill; authorize-start has a producer\n\n* fix(OMN-20600): run the authorize payload proof without omnimarket instead of skipping it\n\nSkip Count Ratchet (OMN-18776) failed because the payload test importorskipped omnimarket, which this repo does not install, and the skip baseline can only shrink. The test now checks the mapping's parsed payload fields directly, so it executes in CI.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Rewrite this merged change's description as two short bullet points: what changed, and what it affects. Keep the ticket identifier OMN-20600 and the name `node_authorize` exactly as written. Add nothing the description does not state. At most 55 words.\n\nCHANGE (omnibase_infra#4587):\nfeat(OMN-20600): map the authorize skill to node_authorize\n\n* feat(OMN-20600): map the authorize skill to node_authorize\n\n- Maps skill `authorize` to `node_authorize` in skill_mapping.yaml, result model AuthorizeResult\n- Defaults mirror the skill's own: scope src/**,tests/**,docs/**, tools Edit,Write, ttl-seconds 14400\n- Adds test_authorize_registered_and_wired and test_authorize_payload_validates_against_request_model, both red before the entry\n- `onex skill authorize` no longer returns Unknown skill; authorize-start has a producer\n\n* fix(OMN-20600): run the authorize payload proof without omnimarket instead of skipping it\n\nSkip Count Ratchet (OMN-18776) failed because the payload test importorskipped omnimarket, which this repo does not install, and the skip baseline can only shrink. The test now checks the mapping's parsed payload fields directly, so it executes in CI.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "must_contain": [
+      "OMN-20600",
+      "node_authorize"
+    ],
+    "must_not_contain": [],
+    "max_words": 55
+  },
+  "fixture_files": {},
+  "rung": "R1",
+  "dependent_reasoning_steps": 1
+}
