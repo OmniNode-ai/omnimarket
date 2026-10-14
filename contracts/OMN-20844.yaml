@@ -170,7 +170,7 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11", "AC12"]
-  - id: "dod-omn20844-ac30-declared-literal-not-content-free"
+  - id: "dod-omn20844-ac30-declared-literal"
     description: "AC30: the TN-h05 shape of prompt declares an exact literal, a non-string Python literal passes the gate under it, and empty, filler, refusal and undeclared-prompt answers are still refused."
     source: "manual"
     checks:

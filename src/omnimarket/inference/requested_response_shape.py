@@ -39,19 +39,19 @@ _SHAPE_PRECEDENCE: tuple[EnumRequestedResponseShape, ...] = (
 # framing counts. Matching the whole prompt would let a research question that
 # merely discusses one-word answers resolve as constrained; capping the scanned
 # window keeps the directive a property of the ask.
-#
-# The framing sits at either end of a prompt: a short ask leads with it, and a
-# task that carries a program or a document states its output requirement last
-# (OMN-20844: "Reply with only the Python literal ..." closes a prompt whose
-# first 400 characters are code). So the window is the head and the tail, joined
-# by a newline; a prompt no longer than the window is scanned whole, exactly as
-# before. The join keeps `^`/`$` anchored patterns anchored to the whole prompt:
-# a longer prompt's window starts with its head and ends with its tail, so an
-# anchored directive can only match when the prompt IS that directive.
 _DIRECTIVE_SCAN_CHARS = 400
 
 
-def _directive_window(prompt: str) -> str:
+def _head_and_tail_window(prompt: str) -> str:
+    """The prompt's head and tail joined by a newline (OMN-20844).
+
+    A task that carries a program or a document states its output requirement
+    last: "Reply with only the Python literal it evaluates to" closes a prompt
+    whose first 400 characters are code. A prompt no longer than head plus tail
+    is scanned whole. The join keeps `^`/`$` anchored patterns anchored to the
+    whole prompt: a longer prompt's window starts with its head and ends with its
+    tail, so an anchored directive matches only when the prompt IS that directive.
+    """
     if len(prompt) <= 2 * _DIRECTIVE_SCAN_CHARS:
         return prompt
     return f"{prompt[:_DIRECTIVE_SCAN_CHARS]}\n{prompt[-_DIRECTIVE_SCAN_CHARS:]}"
@@ -81,8 +81,16 @@ def resolve_requested_response_shape(
         The single most specific declared shape that matched, or
         ``UNCONSTRAINED`` when none did.
     """
-    window = _directive_window(prompt)
+    head = prompt[:_DIRECTIVE_SCAN_CHARS]
+    framed = _head_and_tail_window(prompt)
     for shape in _SHAPE_PRECEDENCE:
+        # Only EXACT_LITERAL is read in the tail. Its directives are imperatives
+        # ("reply with exactly", "output exactly", "reply with only the Python
+        # literal"); the other shapes' phrases ("one word answer", "in one
+        # sentence") also occur in the data a prompt carries, and a recorded
+        # prompt whose last list item read "a bare one-word answer blanked"
+        # resolved single_word from its tail.
+        window = framed if shape is EnumRequestedResponseShape.EXACT_LITERAL else head
         for pattern in directives.get(shape, ()):
             if _compile(pattern).search(window):
                 return shape

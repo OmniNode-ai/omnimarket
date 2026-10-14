@@ -106,6 +106,24 @@ def test_a_directive_buried_mid_prompt_declares_nothing() -> None:
     )
 
 
+def test_only_the_literal_shape_is_read_in_the_tail() -> None:
+    """Data in the tail that merely names a one-word answer declares nothing.
+
+    A recorded report prompt ends in a list whose last item reads "a bare
+    one-word answer blanked"; reading single_word from that tail loosened its
+    summarization band and let an ungrounded number through.
+    """
+    prompt = (
+        "Summarise the failures below in one paragraph, using only these numbers.\n"
+        + "- a failure class: 4 trials\n" * 30
+        + "- a bare one-word answer blanked: 2 trials\n"
+    )
+    assert (
+        resolve_requested_shape_for_prompt(prompt)
+        is EnumRequestedResponseShape.UNCONSTRAINED
+    )
+
+
 def test_whole_prompt_anchored_directive_is_not_matched_in_a_tail() -> None:
     """``say ok`` only declares a shape when it IS the whole prompt."""
     prompt = "Write the release notes.\n" + "z" * 800 + "\nsay ok"
