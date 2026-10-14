@@ -26,13 +26,17 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import os
 import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+
+TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
 # --------------------------------------------------------------------------
 # Response anatomy: separating the answer from the reasoning trace
@@ -138,6 +142,21 @@ def _text(config: dict[str, object], key: str, default: str = "") -> str:
 def _number(config: dict[str, object], key: str, default: float) -> float:
     value = config.get(key, default)
     return float(value) if isinstance(value, (int, float)) else default
+
+
+def _fixture_text(
+    config: dict[str, object], fixtures: Path, file_key: str, text_key: str
+) -> str:
+    """A fixture's text: inline in the bundle when it carries it, else from a file.
+
+    The mined tasks (OMN-20844) carry their sources inside the bundle, so a task
+    drawn from a real merged change is one JSON file that can be read, diffed and
+    rescored without a sibling fixture; the hand-built rungs keep their files.
+    """
+    inline = config.get(text_key)
+    if isinstance(inline, str):
+        return inline
+    return (fixtures / _text(config, file_key)).read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------
@@ -346,10 +365,17 @@ def _run_pytest(workdir: Path, test_name: str, timeout_s: int) -> tuple[int, str
     test tree in scope. This is the only selection the harness ever runs on the
     launching host.
     """
+    # The subject is rewritten in this directory between runs (real, then mutant;
+    # broken, then patched). A cached bytecode file is keyed on the source's
+    # mtime in whole seconds and its length, so two same-length sources written
+    # within one second would share it and the second run would execute the
+    # first's code. Writing no bytecode makes the verdict a function of the text.
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", test_name, "-q", "-p", "no:cacheprovider"],
             cwd=workdir,
+            env=env,
             capture_output=True,
             text=True,
             timeout=timeout_s,
@@ -372,7 +398,11 @@ def _collected_any(output: str) -> bool:
 
 
 def score_unit_test_execution(
-    response: str, config: dict[str, object], fixtures: Path
+    response: str,
+    config: dict[str, object],
+    fixtures: Path,
+    *,
+    test_runner: TestRunner | None = None,
 ) -> ModelScore:
     """Run the produced test against the real function and against a broken copy.
 
@@ -392,19 +422,20 @@ def score_unit_test_execution(
             checklist={"produced_code": False},
         )
 
-    subject = (fixtures / _text(config, "subject_file")).read_text(encoding="utf-8")
-    mutant = (fixtures / _text(config, "mutant_file")).read_text(encoding="utf-8")
+    subject = _fixture_text(config, fixtures, "subject_file", "subject_text")
+    mutant = _fixture_text(config, fixtures, "mutant_file", "mutant_text")
     timeout_s = int(_number(config, "timeout_s", 90))
+    run_test = test_runner or _run_pytest
 
     with tempfile.TemporaryDirectory(prefix="ladder-r4-") as tmp:
         workdir = Path(tmp)
         (workdir / "test_generated.py").write_text(code, encoding="utf-8")
 
         (workdir / "subject.py").write_text(subject, encoding="utf-8")
-        real_rc, real_out = _run_pytest(workdir, "test_generated.py", timeout_s)
+        real_rc, real_out = run_test(workdir, "test_generated.py", timeout_s)
 
         (workdir / "subject.py").write_text(mutant, encoding="utf-8")
-        mutant_rc, mutant_out = _run_pytest(workdir, "test_generated.py", timeout_s)
+        mutant_rc, mutant_out = run_test(workdir, "test_generated.py", timeout_s)
 
     ran_something = _collected_any(real_out)
     passes_real = real_rc == 0 and ran_something
@@ -496,7 +527,11 @@ def score_diagnosis_location(response: str, config: dict[str, object]) -> ModelS
 
 
 def score_patch_apply_and_test(
-    response: str, config: dict[str, object], fixtures: Path
+    response: str,
+    config: dict[str, object],
+    fixtures: Path,
+    *,
+    test_runner: TestRunner | None = None,
 ) -> ModelScore:
     """Apply the produced code as the module body and run the focused test.
 
@@ -516,26 +551,36 @@ def score_patch_apply_and_test(
             checklist={"produced_code": False},
         )
 
-    prelude = (fixtures / _text(config, "prelude_file")).read_text(encoding="utf-8")
-    prefix_body = (fixtures / _text(config, "prefix_body_file")).read_text(
-        encoding="utf-8"
+    prelude = _fixture_text(config, fixtures, "prelude_file", "prelude_text")
+    prefix_body = _fixture_text(
+        config, fixtures, "prefix_body_file", "prefix_body_text"
     )
-    focused_test = (fixtures / _text(config, "focused_test_file")).read_text(
-        encoding="utf-8"
+    focused_test = _fixture_text(
+        config, fixtures, "focused_test_file", "focused_test_text"
     )
     timeout_s = int(_number(config, "timeout_s", 90))
+    run_test = test_runner or _run_pytest
+    # A mined task repairs one block of a larger module. It declares the code
+    # that follows the block (`suffix_text`, possibly empty), and the module is
+    # prelude + block + suffix. The hand-built rungs repair everything below the
+    # imports, so their module is prelude + block.
+    block_layout = "suffix_text" in config
+    suffix = _text(config, "suffix_text")
+
+    def assemble(block: str) -> str:
+        if block_layout:
+            return prelude + block.rstrip("\n") + "\n" + suffix
+        return prelude + "\n\n" + block
 
     with tempfile.TemporaryDirectory(prefix="ladder-r6-") as tmp:
         workdir = Path(tmp)
         (workdir / "test_focused.py").write_text(focused_test, encoding="utf-8")
 
-        (workdir / "subject.py").write_text(
-            prelude + "\n\n" + prefix_body, encoding="utf-8"
-        )
-        control_rc, control_out = _run_pytest(workdir, "test_focused.py", timeout_s)
+        (workdir / "subject.py").write_text(assemble(prefix_body), encoding="utf-8")
+        control_rc, control_out = run_test(workdir, "test_focused.py", timeout_s)
 
-        (workdir / "subject.py").write_text(prelude + "\n\n" + code, encoding="utf-8")
-        patched_rc, patched_out = _run_pytest(workdir, "test_focused.py", timeout_s)
+        (workdir / "subject.py").write_text(assemble(code), encoding="utf-8")
+        patched_rc, patched_out = run_test(workdir, "test_focused.py", timeout_s)
 
     control_collected = _collected_any(control_out)
     if control_rc == 0 or not control_collected:
@@ -572,6 +617,184 @@ def score_patch_apply_and_test(
             else f"focused test still fails after the patch: {patched_out[-400:]}"
         ),
         checklist=checklist,
+    )
+
+
+# --------------------------------------------------------------------------
+# Multi-file edits against a repository tree (the structural hard corpus)
+# --------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def git_text(*args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> None:
+    """Write src, tests and pyproject at ``commit``, with some files at the parent."""
+    archive = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "archive",
+            commit,
+            "src",
+            "tests",
+            "pyproject.toml",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    subprocess.run(["tar", "-x", "-C", str(dest)], input=archive, check=True)
+    for path in revert_to_parent:
+        (dest / path).write_text(
+            git_text("show", f"{commit}^:{path}"), encoding="utf-8"
+        )
+
+
+def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]:
+    """Run one repository test file against ``tree/src``; return ``(rc, output)``."""
+    env = {
+        **os.environ,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": str(tree / "src"),
+    }
+    argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
+    argv += ["-p", "no:cacheprovider", "-o", "addopts="]
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=tree,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, f"timed out after {timeout_s}s"
+    output = (completed.stdout + completed.stderr).replace(str(tree) + "/", "")
+    return completed.returncode, output
+
+
+_FILE_LINE_RE = re.compile(
+    r"^\s*(?:#+\s*)?(?:\*\*)?FILE:(?:\*\*)?\s*`?([^\s`*]+)`?", re.IGNORECASE
+)
+
+
+def parse_search_replace(answer: str) -> list[tuple[str, str, str]]:
+    """``(path, search, replace)`` per edit block, in the order written."""
+    edits: list[tuple[str, str, str]] = []
+    current: str | None = None
+    lines = answer.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = _FILE_LINE_RE.match(line)
+        if match:
+            current = match.group(1)
+        elif line.strip().startswith("<<<<<<< SEARCH") and current is not None:
+            search: list[str] = []
+            replace: list[str] = []
+            i += 1
+            while i < len(lines) and lines[i].strip() != "=======":
+                search.append(lines[i])
+                i += 1
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith(">>>>>>> REPLACE"):
+                replace.append(lines[i])
+                i += 1
+            edits.append((current, "\n".join(search), "\n".join(replace)))
+        i += 1
+    return edits
+
+
+def apply_search_replace(
+    tree: Path, edits: list[tuple[str, str, str]], editable: list[str]
+) -> str | None:
+    """Apply every edit to ``tree``; return why one could not apply, or None."""
+    for path, search, replace in edits:
+        if path not in editable:
+            return f"edit names a file not shown: {path}"
+        if not search.strip():
+            return f"empty SEARCH block in {path}"
+        target = tree / path
+        text = target.read_text(encoding="utf-8")
+        count = text.count(search)
+        if count != 1:
+            return f"SEARCH text found {count} times in {path}"
+        target.write_text(text.replace(search, replace, 1), encoding="utf-8")
+    return None
+
+
+def score_multi_file_edit_and_test(
+    response: str, config: dict[str, object]
+) -> ModelScore:
+    """Apply search/replace edits to the commit's tree at the parent and run its test.
+
+    The control comes first, as in the single-block scorer: the commit's own
+    test must FAIL on the files as shown (the parent's), or the task cannot
+    discriminate and the verdict is a harness error, never a pass.
+    """
+    answer, _ = split_answer(response)
+    edits = parse_search_replace(answer)
+    if not edits:
+        return ModelScore(
+            outcome=EnumOutcome.FAIL,
+            score=0.0,
+            mechanical=True,
+            detail="no FILE/SEARCH/REPLACE edit in the response",
+            checklist={"produced_edits": False},
+        )
+    commit = _text(config, "repo_commit")
+    test_path = _text(config, "test_path")
+    changed = _strs(config, "changed_files")
+    editable = _strs(config, "editable_files")
+    timeout_s = int(_number(config, "timeout_s", 240))
+    with tempfile.TemporaryDirectory(prefix="ladder-hard-") as tmp:
+        tree = Path(tmp)
+        materialise_tree(commit, tree, changed)
+        control_rc, control_out = run_tree_test(tree, test_path, timeout_s)
+        refused = apply_search_replace(tree, edits, editable)
+        patched_rc, patched_out = 1, ""
+        if refused is None:
+            patched_rc, patched_out = run_tree_test(tree, test_path, timeout_s)
+    if control_rc == 0:
+        return ModelScore(
+            outcome=EnumOutcome.HARNESS_ERROR,
+            score=0.0,
+            mechanical=True,
+            detail="the commit's test PASSES on the files as shown; the task cannot "
+            "discriminate: " + control_out[-400:],
+            checklist={"control_fails": False},
+        )
+    files_edited = len({path for path, _, _ in edits})
+    if refused is not None:
+        return ModelScore(
+            outcome=EnumOutcome.FAIL,
+            score=0.0,
+            mechanical=True,
+            detail=refused,
+            sub_scores={"files_edited": float(files_edited)},
+            checklist={"control_fails": True, "edits_apply": False},
+        )
+    passed = patched_rc == 0
+    return ModelScore(
+        outcome=EnumOutcome.PASS if passed else EnumOutcome.FAIL,
+        score=1.0 if passed else 0.0,
+        mechanical=True,
+        detail="the commit's test passes after the edits"
+        if passed
+        else "the commit's test still fails: " + patched_out[-800:],
+        sub_scores={"files_edited": float(files_edited)},
+        checklist={"control_fails": True, "edits_apply": True, "test_passes": passed},
     )
 
 

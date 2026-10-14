@@ -1,0 +1,28 @@
+{
+  "task_id": "R3-08",
+  "title": "find the defective line in build_aiokafka_auth_kwargs",
+  "task_type": "review",
+  "provenance": "A real merged fix, omnibase_infra 96528fb8fc23bc03067138c567154bcbb686f93e, to src/omnibase_infra/event_bus/kafka_auth.py: the fix changes exactly one line of this block. The held answer is that line's position in the block.",
+  "prompt": "Review the code below. It has to satisfy the test shown, and exactly one line of it is wrong. Which line? Answer in the form `Line N`, where N is the number shown beside the line, and nothing else.\n\nCODE (line numbers shown):\n```\n 1 | def build_aiokafka_auth_kwargs(config: ModelKafkaEventBusConfig) -> dict[str, object]:\n 2 |     \"\"\"Build auth/TLS kwargs for aiokafka clients from runtime Kafka config.\"\"\"\n 3 |     if config.security_protocol == \"PLAINTEXT\":\n 4 |         return {}\n 5 | \n 6 |     kwargs: dict[str, object] = {\"security_protocol\": config.security_protocol}\n 7 | \n 8 |     if config.sasl_mechanism is not None:\n 9 |         kwargs[\"sasl_mechanism\"] = config.sasl_mechanism\n10 | \n11 |     if config.sasl_mechanism == \"OAUTHBEARER\":\n12 |         kwargs[\"sasl_oauth_token_provider\"] = OAuthBearerTokenProvider(\n13 |             token_endpoint_url=str(config.sasl_oauthbearer_token_endpoint_url),\n14 |             client_id=str(config.sasl_oauthbearer_client_id),\n15 |             client_secret=str(config.sasl_oauthbearer_client_secret),\n16 |         )\n17 |     elif config.sasl_mechanism == \"AWS_MSK_IAM\":\n18 |         if config.security_protocol != \"SASL_SSL\":\n19 |             context = ModelInfraErrorContext.with_correlation(\n20 |                 transport_type=EnumInfraTransportType.KAFKA,\n21 |                 operation=\"build_aiokafka_auth_kwargs\",\n22 |                 target_name=\"kafka_config\",\n23 |             )\n24 |             raise ProtocolConfigurationError(\n25 |                 \"AWS_MSK_IAM requires security_protocol='SASL_SSL', \"\n26 |                 f\"got {config.security_protocol!r}\",\n27 |                 context=context,\n28 |                 parameter=\"security_protocol\",\n29 |                 value=config.security_protocol,\n30 |             )\n31 |         kwargs[\"sasl_mechanism\"] = \"OAUTHBEARER\"\n32 |         kwargs[\"sasl_oauth_token_provider\"] = MSKTokenProvider(region=config.msk_region)\n33 | \n34 |     if config.ssl_ca_file is not None:\n35 |         kwargs[\"ssl_context\"] = ssl.create_default_context(cafile=config.ssl_ca_file)\n36 | \n37 |     return kwargs\n```\n\nTEST (test_focused.py; the module is importable as `subject`):\n```python\n# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.\n# SPDX-License-Identifier: MIT\n\"\"\"MSK IAM auth coverage for direct aiokafka call sites.\"\"\"\n\nfrom __future__ import annotations\n\nimport asyncio\nfrom typing import Any, ClassVar\nfrom unittest.mock import AsyncMock, MagicMock, patch\n\nimport pytest\n\nfrom omnibase_core.models.contracts.subcontracts import (\n    ModelReplyTopics,\n    ModelRequestResponseConfig,\n    ModelRequestResponseInstance,\n)\nfrom subject import build_aiokafka_auth_kwargs\nfrom omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig\nfrom omnibase_infra.nodes.node_dlq_replay_effect import engine_dlq_replay\nfrom omnibase_infra.nodes.node_dlq_replay_effect.engine_dlq_replay import (\n    DLQConsumer,\n    DLQProducer,\n    DLQQuarantineProducer,\n    ModelDlqReplayEngineConfig,\n)\nfrom omnibase_infra.protocols import ProtocolEventBusLike\nfrom omnibase_infra.runtime.models.model_kafka_producer_config import (\n    ModelKafkaProducerConfig,\n)\nfrom omnibase_infra.runtime.providers.provider_kafka_producer import (\n    ProviderKafkaProducer,\n)\nfrom omnibase_infra.runtime.request_response_wiring import RequestResponseWiring\n\npytestmark = pytest.mark.unit\n\n\nclass _FakeAiokafkaClient:\n    created: ClassVar[list[_FakeAiokafkaClient]] = []\n\n    def __init__(self, *args: object, **kwargs: object) -> None:\n        self.args = args\n        self.kwargs = kwargs\n        self.started = False\n        self.stopped = False\n        self.__class__.created.append(self)\n\n    async def start(self) -> None:\n        self.started = True\n\n    async def stop(self) -> None:\n        self.stopped = True\n\n    def __aiter__(self) -> _FakeAiokafkaClient:\n        return self\n\n    async def __anext__(self) -> object:\n        await asyncio.sleep(3600)\n        raise StopAsyncIteration\n\n\n@pytest.fixture(autouse=True)\ndef _reset_fake_clients() -> None:\n    _FakeAiokafkaClient.created = []\n\n\n\n\ndef test_msk_iam_builds_default_aiokafka_ssl_context() -> None:\n    with patch(\"ssl.create_default_context\") as create_context:\n        context = object()\n        create_context.return_value = context\n        config = ModelKafkaEventBusConfig(\n            bootstrap_servers=\"b-1.example:9098\",\n            security_protocol=\"SASL_SSL\",\n            sasl_mechanism=\"AWS_MSK_IAM\",\n            msk_region=\"us-east-1\",\n        )\n\n        kwargs = build_aiokafka_auth_kwargs(config)\n\n    assert kwargs[\"ssl_context\"] is context\n    create_context.assert_called_once_with(cafile=None)\n\n\n\n\n\n\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "Line 34"
+    ],
+    "forbidden": [
+      "Line 340",
+      "Line 341",
+      "Line 342",
+      "Line 343",
+      "Line 344",
+      "Line 345",
+      "Line 346",
+      "Line 347",
+      "Line 348",
+      "Line 349"
+    ]
+  },
+  "fixture_files": {},
+  "rung": "R3",
+  "dependent_reasoning_steps": 2
+}

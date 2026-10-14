@@ -1,0 +1,23 @@
+name: node_e2e_bridge_effect
+version: "1.0.0"
+description: "E2E bridge effect: CI read through the typed GitHub gateway and evidence-bundle writes for node_e2e_orchestrator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+pack: build
+node_role: effect
+display_name: "E2E Bridge Effect"
+entry_points:
+  onex.nodes:
+    node_e2e_bridge_effect: "omnimarket.nodes.node_e2e_bridge_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["e2e", "effect", "ci-read", "evidence", "build-loop"]

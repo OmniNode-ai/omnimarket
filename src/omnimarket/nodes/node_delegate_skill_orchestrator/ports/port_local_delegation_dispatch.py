@@ -566,6 +566,29 @@ def derive_attempt_acceptance(
     )
 
 
+PINNED_BACKEND_FAILED_REASON = "pinned_backend_failed"
+
+
+def _pinned_failure_fields(
+    pinned_backend_id: str | None, message: str
+) -> dict[str, object]:
+    """Typed terminal fields for a pinned run that failed on its pin (OMN-20844).
+
+    Empty for an unpinned run. For a pinned one the terminal names
+    ``pinned_backend_failed`` and the pin, so a caller reads why the run ended
+    on the pinned backend instead of moving to another.
+    """
+    if pinned_backend_id is None:
+        return {}
+    return {
+        "terminal_failure_reason": PINNED_BACKEND_FAILED_REASON,
+        "error_message": (
+            f"{PINNED_BACKEND_FAILED_REASON}: the run is pinned to backend "
+            f"'{pinned_backend_id}' and does not move to another backend: {message}"
+        ),
+    }
+
+
 def _settle_final_rung_as_terminate(attempts: list[dict[str, object]]) -> None:
     """Record the rung the ladder ended on as TERMINATE, not CLIMB (OMN-18978).
 
@@ -1362,10 +1385,9 @@ class LocalDelegationDispatchPort:
         # default) preserves the exact pre-existing cheapest-first task_type +
         # tier_order resolution — see ``_resolve_initial_backend``. A non-None
         # value bypasses tier_order selection entirely for the INITIAL attempt
-        # only; it does NOT change escalation behavior — see the
-        # ``_resolve_initial_backend`` docstring's "Escalation-interaction note"
-        # for the observed pin+failure interaction (a transport failure on the
-        # pinned backend still excludes its WHOLE tier, not just that backend).
+        # only. OMN-20844: a pinned run never moves off the pin afterwards: a
+        # failure on it takes no sibling hop and no escalation, and the run
+        # ends with ``pinned_backend_failed`` (``_pinned_failure_fields``).
         #
         # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
         # (fail-open None when no ROI projection is wired). Threaded as a pure input
@@ -1373,6 +1395,7 @@ class LocalDelegationDispatchPort:
         # is demoted from BOTH the initial resolution and every escalation hop, with
         # the same overlay across the whole dispatch for a deterministic decision.
         roi_overlay = self._roi_overlay_reader(task_type)
+        pinned_backend_id = backend_id
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM), refined by OMN-14349: prefer a
         # caller-supplied verified tenant_id (would only be non-None if something
         # upstream of this genuinely bus-less path stamped one -- structurally
@@ -1675,7 +1698,7 @@ class LocalDelegationDispatchPort:
                 excluded_tiers.add(current_tier)
                 excluded_backend_refs.add(backend.backend_id)
                 over_budget_next: ModelResolvedDelegationBackend | None = None
-                if escalation_count < max_escalations:
+                if pinned_backend_id is None and escalation_count < max_escalations:
                     over_budget_next = self._resolve_next_backend(
                         current_tier=current_tier,
                         task_type=task_type,
@@ -1723,6 +1746,9 @@ class LocalDelegationDispatchPort:
                             provenance.model_dump(mode="json")
                             if provenance is not None
                             else None
+                        ),
+                        **_pinned_failure_fields(
+                            pinned_backend_id, over_budget_message
                         ),
                     }
                 escalation_count += 1
@@ -1815,7 +1841,8 @@ class LocalDelegationDispatchPort:
                         byok_retry_counts[backend.backend_id] = spent + 1
                         byok_same_backend_retry = True
                 may_move_on = (
-                    _is_retryable_transport_failure(transport_failure_class)
+                    pinned_backend_id is None
+                    and _is_retryable_transport_failure(transport_failure_class)
                     and not byok_same_backend_retry
                     and not (customer_route and typed_refusal)
                 )
@@ -2039,6 +2066,9 @@ class LocalDelegationDispatchPort:
                         provenance.model_dump(mode="json")
                         if provenance is not None
                         else None
+                    ),
+                    **_pinned_failure_fields(
+                        pinned_backend_id, transport_failure_message
                     ),
                 }
 
@@ -2447,7 +2477,7 @@ class LocalDelegationDispatchPort:
             # keeps same-model siblings, since unavailability is what they are for.
             gate_sibling = (
                 None
-                if ladder_stopped_by_veto
+                if ladder_stopped_by_veto or pinned_backend_id is not None
                 else self._resolve_sibling_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2501,7 +2531,7 @@ class LocalDelegationDispatchPort:
                 ladder_stop_reasons.append(_NO_RUNG_CAN_SATISFY_REASON)
             elif escalation_count >= max_escalations:
                 ladder_stop_reasons.append(_MAX_ESCALATION_ATTEMPTS_REACHED_REASON)
-            else:
+            elif pinned_backend_id is None:
                 next_backend = self._resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2624,6 +2654,9 @@ class LocalDelegationDispatchPort:
                         provenance.model_dump(mode="json")
                         if provenance is not None
                         else None
+                    ),
+                    **_pinned_failure_fields(
+                        pinned_backend_id, "; ".join(gate_result.failure_reasons)
                     ),
                 }
 
@@ -2765,14 +2798,10 @@ class LocalDelegationDispatchPort:
         pin means the caller asked for a backend that doesn't exist, and hiding
         that behind a silent fallback would defeat the whole point of pinning.
 
-        Escalation-interaction note (OMN-15156, P0 readback requirement): this pin
-        affects ONLY the initial attempt. If the pinned backend's transport call
-        fails, the existing escalation loop in ``dispatch()`` still excludes the
-        pinned backend's WHOLE TIER (via ``tier_for_backend(backend.backend_id)``)
-        and re-resolves the next hop through the normal closed-set ``tier_order``
-        — NOT back to the pin, and NOT to a different backend within the same
-        tier. This ticket does not redesign escalation; a single-backend (rather
-        than whole-tier) exclusion semantics is out of scope here.
+        Escalation-interaction note (OMN-20844): this resolves the initial
+        attempt, and ``dispatch()`` never moves a pinned run off it. A failure on
+        the pinned backend takes no same-tier sibling hop and no escalation; the
+        run ends with ``pinned_backend_failed``.
 
         OMN-14001: when ``roi_overlay`` demotes a proven-failing tier,
         ``first_eligible_tier`` returns the cheapest tier NOT ROI-suppressed, so a

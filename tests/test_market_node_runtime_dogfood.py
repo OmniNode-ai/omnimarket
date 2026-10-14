@@ -43,10 +43,11 @@ FOCUS_NODES = {
 }
 
 NATIVE_NON_ADDRESSABLE_NODES = {
-    "node_e2e_orchestrator",
     "node_navigation_history_reducer",
     "node_projection_dep_health",
 }
+
+EVENT_ROUTED_NODES = {"node_e2e_orchestrator"}
 
 EXPECTED_MISSING_ENTRY_POINTS = {
     "node_auto_merge_effect",
@@ -327,7 +328,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-21014's node_claude_review_gateway_effect is started by
     # `onex models review-gateway`, not by a bus command, so it has no
     # handler_routing: 21 -> 22.
-    assert summary["skipped"] == 22
+    # node_e2e_orchestrator routes its event topics to a handler now, so it is no
+    # longer non-addressable: 22 -> 21.
+    assert summary["skipped"] == 21
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
@@ -335,7 +338,6 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         for item in report["skipped"]
         if item["bucket"] == "non_addressable"
     } == {
-        "node_e2e_orchestrator",
         "node_merge_state_projection",
         "node_navigation_history_reducer",
         "node_projection_dep_health",
@@ -455,8 +457,17 @@ def test_market_node_runtime_dogfood_audits_former_non_addressable_nodes() -> No
     assert (set(routable) | set(skipped)) & FOCUS_NODES == FOCUS_NODES
     assert set(skipped) & FOCUS_NODES == NATIVE_NON_ADDRESSABLE_NODES
 
-    command_addressable_nodes = FOCUS_NODES - NATIVE_NON_ADDRESSABLE_NODES
+    command_addressable_nodes = (
+        FOCUS_NODES - NATIVE_NON_ADDRESSABLE_NODES - EVENT_ROUTED_NODES
+    )
     assert command_addressable_nodes <= set(routable)
+    # Entered by an event, not a command: the audit's command_topic is its first
+    # subscribe topic, which is the upstream workflow's completion event.
+    assert set(routable) >= EVENT_ROUTED_NODES
+    assert all(
+        routable[node_name]["command_topic"].startswith("onex.evt.")
+        for node_name in EVENT_ROUTED_NODES
+    )
     assert all(
         routable[node_name]["command_topic"].startswith("onex.cmd.")
         for node_name in command_addressable_nodes

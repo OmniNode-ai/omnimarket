@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17038"
+title: "node_e2e_orchestrator gets a contract-native handler so it stops dropping its two input topics"
+summary: "node_e2e_orchestrator declared two subscriptions and no handler, so the runtime opened a dispatcher-less subscription and dropped both; its logic was an imperative consumer that shelled gh and read environment variables. It is now a definition-B handler routed by its contract, with the CI read and the evidence writes in node_e2e_bridge_effect through the typed GitHub gateway, and the consumer is deleted."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-e2e-orchestrator-wired"
+    statement: |-
+      node_e2e_orchestrator routes build-loop completion, the CI read answer and PR lifecycle completion to a definition-B handler declared in its contract, and the contract-topic-graph oracle no longer reports it as declared but unwired.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the contract declares handler_routing for its subscribed topics and the oracle's defect finder reports no defect on the node -- falsifier: uv run pytest tests/unit/nodes/node_e2e_orchestrator/test_e2e_contract_wiring.py fails against the contract at the merge base
+      - id: "AC2"
+        statement: |-
+          AC2: a build-loop completion with a PR that is not green loops on the bus until it is green, then publishes the PR lifecycle start; the CI read is the typed GitHub gateway request and no subprocess or environment read is in the handler -- falsifier: uv run pytest tests/test_golden_chain_e2e_bridge.py passes with the self-loop edge removed from the contract
+evidence_requirements:
+  - kind: "tests"
+    description: "The contracts route the three topics and the graph closes, with positive controls."
+    command: "uv run pytest tests/unit/nodes/node_e2e_orchestrator/test_e2e_contract_wiring.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The chain routed only by the contracts: green start, the not-green self-loop, the deadline, a red check, dry run and no PR refs."
+    command: "uv run pytest tests/test_golden_chain_e2e_bridge.py tests/unit/nodes/node_e2e_orchestrator/test_handler_e2e_orchestrator.py tests/unit/nodes/node_e2e_bridge_effect/test_handler_e2e_bridge_effect.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17038-ac1-wiring"
+    description: "The orchestrator and effect contracts route their topics to handler classes and event models that resolve, and the graph has no defect on them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_e2e_orchestrator/test_e2e_contract_wiring.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn17038-ac2-chain"
+    description: "Handler decisions, effect I/O and a golden chain routed by the contracts alone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_e2e_bridge.py tests/unit/nodes/node_e2e_orchestrator/test_handler_e2e_orchestrator.py tests/unit/nodes/node_e2e_bridge_effect/test_handler_e2e_bridge_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn17038-deploy-probe"
+    description: "Deploy probe. The orchestrator contract at the checked-out commit declares handler_routing; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_e2e_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^handler_routing:'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_e2e_orchestrator/test_e2e_contract_wiring.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

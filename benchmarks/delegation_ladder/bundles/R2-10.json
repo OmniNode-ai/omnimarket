@@ -1,0 +1,26 @@
+{
+  "task_id": "R2-10",
+  "title": "what landed, from 8 merged changes",
+  "task_type": "document",
+  "provenance": "8 consecutive real merges to omnimarket, from 9950a415e43d to 44bd6841fc61, subject lines and the first line of each description.",
+  "prompt": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n44bd684 omnimarket#3862: ci(OMN-20912): the onex scm operation table the gh shim reads is gated in CI and pre-commit\n    * ci(OMN-20912): add scm-operation-table check and wiring\n4646342 omnimarket#3808: OMN-20601: run the house overlay publisher test in lint and pre-commit\n    * OMN-20601: run the house overlay publisher test in lint and pre-commit\n07fec7b omnimarket#3800: feat(OMN-21014): Claude review gateway, a voter endpoint per lab host that spends only that host's keys\n    * feat(OMN-20990): onex models add anthropic registers an Anthropic key through the customer key path\nce45f6b omnimarket#3875: fix(OMN-21078): a customer's chosen OpenRouter model, a :free one too, is called once and never re-aimed\n    * fix(OMN-21078): stop re-aiming customer-chosen free models\n525dab3 omnimarket#3872: feat(OMN-20106): typed-decision node refuses a listed set of repositories, not private ones\n    * feat(OMN-20106): replace public-repo gate with refused_repositories list\n5f8b25b omnimarket#3874: feat(OMN-21076): evaluate passes_existing_tests from ModelNamedTestRun\n    The gate now evaluates passes_existing_tests from a ModelNamedTestRun in omnimarket.models.delegation.wire.\n2d6d5ed omnimarket#3873: fix(OMN-21079): add formerly_model_ids to model registry\n    model_registry_v1.yaml gains formerly_model_ids on the openrouter-nemotron-ultra entry, listing openrouter-qwen3-coder-480b. ModelLlmModelProfile gains formerly_model_ids; ModelLlmModelRegistry gains legacy_model_ids, canonical_model_id and a get_model that re\n9950a41 omnimarket#3865: feat(OMN-20915): source-control nodes are refused the gh CLI by a wired check\n    * feat(OMN-20915): Add AST-based test refusing gh CLI usage in github nodes\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_coverage",
+  "scorer_config": {
+    "source_text": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n44bd684 omnimarket#3862: ci(OMN-20912): the onex scm operation table the gh shim reads is gated in CI and pre-commit\n    * ci(OMN-20912): add scm-operation-table check and wiring\n4646342 omnimarket#3808: OMN-20601: run the house overlay publisher test in lint and pre-commit\n    * OMN-20601: run the house overlay publisher test in lint and pre-commit\n07fec7b omnimarket#3800: feat(OMN-21014): Claude review gateway, a voter endpoint per lab host that spends only that host's keys\n    * feat(OMN-20990): onex models add anthropic registers an Anthropic key through the customer key path\nce45f6b omnimarket#3875: fix(OMN-21078): a customer's chosen OpenRouter model, a :free one too, is called once and never re-aimed\n    * fix(OMN-21078): stop re-aiming customer-chosen free models\n525dab3 omnimarket#3872: feat(OMN-20106): typed-decision node refuses a listed set of repositories, not private ones\n    * feat(OMN-20106): replace public-repo gate with refused_repositories list\n5f8b25b omnimarket#3874: feat(OMN-21076): evaluate passes_existing_tests from ModelNamedTestRun\n    The gate now evaluates passes_existing_tests from a ModelNamedTestRun in omnimarket.models.delegation.wire.\n2d6d5ed omnimarket#3873: fix(OMN-21079): add formerly_model_ids to model registry\n    model_registry_v1.yaml gains formerly_model_ids on the openrouter-nemotron-ultra entry, listing openrouter-qwen3-coder-480b. ModelLlmModelProfile gains formerly_model_ids; ModelLlmModelRegistry gains legacy_model_ids, canonical_model_id and a get_model that re\n9950a41 omnimarket#3865: feat(OMN-20915): source-control nodes are refused the gh CLI by a wired check\n    * feat(OMN-20915): Add AST-based test refusing gh CLI usage in github nodes\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "required_ids": [
+      "OMN-20106",
+      "OMN-20601",
+      "OMN-20912",
+      "OMN-20915",
+      "OMN-20990",
+      "OMN-21014",
+      "OMN-21076",
+      "OMN-21078",
+      "OMN-21079"
+    ],
+    "coverage_threshold": 0.5
+  },
+  "fixture_files": {},
+  "rung": "R2",
+  "dependent_reasoning_steps": 2
+}
