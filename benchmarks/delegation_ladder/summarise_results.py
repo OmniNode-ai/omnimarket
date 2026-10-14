@@ -299,6 +299,124 @@ def render_table(
     return "\n".join(lines).strip() + "\n"
 
 
+# --------------------------------------------------------------------------
+# Difficulty tiers (OMN-20844)
+# --------------------------------------------------------------------------
+
+DIFFICULTY_ORDER = ["easy", "medium", "hard"]
+
+# Where a class's tiers begin, in characters of the prompt a rung is fed:
+# (first medium prompt, first hard prompt). Fixed constants, not percentiles of
+# whatever set is loaded, so adding a task never moves another task's tier. They
+# were set on the committed tasks so each tier holds at least eight of them.
+# The only spread the committed tasks have is the size of their input (every
+# test task declares 3 dependent steps and every code_generation task 4), so a
+# tier here ranks input size; it does not claim to rank intrinsic difficulty.
+DIFFICULTY_THRESHOLDS: dict[str, tuple[int, int]] = {
+    "test": (3_000, 5_000),
+    "code_generation": (7_000, 9_000),
+}
+
+
+def difficulty_tier(task_type: str, prompt_chars: int) -> str | None:
+    """The tier of a task, or None for a class with no declared thresholds."""
+    thresholds = DIFFICULTY_THRESHOLDS.get(task_type)
+    if thresholds is None:
+        return None
+    medium_from, hard_from = thresholds
+    if prompt_chars >= hard_from:
+        return "hard"
+    return "medium" if prompt_chars >= medium_from else "easy"
+
+
+def tier_rung_table(
+    records: Sequence[dict[str, Any]],
+    tiers: dict[str, str],
+    rung_order: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """The class table split by difficulty tier.
+
+    ``tiers`` maps a task id to its tier. A record whose task has no tier is
+    left out: filing it under a default tier would put its answer in a share it
+    does not belong to. Rows are the same rows ``class_rung_table`` builds, one
+    per (class, tier, rung), so a tier's share, interval, latency and cost are
+    figured the same way as a class's.
+    """
+    tiered = [
+        {**r, "difficulty": tiers[r["task_id"]]}
+        for r in records
+        if r["task_id"] in tiers
+    ]
+    rows: list[dict[str, Any]] = []
+    for difficulty in DIFFICULTY_ORDER:
+        group = [r for r in tiered if r["difficulty"] == difficulty]
+        for row in class_rung_table(group, rung_order):
+            rows.append({**row, "difficulty": difficulty})
+    classes = [c for c in CLASS_ORDER if any(r["task_type"] == c for r in tiered)]
+    classes += sorted({r["task_type"] for r in tiered} - set(CLASS_ORDER))
+    order = {c: i for i, c in enumerate(classes)}
+    rows.sort(
+        key=lambda r: (order[r["task_type"]], DIFFICULTY_ORDER.index(r["difficulty"]))
+    )
+    return rows
+
+
+def first_failing_tier(
+    rows: Sequence[dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, str | None]]:
+    """Per (class, rung): the first tier with any miss, and the first with a majority of misses.
+
+    The majority line is the one a routing argument can lean on. With eight
+    tasks a tier the rung only just misses is inside its interval's noise, so
+    both are reported and neither is called a threshold of the rung.
+    """
+    found: dict[tuple[str, str], dict[str, str | None]] = {}
+    for row in rows:
+        key = (row["task_type"], row["model_rung"])
+        entry = found.setdefault(key, {"first_miss": None, "first_majority_fail": None})
+        if entry["first_miss"] is None and row["accepted"] < row["tasks"]:
+            entry["first_miss"] = row["difficulty"]
+        if entry["first_majority_fail"] is None and row["accepted_share"] < 0.5:
+            entry["first_majority_fail"] = row["difficulty"]
+    return found
+
+
+def render_difficulty_table(
+    rows: Sequence[dict[str, Any]],
+    failing: dict[tuple[str, str], dict[str, str | None]],
+) -> str:
+    """Markdown for the report: per class, a row per (rung, tier), then where each rung fails."""
+    lines: list[str] = []
+    current: str | None = None
+    for row in rows:
+        if row["task_type"] != current:
+            current = row["task_type"]
+            lines += [
+                "",
+                f"### {current} by difficulty",
+                "",
+                "| rung | tier | accepted | share | 95% interval | answer correct "
+                "| no answer | median wall s | median model s |",
+                "| -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+            ]
+        latency = row["median_model_latency_s"]
+        lines.append(
+            f"| {row['model_rung']} | {row['difficulty']} "
+            f"| {row['accepted']}/{row['tasks']} | {row['accepted_share']:.0%} "
+            f"| {row['interval_low']:.0%}-{row['interval_high']:.0%} "
+            f"| {row['answer_correct']} | {row['no_answer']} "
+            f"| {row['median_wall_s']:.1f} "
+            f"| {'n/a' if latency is None else f'{latency:.1f}'} |"
+        )
+    lines += ["", "### where each rung starts failing", ""]
+    for (task_type, model_rung), entry in sorted(failing.items()):
+        lines.append(
+            f"- {task_type} / {model_rung}: first miss: {entry['first_miss'] or 'none'}; "
+            f"first majority failure: {entry['first_majority_fail'] or 'none'}"
+        )
+    return "\n".join(lines).strip() + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", nargs="+", type=Path)

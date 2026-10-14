@@ -532,6 +532,13 @@ RUNGS: dict[str, ModelRung] = {
         ModelRung("openrouter-nemotron-ultra", "onex", "openrouter-nemotron-ultra"),
         ModelRung("openrouter-nemotron-super", "onex", "openrouter-nemotron-super"),
         ModelRung(
+            "unpinned-ladder",
+            "onex",
+            "",
+            in_default_set=False,
+            note="no backend pin: the real ladder climbs as routing decides",
+        ),
+        ModelRung(
             "gemini-2.5-flash-lite",
             "onex",
             "cloud-gemini-flash",
@@ -582,8 +589,8 @@ def rung_command(
             str(prompt_file),
             "--task-type",
             task_type,
-            "--backend-id",
-            rung.pin,
+            # An empty pin is the unpinned ladder: no flag, so routing decides.
+            *(["--backend-id", rung.pin] if rung.pin else []),
             "--ticket",
             ticket,
             *bus_flags,
@@ -655,6 +662,7 @@ def parse_onex_stdout(
         cost_usd=metrics.get("cost_usd"),
         model_latency_ms=metrics.get("latency_ms"),
         escalation_count=payload.get("escalation_count"),
+        ladder=ladder_trace([a for a in attempts if isinstance(a, dict)]),
         response=payload.get("response") or "",
     )
     if (
@@ -672,6 +680,36 @@ def parse_onex_stdout(
         )
         rec["detail"] = (payload.get("error_message") or "")[:300]
     return rec
+
+
+def ladder_trace(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """What an unpinned ladder run did: who answered, how far it climbed, why each rung was refused.
+
+    ``attempts`` is the receipt's own list, one entry per rung tried. The
+    answering rung is the one whose decision was ``accept``; a run that never
+    accepted names none. ``escalations`` is the number of rungs tried after the
+    first, so a task the first rung answered took none.
+    """
+    accepted = next(
+        (a for a in attempts if a.get("acceptance_decision") == "accept"), None
+    )
+    refused = [
+        {
+            "backend_id": a.get("backend_id"),
+            "tier": a.get("tier"),
+            "decision": a.get("acceptance_decision"),
+            "reason": a.get("acceptance_reason"),
+            "error": a.get("error_message"),
+        }
+        for a in attempts
+        if a is not accepted
+    ]
+    return {
+        "answered_by": accepted.get("backend_id") if accepted else None,
+        "answered_tier": accepted.get("tier") if accepted else None,
+        "escalations": max(len(attempts) - 1, 0),
+        "refused": refused,
+    }
 
 
 def parse_harness_stdout(stdout: str, stderr: str) -> dict[str, Any]:
@@ -817,6 +855,7 @@ def run_on_rung(
         "task_id": bundle.task_id,
         "level": bundle.rung.value,
         "task_type": bundle.task_type,
+        "difficulty": _difficulty(bundle),
         "scorer": bundle.scorer.value,
         "accepted": bool(delivered and scored_pass),
         "delivered": delivered,
@@ -836,6 +875,12 @@ def run_on_rung(
     elif not scored_pass:
         record["failure_kind"] = f"scorer_{outcome}"
     return record
+
+
+def _difficulty(bundle: ModelTaskBundle) -> str | None:
+    from benchmarks.delegation_ladder.summarise_results import difficulty_tier
+
+    return difficulty_tier(bundle.task_type, len(bundle.prompt))
 
 
 def _driver_sha() -> str | None:
@@ -936,11 +981,15 @@ def rescore_dir(directory: Path) -> int:
     return 1 if mismatched else 0
 
 
-def print_table(dirs: list[Path]) -> int:
+def print_table(dirs: list[Path], *, by_difficulty: bool = False) -> int:
     from benchmarks.delegation_ladder.summarise_results import (
         class_rung_table,
         class_separation,
+        difficulty_tier,
+        first_failing_tier,
+        render_difficulty_table,
         render_table,
+        tier_rung_table,
     )
 
     records: dict[tuple[str, str], dict[str, Any]] = {}
@@ -950,6 +999,15 @@ def print_table(dirs: list[Path]) -> int:
     if not records:
         print("no records", file=sys.stderr)
         return 2
+    if by_difficulty:
+        tiers = {
+            b.task_id: tier
+            for b in load_bundles(None)
+            if (tier := difficulty_tier(b.task_type, len(b.prompt))) is not None
+        }
+        tier_rows = tier_rung_table(list(records.values()), tiers, list(RUNGS))
+        print(render_difficulty_table(tier_rows, first_failing_tier(tier_rows)))
+        return 0
     rows = class_rung_table(list(records.values()), list(RUNGS))
     print(render_table(rows, class_separation(rows)))
     return 0
@@ -1169,6 +1227,11 @@ def main() -> int:
         help="Run the task set against one pinned delegation rung (OMN-20844).",
     )
     parser.add_argument(
+        "--by-difficulty",
+        action="store_true",
+        help="With --table: split the test and code_generation classes by tier.",
+    )
+    parser.add_argument(
         "--rescore",
         type=Path,
         metavar="DIR",
@@ -1224,7 +1287,7 @@ def main() -> int:
     if args.rescore is not None:
         return rescore_dir(args.rescore)
     if args.table is not None:
-        return print_table(args.table)
+        return print_table(args.table, by_difficulty=args.by_difficulty)
     if args.rung is not None:
         return run_rung_benchmark(args)
     if args.path is None:
