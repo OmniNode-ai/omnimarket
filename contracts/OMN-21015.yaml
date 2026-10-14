@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21015"
 title: "The local dashboard shows the demo's in-scope figures on Overview, Runs and Usage, and meets four dashboard requirements not yet built"
-summary: "The omnimarket table half of AC4. Each usage-by-model-day row carries its tier and its share of its tenant's calls that day, as Jonah ruled on 2026-10-14: the usage call event carries a tier and the tier joins the row key (migration 0003 on Postgres; store step omn21015_usage_by_model_day_tier_share on the local store). Each call carries the tier of the backend that served it, which for a run that was not escalated is the run's tier. The token series and the Usage page's table are omnidash's half. AC2 and AC3 land in their own changes."
+summary: "The omnimarket table half of AC4. Each usage-by-model-day row carries its tier and its share of its tenant's calls that day, as Jonah ruled on 2026-10-14: the usage call event carries a tier and the tier joins the row key (migration 0003 on Postgres; store step omn21015_usage_by_model_day_tier_share on the local store). Every call of a run carries the run's tier, the one its delegation row records, so one run never splits across tiers. The token series and the Usage page's table are omnidash's half. AC2 and AC3 land in their own changes."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
