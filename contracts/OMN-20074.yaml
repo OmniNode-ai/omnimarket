@@ -84,6 +84,13 @@ requirements:
       - id: "AC11"
         statement: |-
           AC11: ci.yml has no step checking out OmniNode-ai/onex_change_control, GRAPH_PACKAGES omits it, occ-conflicted-companion-remint.yml, occ-behavior-proof-backfill.yml and occ-n10-streak-report.yml do not exist and occ-s7-replay.yml and occ-emitter-golden-gate.yml do -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly fails at the merge base
+  - id: "req-health-report-repo-lists"
+    statement: |-
+      The baseline PR probe, platform diagnostics and platform readiness default repository lists no longer carry the change-control repository, which they only reported a row for.
+    acceptance:
+      - id: "AC12"
+        statement: |-
+          AC12: the default repository lists of the baseline PR probe, platform diagnostics and platform readiness contain no entry naming change control, and still contain OmniNode-ai/omnimarket -- falsifier: uv run pytest tests/unit/occ/test_omn20074_default_repo_lists_exclude_change_control.py -q -p no:randomly fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "This PR's rejection behavior and hook parity fail against the merge-base implementation and pass at the head."
@@ -118,6 +125,9 @@ evidence_requirements:
   - kind: "tests"
     description: "CI checks out no change control tree, the topic graph expects none, three dead occ workflows are deleted and two stay."
     command: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The three health-report default repository lists carry no change-control entry and keep omnimarket."
+    command: "uv run pytest tests/unit/occ/test_omn20074_default_repo_lists_exclude_change_control.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -218,3 +228,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn20074-health-report-repo-lists"
+    description: "The baseline PR probe, platform diagnostics and platform readiness default repository lists carry no change-control entry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/occ/test_omn20074_default_repo_lists_exclude_change_control.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
