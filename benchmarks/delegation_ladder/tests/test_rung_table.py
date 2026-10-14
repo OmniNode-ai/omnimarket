@@ -532,3 +532,117 @@ def test_a_cell_rescored_twice_keeps_the_very_first_verdict() -> None:
     once = rescored_record(_scored("fail"), "pass", 1.0, "p")
     twice = rescored_record(once, "fail", 0.0, "f")
     assert twice["first_scorer_outcome"] == "fail"
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "fork"), reason="POSIX fork runner")
+def test_preloaded_probes_do_not_share_subject_imports_or_bytecode(
+    tmp_path: Path,
+) -> None:
+    from benchmarks.delegation_ladder.run_ladder import _run_forked_pytest
+
+    subject = tmp_path / "subject.py"
+    test = tmp_path / "test_generated.py"
+    test.write_text(
+        "from subject import value\ndef test_value():\n assert value() == 1\n"
+    )
+    subject.write_text("def value(): return 1\n")
+    assert _run_forked_pytest(tmp_path, test.name, 10)[0] == 0
+    subject.write_text("def value(): return 2\n")
+    assert _run_forked_pytest(tmp_path, test.name, 10)[0] == 1
+    subject.write_text("def value(): return 1\n")
+    assert _run_forked_pytest(tmp_path, test.name, 10)[0] == 0
+    assert not list(tmp_path.glob("__pycache__/subject.*.pyc"))
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "fork"), reason="POSIX fork runner")
+def test_preloaded_probe_keeps_the_timeout_and_reaps_its_child(tmp_path: Path) -> None:
+    from benchmarks.delegation_ladder.run_ladder import _run_forked_pytest
+
+    test = tmp_path / "test_generated.py"
+    test.write_text("import time\ndef test_hangs():\n time.sleep(60)\n")
+    assert _run_forked_pytest(tmp_path, test.name, 1) == (124, "timed out after 1s")
+    test.write_text("def test_ok():\n assert True\n")
+    assert _run_forked_pytest(tmp_path, test.name, 10)[0] == 0
+
+
+def _rescore_input(tmp_path: Path) -> Path:
+    response = "def test_vacuous():\n    assert True\n"
+    saved = tmp_path / "responses" / "example" / "R4-01.json"
+    saved.parent.mkdir(parents=True)
+    saved.write_text(json.dumps({"response": response, "sha256": sha256_of(response)}))
+    (tmp_path / "example.jsonl").write_text(
+        json.dumps(
+            {
+                "task_id": "R4-01",
+                "model_rung": "example",
+                "response_sha256": sha256_of(response),
+                "scorer_outcome": "pass",
+                "delivered": True,
+                "accepted": True,
+            }
+        )
+        + "\n"
+    )
+    return saved
+
+
+def test_parallel_rescore_retains_the_mutation_control_and_first_verdict(
+    tmp_path: Path,
+) -> None:
+    from benchmarks.delegation_ladder.run_ladder import rescore_dir
+
+    _rescore_input(tmp_path)
+    assert rescore_dir(tmp_path) == 1
+    assert rescore_dir(tmp_path, write=True) == 0
+    record = json.loads((tmp_path / "example.jsonl").read_text())
+    assert record["scorer_outcome"] == "fail"
+    assert record["first_scorer_outcome"] == "pass"
+    assert record["accepted"] is False
+    assert "ALSO passes the mutant" in record["scorer_detail"]
+
+
+def test_parallel_rescore_refuses_different_saved_bytes(tmp_path: Path) -> None:
+    from benchmarks.delegation_ladder.run_ladder import rescore_dir
+
+    saved = _rescore_input(tmp_path)
+    blob = json.loads(saved.read_text())
+    blob["response"] += "# changed after scoring\n"
+    saved.write_text(json.dumps(blob))
+    with pytest.raises(ValueError, match="saved response sha does not match"):
+        rescore_dir(tmp_path)
+
+
+def test_execution_reuse_requires_identical_source_and_expires_with_the_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from benchmarks.delegation_ladder import run_ladder
+
+    bundle = load_bundles(["R6-01"])[0].model_copy(
+        update={
+            "scorer_config": {
+                "prelude_text": "",
+                "prefix_body_text": "def value(): return 0\n",
+                "focused_test_text": "from subject import value\ndef test_value():\n assert value() == 1\n",
+            }
+        }
+    )
+    executed: list[str] = []
+
+    def execute(workdir: Path, test_name: str, timeout_s: int) -> tuple[int, str]:
+        source = (workdir / "subject.py").read_text()
+        executed.append(source)
+        return (0 if "return 1" in source else 1), "one test ran"
+
+    monkeypatch.setattr(run_ladder, "_run_forked_pytest", execute)
+    cells = []
+    for index, value in enumerate((1, 1, 2)):
+        response = f"def value(): return {value}\n"
+        saved = tmp_path / f"{index}.json"
+        saved.write_text(
+            json.dumps({"response": response, "sha256": sha256_of(response)})
+        )
+        cells.append((bundle, saved, {"response_sha256": sha256_of(response)}))
+    for _ in range(2):
+        verdicts = run_ladder._rescore_worker_group(cells)
+        assert [verdict[0] for verdict in verdicts] == ["pass", "pass", "fail"]
+    assert len(executed) == 6  # Three distinct programs, executed on each invocation.

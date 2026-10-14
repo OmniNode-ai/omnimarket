@@ -30,9 +30,12 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+
+TestRunner = Callable[[Path, str, int], tuple[int, str]]
 
 # --------------------------------------------------------------------------
 # Response anatomy: separating the answer from the reasoning trace
@@ -394,7 +397,11 @@ def _collected_any(output: str) -> bool:
 
 
 def score_unit_test_execution(
-    response: str, config: dict[str, object], fixtures: Path
+    response: str,
+    config: dict[str, object],
+    fixtures: Path,
+    *,
+    test_runner: TestRunner | None = None,
 ) -> ModelScore:
     """Run the produced test against the real function and against a broken copy.
 
@@ -417,16 +424,17 @@ def score_unit_test_execution(
     subject = _fixture_text(config, fixtures, "subject_file", "subject_text")
     mutant = _fixture_text(config, fixtures, "mutant_file", "mutant_text")
     timeout_s = int(_number(config, "timeout_s", 90))
+    run_test = test_runner or _run_pytest
 
     with tempfile.TemporaryDirectory(prefix="ladder-r4-") as tmp:
         workdir = Path(tmp)
         (workdir / "test_generated.py").write_text(code, encoding="utf-8")
 
         (workdir / "subject.py").write_text(subject, encoding="utf-8")
-        real_rc, real_out = _run_pytest(workdir, "test_generated.py", timeout_s)
+        real_rc, real_out = run_test(workdir, "test_generated.py", timeout_s)
 
         (workdir / "subject.py").write_text(mutant, encoding="utf-8")
-        mutant_rc, mutant_out = _run_pytest(workdir, "test_generated.py", timeout_s)
+        mutant_rc, mutant_out = run_test(workdir, "test_generated.py", timeout_s)
 
     ran_something = _collected_any(real_out)
     passes_real = real_rc == 0 and ran_something
@@ -518,7 +526,11 @@ def score_diagnosis_location(response: str, config: dict[str, object]) -> ModelS
 
 
 def score_patch_apply_and_test(
-    response: str, config: dict[str, object], fixtures: Path
+    response: str,
+    config: dict[str, object],
+    fixtures: Path,
+    *,
+    test_runner: TestRunner | None = None,
 ) -> ModelScore:
     """Apply the produced code as the module body and run the focused test.
 
@@ -546,6 +558,7 @@ def score_patch_apply_and_test(
         config, fixtures, "focused_test_file", "focused_test_text"
     )
     timeout_s = int(_number(config, "timeout_s", 90))
+    run_test = test_runner or _run_pytest
     # A mined task repairs one block of a larger module. It declares the code
     # that follows the block (`suffix_text`, possibly empty), and the module is
     # prelude + block + suffix. The hand-built rungs repair everything below the
@@ -563,10 +576,10 @@ def score_patch_apply_and_test(
         (workdir / "test_focused.py").write_text(focused_test, encoding="utf-8")
 
         (workdir / "subject.py").write_text(assemble(prefix_body), encoding="utf-8")
-        control_rc, control_out = _run_pytest(workdir, "test_focused.py", timeout_s)
+        control_rc, control_out = run_test(workdir, "test_focused.py", timeout_s)
 
         (workdir / "subject.py").write_text(assemble(code), encoding="utf-8")
-        patched_rc, patched_out = _run_pytest(workdir, "test_focused.py", timeout_s)
+        patched_rc, patched_out = run_test(workdir, "test_focused.py", timeout_s)
 
     control_collected = _collected_any(control_out)
     if control_rc == 0 or not control_collected:
