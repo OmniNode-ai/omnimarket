@@ -19,6 +19,13 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -39,6 +46,16 @@ _BACKENDS: list[dict[str, object]] = [
         "capabilities": ["code_generation"],
     }
 ]
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: supply executed passing evidence for this code-class happy path.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -85,12 +102,18 @@ def test_local_dispatch_materializes_llm_call_metrics_row(
     db_path = tmp_path / "delegation.sqlite"
     _patch_backends_and_transport(monkeypatch)
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     correlation_id = uuid4()
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=correlation_id,
@@ -137,6 +160,7 @@ def test_two_local_runs_with_equal_tokens_are_two_rows(
     db_path = tmp_path / "delegation.sqlite"
     _patch_backends_and_transport(monkeypatch)
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
@@ -144,6 +168,11 @@ def test_two_local_runs_with_equal_tokens_are_two_rows(
     for cid in ids:
         asyncio.run(
             port.dispatch(
+                named_tests=ModelNamedTestSpec(
+                    workspace_root=str(tmp_path),
+                    answer_path="reverse_impl.py",
+                    test_ids=("test_reverse.py::test_reverse",),
+                ),
                 prompt="reverse a string",
                 task_type="code_generation",
                 correlation_id=cid,

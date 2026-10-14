@@ -58,6 +58,18 @@ SCORE_SOURCE_COMBINED = "combined"
 # model -- see ``ModelQualityGateResult.no_rung_can_satisfy``.
 SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 
+# OMN-21077: the verdict prefix a failure reason carries when the evidence a
+# code answer is judged on never reached the gate -- a code class's declared
+# ``passes_existing_tests`` with no executed test run. No costlier rung can
+# supply a test run the request did not name, so a reason carrying it makes
+# climbing futile whatever else was refused beside it.
+INSUFFICIENT_EVIDENCE_VERDICT_PREFIX = "INSUFFICIENT"
+NO_NAMED_TEST_RUN_REASON = (
+    f"{INSUFFICIENT_EVIDENCE_VERDICT_PREFIX}: passes_existing_tests: no named "
+    "test run reached the gate; a code answer is accepted only on tests run "
+    "against it"
+)
+
 # OMN-19529: the checks whose PASS establishes that a response is correct, as
 # distinct from checks that can only refute one. Every other check the gate
 # runs is a pre-filter or a grounding check: it can show an answer is wrong
@@ -370,7 +382,16 @@ class ModelQualityGateResult(BaseModel):
 
     @property
     def no_rung_can_satisfy(self) -> bool:
-        """Whether every reason refusing this response is a shape refusal."""
+        """Whether no costlier rung can cure the reasons refusing this response.
+
+        True when every reason is a shape refusal, or when any reason says the
+        evidence the answer is judged on was never supplied (OMN-21077).
+        """
+        if any(
+            reason.startswith(INSUFFICIENT_EVIDENCE_VERDICT_PREFIX)
+            for reason in self.failure_reasons
+        ):
+            return True
         return bool(self.failure_reasons) and all(
             reason.startswith(SHAPE_REFUSED_VERDICT_PREFIX)
             for reason in self.failure_reasons
@@ -383,6 +404,8 @@ class ModelQualityGateResult(BaseModel):
 # second definition here would be two wire contracts for one wire field. They
 # are re-exported from this module so every existing importer keeps its path.
 __all__: list[str] = [
+    "INSUFFICIENT_EVIDENCE_VERDICT_PREFIX",
+    "NO_NAMED_TEST_RUN_REASON",
     "NO_RUNG_CAN_SATISFY_WIRE_KEY",
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",

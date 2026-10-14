@@ -8,6 +8,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     _check_compiles_without_errors,
     _extract_fenced_code_blocks,
@@ -179,8 +182,7 @@ def test_quality_gate_passes_existing_tests_is_supported_not_unsupported() -> No
     """``passes_existing_tests`` is a recognized check, not an unsupported one.
 
     It must not surface a ``MALFORMED: unsupported deterministic DoD check`` error
-    — it is a KNOWN check that is deliberately SKIPPED (no wired acceptance-command
-    executor), not an unrecognized one.
+    — it is a KNOWN check that requires evidence of an executed named-test run.
     """
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
@@ -196,15 +198,14 @@ def test_quality_gate_passes_existing_tests_is_supported_not_unsupported() -> No
 
 
 @pytest.mark.unit
-def test_quality_gate_passes_existing_tests_is_skipped_never_phantom_pass() -> None:
+def test_quality_gate_passes_existing_tests_missing_run_never_phantom_pass() -> None:
     """OMN-13850: an UNEVALUATED ``passes_existing_tests`` must NOT phantom-pass.
 
     Before OMN-13850 this check was aliased to ``_check_response_non_empty``, so a
     clean-but-non-empty answer whose ONLY declared deterministic check was
     ``passes_existing_tests`` returned ``passed=True`` while executing zero tests.
-    Now the check is recorded as SKIPPED (no wired executor), confers NO acceptance
-    authority, and the gate falls through to the no-authority verdict — a clean
-    answer no longer passes on a check that evaluated nothing.
+    Without execution evidence the check now fails deterministically, so a clean
+    answer cannot pass on a check that ran no tests.
     """
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
@@ -215,10 +216,14 @@ def test_quality_gate_passes_existing_tests_is_skipped_never_phantom_pass() -> N
     )
     result = delta(gate_input)
     assert result.passed is False
-    assert result.fail_category == "fail_heuristic"
-    # No phantom "passed" evidence: the skipped check produced neither a pass nor a
-    # failure, so there is no deterministic-acceptance authority to promote it.
-    assert result.actual_score is None
+    # OMN-21077: a missing named run is a deterministic refusal, never a skip.
+    assert result.fail_category == "fail_deterministic"
+    assert result.failure_reasons == (NO_NAMED_TEST_RUN_REASON,)
+    assert result.actual_score == 0.0
+    assert result.skipped_checks == ()
+    assert result.no_rung_can_satisfy is True
+    assert result.rule_evaluations[0].rule == "passes_existing_tests"
+    assert result.rule_evaluations[0].passed is False
 
 
 @pytest.mark.unit

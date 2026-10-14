@@ -30,6 +30,12 @@ from omnimarket.delegation.response_contract_instruction import (
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -42,6 +48,24 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.routing import delegation_backend_resolution
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: prompt, evidence and delivery assertions need a tested code answer.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
+
+
+def _named_test_metadata(workspace: Path) -> dict[str, str]:
+    return {
+        "named_tests": "test_normalize_status.py::test_normalize_status_ok",
+        "named_tests_answer_path": "test_normalize_status.py",
+        "named_tests_workspace": str(workspace),
+    }
 
 
 class _StubDispatchPort:
@@ -301,14 +325,11 @@ class TestDelegateSkillGoldenChain:
         )
 
         db_path = tmp_path / "delegation.sqlite"
-        # OMN-13849: `test` is a judge-combinable class and the local path applies
-        # the 0.85 required bar. Inject a passing judge so the single-tier `test`
-        # answer clears the bar (the combine lifts the ~0.733 deterministic-only
-        # score) and the chain stays a single-attempt COMPLETED — this test asserts
-        # the /no_think shaping + one inference call, not the judge-veto path.
+        # OMN-21077: executed tests supply acceptance for this prompt/evidence chain.
         port = LocalDelegationDispatchPort(
             evidence_db_path=db_path,
             effect_process_boundary=False,
+            named_test_runner=_passing_named_test_runner,
         )
         handler = HandlerDelegateSkill(dispatch_port=port)
         correlation_id = uuid4()
@@ -317,6 +338,7 @@ class TestDelegateSkillGoldenChain:
         response = await handler.handle(
             ModelDelegateSkillRequest(
                 prompt=original_prompt,
+                metadata=_named_test_metadata(tmp_path),
                 task_type="test",
                 source="codex",
                 correlation_id=correlation_id,
@@ -612,6 +634,7 @@ def local_chain(
     port = LocalDelegationDispatchPort(
         evidence_db_path=db_path,
         effect_process_boundary=False,
+        named_test_runner=_passing_named_test_runner,
     )
     claim_path = tmp_path / "claims.sqlite"
     handler = HandlerDelegateSkill(
@@ -636,6 +659,7 @@ async def test_a_redelivered_record_calls_the_provider_once(
     delivery = _delivery(correlation_id, envelope_id)
     request = ModelDelegateSkillRequest(
         prompt="Write pytest unit tests for normalize_status.",
+        metadata=_named_test_metadata(db_path.parent),
         task_type="test",
         source="codex",
         correlation_id=correlation_id,
@@ -672,6 +696,7 @@ async def test_a_redelivered_record_calls_the_provider_once(
             dispatch_port=LocalDelegationDispatchPort(
                 evidence_db_path=db_path,
                 effect_process_boundary=False,
+                named_test_runner=_passing_named_test_runner,
             ),
             idempotency_port=DelegationClaimPort(SqliteDatabaseAdapter(claim_path)),
         )
@@ -691,12 +716,13 @@ async def test_a_redelivered_record_calls_the_provider_once(
 async def test_a_reused_correlation_on_a_new_record_still_calls_the_provider(
     local_chain: tuple[HandlerDelegateSkill, list[dict[str, Any]], Path, Path],
 ) -> None:
-    handler, captured_payloads, _, _ = local_chain
+    handler, captured_payloads, db_path, _ = local_chain
     correlation_id = uuid4()
     first_envelope_id = uuid4()
     second_envelope_id = uuid4()
     request = ModelDelegateSkillRequest(
         prompt="Write pytest unit tests for normalize_status.",
+        metadata=_named_test_metadata(db_path.parent),
         task_type="test",
         source="codex",
         correlation_id=correlation_id,

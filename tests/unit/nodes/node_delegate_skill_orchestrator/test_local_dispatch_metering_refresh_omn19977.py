@@ -66,6 +66,13 @@ from omnimarket.models.delegation.wire import (
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -116,6 +123,16 @@ def _refresh_topic() -> str:
     """The node's own command topic, read from its contract (not a literal)."""
     (topic,) = yaml.safe_load(_CONTRACT.read_text())["event_bus"]["subscribe_topics"]
     return str(topic)
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: supply executed passing evidence for this code-class happy path.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -213,11 +230,20 @@ def _missing_key_effect(
 
 
 def _delegate(**port_kwargs: Any) -> Any:
-    port = LocalDelegationDispatchPort(effect_process_boundary=False, **port_kwargs)
+    port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
+        effect_process_boundary=False,
+        **port_kwargs,
+    )
     handler = HandlerDelegateSkill(None, dispatch_port=port)
     return asyncio.run(
         handler.handle(
             ModelDelegateSkillRequest(
+                metadata={
+                    "named_tests": "test_reverse.py::test_reverse",
+                    "named_tests_answer_path": "reverse_impl.py",
+                    "named_tests_workspace": str(Path.cwd()),
+                },
                 prompt="reverse a string",
                 task_type="code_generation",
                 source="claude-code",
@@ -335,12 +361,19 @@ def test_a_second_identical_terminal_delivery_changes_no_byte(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _at(monkeypatch, LAST_SECOND)
-    port = LocalDelegationDispatchPort(effect_process_boundary=False)
+    port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner, effect_process_boundary=False
+    )
     correlation_id = uuid4()
 
     def deliver() -> None:
         asyncio.run(
             port.dispatch(
+                named_tests=ModelNamedTestSpec(
+                    workspace_root=str(home.parent),
+                    answer_path="reverse_impl.py",
+                    test_ids=("test_reverse.py::test_reverse",),
+                ),
                 prompt="reverse a string",
                 task_type="code_generation",
                 correlation_id=correlation_id,
