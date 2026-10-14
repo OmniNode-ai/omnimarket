@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m08",
+  "path": "pinned",
+  "sha256": "05559cb51da23443e30ffa823689f135676500ac9a8356c5adf7f3f35d0bb0d6",
+  "response": "Release notes for five merged changes:\n\n#1794 (omnibase_core): Added delegation dispatch request/result models and ProtocolDelegationDispatchPort in core, including RED tests for the request, result, and port.\n\n#3321 (omnimarket): Fixed the routing feedback reducer to count NaN, infinite, or boolean latency as no latency instead of raising. Added 60 deterministic unit test cases covering dispatch branches, topic fallback, and immutability.\n\n#3408 (omnimarket): Burned down action-pin, transport-mock, and runtime_profiles ratchets to plain checks. Pinned every workflow action to its resolved commit and retired the action-pin baseline. Deleted the empty transport-mock baseline and runtime_profiles.\n\n#2873 (omnimarket): Each rung now records its stop reason, truncation, and preamble rule. The rung that decided a run sets its cause, not the last error. Quality gate refusals now read quality_gate_refused on both terminals.\n\n#2861 (omnimarket): A customer’s declared local model now answers every class on a clean install. Previously, a clean install with one local model and no provider key refused delegation with ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT."
+}

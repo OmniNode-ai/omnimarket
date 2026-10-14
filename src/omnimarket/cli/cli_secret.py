@@ -37,12 +37,12 @@ import os
 import socket
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import click
 import yaml
@@ -338,6 +338,27 @@ def _resolve_model(
     return discovery.model
 
 
+def _model_chosen_by(
+    provider: str | None,
+    plan: str | None,
+    model: str | None,
+    model_option: str | None,
+) -> Literal["customer", "catalogue"] | None:
+    """OMN-21078: record the chooser, including a prompted customer choice."""
+    if model is None:
+        return None
+    backend = (
+        resolve_byok_provider_backend(provider, plan=plan)
+        if provider is not None
+        else None
+    )
+    if model_option is not None or (
+        backend is not None and backend.customer_chooses_model
+    ):
+        return "customer"
+    return "catalogue"
+
+
 def _stdin_is_tty() -> bool:
     return sys.stdin is not None and sys.stdin.isatty()
 
@@ -573,7 +594,39 @@ def register_tenant_key(
         shown["expiry_warning"] = response.expiry_warning.value
     if response.bound_host is not None:
         shown["bound_host"] = response.bound_host
+    _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
+
+
+def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
+    """Catalogue the key on this machine too (OMN-21014).
+
+    The value is in this machine's store; the credential-registered event goes
+    to the bus for the central catalog. The host's own review gateway reads its
+    keys from this machine's catalog, so the same row is folded into the local
+    store the value lives beside, the way ``onex secret set`` folds its events.
+    The fold is an idempotent upsert by reference; no value is written.
+    """
+    store = _tenant_key_store()
+    payload: dict[str, object] = {
+        "tenant_id": tenant,
+        "provider": response.provider,
+        "name": response.name,
+        "api_key_ref": response.api_key_ref,
+        "metadata": {},
+        "expires_at": None
+        if response.expires_at is None
+        else response.expires_at.astimezone(UTC).isoformat(),
+        "bound_host": response.bound_host,
+    }
+    try:
+        apply_credential_registered(payload, SqliteDatabaseAdapter(store.db_path))
+    except sqlite3.Error as error:
+        raise click.ClickException(
+            f"the key was stored as {response.api_key_ref}, but this machine's "
+            f"catalog could not record it ({type(error).__name__}); the review "
+            "gateway on this host will not see it until it is registered again."
+        ) from None
 
 
 def _parse_expires(expires: str | None) -> datetime | None:
@@ -869,6 +922,7 @@ def store_secret_value(
         if provider is not None
         else None
     )
+    model_chosen_by = _model_chosen_by(provider, plan, model, model_option)
     # OMN-19985: the local secret store effect stores the key and, for a provider
     # key, registers it under a freshly minted route ref (replacing any earlier
     # one for this provider, one key each) and returns the credential events.
@@ -881,6 +935,7 @@ def store_secret_value(
                 force=force,
                 plan=plan,
                 model=model,
+                model_chosen_by=model_chosen_by,
             )
         )
     except LocalSecretStoreRefusedError as refusal:
@@ -1196,3 +1251,155 @@ def remove_model(provider: str) -> None:
         raise click.ClickException(f"no {_MODEL_LABELS[name]} key is stored.")
     delete_secret_value(f"llm.{name}.api_key")
     handler.handle(ModelModelSetupRequest(operation="forget", provider=name))
+
+
+#: OMN-21014: the review a dry run plans. It carries no sampling fields: the
+#: plan shows the gateway's own temperature and default max_tokens.
+_REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
+    "messages": [
+        {"role": "system", "content": "You are a hostile code reviewer."},
+        {"role": "user", "content": "Dry run: no diff is sent."},
+    ],
+}
+
+
+@models_group.command("review-gateway")
+@click.option(
+    "--tenant",
+    required=True,
+    help="The tenant whose catalogued keys the gateway spends.",
+)
+@click.option(
+    "--model",
+    "model_option",
+    required=True,
+    help="The Claude model every review runs on, e.g. claude-sonnet-5-5.",
+)
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "This machine's lab host table row (ONEX_LAB_RUN_HOSTS); only keys bound "
+        "to it are spent. Defaults to this machine's row."
+    ),
+)
+@click.option(
+    "--bind",
+    default="127.0.0.1:8140",
+    show_default=True,
+    help="host:port the voter endpoint listens on.",
+)
+@click.option(
+    "--privacy-overlay",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="ONEX_REVIEW_GATEWAY_PRIVACY_OVERLAY",
+    required=True,
+    help=(
+        "A YAML file supplied by whoever runs the gateway, whose "
+        "cloud_review_refused_repositories list names the repositories whose "
+        "diffs never go to a cloud model. The gateway refuses to start without "
+        "a non-empty list."
+    ),
+)
+@click.option(
+    "--repository",
+    default=None,
+    help="The review's metadata.repository, used only by --dry-run.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Plan one review (the key it would use, the body it would send) and exit.",
+)
+def review_gateway(
+    tenant: str,
+    model_option: str,
+    host: str | None,
+    bind: str,
+    privacy_overlay: Path,
+    repository: str | None,
+    dry_run: bool,
+) -> None:
+    """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+        run_dry,
+    )
+    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+        ModelClaudeReviewGatewayRequest,
+    )
+
+    try:
+        overlay = yaml.safe_load(privacy_overlay.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        raise click.ClickException(
+            "the privacy overlay must be a readable YAML mapping."
+        ) from None
+    refused = (
+        overlay.get("cloud_review_refused_repositories")
+        if isinstance(overlay, Mapping)
+        else None
+    )
+    if (
+        not isinstance(refused, list)
+        or not refused
+        or any(not isinstance(name, str) or not name.strip() for name in refused)
+    ):
+        raise click.ClickException(
+            "the privacy overlay must be a YAML mapping with a non-empty "
+            "cloud_review_refused_repositories list of non-empty strings."
+        )
+    cloud_refused_repositories = tuple(name.strip() for name in refused)
+
+    bound_host = _resolve_bound_host(host)
+    if bound_host is None:
+        raise click.ClickException(
+            "the review gateway needs this machine's lab host: pass --host or set "
+            "ONEX_LAB_RUN_HOSTS to the lab host table."
+        )
+    bind_host, _, bind_port = bind.rpartition(":")
+    backend = resolve_byok_provider_backend("anthropic")
+    if backend is None:
+        raise click.ClickException(
+            "the provider catalogue offers no anthropic backend."
+        )
+    try:
+        request = ModelClaudeReviewGatewayRequest(
+            host=bound_host,
+            tenant_id=tenant,
+            model=model_option,
+            cloud_refused_repositories=cloud_refused_repositories,
+            bind_host=bind_host or "127.0.0.1",
+            bind_port=int(bind_port),
+            dry_run=dry_run,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise click.ClickException(
+            f"review-gateway refused its options: {exc}"
+        ) from None
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+        HandlerLlmDelegationCall,
+    )
+
+    store = _tenant_key_store()
+    handler = HandlerClaudeReviewGateway(
+        catalog=SqliteDatabaseAdapter(store.db_path),
+        key_values=store,
+        # The one sanctioned model caller (OMN-20295); it resolves the key's
+        # value through the secret store at its own boundary.
+        call=HandlerLlmDelegationCall(),
+        endpoint_url=backend.endpoint_url,
+    )
+    if dry_run:
+        payload = _REVIEW_GATEWAY_DRY_RUN_PAYLOAD.copy()
+        if repository is not None:
+            payload["metadata"] = {"repository": repository}
+        plan = run_dry(handler, request, payload)
+        click.echo(json.dumps(plan.model_dump(mode="json"), sort_keys=True))
+        return
+    click.echo(
+        f"onex models review-gateway: http://{request.bind_host}:{request.bind_port}"
+        f"/v1/chat/completions (host {bound_host}, model {model_option}, "
+        f"{len(cloud_refused_repositories)} repositories refused cloud review)"
+    )
+    asyncio.run(handler.handle(request))

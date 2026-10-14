@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e09",
+  "path": "pinned",
+  "sha256": "98d895e04951bfea21b07d0090437c0ea5608bb1d777d9292a6de3c58b676a5a",
+  "response": "PR #3549 (OMN-20712) adds deployment overlays for the lab-fill selection and lab disk hygiene nodes, moving deployment facts out while keeping selection and hygiene logic unchanged. The lab-fill node now requires a typed ModelLabFillDeployment from overlay, and the disk hygiene node resolves census path from overlay or request with no default census."
+}

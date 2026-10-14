@@ -39,6 +39,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import os
 import re
 import time
 from collections import OrderedDict
@@ -84,6 +85,8 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
 )
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
+    carried_claim_refusal,
+    registry_claim_refusal,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models import (
     EnumRepoWriteMode,
@@ -102,6 +105,7 @@ from omnimarket.nodes.node_github_repo_write_effect.protocols import (
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _SECRET_NAME = "GITHUB_TOKEN"
+_CLAIMS_DIR_ENV = "ONEX_PR_CLAIMS_DIR"
 # How many completed writes the in-process idempotency record keeps.
 _IDEMPOTENCY_RECORD_SIZE = 4096
 # Comment pages scanned for an idempotency marker (300 comments).
@@ -306,12 +310,20 @@ class HandlerGithubRepoWriteEffect:
         transport: ProtocolGithubRepoWriteTransport | None = None,
         *,
         claim_lookup: ProtocolPrClaimLookup | None = None,
+        runtime_claims_dir: str | None = None,
         quota_floor: ModelGithubQuotaFloor | None = None,
         config: ModelRepoWriteConfig | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._transport = transport
         self._claims = claim_lookup or HandlerPrClaimLookup()
+        # The registry this runtime keeps, which the effect can read. The empty
+        # string reads none; None takes $ONEX_PR_CLAIMS_DIR, as the CLI names it.
+        self._runtime_claims_dir = (
+            runtime_claims_dir
+            if runtime_claims_dir is not None
+            else os.environ.get(_CLAIMS_DIR_ENV)
+        )
         self._floor = quota_floor or ModelGithubQuotaFloor.from_contract(_CONTRACT_PATH)
         self._config = config or ModelRepoWriteConfig.from_contract(_CONTRACT_PATH)
         self._clock = clock
@@ -388,24 +400,11 @@ class HandlerGithubRepoWriteEffect:
     ) -> ModelRepoWriteFailed | None:
         if request.operation is not EnumRepoWriteOperation.PR_CLOSE:
             return None
-        claims_dir = request.claims_dir or ""
         now = datetime.fromtimestamp(self._clock(), tz=UTC).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        claim = self._claims.active_claim(
-            claims_dir=claims_dir, pr_key=request.pr_key, now=now
-        )
-        if claim is None:
-            detail = f"no live claim on {request.pr_key}; pr_close needs one"
-        elif claim.claimed_by_run != request.requested_by_run or (
-            claim.lane_id and claim.lane_id != request.requested_by_lane
-        ):
-            detail = (
-                f"{request.pr_key} is claimed by run {claim.claimed_by_run} lane "
-                f"{claim.lane_id}, not run {request.requested_by_run} lane "
-                f"{request.requested_by_lane}"
-            )
-        else:
+        detail = self._claim_detail(request, now)
+        if detail is None:
             return None
         return ModelRepoWriteFailed(
             correlation_id=request.correlation_id,
@@ -420,6 +419,27 @@ class HandlerGithubRepoWriteEffect:
             reason=EnumRepoWriteRefusal.CLAIM_NOT_HELD,
             detail=detail,
         )
+
+    def _claim_detail(self, request: ModelRepoWriteRequest, now: str) -> str | None:
+        """Why the requester does not hold the PR; None when it does.
+
+        A live claim in the registry the effect reads decides: it is the
+        requester's or a peer's. With none there, the claim the caller carried
+        is checked; with neither, the close is refused.
+        """
+        claims_dir = request.claims_dir or self._runtime_claims_dir
+        held = (
+            self._claims.active_claim(
+                claims_dir=claims_dir, pr_key=request.pr_key, now=now
+            )
+            if claims_dir
+            else None
+        )
+        if held is not None:
+            return registry_claim_refusal(held, request)
+        if request.claim is None:
+            return f"no live claim on {request.pr_key}; pr_close needs one"
+        return carried_claim_refusal(request.claim, request, now)
 
     async def _live_transport(self) -> UrllibGithubLandingTransport:
         ref = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)

@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e01",
+  "title": "one-change changelog entry (omnibase_core#1102)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnibase_core@04a2342cb9be",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-11194.\n\n--- change 1 (repo omnibase_core, pull request #1102) ---\nfeat(OMN-11194): register runtime manifest and projection health topics (#1102)\n* feat(OMN-11194): register runtime manifest and projection health topics\n\nAdd PLATFORM_RUNTIME_MANIFEST_PUBLISHED, PLATFORM_PROJECTION_DEGRADED,\nand PLATFORM_PROJECTION_RECOVERED to TopicBase enum for runtime manifest\nobservability and projection health signaling.\n\n* chore: trigger CI re-run after adding Evidence-Source to PR body\n\n* chore: re-trigger CI after OCC receipt fix\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnibase_core, pull request #1102) ---\nfeat(OMN-11194): register runtime manifest and projection health topics (#1102)\n* feat(OMN-11194): register runtime manifest and projection health topics\n\nAdd PLATFORM_RUNTIME_MANIFEST_PUBLISHED, PLATFORM_PROJECTION_DEGRADED,\nand PLATFORM_PROJECTION_RECOVERED to TopicBase enum for runtime manifest\nobservability and projection health signaling.\n\n* chore: trigger CI re-run after adding Evidence-Source to PR body\n\n* chore: re-trigger CI after OCC receipt fix omnibase_core#1102",
+    "must_contain": [
+      "#1102",
+      "OMN-11194"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

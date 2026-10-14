@@ -134,7 +134,10 @@ from omnimarket.inference.provider_quota_state import (
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
 )
-from omnimarket.inference.task_class_authority import withheld_delegation_refusal
+from omnimarket.inference.task_class_authority import (
+    resolve_task_class_execution_required,
+    withheld_delegation_refusal,
+)
 from omnimarket.local_deployment.tenant_identity import (
     ensure_install_identity_mirrored,
     resolve_or_mint_local_deployment_tenant_id,
@@ -160,8 +163,13 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
-    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
@@ -190,7 +198,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import 
 # AND not a deterministic-floor rejection — resolved from the task-class contract.
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthorityError,
+    is_quality_accepted,
     resolve_required_bar_authority,
+    with_executed_check_verdict,
 )
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
@@ -209,8 +219,10 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
     delta as evaluate_quality_gate,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    NO_HIGHER_TIER_REASON_TOKEN,
     backend_id_for_tier,
     credential_withheld_rung,
+    describe_no_higher_tier_available,
     first_eligible_tier,
     is_free_tier,
     measure_grounding_input_tokens,
@@ -335,6 +347,13 @@ _DELEGATION_EVENTS_TABLE = "delegation_events"
 # times on both paths.
 _DEFAULT_MAX_ESCALATIONS = 2
 
+# OMN-20844: the ``terminal_failure_reason`` values a quality-refused ladder
+# stops with, spelled as the bus orchestrator spells them
+# (``handler_escalation_decision`` and ``handler_delegation_workflow``), so a
+# receipt from either path keys the same way.
+_MAX_ESCALATION_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"
+_NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
+
 # OMN-13943: failure classes that must NOT trigger an up-tier escalation retry.
 # Mirrors the bus orchestrator's ``_should_escalate_inference_error`` posture
 # (retry unless PROVEN non-retryable) but classifies on the effect result's typed
@@ -380,6 +399,30 @@ def _declared_required_bar(task_type: str) -> float | None:
         return None
 
 
+def _with_executed_check_verdict(
+    task_type: str,
+    gate_result: ModelQualityGateResult,
+    declared_deterministic: tuple[str, ...],
+) -> ModelQualityGateResult:
+    """Refuse an untested code pass as the bus path does (OMN-21077)."""
+    try:
+        authority = resolve_required_bar_authority(task_type=task_type)
+    except RequiredBarAuthorityError:
+        return gate_result
+    return with_executed_check_verdict(
+        gate_result, authority, declared_deterministic=declared_deterministic
+    )
+
+
+def _acceptance_by_executed_tests(task_type: str) -> bool:
+    """Whether ``task_type`` is a code class judged by executed tests (OMN-21077)."""
+    try:
+        authority = resolve_required_bar_authority(task_type=task_type)
+    except RequiredBarAuthorityError:
+        return False
+    return authority.acceptance_by_executed_tests
+
+
 def _named_blocking_vetoes(
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
 ) -> str:
@@ -402,7 +445,7 @@ def derive_attempt_acceptance(
     quality_passed: bool,
     pre_filter_rejected: bool,
     gate_passed: bool,
-    judge_unavailable_floor: bool,
+    judge_unavailable_floor: bool = False,
     quality_score: float,
     required_bar: float | None,
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
@@ -521,6 +564,29 @@ def derive_attempt_acceptance(
         EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR,
         detail,
     )
+
+
+PINNED_BACKEND_FAILED_REASON = "pinned_backend_failed"
+
+
+def _pinned_failure_fields(
+    pinned_backend_id: str | None, message: str
+) -> dict[str, object]:
+    """Typed terminal fields for a pinned run that failed on its pin (OMN-20844).
+
+    Empty for an unpinned run. For a pinned one the terminal names
+    ``pinned_backend_failed`` and the pin, so a caller reads why the run ended
+    on the pinned backend instead of moving to another.
+    """
+    if pinned_backend_id is None:
+        return {}
+    return {
+        "terminal_failure_reason": PINNED_BACKEND_FAILED_REASON,
+        "error_message": (
+            f"{PINNED_BACKEND_FAILED_REASON}: the run is pinned to backend "
+            f"'{pinned_backend_id}' and does not move to another backend: {message}"
+        ),
+    }
 
 
 def _settle_final_rung_as_terminate(attempts: list[dict[str, object]]) -> None:
@@ -787,6 +853,7 @@ _EFFECT_CHILD_BOOT_SAFETY_FACTOR = 4.0
 # first child reports readiness.
 _observed_child_boot_seconds: float | None = None
 
+type _NamedTestRunner = Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
 type _EffectHandler = Callable[
     [ModelLlmDelegationCallRequest], ModelLlmDelegationCallResult
 ]
@@ -1142,8 +1209,14 @@ class LocalDelegationDispatchPort:
         terminal_publisher: EmitEffectTopicPublisher | None = None,
         metering_refresh_publisher: ProtocolMeteringRefreshPublisher | None = None,
         run_step_publisher: ProtocolRunStepPublisher | None = None,
+        named_test_runner: _NamedTestRunner | None = None,
     ) -> None:
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-21077: runs the tests a code-class request names against each
+        # answer, so the gate judges the code by whether it works. None runs
+        # nothing: the gate sees no test run and refuses the code answer as
+        # INSUFFICIENT, never accepts it untested.
+        self._named_test_runner = named_test_runner
         # OMN-19987: where each numbered step of a run is published. By default
         # the same emit effect the terminal uses (spool, then the bus).
         self._run_step_publisher: ProtocolRunStepPublisher = (
@@ -1293,6 +1366,7 @@ class LocalDelegationDispatchPort:
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
     ) -> dict[str, object]:
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
@@ -1311,10 +1385,9 @@ class LocalDelegationDispatchPort:
         # default) preserves the exact pre-existing cheapest-first task_type +
         # tier_order resolution — see ``_resolve_initial_backend``. A non-None
         # value bypasses tier_order selection entirely for the INITIAL attempt
-        # only; it does NOT change escalation behavior — see the
-        # ``_resolve_initial_backend`` docstring's "Escalation-interaction note"
-        # for the observed pin+failure interaction (a transport failure on the
-        # pinned backend still excludes its WHOLE tier, not just that backend).
+        # only. OMN-20844: a pinned run never moves off the pin afterwards: a
+        # failure on it takes no sibling hop and no escalation, and the run
+        # ends with ``pinned_backend_failed`` (``_pinned_failure_fields``).
         #
         # OMN-14001 — read the captured-outcome ROI overlay ONCE per delegation
         # (fail-open None when no ROI projection is wired). Threaded as a pure input
@@ -1322,6 +1395,7 @@ class LocalDelegationDispatchPort:
         # is demoted from BOTH the initial resolution and every escalation hop, with
         # the same overlay across the whole dispatch for a deterministic decision.
         roi_overlay = self._roi_overlay_reader(task_type)
+        pinned_backend_id = backend_id
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM), refined by OMN-14349: prefer a
         # caller-supplied verified tenant_id (would only be non-None if something
         # upstream of this genuinely bus-less path stamped one -- structurally
@@ -1624,7 +1698,7 @@ class LocalDelegationDispatchPort:
                 excluded_tiers.add(current_tier)
                 excluded_backend_refs.add(backend.backend_id)
                 over_budget_next: ModelResolvedDelegationBackend | None = None
-                if escalation_count < max_escalations:
+                if pinned_backend_id is None and escalation_count < max_escalations:
                     over_budget_next = self._resolve_next_backend(
                         current_tier=current_tier,
                         task_type=task_type,
@@ -1673,6 +1747,9 @@ class LocalDelegationDispatchPort:
                             if provenance is not None
                             else None
                         ),
+                        **_pinned_failure_fields(
+                            pinned_backend_id, over_budget_message
+                        ),
                     }
                 escalation_count += 1
                 backend = _with_model_choice(over_budget_next)
@@ -1698,6 +1775,8 @@ class LocalDelegationDispatchPort:
                 temperature=temperature,
                 response_format=response_format,
                 run_steps=run_steps,
+                # OMN-21077: every rung's answer is tested, not only the first.
+                named_tests=named_tests,
             )
             _settle_in_flight_attempt(progress, attempt_outcome)
 
@@ -1762,7 +1841,8 @@ class LocalDelegationDispatchPort:
                         byok_retry_counts[backend.backend_id] = spent + 1
                         byok_same_backend_retry = True
                 may_move_on = (
-                    _is_retryable_transport_failure(transport_failure_class)
+                    pinned_backend_id is None
+                    and _is_retryable_transport_failure(transport_failure_class)
                     and not byok_same_backend_retry
                     and not (customer_route and typed_refusal)
                 )
@@ -1987,6 +2067,9 @@ class LocalDelegationDispatchPort:
                         if provenance is not None
                         else None
                     ),
+                    **_pinned_failure_fields(
+                        pinned_backend_id, transport_failure_message
+                    ),
                 }
 
             result = transport_result
@@ -2052,7 +2135,24 @@ class LocalDelegationDispatchPort:
                 response_contract_evidence = response_contract_evidence.model_copy(
                     update={"validated": gate_result.passed}
                 )
-            quality_passed = self._is_quality_accepted(task_type, gate_result)
+            # OMN-21077: judged against the check set the gate was given, which
+            # the prompt's declared response shape can narrow. A code answer the
+            # gate passed with no executed test run is refused as the gate
+            # refuses it, before anything decides.
+            # A response contract replaces the class DoD at the gate
+            # (OMN-15193), so the check set in force is then empty.
+            declared_deterministic = (
+                ()
+                if attempt_outcome.response_contract_governed
+                else resolve_task_class_dod_checks(task_type, prompt=prompt)[0]
+            )
+            gate_result = _with_executed_check_verdict(
+                task_type, gate_result, declared_deterministic
+            )
+            quality_passed = self._is_quality_accepted(
+                task_type, gate_result, declared_deterministic=declared_deterministic
+            )
+            bar_decides = not _acceptance_by_executed_tests(task_type)
             # OMN-16932: the accept/climb verdict, typed, on the bus-less path
             # too — so `onex delegate` and the bus terminal describe a
             # stop-or-climb the same way instead of one of them leaving the
@@ -2067,17 +2167,17 @@ class LocalDelegationDispatchPort:
             ) = derive_attempt_acceptance(
                 quality_passed=quality_passed,
                 pre_filter_rejected=gate_result.fail_category == "fail_deterministic",
-                gate_passed=gate_result.passed,
-                judge_unavailable_floor=(
-                    gate_result.passed
-                    and gate_result.score_source
-                    == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
-                ),
+                # OMN-21077: a code class's acceptance criteria are its executed
+                # checks, so a gate pass without test evidence is not met.
+                gate_passed=gate_result.passed if bar_decides else quality_passed,
                 quality_score=gate_result.quality_score,
                 required_bar=_declared_required_bar(task_type),
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
+            if not bar_decides:
+                # OMN-21077: the score comparison above is reported, not applied.
+                acceptance_detail = f"{acceptance_detail} acceptance=executed_tests"
             if gate_result.fail_category == "rubric_failed":
                 acceptance_reason = EnumDelegationAcceptanceReason.RUBRIC_FAILED
                 acceptance_detail = "; ".join(gate_result.failure_reasons)
@@ -2377,7 +2477,7 @@ class LocalDelegationDispatchPort:
             # keeps same-model siblings, since unavailability is what they are for.
             gate_sibling = (
                 None
-                if ladder_stopped_by_veto
+                if ladder_stopped_by_veto or pinned_backend_id is not None
                 else self._resolve_sibling_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2424,7 +2524,14 @@ class LocalDelegationDispatchPort:
                 continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
-            if not ladder_stopped_by_veto and escalation_count < max_escalations:
+            # OMN-20844: why the ladder stopped, in the bus orchestrator's
+            # precedence (veto, then budget, then ladder), for the terminal.
+            ladder_stop_reasons: list[str] = []
+            if ladder_stopped_by_veto:
+                ladder_stop_reasons.append(_NO_RUNG_CAN_SATISFY_REASON)
+            elif escalation_count >= max_escalations:
+                ladder_stop_reasons.append(_MAX_ESCALATION_ATTEMPTS_REACHED_REASON)
+            elif pinned_backend_id is None:
                 next_backend = self._resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2433,9 +2540,16 @@ class LocalDelegationDispatchPort:
                     excluded_backend_refs=frozenset(excluded_backend_refs),
                     spread_key=str(correlation_id),
                     quota_state=self._quota_snapshot(quota_observations),
+                    stop_reasons=ladder_stop_reasons,
                 )
 
             if next_backend is None:
+                ladder_stop_reason = (
+                    ladder_stop_reasons[-1]
+                    if ladder_stop_reasons
+                    else f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+                    f"current_tier='{current_tier}'"
+                )
                 # Cannot escalate (budget exhausted or no higher eligible tier):
                 # terminal FAILED, carrying the cumulative metered cost of every
                 # attempt made so far.
@@ -2523,6 +2637,11 @@ class LocalDelegationDispatchPort:
                     "quality_gate_passed": False,
                     "quality_score": gate_result.quality_score,
                     "quality_gates_failed": list(gate_result.failure_reasons),
+                    # OMN-20844: the typed stop reason. ``failure_reason`` is
+                    # what the handler reads into the receipt's
+                    # ``error_message``, which was empty on this terminal.
+                    "terminal_failure_reason": ladder_stop_reason,
+                    "failure_reason": ladder_stop_reason,
                     "delegation_latency_ms": result.latency_ms,
                     "input_tokens": result.tokens_in,
                     "output_tokens": result.tokens_out,
@@ -2535,6 +2654,9 @@ class LocalDelegationDispatchPort:
                         provenance.model_dump(mode="json")
                         if provenance is not None
                         else None
+                    ),
+                    **_pinned_failure_fields(
+                        pinned_backend_id, "; ".join(gate_result.failure_reasons)
                     ),
                 }
 
@@ -2554,7 +2676,11 @@ class LocalDelegationDispatchPort:
             backend = _with_model_choice(next_backend)
 
     def _is_quality_accepted(
-        self, task_type: str, gate_result: ModelQualityGateResult
+        self,
+        task_type: str,
+        gate_result: ModelQualityGateResult,
+        *,
+        declared_deterministic: tuple[str, ...] | None = None,
     ) -> bool:
         """Apply the task-class required-bar authority, mirroring the bus path.
 
@@ -2564,34 +2690,32 @@ class LocalDelegationDispatchPort:
         class ``required_bar`` (e.g. code_generation ~0.733 < 0.85). The bus
         orchestrator (``handle_gate_result`` :1240-1253) accepts only when the gate
         passed AND the score is at/above the contract ``required_bar`` AND the
-        result is not a deterministic-floor rejection. This method replicates that
-        rule so the local path applies the same 0.85 bar the bus applies.
+        result is not a deterministic-floor rejection. Both paths call the same
+        predicate so the local path applies the same 0.85 bar the bus applies.
 
         When the task class declares no ``quality_gate.required_bar`` (the legacy /
         no-contract-DoD path), no bar can be applied and the reducer verdict
         ``passed`` is the authority — preserving the pre-OMN-13849 behavior for
         classes without a declared bar.
 
-        Verifiable task classes use ``score_source=deterministic_acceptance``
-        when their declared deterministic floor passes. That result is accepted
-        without applying a combined-score bar (OMN-13959/OMN-20164). Structural
-        failures and explicit refusals remain rejected.
+        OMN-21077: a code class (``execution_required: true``) is not decided by
+        the bar at all. It is accepted when every deterministic check passed and
+        its declared ``passes_existing_tests`` ran and passed, through the same
+        predicate the bus path calls. ``declared_deterministic`` is the check set
+        the gate was given; ``None`` resolves the class's own set.
         """
-        if gate_result.fail_category == "fail_deterministic":
-            return False
-        if (
-            gate_result.passed
-            and gate_result.score_source == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
-        ):
-            return True
         try:
             authority = resolve_required_bar_authority(task_type=task_type)
         except RequiredBarAuthorityError:
             # No declared bar for this class — the reducer verdict is authoritative.
-            return gate_result.passed
-        if gate_result.quality_score < authority.required_bar:
-            return False
-        return gate_result.passed
+            return (
+                gate_result.fail_category != "fail_deterministic" and gate_result.passed
+            )
+        if declared_deterministic is None:
+            declared_deterministic, _ = resolve_task_class_dod_checks(task_type)
+        return is_quality_accepted(
+            gate_result, authority, declared_deterministic=declared_deterministic
+        )
 
     def _withheld_credential_rung(
         self,
@@ -2674,14 +2798,10 @@ class LocalDelegationDispatchPort:
         pin means the caller asked for a backend that doesn't exist, and hiding
         that behind a silent fallback would defeat the whole point of pinning.
 
-        Escalation-interaction note (OMN-15156, P0 readback requirement): this pin
-        affects ONLY the initial attempt. If the pinned backend's transport call
-        fails, the existing escalation loop in ``dispatch()`` still excludes the
-        pinned backend's WHOLE TIER (via ``tier_for_backend(backend.backend_id)``)
-        and re-resolves the next hop through the normal closed-set ``tier_order``
-        — NOT back to the pin, and NOT to a different backend within the same
-        tier. This ticket does not redesign escalation; a single-backend (rather
-        than whole-tier) exclusion semantics is out of scope here.
+        Escalation-interaction note (OMN-20844): this resolves the initial
+        attempt, and ``dispatch()`` never moves a pinned run off it. A failure on
+        the pinned backend takes no same-tier sibling hop and no escalation; the
+        run ends with ``pinned_backend_failed``.
 
         OMN-14001: when ``roi_overlay`` demotes a proven-failing tier,
         ``first_eligible_tier`` returns the cheapest tier NOT ROI-suppressed, so a
@@ -2873,8 +2993,14 @@ class LocalDelegationDispatchPort:
         excluded_backend_refs: frozenset[str] = frozenset(),
         spread_key: str | None = None,
         quota_state: ModelProviderQuotaSnapshot | None = None,
+        stop_reasons: list[str] | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
+
+        OMN-20844: ``stop_reasons``, when given, receives one typed reason for
+        a ``None`` return, prefixed with ``NO_HIGHER_TIER_REASON_TOKEN`` as the
+        bus orchestrator's terminal is, so the caller's terminal can say why
+        the ladder stopped instead of carrying no reason at all.
 
         OMN-19432: ``spread_key`` (the run's correlation id) lets the tier's
         first-choice pick be spread across same-model peers, as the bus path's
@@ -2921,10 +3047,29 @@ class LocalDelegationDispatchPort:
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
         )
+
+        def stopped(reason: str) -> None:
+            if stop_reasons is not None:
+                stop_reasons.append(reason)
+
         if next_tier is None:
+            stopped(
+                describe_no_higher_tier_available(
+                    current_tier,
+                    excluded_tiers,
+                    task_type=task_type,
+                    excluded_backend_refs=excluded_backend_refs,
+                    correlation_id=spread_key,
+                )
+            )
             return None
+        stop_prefix = (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+            f"current_tier='{current_tier}'; next tier '{next_tier}'"
+        )
         backend_id = backend_id_for_tier(next_tier, task_type, spread_key=spread_key)
         if backend_id is None:
+            stopped(f"{stop_prefix} selects no backend for the task class")
             return None
         if backend_id in excluded_backend_refs:
             # Defensive backstop (OMN-15803): next_eligible_tier judged this
@@ -2940,6 +3085,7 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 task_type,
             )
+            stopped(f"{stop_prefix} re-selects already-tried backend '{backend_id}'")
             return None
         try:
             escalated = resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -2954,6 +3100,7 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 task_type,
             )
+            stopped(f"{stop_prefix} backend '{backend_id}' has no resolvable endpoint")
             return None
         if escalated.backend_id in excluded_backend_refs:
             # OMN-20157: the next tier's house rung is substituted to a customer
@@ -2966,6 +3113,10 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 escalated.backend_id,
                 task_type,
+            )
+            stopped(
+                f"{stop_prefix} backend '{backend_id}' resolves to already-tried "
+                f"backend '{escalated.backend_id}'"
             )
             return None
         return escalated
@@ -2985,6 +3136,7 @@ class LocalDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
         run_steps: RunStepRecorder | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
     ) -> _AttemptOutcome:
         """Run one resolve->effect->gate attempt for ``backend``.
 
@@ -3383,6 +3535,17 @@ class LocalDelegationDispatchPort:
         else:
             result = result.model_copy(update={"content": extraction.deliverable})
 
+        # OMN-21077: a code class's answer is judged by the tests the request
+        #    names, run against the deliverable the caller receives. No named
+        #    tests leaves the run None, and the gate refuses the answer as
+        #    INSUFFICIENT.
+        named_test_run = await self._run_named_tests(
+            task_type=task_type,
+            named_tests=named_tests,
+            deliverable=result.content or "",
+            correlation_id=correlation_id,
+        )
+
         # 4. CANONICAL QUALITY GATE (OMN-13597) — run the SAME reducer the bus
         #    path runs. HTTP/transport success is NOT a quality verdict: a model
         #    refusal or empty answer returns success here but must NOT be recorded
@@ -3428,6 +3591,7 @@ class LocalDelegationDispatchPort:
                 # non-heuristic way to tell the two apart.
                 finish_reason=result.finish_reason,
                 reasoning_stripped_chars=result.reasoning_stripped_chars,
+                named_test_run=named_test_run,
             )
         from omnimarket.delegation.deliverable_extraction import (
             gate_result_with_output_refusal,
@@ -3496,6 +3660,7 @@ class LocalDelegationDispatchPort:
             timeout_result=None,
             preamble_chars=extraction.preamble_chars,
             output_refusal=output_refusal,
+            response_contract_governed=effective_response_contract is not None,
             response_contract_evidence=_response_contract_evidence_for_attempt(
                 response_contract=effective_response_contract,
                 deliverable_contract=deliverable_contract,
@@ -3519,6 +3684,7 @@ class LocalDelegationDispatchPort:
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
         grounding_source: str | None = None,
+        named_test_run: ModelNamedTestRun | None = None,
     ) -> ModelQualityGateResult:
         """Run the canonical deterministic quality-gate reducer.
 
@@ -3583,7 +3749,45 @@ class LocalDelegationDispatchPort:
             else prompt,
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
+            named_test_run=named_test_run,
         )
+
+    async def _run_named_tests(
+        self,
+        *,
+        task_type: str,
+        named_tests: ModelNamedTestSpec | None,
+        deliverable: str,
+        correlation_id: UUID,
+    ) -> ModelNamedTestRun | None:
+        """Run the request's named tests against a code-class answer (OMN-21077).
+
+        ``None`` when the class is not a code class, no tests were named, the
+        answer is empty, no named-test runner is wired, or the run was refused;
+        the gate then treats the code answer as untested and refuses it.
+        """
+        if named_tests is None or not resolve_task_class_execution_required(task_type):
+            return None
+        if not deliverable.strip():
+            return None
+        if self._named_test_runner is None:
+            logger.info(
+                "LocalDelegationDispatch: named tests not run, no named-test "
+                "runner is wired correlation=%s",
+                correlation_id,
+            )
+            return None
+        outcome = await asyncio.to_thread(
+            self._named_test_runner,
+            ModelNamedTestRunRequest(spec=named_tests, answer_content=deliverable),
+        )
+        logger.info(
+            "LocalDelegationDispatch: named test run status=%s correlation=%s %s",
+            outcome.status.value,
+            correlation_id,
+            outcome.detail.splitlines()[0] if outcome.detail else "",
+        )
+        return outcome.run
 
     def _project_evidence(
         self,
@@ -4049,6 +4253,7 @@ class _AttemptOutcome:
         "preamble_chars",
         "request_text",
         "response_contract_evidence",
+        "response_contract_governed",
         "result",
         "timeout_result",
     )
@@ -4064,6 +4269,7 @@ class _AttemptOutcome:
         output_refusal: ModelDelegationOutputRefusal | None,
         response_contract_evidence: ModelDelegationContractEvidence | None = None,
         request_text: str | None = None,
+        response_contract_governed: bool = False,
     ) -> None:
         self.result = result
         self.gate_result = gate_result
@@ -4073,6 +4279,9 @@ class _AttemptOutcome:
         self.output_refusal = output_refusal
         self.response_contract_evidence = response_contract_evidence
         self.request_text = request_text
+        # OMN-21077: the gate validated a response contract in place of the
+        # class DoD, so the executed-test rule is not the check set in force.
+        self.response_contract_governed = response_contract_governed
 
 
 __all__ = ["LocalDelegationDispatchPort"]

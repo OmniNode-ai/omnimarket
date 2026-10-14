@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m07",
+  "path": "pinned",
+  "sha256": "10ef2bddc6551278a12feb2c01a824ed629027249d097fed87949f8406cf02a0",
+  "response": "**omnibase_core**\n\n- **Typed `agent_source` (#1551):** backfilled `agent_source` on the hook-event models and retyped Cursor's `str` to a str-accepting `EnumAgentSource` (B4 of the OMN-14749 parity seam); existing producers keep working.\n- **Receipt Gate fork test (#1690):** the gate's untrusted test is now the fork test — it previously routed every pull-request event to the untrusted public class.\n- **Agent-invocation carve-out (#1262):** the canonical-inference gate permits model-CLI subprocesses only when the enclosing contract declares `descriptor.agent_invocation: true`; it still fails closed otherwise.\n- **Lifecycle ratchet (#1430):** new AST gate flags CamelCase classes with non-canonical lifecycle type-words and blocks new ones outside a frozen baseline (omnibase_core canary).\n- **Dependency-pin-only receipts (#1723):** the Receipt Gate now consults the producer's head-SHA-bound `occ-autobind / outcome` check-run, so dependency-pin-only PRs satisfy it."
+}

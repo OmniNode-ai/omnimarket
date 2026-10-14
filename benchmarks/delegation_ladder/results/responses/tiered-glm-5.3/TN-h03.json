@@ -1,0 +1,6 @@
+{
+  "task_id": "TN-h03",
+  "path": "pinned",
+  "sha256": "61e83f7789c281a4ebeba373b57a8208c701bd30d5ef78cf279f431d2844b8d9",
+  "response": "`'# --- src/a.py lines 2-2 ---\\ntwo\\n'`"
+}

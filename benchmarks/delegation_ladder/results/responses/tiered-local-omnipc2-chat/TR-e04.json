@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e04",
+  "path": "pinned",
+  "sha256": "dc4ce764cd5669993b897df94273d8dba6bc5d550def52d2b10571cdca5a12d2",
+  "response": "Line 5 (`SEMANTIC_GRADING = \"semantic_gradinx\"`) contradicts line 20 (`assert item.checks[0].check_type == \"semantic_grading\"`)."
+}

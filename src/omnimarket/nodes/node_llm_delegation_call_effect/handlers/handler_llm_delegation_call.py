@@ -48,7 +48,9 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
 )
 from omnimarket.inference.local_byok_credential_adapter import (
+    MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
+    resolve_local_byok_model_chooser,
 )
 from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
 from omnimarket.inference.provider_quota_observation import (
@@ -108,7 +110,6 @@ from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
     byok_declared_price_per_1m,
-    catalogue_prefers_model,
     resolve_byok_backend_by_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -549,7 +550,7 @@ class HandlerLlmDelegationCall:
 
         OMN-20157. A customer's BYOK route (a tenant-shaped credential reference
         on an endpoint the BYOK catalogue declares) runs the model its key
-        resolved from the provider's own model list. Two cases are settled here,
+        resolved from the provider's own model list. These cases are settled here,
         at the one boundary that holds the key:
 
         * the route carries the unresolved marker (the list could not be read at
@@ -560,11 +561,15 @@ class HandlerLlmDelegationCall:
           ONCE from the same list, excluding the one that failed, and the call
           is re-issued with it. A second 404, or a list naming no other
           preferred model, is the typed ``PROVIDER_MODEL_NOT_FOUND`` refusal;
-        * OMN-19205: the chosen model is throttled (429) or its upstream is down
+        * OMN-19205: the catalogue pick is throttled (429) or its upstream is down
           (an "Upstream error from ..." inside a 200): the same one-shot
           re-resolve, excluding the failed model. A free slug's mood is not the
           customer's route. A second failure is the typed refusal naming both
           models, and never a third call.
+
+        OMN-21078: where the customer chooses the model, these re-aims require
+        a credential that records a catalogue pick. A customer's chosen model,
+        including a ``:free`` one, or one with no chooser record gets one call.
 
         This is not a transport retry and it never changes backend: it is the
         same customer route asking its own provider which model it offers. A
@@ -583,7 +588,13 @@ class HandlerLlmDelegationCall:
                     EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
                     model_not_chosen_message(byok.provider),
                 )
-            if not catalogue_prefers_model(byok, request.model_id):
+            # OMN-21078: a chosen :free model matches a preference pattern;
+            # the pattern is not evidence of who chose it. No record means
+            # customer choice, including hosted refs and older local rows.
+            if (
+                resolve_local_byok_model_chooser(request.secret_ref)
+                != MODEL_CHOSEN_BY_CATALOGUE
+            ):
                 return self._execute_call_once(request, endpoint_url, event_publisher)
         configured = request.model_id
         if request.model_id == BYOK_MODEL_UNRESOLVED:

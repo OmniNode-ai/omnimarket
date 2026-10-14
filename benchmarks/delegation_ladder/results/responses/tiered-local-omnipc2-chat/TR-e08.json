@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e08",
+  "path": "pinned",
+  "sha256": "150a1ad198ebc44c1ef804f1504bf7a2ea7212cca29071bf48f31a194f377a45",
+  "response": "The altered line is [5]. It contradicts the test on line 47, which encodes the envelope as UTF-8, causing the decode attempt with \"utf-x\" to fail and return None instead of the expected result."
+}

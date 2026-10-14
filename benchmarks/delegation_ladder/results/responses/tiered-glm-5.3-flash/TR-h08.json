@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h08",
+  "path": "pinned",
+  "sha256": "63a255b0537f4bc7fc3c50311f04f88518b3a9d57e8deb2be952043661e12c74",
+  "response": "[298] — it reads the contract with `path.read_text(encoding=\"utf-x\")`, an invalid codec name, which raises `LookupError` for every file; it contradicts test helper line [491] `contract.write_text(body, encoding=\"utf-8\")`, which writes the fixtures as UTF-8 and whose tests (e.g. `test_passing_contract_has_no_findings`, `test_missing_operation_is_flagged`) expect `validate_file` to parse and evaluate those files normally rather than crash."
+}

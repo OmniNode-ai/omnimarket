@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m08",
+  "path": "pinned",
+  "sha256": "d66ce768b42b7ae80538db0af4e8f2a19096ee67e7ecf3b082598fcc07eb3f34",
+  "response": "**omnibase_core**\n- Added delegation dispatch request/result models and `ProtocolDelegationDispatchPort` (#1794).\n\n**omnimarket**\n- The routing feedback reducer now counts NaN, infinite or boolean latency as no latency instead of raising, with 60 new unit tests covering dispatch branches (#3321).\n- Burned down the action-pin, transport-mock and runtime_profiles ratchets to plain checks; every workflow action is pinned to the commit its tag resolves to (#3408).\n- Each rung records its stop reason, truncation and preamble rule; the rung that decided a run sets its cause, not the last error, with `quality_gate_refused` on both terminals (#2873).\n- On a clean install, a customer's declared local model answers every class instead of refusing with `ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT` (#2861)."
+}

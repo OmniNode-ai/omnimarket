@@ -197,6 +197,9 @@ GITHUB_PR_STATUS_TOPIC_V1 = "onex.evt.github.pr-status.v1"  # onex-topic-allow: 
 GITHUB_BRANCH_HEAD_TOPIC_V1 = "onex.evt.github.branch-head.v1"  # onex-topic-allow: canonical topic registry; declared in node_github_webhook_ingress_effect contract.yaml publish_topics
 CI_RED_TRIAGE_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.ci-red-triage-decided.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator and reducer contracts
 PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator contract
+DEV_HEAD_RED_TOPIC_V1 = "onex.evt.omnimarket.dev-head-red.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_state_emit_effect detect_dev_head_red, consumed by node_pr_lifecycle_orchestrator dev_head_red_dispatch (OMN-20730)
+DEV_HEAD_RED_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.dev-head-red-decided.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_orchestrator contract.yaml publish_topics (OMN-20730)
+DEV_CAUSE_LANE_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.dev-cause-lane-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_orchestrator contract.yaml publish_topics (OMN-20730)
 
 PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-routing-feedback-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml terminal_event
 PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics

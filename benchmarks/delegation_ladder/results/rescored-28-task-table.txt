@@ -1,0 +1,61 @@
+Rescore of the 28-task delegation ladder benchmark (2026-09-13 runs), 2026-10-14
+==============================================================================
+
+Cells: 56 saved responses rescored (28 local + 28 cloud); 0 flipped; every saved
+response matched its recorded sha256, so no cell was skipped.
+
+Recorded = the verdict in merged-local.json / merged-cloud.json (scorers that wrote
+bytecode). Rescored = the same saved response through the scorers that write none
+(`_run_pytest` with PYTHONDONTWRITEBYTECODE=1, omnimarket#3883, head e2bb7a00a).
+
+Passed of 4 tasks per rung, recorded -> rescored
+
+| rung | local recorded | local rescored | cloud recorded | cloud rescored |
+| -- | -- | -- | -- | -- |
+| R1 | 4/4 | 4/4 | 4/4 | 4/4 |
+| R2 | 0/4 | 0/4 | 1/4 | 1/4 |
+| R3 | 3/4 | 3/4 | 4/4 | 4/4 |
+| R3b | 4/4 | 4/4 | 4/4 | 4/4 |
+| R4 | 3/4 | 3/4 | 2/4 | 2/4 |
+| R5 | 4/4 | 4/4 | 3/4 | 3/4 |
+| R6 | 1/4 | 1/4 | 3/4 | 3/4 |
+| all | 19/28 | 19/28 | 21/28 | 21/28 |
+
+Flips (recorded verdict differs from rescored verdict)
+
+none: all 56 cells keep the verdict they were recorded with.
+
+Why none
+--------
+Only the two executing scorers (R4 unit_test_execution, R6 patch_apply_and_test) run
+pytest, so only the 16 R4 and R6 cells (8 per path) can be affected; the 40 others
+are string or rubric scorers. A stale shared bytecode file can only make the second
+of the two runs execute the first run's source: for R4 the mutant run then passes a
+discriminating test, recorded as "does not discriminate"; for R6 the patched run
+then fails, recorded as "still fails after the patch". Of the four R4 tasks only
+R4-03 has a subject and mutant of equal length (1785 and 1785 characters; the
+others differ), and both of its recorded failures are "test fails the real
+function", the first run, which a stale file cannot reach. No recorded R4 failure is
+a "does not discriminate". The R6 failures are "still fails after the patch" and
+they stand under the fixed scorers.
+
+Controls
+--------
+- Repeatability: the rescore was run twice with the fixed scorers; all 56 verdicts and
+  scores agree between the two runs.
+- Old scorers: the scorers on dev (bytecode written) were run over the same 56 saved
+  responses and gave the recorded verdicts, so the flip count is not a harness that
+  cannot see a difference.
+- Positive control: the saved glm-5.3 answer to R4-03 from the rung benchmark (a task
+  that did flip there) scored pass, fail, pass on three runs of the dev scorers and
+  pass, pass, pass on the fixed scorers; the saved lab Qwen answer to R4-03 scored
+  fail, fail, fail on the dev scorers and pass, pass, pass on the fixed ones. The
+  harness used here sees the defect when a cell has it.
+
+Reproduce
+---------
+Each cell: the saved response in responses/<path>/<task>.json, scored through
+`benchmarks.delegation_ladder.run_ladder.score` on the bundle of the same task id
+(bundles and fixtures of the 28 tasks are byte-identical on dev and in #3883). The
+cells are in rescored-28-task-cells.json; tests/test_rescored_28_task.py checks them
+against merged-local.json and merged-cloud.json.

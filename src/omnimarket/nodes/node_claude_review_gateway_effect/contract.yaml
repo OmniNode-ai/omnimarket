@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_claude_review_gateway_effect"
+# Started by `onex models review-gateway`, not by a bus command, so it declares
+# no subscribe or publish topics (node liveness gate).
+lifecycle: experimental
+contract_name: node_claude_review_gateway_effect
+node_name: node_claude_review_gateway_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT node behind `onex models review-gateway` (OMN-21014). An
+  OpenAI-compatible Hostile Review voter endpoint on one lab host. Each call is
+  checked against the shared-secret HMAC signature the LLM transport sends,
+  then served on the first live anthropic key of the tenant that is catalogued
+  as bound to this host (tenant_inference_credentials.bound_host), its value
+  resolved through the secret store, fill-first by key name. No key it can
+  spend, an upstream rate limit, overload, server error or timeout answer 503
+  so the voter's overflow list moves the review on. A refused or credit-
+  exhausted key is set aside and the next key on the host serves. A dry run
+  plans one review without an upstream call. No key value is logged or returned.
+  Operator ruling 2026-10-13T20:50:03Z keeps exactly one repository's code away
+  from cloud models and allows every other repository, with the refused list
+  supplied by a private overlay and never named here, so reviews whose
+  metadata.repository is refused or absent answer 503 before any key is read
+  and overflow to a lab model.
+node_type: effect
+input_model:
+  name: ModelClaudeReviewGatewayRequest
+  module: omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway
+output_model:
+  name: ModelReviewGatewayPlan
+  module: omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway
+
+outputs:
+  chosen_key_ref:
+    type: str
+    required: false
+    description: The reference of the key a review would be served on; absent when none can serve.
+  would_answer:
+    type: int
+    description: 200 when a key on this host would serve, else 503.
+
+# The CLI builds the handler with these; no runtime profile hosts it.
+dependencies:
+  - name: catalog
+    dependency_type: protocol
+    description: ProtocolKeyCatalog, this machine's tenant_inference_credentials catalog.
+    required: true
+  - name: key_values
+    dependency_type: protocol
+    description: ProtocolKeyValues, this machine's tenant key store.
+    required: true
+  - name: call
+    dependency_type: node
+    description: ProtocolReviewCall, node_llm_delegation_call_effect's handler.
+    required: true
+  - name: endpoint_url
+    dependency_type: service
+    description: The BYOK catalogue's anthropic chat endpoint.
+    required: true
+
+handler:
+  name: HandlerClaudeReviewGateway
+  module: omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway
+  class: HandlerClaudeReviewGateway
+  input_model: omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway.ModelClaudeReviewGatewayRequest

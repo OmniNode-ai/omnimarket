@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e06",
+  "title": "one-change changelog entry (omnimarket#3002)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnimarket@ace658e1f61e",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-19830.\n\n--- change 1 (repo omnimarket, pull request #3002) ---\nfeat(OMN-19830): classify_head_checks classifier reproduces the labelled check-run corpus, with run attempts on the verdict (#3002)\nThe triage compute's classify_head_checks operation now classifies one PR\nhead's check facts into its verdict. The newest copy of each check name\ndecides it; blocking checks are the required contexts plus what a red\nCI Summary names; each red gets its reason code from the merge-check\nclassifier and one class (change control, timed out, runner, cancelled,\nproduct); the verdict follows the corpus manifest's precedence. A red\nnothing recognises goes to an agent and is never re-run.\n\nThe verdict carries the run attempt of each blocking result it read\n(revision 1, F7), and change_control_open stays in the corpus (R3).\n\nThe corpus gains four real heads for the two verdicts 2026-09-26 lacked:\ntimed_out (omnimarket#2564, 2026-09-15) and runner_infra (omnibase_infra\n#4049, #4068, #4115, 2026-09-24/25), with the search recorded in the\nmanifest. The merge-check classifier learns that an image pre-pull step is\nthe runner's environment.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnimarket, pull request #3002) ---\nfeat(OMN-19830): classify_head_checks classifier reproduces the labelled check-run corpus, with run attempts on the verdict (#3002)\nThe triage compute's classify_head_checks operation now classifies one PR\nhead's check facts into its verdict. The newest copy of each check name\ndecides it; blocking checks are the required contexts plus what a red\nCI Summary names; each red gets its reason code from the merge-check\nclassifier and one class (change control, timed out, runner, cancelled,\nproduct); the verdict follows the corpus manifest's precedence. A red\nnothing recognises goes to an agent and is never re-run.\n\nThe verdict carries the run attempt of each blocking result it read\n(revision 1, F7), and change_control_open stays in the corpus (R3).\n\nThe corpus gains four real heads for the two verdicts 2026-09-26 lacked:\ntimed_out (omnimarket#2564, 2026-09-15) and runner_infra (omnibase_infra\n#4049, #4068, #4115, 2026-09-24/25), with the search recorded in the\nmanifest. The merge-check classifier learns that an image pre-pull step is\nthe runner's environment. omnimarket#3002",
+    "must_contain": [
+      "#3002",
+      "OMN-19830"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

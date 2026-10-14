@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m04",
+  "path": "pinned",
+  "sha256": "d7b1b4b1bab5ddacb209cb6cba921ae8211389934b3c9169a2a7d69a4ff991cf",
+  "response": "## Release Notes\n\n**omnibase_core**\n- **#1032** — Adds `cli_resolve_contract_topics.py` with reusable `resolve_node_contract` (raises `ModelOnexError` for non-CLI reuse) and `resolve_contract_topics`, prioritizing `event_bus.command_topic` over `subscribe_topics[0]`.\n- **#1564** — Bumps the `required-check-skip-guard-reusable.yml` reference (actions group).\n\n**omnibase_spi**\n- **#83** — Adds frozen wire-format delegation output contracts: `ContractDelegatedResponse`, `ContractDelegationAttribution`, `ContractAttachment`, and `ContractComplianceResult`, all `extra=\"forbid\"`.\n\n**omnimarket**\n- **#3135** — Advances occ-preflight and receipt-gate caller pins to omnibase_core#1820's squash 52851458622f, carrying the onexbot-occ-writer exemption; records four gh-api-gated pin tests in the skip-count baseline.\n- **#3598** — Adds the `node_morning_ground_state_orchestrator` node with a deployment overlay, declaring start-command and terminal bus topics."
+}

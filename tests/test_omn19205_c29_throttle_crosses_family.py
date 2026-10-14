@@ -39,6 +39,7 @@ from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     SUCCESSOR_URL,
     _bind,
     _openrouter,
+    _ref_is_catalogue_picked,
     _request,
 )
 from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
@@ -48,6 +49,7 @@ from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
 pytestmark = pytest.mark.unit
 
 _SHARED_AUTOUSE_FIXTURE = _isolated_effects
+_CATALOGUE_PICKED_CREDENTIAL = _ref_is_catalogue_picked
 
 FIXTURE = (
     Path(__file__).parent

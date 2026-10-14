@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e08",
+  "path": "pinned",
+  "sha256": "19281bedf59dedb51fc99439afa628fab1c830fea057484c1dd073be382c1d52",
+  "response": "[5] — it decodes with `\"utf-x\"`, contradicting test line [47] (`envelope.model_dump_json().encode(\"utf-8\")`), since a nonexistent \"utf-x\" codec raises `LookupError` (not caught by the `except` on line [6]) and makes the function fail on exactly the UTF-8 bytes the test feeds it."
+}

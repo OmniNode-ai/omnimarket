@@ -106,7 +106,11 @@ def _customer_route(
     """Register the customer's key and route the run onto their OpenRouter backend."""
     db_path = tmp_path / "delegation.sqlite"
     customer_ref = register_local_byok_credential(
-        "openrouter", KEY, model=GEMMA, db_path=db_path
+        "openrouter",
+        KEY,
+        model=GEMMA,
+        model_chosen_by="catalogue",
+        db_path=db_path,
     )
     _install_ladder(monkeypatch, max_escalations=0)
     backend = ModelResolvedDelegationBackend(
@@ -170,6 +174,14 @@ class _ReaimThenHangEffect:
                 FakeModels({"data": [{"id": GEMMA}, {"id": NEMOTRON}]}),
             )
             patch.setattr(transport, "post_chat_completion", _throttle_then_hang_post)
+            # The child does not see the parent's patched store path, so it states
+            # what the registered credential records (OMN-21078): a catalogue
+            # pick, the only model the effect re-aims.
+            patch.setattr(
+                effect,
+                "resolve_local_byok_model_chooser",
+                lambda _ref: "catalogue",
+            )
             return effect.HandlerLlmDelegationCall()(request)
 
 

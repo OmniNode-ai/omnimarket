@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m06",
+  "path": "pinned",
+  "sha256": "3272461baec89d1a84dfb883dc5f78b8712b93ea3c71a47db4cadacc366fa84f",
+  "response": "- **#206** (omnibase_spi): Ports change-aware test selection from omnibase_core; with ENABLE_SMART_TESTS=true, CI maps changed source modules to reverse-dep test directories instead of running the full suite on every PR.\n- **#3702** (omnimarket): Adds node_pr_title_check_compute, a definition-B COMPUTE node (contract, node, handler, models) porting the check-title bash step's decision from onex_change_control's reusable pr-title workflow.\n- **#3651** (omnimarket): Adds node_merge_sweep_orchestrator — contract, metadata, entry point, and HandlerMergeSweepRun — with a workflow_coordination execution_graph as the wiring plan.\n- **#1920** (omnibase_core): The contract loader validates complete documents via ModelContractContent.model_validate, adds event-bus and handler-routing subcontracts, and removes a validator that silently dropped malformed dependencies.\n- **#2923** (omnimarket): A Postgres claim store writes the contract-declared schema, fixing UndefinedTable bus-delegation failures caused by bare table names resolving to public."
+}

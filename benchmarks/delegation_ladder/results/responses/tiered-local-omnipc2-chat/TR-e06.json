@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e06",
+  "path": "pinned",
+  "sha256": "6cf015ec9f3afe0b2407bc24499e1fd20f55b1e22b191e3ff8971a1bb5974102",
+  "response": "**Line 27** contradicts **line 66**.\n\nThe altered line `[27]` defines `_FORTHCOMING_ATTEMPT_KEYS` with `\"provider_ix\"`, but the test at line `[66]` uses the key `\"provider_id\"`, which is not in the frozenset and would therefore be rejected by the `extra=\"forbid\"` configuration instead of being discarded."
+}

@@ -324,7 +324,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_operator_capture_effect is hosted by the work-ledger serve process
     # on the ledger host (--operator-capture), not by a runtime, so it has no
     # handler_routing: 20 -> 21.
-    assert summary["skipped"] == 21
+    # OMN-21014's node_claude_review_gateway_effect is started by
+    # `onex models review-gateway`, not by a bus command, so it has no
+    # handler_routing: 21 -> 22.
+    assert summary["skipped"] == 22
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

@@ -167,6 +167,13 @@ response_shape_directives:
     # a one-word answer pass: finish_reason=stop also fires on a configured stop
     # sequence and the gate never sees the prompt.
     - "^\\s*(?:just\\s+)?say\\s+[\"'`]?[\\w-]+[\"'`]?\\s*[.!]?\\s*$"
+    # OMN-20844: a request for a bare Python value ("Reply with only the Python
+    # literal it evaluates to") names its answer's form the same way. The noun
+    # must END the object phrase (punctuation, end of text, or a relative clause
+    # such as `it evaluates to`): "reply with only the number of failing tests
+    # and explain" declares nothing. The directive closes long prompts, which is
+    # why the resolver scans the tail of a prompt as well as its head.
+    - "(?:answer|reply|respond|output|return) with (?:only|just|exactly) (?:the |a |one )?(?:python )?(?:literal|number|integer|tuple|boolean)(?=\\s*(?:[:.,;!]|$)|\\s+(?:it|that|which|you|exactly|as)\\b)"
   single_word:
     - "in (?:exactly )?one word"
     - "in a single word"
@@ -188,6 +195,17 @@ response_shape_directives:
     # already accepted the adverb, so a prompt saying the same thing with
     # `answer in` resolved correctly while one saying `reply with` did not.
     - "(?:answer|reply|respond) with (?:only )?(?:just )?(?:exactly )?one word"
+    # OMN-13967: a classification request declares its answer the same way a
+    # one-word request does, by naming the label as the whole reply. "Classify
+    # the sentiment ... Reply with only the label" resolved `unconstrained`, was
+    # graded against the prose rubric, and its correct one-token answer
+    # (`positive`) was refused as a single-word fragment. Each pattern needs a
+    # word that makes the label the WHOLE reply (only, just, exactly, or a
+    # closed set to pick from); "reply with the label and a justification"
+    # names a label too, so it is excluded by the lookahead and declares nothing.
+    - "(?:answer|reply|respond|output|return) with (?:only|just|exactly) (?:the |a |one |one single )?(?:single )?(?:label|category|class|classification|verdict)\\b(?!\\s+(?:and|plus|followed|then)\\b)"
+    - "(?:output|return|print) only (?:the |a |one )?(?:label|category|class|classification|verdict)\\b(?!\\s+(?:and|plus|followed|then)\\b)"
+    - "(?:answer|reply|respond) with (?:exactly )?one of[: ]"
   length_constrained:
     - "in one sentence"
     - "in a sentence or two"
@@ -345,6 +363,25 @@ quality_rules:
       - "\\bonly (?:one |a )?json\\b"
       - "\\banswer one word then\\b"
       - "\\bone line per\\b"
+    # OMN-20844: the rule judges input that HAS lines to point at. Measured
+    # 2026-10-14 (28-task ladder, omnimarket 525dab336): all four R3b
+    # workflow-selection tasks (a catalogue and a situation, no code) were
+    # refused on every onex rung for "missing specific line citations", and on
+    # the R3 module questions (code with no line numbers) the directive above
+    # made models append invented citations such as "(line 24, line 25, line
+    # 27)" to a 20-line module. The rule applies when the prompt carries line
+    # numbers: a numbered listing (`12: code`, `12| code`, `cat -n`), a diff hunk
+    # header, a `line N` / `L12` / `file.py:12` reference, or the words "line
+    # numbers". A prompt matching none is waived, the directive is not stated to
+    # the model, and a review of input WITH lines is refused for citing nothing,
+    # as before. Markdown list syntax (`1. item`) is not a line number.
+    waived_unless_prompt_matches:
+      - '^@@ -\d+'
+      - '^[ \t]*\d{1,6}(?:[ \t]*[:|]|\t)'
+      - '\blines?\s+\d+'
+      - '\bL\d+\b'
+      - '\.[A-Za-z]{1,5}:\d+\b'
+      - '\bline numbers?\b'
     rationale: >-
       The code-review counterpart of cites_sources. A review that points at
       nothing specific cannot be acted on.
@@ -906,6 +943,11 @@ task_classes:
         - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
+    # OMN-21077: `execution_required: true` above makes this a code class. Its
+    # answer is accepted when every deterministic check passed and
+    # passes_existing_tests ran and passed; with no named test run the gate
+    # refuses it as INSUFFICIENT. The bar is resolved and reported but decides
+    # nothing, because the heuristics in the graded score look for keywords.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.85
@@ -991,10 +1033,13 @@ task_classes:
         # (name_resolution); reject-only, skipped without a grounding source.
         - names_resolve
         - final_artifact_only
+        # OMN-21077: a refactor is code, judged by whether it still works.
+        - passes_existing_tests
       heuristic:
         - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
+    # OMN-21077: advisory for this class, as on code_generation.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.85
@@ -1410,6 +1455,8 @@ task_classes:
         - final_artifact_only
         - uses_pytest_mark_unit
         - pytest_tests_present
+        # OMN-21077: the tests a test answer writes are judged by running them.
+        - passes_existing_tests
       heuristic:
         - no_refusal
         - covers_edge_cases
@@ -1441,6 +1488,7 @@ task_classes:
           deterministic:
             - response_non_empty
             - final_artifact_only
+    # OMN-21077: advisory for this class, as on code_generation.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1506,6 +1554,7 @@ task_classes:
     # local answer scored 1.0. The block is code_generation's, value for value:
     # same acceptance authority (deterministic_acceptance), same deterministic
     # DoD floor, so the same bar and the same caller override bounds.
+    # OMN-21077: advisory for this class, as on code_generation.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.85

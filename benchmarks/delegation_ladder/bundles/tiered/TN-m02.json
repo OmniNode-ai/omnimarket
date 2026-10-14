@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m02",
+  "title": "predict normalize_literal_name (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function normalize_literal_name in omnibase_core@d677b4e78219:src/omnibase_core/validation/checker_literal_duplication.py; the call and the asserted result come from tests/unit/validation/test_checker_literal_duplication.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef normalize_literal_name(alias_name):\n    normalized = alias_name\n    if normalized.startswith('Literal') and len(normalized) > 7:\n        after_prefix = normalized[7:]\n        if after_prefix == 'Literal':\n            return 'literal'\n        normalized = after_prefix\n    max_iterations = 10\n    iterations = 0\n    while normalized.endswith('Literal') and len(normalized) > 7 and (iterations < max_iterations):\n        normalized = normalized[:-7]\n        iterations += 1\n    if not normalized:\n        return alias_name.lower()\n    return normalized.lower()\n```\n\nWhat does `normalize_literal_name('Literal')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'literal'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

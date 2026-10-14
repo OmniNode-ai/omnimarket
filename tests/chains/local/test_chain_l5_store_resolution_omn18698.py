@@ -38,6 +38,7 @@ chain red (the decoy value arrives at the provider) and the error chain red
 from __future__ import annotations
 
 import sqlite3
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -50,7 +51,14 @@ from omnimarket.inference.local_byok_credential_adapter import (
 from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
+from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,
     PROVIDER_SLUG,
@@ -64,6 +72,38 @@ from tests.chains.local.harness import (
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.local_chain]
+
+
+@pytest.fixture(autouse=True)
+def _passing_named_tests(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # OMN-21077: these chain assertions need executed tests for their code happy path.
+    def passing_runner(request: ModelNamedTestRunRequest) -> ModelNamedTestRunResult:
+        return ModelNamedTestRunResult(
+            status=EnumNamedTestRunStatus.COMPLETED,
+            run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+        )
+
+    monkeypatch.setattr(
+        local_chain_harness,
+        "LocalDelegationDispatchPort",
+        partial(
+            local_chain_harness.LocalDelegationDispatchPort,
+            named_test_runner=passing_runner,
+        ),
+    )
+    monkeypatch.setattr(
+        local_chain_harness,
+        "ModelDelegateSkillRequest",
+        partial(
+            local_chain_harness.ModelDelegateSkillRequest,
+            metadata={
+                "named_tests": "test_answer.py::test_answer",
+                "named_tests_answer_path": "answer.py",
+                "named_tests_workspace": str(tmp_path),
+            },
+        ),
+    )
+
 
 #: What the customer put in their local store.
 _STORE_VALUE = "sk-or-omn18698-value-from-the-local-store"

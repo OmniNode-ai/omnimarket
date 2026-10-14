@@ -21,6 +21,16 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: A real recorded chain delivered shuffled, with two equal timestamps, projects to rows in the orchestrator's step order -- falsifier: the fold test run with uv run pytest gives a different order
+  - id: "req-omn19987-run-trace-exposure-declares-its-pending-reader"
+    statement: |-
+      The run-trace.v1 exposure is bus_backed and its only reader, the omnidash Workflow page, is still a draft, so the exposure declares a typed consumers: none whose reason names that reader; omnibase_infra's exposure-reader-coverage gate fails a standing opt-out once a reader exists, which forces the declaration out when the reader lands.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: The run-trace.v1 exposure passes the exposure-reader-coverage gate -- falsifier: the gate run against an omnibase_infra checkout reports the run-trace topic with code no_reader
+      - id: "AC4"
+        statement: |-
+          AC4: The declaration names omnidash#397 as the reader that replaces it -- falsifier: the contract test finds a consumers_reason that does not name omnidash#397
 evidence_requirements:
   - kind: "tests"
     description: "The fold stores a recorded chain in step order when it is delivered shuffled with two equal timestamps, and never stores another tenant's step under the run."
@@ -72,3 +82,20 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19987_run_trace_migrations_real_postgres.py tests/test_omn19987_run_trace_real_postgres.py -q --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn19987-ac3-ac4-pending-reader"
+    description: "The run-trace contract declares consumers: none with the reason 'reader pending in omnidash#397 (OMN-19987); remove when it lands' on its projection_api exposure. The check reads the contract and fails with a KeyError at the merge base, where the exposure declares neither field. The gate verdict itself is run against an omnibase_infra checkout and reported on the pull request, because that gate lives in omnibase_infra."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k test_exposure_declares_the_reader_that_replaces_its_opt_out"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
+  - id: "dod-omn19987-deploy-pending-reader"
+    description: "Read the published run-trace node contract at the checked-out commit. The probe requires the typed consumers: none declaration and the reason naming omnidash#397, so it fails on a revision without either field. This checks the published declaration; the projection's served rows are covered by the AC1 and AC2 tests above."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_run_trace/contract.yaml?ref=$(git rev-parse HEAD)"
+          --jq '.content | @base64d | contains("  consumers: none\n") and contains("reader pending in omnidash#397 (OMN-19987); remove when it lands")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"

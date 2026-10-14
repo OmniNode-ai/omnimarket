@@ -22,6 +22,9 @@ class EnumCriteriaDriftKind(StrEnum):
     #: Two live criteria resolve to one label with different text, and no
     #: accepted pin says which one was meant.
     DUPLICATE_LABEL = "duplicate_label"
+    #: A retirement withdraws an independently accepted binding of a criterion the
+    #: live ticket still carries; only a deleted criterion's binding retires so.
+    RETIRED_LIVE = "retired_live"
 
 
 __all__: list[str] = ["EnumCriteriaDriftKind"]

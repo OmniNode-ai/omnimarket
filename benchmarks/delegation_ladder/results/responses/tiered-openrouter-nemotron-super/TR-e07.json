@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e07",
+  "path": "pinned",
+  "sha256": "28a4d6e1916db06c76da21f514dcdd0a20b6f513a15a63dc7e39e33e8d1ea300",
+  "response": "Line [8] contradicts test line 77: the production code uses `duplicates['with_single_commanx']` (typo with trailing 'x') while the test asserts the headline must show the value from `with_single_command`."
+}

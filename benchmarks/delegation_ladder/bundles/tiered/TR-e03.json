@@ -1,0 +1,36 @@
+{
+  "task_id": "TR-e03",
+  "title": "find the altered line (omnibase_core@4821de6ce4)",
+  "task_type": "review",
+  "difficulty": "easy",
+  "provenance": "Merged commit omnibase_core@4821de6ce4ddb5bd8251f0de108e350a8475fcd2. One added source line had the literal 'ignore' altered to 'ignorx'; everything else is the merged diff.",
+  "prompt": "You are reviewing a merged pull request. Its description:\n\nfix: handler contract extra=ignore + importlib fallback [OMN-6465, OMN-6466] (#727)\n\n* fix: handler contract extra=ignore + importlib fallback [OMN-6465, OMN-6466]\n\n* fix(test): update extra fields test to match extra='ignore' behavior\n\nThe PR changes ModelHandlerContract to extra='ignore', so extra fields\nare silently dropped rather than raising ValidationError. Update the\ntest to verify the new ignore behavior.\n\nThe diff below was altered after the merge: exactly one added line outside the test files was edited so that it no longer agrees with the tests added in the same diff. Every added line carries a label such as [12]. Name the label of the altered line, then one sentence saying which test line it contradicts.\n\nDIFF:\n--- a/src/omnibase_core/contracts/runtime_contracts.py\n+++ b/src/omnibase_core/contracts/runtime_contracts.py\n@@ -9,7 +9,8 @@ configuration.\n \n Resolution order:\n     1. ``ONEX_RUNTIME_CONTRACTS_DIR`` env var (development/deployment override)\n-    2. Repository-relative path (works in dev and worktrees)\n[1]+    2. ``importlib.resources`` (works in PyPI installs)\n[2]+    3. Repository-relative path (works in dev and worktrees)\n \"\"\"\n \n from __future__ import annotations\n@@ -23,7 +24,8 @@ def get_runtime_contracts_dir() -> Path:\n \n     Resolution order:\n         1. ``ONEX_RUNTIME_CONTRACTS_DIR`` env var (explicit override)\n-        2. Repository-relative: ``<repo_root>/contracts/runtime/``\n[3]+        2. ``importlib.resources`` (works in PyPI installs)\n[4]+        3. Repository-relative: ``<repo_root>/contracts/runtime/``\n \n     Returns:\n         Path to the directory containing the 5 runtime contract YAMLs.\n@@ -38,7 +40,18 @@ def get_runtime_contracts_dir() -> Path:\n         if p.is_dir():\n             return p\n \n-    # 2. Repository-relative path (4 levels up from this file to repo root)\n[5]+    # 2. importlib.resources (works in PyPI installs)\n[6]+    try:\n[7]+        import importlib.resources as resources\n[8]+\n[9]+        contracts_ref = resources.files(\"omnibase_core\") / \"contracts\" / \"runtime\"\n[10]+        contracts_path = Path(str(contracts_ref))\n[11]+        if contracts_path.is_dir():\n[12]+            return contracts_path\n[13]+    except (ImportError, TypeError, FileNotFoundError):\n[14]+        pass\n[15]+\n[16]+    # 3. Repository-relative path (4 levels up from this file to repo root)\n     # this file: src/omnibase_core/contracts/runtime_contracts.py\n     # repo root: ../../../../contracts/runtime/\n     repo_root = Path(__file__).parent.parent.parent.parent\n@@ -48,5 +61,5 @@ def get_runtime_contracts_dir() -> Path:\n \n     raise FileNotFoundError(  # error-ok: FileNotFoundError is correct for file lookup\n         \"Runtime contracts not found. Set ONEX_RUNTIME_CONTRACTS_DIR or \"\n-        \"ensure contracts/runtime/ exists in the omnibase_core repository.\"\n[17]+        \"ensure contracts/runtime/ is packaged in the wheel.\"\n     )\n--- a/src/omnibase_core/models/contracts/model_handler_contract.py\n+++ b/src/omnibase_core/models/contracts/model_handler_contract.py\n@@ -331,7 +331,7 @@ class ModelHandlerContract(BaseModel):\n \n     model_config = ConfigDict(\n         frozen=True,\n-        extra=\"forbid\",\n[18]+        extra=\"ignorx\",\n         from_attributes=True,\n         str_strip_whitespace=True,\n     )\n--- a/tests/unit/models/contracts/test_model_handler_contract.py\n+++ b/tests/unit/models/contracts/test_model_handler_contract.py\n@@ -588,15 +588,15 @@ class TestImmutability:\n         with pytest.raises(ValidationError):\n             contract.name = \"New Name\"  # type: ignore[misc]\n \n-    def test_extra_fields_forbidden(self) -> None:\n-        \"\"\"Test that extra fields are not allowed.\"\"\"\n-        with pytest.raises(ValidationError):\n-            ModelHandlerContract(\n-                handler_id=\"node.test\",\n-                name=\"Test\",\n-                contract_version=ModelSemVer(major=1, minor=0, patch=0),\n-                descriptor=ModelHandlerBehavior(node_archetype=\"compute\"),\n-                input_model=\"a.Input\",\n-                output_model=\"a.Output\",\n-                unknown_field=\"value\",  # type: ignore[call-arg]\n-            )\n[19]+    def test_extra_fields_ignored(self) -> None:\n[20]+        \"\"\"Test that extra fields are silently ignored (extra='ignore').\"\"\"\n[21]+        contract = ModelHandlerContract(\n[22]+            handler_id=\"node.test\",\n[23]+            name=\"Test\",\n[24]+            contract_version=ModelSemVer(major=1, minor=0, patch=0),\n[25]+            descriptor=ModelHandlerBehavior(node_archetype=\"compute\"),\n[26]+            input_model=\"a.Input\",\n[27]+            output_model=\"a.Output\",\n[28]+            unknown_field=\"value\",  # type: ignore[call-arg]\n[29]+        )\n[30]+        assert not hasattr(contract, \"unknown_field\")\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "[18]"
+    ],
+    "forbidden": [
+      "[1]",
+      "[2]",
+      "[3]",
+      "[4]",
+      "[5]",
+      "[6]",
+      "[7]",
+      "[8]",
+      "[9]",
+      "[10]",
+      "[11]",
+      "[12]",
+      "[13]",
+      "[14]",
+      "[15]",
+      "[16]",
+      "[17]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e05",
+  "path": "pinned",
+  "sha256": "180eed40456ad7bb1519c7cef91a92ffc14fbfff28e94469e5ca7c32f7456fc7",
+  "response": "[1] It contradicts line 5, which asserts that `envelope.event_type` equals `EVENT_TYPE_FIXER_DISPATCH_START` (defined as `\"omnimarket.fixer-dispatch-start\"`), whereas line 1 defines it as `\"omnimarket.fixer-dispatch-starx\"`."
+}

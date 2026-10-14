@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e07",
+  "path": "pinned",
+  "sha256": "556bec34689528855372a2953104b261faf0563d6a91704ccdeccb95a5a3a0e9",
+  "response": "Added EnumFileZone (#987, ticket OMN-10351), a StrEnum with six directory-role values (production, test, config, generated, docs, build), plus a classify_path classifier (priority: generated > production > test > config > docs > build, with symlink resolution) and a frozen ModelZonePolicy for per-zone QA gate config. This classifies files by directory role rather than extension/format like EnumFileType — a .py file is PRODUCTION under src/ but TEST under tests/ — enabling tiered QA gate classification."
+}

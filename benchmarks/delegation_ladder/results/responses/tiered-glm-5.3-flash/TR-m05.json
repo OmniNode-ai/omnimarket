@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m05",
+  "path": "pinned",
+  "sha256": "1c293e1ac228089d657edeb13c5e519fb0eba76a0fb6b7ac22718fe1d04b3f04",
+  "response": "[72] — it sets the alias to `\"disallowedToolx\"` (typo), but `test_disallowed_tools_via_alias` at [159] populates the key `\"disallowedTools\"` and asserts at [161] that it maps to `disallowed_tools`, which would instead be silently dropped as an ignored extra field."
+}

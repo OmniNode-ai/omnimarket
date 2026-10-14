@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h01",
+  "path": "unpinned",
+  "sha256": "4f4662a517cd4175f411585d5c1a2b1fe9441b7beff37dda558eb464ab77f88b",
+  "response": "The altered line is `[24]`. It contradicts the test at line 96, which expects a `TimeoutExpired` exception with `timeout=90`, but the altered line defines `_GH_SUBPROCESS_TIMEOUT_SECONDS` as `91`."
+}

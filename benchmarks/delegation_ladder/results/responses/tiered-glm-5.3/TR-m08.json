@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m08",
+  "path": "pinned",
+  "sha256": "966dbeaaad84a5edcc7fd3111d781c23874f4c74826a6b3a3d3ee272d72c4704",
+  "response": "**[197]** — `parser.add_argument(\"--checx\", action=\"store_true\")` (the altered line: `--check` was changed to `--checx`).\n\nIt contradicts test line **[321]** in `tests/unit/test_generated_llm_routing_constants.py`, which invokes `scripts/generate_llm_routing_constants.py --check` (asserted to exit 0 at line [327]) — the script no longer accepts a `--check` argument, so argparse rejects it with exit code 2 and `test_generated_constants_are_up_to_date` fails."
+}

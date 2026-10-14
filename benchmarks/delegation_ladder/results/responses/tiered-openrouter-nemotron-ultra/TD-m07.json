@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m07",
+  "path": "pinned",
+  "sha256": "00858d88ba40489e7f16ad7c445bd811189327cae55bc91afc8610465965306f",
+  "response": "#1551: Backfills agent_source on ModelClaudeCodeHookEvent; retypes Cursor str→EnumAgentSource (str-accepting) for B4 parity seam. #1690: Fixes Receipt Gate routing—same-repo PRs no longer forced to untrusted runners across 14 repos. #1262: Adds contract-declared agent_invocation carve-out; permits model-CLI shell-out only when contract.yaml declares descriptor.agent_invocation: true. #1430: Introduces non-canonical lifecycle-class ratchet (omnibase_core canary); blocks new CamelCase Service/Engine/Adapter/Router/Daemon/Manager/Runner/Registry/Controller/Server/Client classes outside frozen baseline. #1723: Receipt Gate now reads occ-autobind producer outcome; accepts dependency-pin-only PRs (post-release manifest+lockfile bumps)."
+}

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.313"
+version = "0.4.314"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -384,6 +384,7 @@ node_delegation_dod_verify_request_compute = "omnimarket.nodes.node_delegation_d
 node_delegation_acceptance_judged_publish_effect = "omnimarket.nodes.node_delegation_acceptance_judged_publish_effect"
 node_delegation_acceptance_judged_replay_compute = "omnimarket.nodes.node_delegation_acceptance_judged_replay_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
+node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
 node_skill_hygiene_validate_compute = "omnimarket.nodes.node_skill_hygiene_validate_compute"
@@ -502,6 +503,7 @@ node_projection_session_replay = "omnimarket.nodes.node_projection_session_repla
 node_projection_work_events = "omnimarket.nodes.node_projection_work_events"
 node_projection_read_effect = "omnimarket.nodes.node_projection_read_effect"
 node_local_dashboard_serve_effect = "omnimarket.nodes.node_local_dashboard_serve_effect"
+node_claude_review_gateway_effect = "omnimarket.nodes.node_claude_review_gateway_effect"
 node_projection_session_content = "omnimarket.nodes.node_projection_session_content"
 node_projection_hook_ledger = "omnimarket.nodes.node_projection_hook_ledger"
 node_projection_open_obligations = "omnimarket.nodes.node_projection_open_obligations"
@@ -1202,9 +1204,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
-version = "v1.1.9"
-sha256 = "41c54ad3523ce2c228083d10474391fc77dc4d5ccce3ef57d3bd8e69de358024"
-asset = "omnidash-bundle-v1.1.9.tar.gz"
+version = "v1.1.10"
+sha256 = "30a933f965cd21c66883ed4d146db166013f6694c562e9381c0b35f64a7e41e5"
+asset = "omnidash-bundle-v1.1.10.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

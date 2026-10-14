@@ -158,7 +158,23 @@ class ModelQualityRule(BaseModel):
         ),
     )
 
-    @field_validator("waived_when_prompt_matches")
+    waived_unless_prompt_matches: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Case-insensitive, multi-line `re` patterns for the input this rule "
+            "judges (OMN-20844). The rule applies only when the prompt matches at "
+            "least one; a prompt that matches none carries nothing for the rule to "
+            "be about, and the rule leaves the request's HEURISTIC band exactly as "
+            "a `waived_when_prompt_matches` match does. `cites_specific_lines` "
+            "declares what a numbered line looks like: a workflow-selection task "
+            "has no lines to cite, and a rule that demands them refuses the "
+            "correct answer while its directive tells the model to invent a "
+            "citation. Empty means the rule needs no such input. A prompt that "
+            "is not given (None) never waives."
+        ),
+    )
+
+    @field_validator("waived_when_prompt_matches", "waived_unless_prompt_matches")
     @classmethod
     def _waiver_patterns_compile(cls, patterns: tuple[str, ...]) -> tuple[str, ...]:
         for pattern in patterns:
@@ -166,8 +182,8 @@ class ModelQualityRule(BaseModel):
                 re.compile(pattern)
             except re.error as exc:
                 raise ValueError(
-                    f"waived_when_prompt_matches pattern {pattern!r} is not a "
-                    f"valid regular expression: {exc}"
+                    f"waiver pattern {pattern!r} is not a valid regular "
+                    f"expression: {exc}"
                 ) from exc
         return patterns
 
@@ -1318,6 +1334,20 @@ def resolve_facts_first_prompt_policy() -> ModelFactsFirstPromptPolicy | None:
     return _delegation_task_class_authority().facts_first_prompt
 
 
+def resolve_task_class_execution_required(task_class: str) -> bool:
+    """Whether ``task_class`` declares that its answer must be executed.
+
+    OMN-21077: a class whose ``complexity_contract`` declares
+    ``execution_required: true`` is a code class. Its answer is accepted on its
+    deterministic checks and an executed test run, never on a score. An unknown
+    class, or one with no complexity contract, is not a code class.
+    """
+    entry = _delegation_task_class_authority().task_classes.get(task_class)
+    if entry is None or entry.complexity_contract is None:
+        return False
+    return entry.complexity_contract.execution_required
+
+
 __all__ = [
     "EnumGatewayExposure",
     "EnumPromptShape",
@@ -1350,6 +1380,7 @@ __all__ = [
     "resolve_reasoning_preamble_policy",
     "resolve_size_band_thresholds",
     "resolve_task_class_execution_budget",
+    "resolve_task_class_execution_required",
     "resolve_task_class_output_contract",
     "resolve_task_class_prompt_shape",
     "withheld_delegation_refusal",

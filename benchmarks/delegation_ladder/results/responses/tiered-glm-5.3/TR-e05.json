@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e05",
+  "path": "pinned",
+  "sha256": "1e13cfcb47e8b0ad3114fec59b2ef5ddda30f3a4a543f6dbfe7e79e9c574bbc5",
+  "response": "**[1]** — Its value `\"omnimarket.fixer-dispatch-starx\"` contradicts test line [4], which defines the same constant as `\"omnimarket.fixer-dispatch-start\"` (the value that line [5]'s assertion `envelope.event_type == EVENT_TYPE_FIXER_DISPATCH_START` requires)."
+}

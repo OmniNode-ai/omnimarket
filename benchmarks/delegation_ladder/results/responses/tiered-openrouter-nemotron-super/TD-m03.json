@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m03",
+  "path": "pinned",
+  "sha256": "262cd33abf00de157dc6eee22ed4618a60eef3bb870301f29564e03b530a58e8",
+  "response": "- **omnibase_core #1764**: Fix OMN-19515 — validate-union-usage now runs once over src/ (pass_filenames false), excluding protocols/, instead of per pre-commit batch.\n- **omnibase_core #965**: Feat OMN-10219/OMN-10211 — Add substrate_gates package (BaseGateCheck, GateViolation, has_allow_annotation, main_for_gate) and Gate 5 banning **kwargs: object/Any in Protocol method signatures.\n- **omnimarket #3071**: Fix OMN-19813 — Reject empty-string agent_id on claude_hook_events/claude_agent_spans via min_length=1 and migration 0002 CHECK constraint.\n- **omnimarket #3629**: Feat OMN-16652 — Add node_reject_skip_token_compute (contract.yaml, metadata.yaml, models, HandlerRejectSkipToken.handle) with pre-commit hooks scanning for [skip-<letter>] violations unless \"# skip-token-allowed: <receipt-id>\" present.\n- **omnimarket #3310**: Fix OMN-20157 — Raise ByokPinNotPermittedError for non-routable BYOK pins, aligning delegation-time behavior with registration refusal; three new tests including GLM general_api."
+}

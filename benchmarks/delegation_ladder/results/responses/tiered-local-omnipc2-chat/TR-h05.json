@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h05",
+  "path": "pinned",
+  "sha256": "4d2cbf7beabf0fb8ab817e2401f4614b181f461396b064338582b3c31ba44656",
+  "response": "The altered line is **[42]**. It contradicts the test assertion on **line 354** (`assert not findings`), because line [42] claims a zero-contract scan exits 2 (implying a failure), whereas the test expects an empty tree to be treated as a clean state with no findings (implying a pass)."
+}

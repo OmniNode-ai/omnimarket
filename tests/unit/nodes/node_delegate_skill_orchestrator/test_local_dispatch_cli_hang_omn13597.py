@@ -31,6 +31,13 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_module,
 )
@@ -88,6 +95,16 @@ class SlowSuccessfulEffectHandler:
             tokens_out=7,
             latency_ms=500,
         )
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: supply executed passing evidence for this code-class happy path.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
 
 
 @pytest.fixture
@@ -235,6 +252,7 @@ def test_dispatch_offloads_blocking_call_off_the_event_loop(
     monkeypatch.setattr(port_module, "_DISPATCH_TIMEOUT_BUFFER_SECONDS", 30.0)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         effect_handler=SlowSuccessfulEffectHandler(),
         evidence_db_path=db_path,
     )
@@ -248,6 +266,11 @@ def test_dispatch_offloads_blocking_call_off_the_event_loop(
     async def _run() -> dict[str, object]:
         dispatch_task = asyncio.create_task(
             port.dispatch(
+                named_tests=ModelNamedTestSpec(
+                    workspace_root=str(tmp_path),
+                    answer_path="reverse_impl.py",
+                    test_ids=("test_reverse.py::test_reverse",),
+                ),
                 prompt="reverse a string",
                 task_type="code_generation",
                 correlation_id=uuid4(),

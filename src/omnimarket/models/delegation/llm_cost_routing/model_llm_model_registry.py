@@ -83,6 +83,15 @@ class ModelLlmModelProfile(BaseModel):
     token VALUE is resolved fail-closed at the effect boundary via the secret
     store and is never committed here — only the logical ref name (OMN-12971)."""
 
+    formerly_model_ids: tuple[str, ...] = ()
+    """Earlier ids this model was keyed by (OMN-21079).
+
+    Receipts are append-only, so a receipt written before a rename still names
+    the earlier id. Each earlier id declared here resolves to this profile
+    through :meth:`ModelLlmModelRegistry.canonical_model_id`; it is the only
+    place an earlier id is spelled.
+    """
+
     notes: str | None = None
 
     @field_validator("context_window")
@@ -174,13 +183,50 @@ class ModelLlmModelRegistry(BaseModel):
         object.__setattr__(self, "pricing_manifest_hash", pricing_hash)
         return self
 
+    @model_validator(mode="after")
+    def formerly_ids_are_unambiguous(self) -> Self:
+        """An earlier id names one current model and is not a current key."""
+        seen: dict[str, str] = {}
+        for key, profile in self.models.items():
+            for earlier in profile.formerly_model_ids:
+                if earlier in self.models:
+                    raise ValueError(
+                        f"formerly_model_ids of '{key}' names '{earlier}', "
+                        "which is also a current registry key"
+                    )
+                if earlier in seen:
+                    raise ValueError(
+                        f"earlier id '{earlier}' is claimed by both "
+                        f"'{seen[earlier]}' and '{key}'"
+                    )
+                seen[earlier] = key
+        return self
+
+    @property
+    def legacy_model_ids(self) -> dict[str, str]:
+        """Earlier id -> current id, for receipts written before a rename."""
+        return {
+            earlier: key
+            for key, profile in self.models.items()
+            for earlier in profile.formerly_model_ids
+        }
+
+    def canonical_model_id(self, model_id: str) -> str:
+        """The current id for ``model_id``; an id the registry does not know is unchanged."""
+        return self.legacy_model_ids.get(model_id, model_id)
+
     def get_model(self, model_id: str) -> ModelLlmModelProfile:
-        """Retrieve a model profile by ID. Raises KeyError if not found."""
-        if model_id not in self.models:
+        """Retrieve a model profile by ID. Raises KeyError if not found.
+
+        An earlier id declared in ``formerly_model_ids`` resolves to the profile
+        of the model it was renamed to.
+        """
+        canonical = self.canonical_model_id(model_id)
+        if canonical not in self.models:
             raise KeyError(
                 f"Model '{model_id}' not found in registry version {self.model_registry_version}"
             )
-        return self.models[model_id]
+        return self.models[canonical]
 
     def resolve_endpoint(self, model_id: str) -> str:
         """Resolve a model's endpoint URL from the declared env var.

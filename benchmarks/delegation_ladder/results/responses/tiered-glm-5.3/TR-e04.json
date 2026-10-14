@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e04",
+  "path": "pinned",
+  "sha256": "189897bf93d6ffb8d74a2c99239c8526689a10498eefc82a829adee725d4d501",
+  "response": "[5] — `SEMANTIC_GRADING = \"semantic_gradinx\"` contradicts test line [20] (`assert item.checks[0].check_type == \"semantic_grading\"`), since the enum's value is misspelled \"semantic_gradinx\" and would never equal the string \"semantic_grading\"."
+}

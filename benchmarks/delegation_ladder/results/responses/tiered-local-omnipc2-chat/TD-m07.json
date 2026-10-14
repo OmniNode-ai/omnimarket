@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m07",
+  "path": "pinned",
+  "sha256": "804e1c7257444a80633fcc9369d5f04ce4b3a94f6184bf3f84e44b73f222bff8",
+  "response": "**Release Notes**\n\n*   **#1551** (OMN-14750): Backfilled `agent_source` on `ModelClaudeCodeHookEvent` and retyped Cursor strings to `EnumAgentSource` (str-accepting) for B4 parity.\n*   **#1690** (OMN-18205): Fixed `receipt-gate.yml` to use the fork test for untrusted routing, correcting runner placement for cross-repo reusable contexts.\n*   **#1262** (OMN-13249): Added a structural `agent_invocation` carve-out for the canonical-inference gate, permitting model-CLI subprocesses only when declared in `contract.yaml`.\n*   **#1430** (OMN-14350): Introduced a non-canonical lifecycle-class ratchet gate (omnibase_core canary) flagging CamelCase classes with non-canonical lifecycle type-words.\n*   **#1723** (OMN-18882): Updated `receipt-gate.yml` to accept dependency-pin-only outcomes, resolving failures for post-release manifest bumps."
+}

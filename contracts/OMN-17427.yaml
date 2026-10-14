@@ -142,6 +142,13 @@ requirements:
       - id: "AC24"
         statement: |-
           AC24: the gate runs as a blocking step in the ci.yml lint job, the node-auto-wiring-in-process pre-commit hook and before uv build in release.yml and release-cut.yml, reads each limit from ModelDispatchRoute's field metadata, derives ids with infra's own derivation, wires all contracts with a real container and the checked-in local topology, and fails on any unlisted failure or any listed contract that now passes -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q fails, or emptying either exception list leaves it green (the two 206-character judged route ids must fail)
+  - id: "req-auto-wiring-manifest-ignores-active-lane"
+    statement: |-
+      The repository auto-wiring check discovers every package's contracts even when the caller supplies an active runtime package filter, and restores that filter after discovery.
+    acceptance:
+      - id: "AC33"
+        statement: |-
+          AC33: with ONEX_ACTIVE_RUNTIME_PACKAGES set to omnimarket, the manifest includes node_memory_storage_effect and leaves the caller's filter unchanged -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -k test_manifest_includes_contracts_outside_the_active_lane
   - id: "req-morning-overlay-at-run"
     statement: |-
       The morning ground-state and friction-sweep handlers read their deployment overlay when a run starts, so a runtime without the overlay wires every other node and refuses only that run, instead of failing auto-wiring and crash-looping the effects runtime.
@@ -525,3 +532,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC32"]
+  - id: "dod-omn17427-ac33-manifest-active-filter"
+    description: "The auto-wiring manifest includes contracts outside the active lane and restores the caller's package filter after discovery."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -k test_manifest_includes_contracts_outside_the_active_lane"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC33"]

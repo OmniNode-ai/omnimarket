@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e09",
+  "title": "one-change changelog entry (omnimarket#3549)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnimarket@8b6f8fff11f9",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-20712.\n\n--- change 1 (repo omnimarket, pull request #3549) ---\nfeat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays (#3549)\n* feat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays\n\nAdds src/omnimarket/nodes/node_lab_fill_selection_compute (operations select_lab_fill_work and mark_approved_work_done) and src/omnimarket/nodes/node_lab_disk_hygiene_effect (operation run_lab_disk_hygiene), copied from the operator tooling repository in canonical shape (contract, metadata, handlers, models).\nSelection logic and hygiene logic are unchanged; only the deployment facts moved out.\nLab-fill selection: the repository roles (companion, not-work, document repositories) were module constants; they are now a required typed field, ModelLabFillDeployment, validated from the overlay mapping by ModelLabFillDeployment.from_overlay.\nThe compute node does no environment or file access (node-purity hook).\nDisk hygiene: the default census path is gone; the census comes from the request or from the deployment overlay key census_path, resolved from OMNIMARKET_LAB_DISK_HYGIENE_OVERLAY, else <root>/node_lab_disk_hygiene_effect/overlay.yaml for each root in ONEX_SKILL_OVERLAY_ROOTS.\nWith no census anywhere, no container is removed and the prunes still run.\nThe module docstring no longer describes a specific host.\nBoth nodes are called in process: lifecycle experimental, no bus topics, no onex.nodes entry point in pyproject.toml.\ntests/test_market_node_runtime_dogfood.py lists them in EXPECT\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnimarket, pull request #3549) ---\nfeat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays (#3549)\n* feat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays\n\nAdds src/omnimarket/nodes/node_lab_fill_selection_compute (operations select_lab_fill_work and mark_approved_work_done) and src/omnimarket/nodes/node_lab_disk_hygiene_effect (operation run_lab_disk_hygiene), copied from the operator tooling repository in canonical shape (contract, metadata, handlers, models).\nSelection logic and hygiene logic are unchanged; only the deployment facts moved out.\nLab-fill selection: the repository roles (companion, not-work, document repositories) were module constants; they are now a required typed field, ModelLabFillDeployment, validated from the overlay mapping by ModelLabFillDeployment.from_overlay.\nThe compute node does no environment or file access (node-purity hook).\nDisk hygiene: the default census path is gone; the census comes from the request or from the deployment overlay key census_path, resolved from OMNIMARKET_LAB_DISK_HYGIENE_OVERLAY, else <root>/node_lab_disk_hygiene_effect/overlay.yaml for each root in ONEX_SKILL_OVERLAY_ROOTS.\nWith no census anywhere, no container is removed and the prunes still run.\nThe module docstring no longer describes a specific host.\nBoth nodes are called in process: lifecycle experimental, no bus topics, no onex.nodes entry point in pyproject.toml.\ntests/test_market_node_runtime_dogfood.py lists them in EXPECT omnimarket#3549",
+    "must_contain": [
+      "#3549",
+      "OMN-20712"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

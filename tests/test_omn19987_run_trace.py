@@ -461,6 +461,21 @@ def test_exposure_orders_by_the_step_sequence_and_nothing_time_based() -> None:
         assert clock not in order
 
 
+def test_exposure_declares_the_reader_that_replaces_its_opt_out() -> None:
+    """The exposure-reader-coverage gate in omnibase_infra accepts an exposure with
+    no reader only as a typed ``consumers: none`` with a reason. The only reader is
+    the omnidash Workflow page, still a draft; the reason names it, so the opt-out
+    is deleted when it lands (the gate then fails a standing opt-out)."""
+    projection = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))[
+        "projection_api"
+    ]
+    assert projection["consumers"] == "none"
+    reason = " ".join(str(projection["consumers_reason"]).split())
+    assert reason == (
+        "reader pending in omnidash#397 (OMN-19987); remove when it lands"
+    )
+
+
 def test_the_step_event_topic_is_what_the_writer_subscribes_to() -> None:
     contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
     assert contract["event_bus"]["subscribe_topics"] == [

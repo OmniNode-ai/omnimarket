@@ -1,0 +1,156 @@
+# Document tasks for the delegation ground-truth measurement (OMN-19787).
+# Each prompt carries the only facts the answer may use. Each checklist item is
+# a yes-or-no question scored by a model other than the delegated one; an answer
+# is adequate only when every item is met. Several items test a trap: a fact the
+# table deliberately leaves out, or a unit or default that is easy to assume.
+schema_version: 1
+task_class: document
+tasks:
+  - id: since_flag_reference
+    prompt: |
+      Write the "Options" section of the README for the command-line tool `tidy-logs`, using only these facts.
+      Facts:
+      - `--since <date>`: required. Only log files modified on or after this date (YYYY-MM-DD) are considered.
+      - `--keep <n>`: optional, default 7. Number of newest matching files kept per directory.
+      - `--dry-run`: optional flag. Prints each file that would be deleted and deletes nothing.
+      - Exit code 2 means `--since` was missing or unparseable.
+      Write Markdown. Do not add options, defaults or behaviour that the facts do not state.
+    checklist:
+      - {id: all_three_options, text: "Does the answer document all three options --since, --keep and --dry-run?"}
+      - {id: since_required_no_default, text: "Does the answer present --since as required and avoid giving it any default value?"}
+      - {id: keep_default_seven, text: "Does the answer state that the default for --keep is 7?"}
+      - {id: dry_run_deletes_nothing, text: "Does the answer say --dry-run deletes nothing (only prints what would be deleted)?"}
+      - {id: no_invented_options, text: "Is the answer free of any option, default or behaviour not in the facts (for example a --verbose flag, a config file, or a default date)?"}
+  - id: timeout_ms_docstring
+    prompt: |
+      Write a Google-style Python docstring for `fetch_manifest(url, timeout_ms=1500, retries=2)`, using only these facts.
+      Facts:
+      - Downloads a JSON manifest from `url` and returns it as a dict.
+      - `timeout_ms` is the per-attempt timeout in milliseconds.
+      - `retries` is the number of extra attempts after the first one fails, so the default makes at most 3 attempts.
+      - Raises `ManifestError` when every attempt fails or the body is not valid JSON.
+      Return only the docstring.
+    checklist:
+      - {id: milliseconds, text: "Does the answer describe timeout_ms in milliseconds (not seconds)?"}
+      - {id: three_attempts, text: "Does the answer make clear that retries counts extra attempts, so retries=2 means at most 3 attempts in total?"}
+      - {id: raises_manifest_error_both_cases, text: "Does the Raises section name ManifestError for both cases: all attempts failing and an invalid JSON body?"}
+      - {id: returns_dict, text: "Does the answer say the function returns the manifest as a dict?"}
+      - {id: no_invented_behaviour, text: "Is the answer free of behaviour not in the facts (for example backoff delays, caching, or exceptions other than ManifestError)?"}
+  - id: changelog_2_4_0
+    prompt: |
+      Write the CHANGELOG entry for release 2.4.0 of the `ledgerkit` library, using only these facts.
+      Facts:
+      - Breaking: `Ledger.append()` now raises `DuplicateRowError` instead of silently skipping a row whose id already exists.
+      - Migration: callers that relied on the skip must catch `DuplicateRowError`.
+      - Fixed: `Ledger.tail(n)` returned n+1 rows when n was 0.
+      - Fixed: timestamps were written in local time instead of UTC.
+      Use Keep a Changelog style headings. Do not mention anything the facts do not state.
+    checklist:
+      - {id: breaking_marked, text: "Is the Ledger.append change clearly marked as breaking (a Breaking/Changed heading or an explicit BREAKING label)?"}
+      - {id: migration_step, text: "Does the answer tell callers to catch DuplicateRowError if they relied on the old skip?"}
+      - {id: both_fixes, text: "Does the answer list both fixes: tail(0) returning an extra row and timestamps now written in UTC?"}
+      - {id: version_heading, text: "Does the answer have a heading for version 2.4.0?"}
+      - {id: no_invented_items, text: "Is the answer free of entries the facts do not state (for example performance improvements, new features, deprecations, or a release date)?"}
+  - id: widget_endpoint
+    prompt: |
+      Write the API reference entry for `GET /v1/widgets/{id}`, using only these facts.
+      Facts:
+      - Requires a bearer token in the Authorization header.
+      - 200: returns the widget as JSON with fields id, name, created_at.
+      - 404: no widget with this id ever existed.
+      - 410: the widget existed but was deleted; the body carries `deleted_at`.
+      - 401: missing or invalid token.
+      Write Markdown. Document only these responses.
+    checklist:
+      - {id: bearer_auth, text: "Does the answer state that a bearer token in the Authorization header is required?"}
+      - {id: distinguishes_404_410, text: "Does the answer distinguish 404 (never existed) from 410 (existed but deleted)?"}
+      - {id: deleted_at_on_410, text: "Does the answer say the 410 response body carries deleted_at?"}
+      - {id: fields_200, text: "Does the answer list the 200 response fields id, name and created_at?"}
+      - {id: no_invented_responses, text: "Is the answer free of status codes, fields, query parameters or rate limits that the facts do not state (for example 403, 500, or 429)?"}
+  - id: env_var_rename
+    prompt: |
+      Write a short upgrade note for operators, using only these facts.
+      Facts:
+      - Version 3.2 renames the environment variable `QUEUE_URL` to `BROKER_URL`.
+      - Until version 4.0, `QUEUE_URL` is still read when `BROKER_URL` is unset, and a deprecation warning is logged at startup.
+      - When both are set, `BROKER_URL` wins and `QUEUE_URL` is ignored.
+      - Version 4.0 stops reading `QUEUE_URL`.
+      Keep it under 120 words.
+    checklist:
+      - {id: names_both_vars, text: "Does the answer name both QUEUE_URL and BROKER_URL and say which replaces which?"}
+      - {id: fallback_until_4, text: "Does the answer say QUEUE_URL is still read (with a warning) until 4.0 when BROKER_URL is unset?"}
+      - {id: precedence, text: "Does the answer say BROKER_URL wins when both are set?"}
+      - {id: under_120_words, text: "Is the answer under 120 words?"}
+      - {id: no_invented_dates, text: "Is the answer free of release dates, version numbers other than 3.2 and 4.0, or behaviour the facts do not state?"}
+  - id: zero_means_unlimited
+    prompt: |
+      Write the reference entry for the configuration key `max_parallel_uploads`, using only these facts.
+      Facts:
+      - Integer. Default 4.
+      - 0 means no limit.
+      - Negative values are rejected at startup with an error naming the key.
+      - Changing it requires a restart; it is not reloaded on SIGHUP.
+    checklist:
+      - {id: default_four, text: "Does the answer state the default is 4?"}
+      - {id: zero_unlimited, text: "Does the answer say 0 means no limit (rather than disabling uploads)?"}
+      - {id: negative_rejected, text: "Does the answer say negative values are rejected at startup?"}
+      - {id: restart_required, text: "Does the answer say a restart is required and SIGHUP does not reload it?"}
+      - {id: no_invented_bounds, text: "Is the answer free of a maximum value, a recommended value, or any behaviour the facts do not state?"}
+  - id: error_code_table
+    prompt: |
+      Write a Markdown table documenting the exit codes of `backup-verify`, using only these facts.
+      Facts:
+      - 0: every archive verified.
+      - 3: at least one archive failed its checksum.
+      - 4: the manifest could not be read.
+      - 7: verification was interrupted; results are partial.
+      No other exit codes exist. Add one sentence below the table saying which codes mean the backups themselves may be bad.
+    checklist:
+      - {id: four_rows, text: "Does the table have exactly the four codes 0, 3, 4 and 7, with no other codes?"}
+      - {id: meanings_correct, text: "Is each code's meaning as stated in the facts (3 checksum failure, 4 manifest unreadable, 7 interrupted with partial results)?"}
+      - {id: sentence_names_3_only, text: "Does the sentence below the table name code 3 as the one meaning the backups themselves may be bad, and not present 4 or 7 as meaning the backups are bad?"}
+      - {id: is_table, text: "Is the exit code documentation a Markdown table?"}
+  - id: feature_flag_summary
+    prompt: |
+      Write a one-paragraph summary for operators of the feature flag `strict_schema`, using only these facts.
+      Facts:
+      - Default: off.
+      - When on, events whose payload fails schema validation are rejected and counted in the metric `events_rejected_total`.
+      - When off, such events are accepted and a warning is logged.
+      - The flag is read per tenant.
+      Keep it under 80 words. One paragraph, no lists.
+    checklist:
+      - {id: default_off, text: "Does the answer state the flag is off by default?"}
+      - {id: on_rejects_and_counts, text: "Does the answer say that when on, invalid events are rejected and counted in events_rejected_total?"}
+      - {id: off_accepts_warns, text: "Does the answer say that when off, invalid events are accepted with a logged warning?"}
+      - {id: per_tenant, text: "Does the answer say the flag is read per tenant?"}
+      - {id: format, text: "Is the answer a single paragraph, with no list, under 80 words?"}
+  - id: rotate_runbook
+    prompt: |
+      Write a numbered runbook for rotating the signing key of the `relay` service, using only these facts.
+      Facts:
+      - Step order: generate the new key with `relay keys new`; publish it with `relay keys publish <key-id>`; wait until `relay keys status` shows the new key on every node; then retire the old key with `relay keys retire <old-key-id>`.
+      - Retiring the old key before every node has the new one breaks signature checks on lagging nodes.
+      - No restart is needed at any step.
+      Do not add steps the facts do not state.
+    checklist:
+      - {id: order_kept, text: "Are the steps in the order new, publish, wait for status on every node, retire?"}
+      - {id: wait_before_retire, text: "Does the answer make waiting for every node to show the new key a step before retiring the old key?"}
+      - {id: warning_lagging, text: "Does the answer warn that retiring early breaks signature checks on lagging nodes?"}
+      - {id: no_restart, text: "Does the answer avoid telling the operator to restart the service, and is it consistent with no restart being needed?"}
+      - {id: no_invented_steps, text: "Is the answer free of steps the facts do not state (for example backups, revoking certificates, or editing config files)?"}
+  - id: rate_limit_note
+    prompt: |
+      Write the "Rate limits" section of an API guide, using only these facts.
+      Facts:
+      - Limit: 600 requests per minute per API key, not per IP address.
+      - Exceeding it returns 429 with a `Retry-After` header in seconds.
+      - Requests rejected with 429 do not count toward the limit.
+      - The limit is the same on every plan.
+      Write Markdown, under 150 words.
+    checklist:
+      - {id: per_key, text: "Does the answer state the limit is 600 requests per minute per API key (not per IP)?"}
+      - {id: retry_after_seconds, text: "Does the answer say a 429 carries Retry-After in seconds?"}
+      - {id: rejected_not_counted, text: "Does the answer say rejected 429 requests do not count toward the limit?"}
+      - {id: same_every_plan, text: "Does the answer say the limit is the same on every plan, without inventing plan-specific limits?"}
+      - {id: no_invented_mechanics, text: "Is the answer free of mechanics the facts do not state (for example burst allowances, X-RateLimit headers, or per-endpoint limits)?"}

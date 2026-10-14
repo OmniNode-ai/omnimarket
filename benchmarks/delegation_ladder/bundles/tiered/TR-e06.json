@@ -1,0 +1,46 @@
+{
+  "task_id": "TR-e06",
+  "title": "find the altered line (omnimarket@f986da5f01)",
+  "task_type": "review",
+  "difficulty": "easy",
+  "provenance": "Merged commit omnimarket@f986da5f0110d403f1ff5c7d89a09c7b24d54a4c. One added source line had the literal 'provider_id' altered to 'provider_ix'; everything else is the merged diff.",
+  "prompt": "You are reviewing a merged pull request. Its description:\n\nfeat(OMN-20154): the released consumer accepts the provider facts on an attempt and scope on a quota rule, ahead of the change that emits them (#3133)\n\nThe diff below was altered after the merge: exactly one added line outside the test files was edited so that it no longer agrees with the tests added in the same diff. Every added line carries a label such as [12]. Name the label of the altered line, then one sentence saying which test line it contradicts.\n\nDIFF:\n--- a/src/omnimarket/models/delegation/wire/model_bifrost_delegation_config.py\n+++ b/src/omnimarket/models/delegation/wire/model_bifrost_delegation_config.py\n@@ -6,7 +6,7 @@\n from __future__ import annotations\n \n from enum import StrEnum\n-from typing import Literal\n[1]+from typing import Any, Literal\n from uuid import UUID\n \n from pydantic import BaseModel, ConfigDict, Field, model_validator\n@@ -311,11 +311,30 @@ class EnumQuotaDisposition(StrEnum):\n     \"\"\"No balance/package. No reset is coming — alert, never retry.\"\"\"\n \n \n[2]+# OMN-20154, the consumer-first half. The next change declares ``scope`` on\n[3]+# each quota code rule (provider-wide or per model) and a ``cooldown``\n[4]+# disposition. This model is ``extra=\"forbid\"``, so a released loader would\n[5]+# refuse a policy carrying ``scope``; this release accepts the key and discards\n[6]+# it, until the declaring change replaces this with the field itself.\n[7]+_FORTHCOMING_QUOTA_RULE_KEYS: frozenset[str] = frozenset({\"scope\"})\n[8]+\n[9]+\n class ModelQuotaCodeRule(BaseModel):\n     \"\"\"One provider error code and the disposition it maps to.\"\"\"\n \n     model_config = ConfigDict(frozen=True, extra=\"forbid\", from_attributes=True)\n \n[10]+    @model_validator(mode=\"before\")\n[11]+    @classmethod\n[12]+    def _drop_forthcoming_keys(cls, data: Any) -> Any:\n[13]+        if not isinstance(data, dict) or _FORTHCOMING_QUOTA_RULE_KEYS.isdisjoint(data):\n[14]+            return data\n[15]+        return {\n[16]+            key: value\n[17]+            for key, value in data.items()\n[18]+            if key not in _FORTHCOMING_QUOTA_RULE_KEYS\n[19]+        }\n[20]+\n     code: str = Field(..., description=\"Provider-native error code, as a string.\")\n     disposition: EnumQuotaDisposition = Field(...)\n     reset_from: str | None = Field(\n--- a/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py\n+++ b/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py\n@@ -56,7 +56,14 @@ from omnimarket.models.delegation.local_credential_refusal import (\n # same PR declares it as a real field below (the \"half that declares the\n # fields\" the paragraph above describes), so it is not listed here: the\n # frozenset holds only keys still awaiting their own declared field.\n-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({\"finish_reason\", \"truncated\"})\n[21]+#\n[22]+# OMN-20154 adds three more the same way: which provider a rung called, the\n[23]+# HTTP status it answered and its native error code. The producer that stamps\n[24]+# them onto each attempt, and the declared fields, land in the change after the\n[25]+# release that carries this consumer.\n[26]+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(\n[27]+    {\"finish_reason\", \"truncated\", \"provider_ix\", \"http_status\", \"provider_code\"}\n[28]+)\n _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(\n     {\"finish_reason\", \"truncated\", \"reasoning_preamble_rule\"}\n )\n--- /dev/null\n+++ b/tests/unit/delegation/test_consumer_first_quota_keys_omn20154.py\n@@ -0,0 +1,59 @@\n[29]+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.\n[30]+# SPDX-License-Identifier: MIT\n[31]+\"\"\"OMN-20154, consumer first: a released consumer must decode the next shape.\n[32]+\n[33]+The change after this one stamps ``provider_id``, ``http_status`` and\n[34]+``provider_code`` onto every delegation attempt and declares ``scope`` on each\n[35]+provider quota rule. Both models are ``extra=\"forbid\"``, so a consumer released\n[36]+without these keys would dead-letter every terminal (OMN-18852) and refuse the\n[37]+policy. This release accepts exactly these keys, discards them, and still\n[38]+refuses any other unknown key.\n[39]+\"\"\"\n[40]+\n[41]+from __future__ import annotations\n[42]+\n[43]+import pytest\n[44]+from pydantic import ValidationError\n[45]+\n[46]+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (\n[47]+    ModelQuotaCodeRule,\n[48]+)\n[49]+from omnimarket.models.delegation.wire.model_delegate_skill_response import (\n[50]+    ModelDelegateSkillAttemptRecord,\n[51]+)\n[52]+\n[53]+pytestmark = pytest.mark.unit\n[54]+\n[55]+_ATTEMPT = {\n[56]+    \"tier\": \"cheap_cloud\",\n[57]+    \"backend_id\": \"cloud-glm-5-3\",\n[58]+    \"model_id\": \"glm-5.3\",\n[59]+    \"quality_gate_passed\": False,\n[60]+    \"failure_class\": \"rate_limited\",\n[61]+}\n[62]+\n[63]+\n[64]+def test_an_attempt_carrying_the_provider_facts_decodes() -> None:\n[65]+    record = ModelDelegateSkillAttemptRecord.model_validate(\n[66]+        _ATTEMPT | {\"provider_id\": \"zai\", \"http_status\": 429, \"provider_code\": \"1302\"}\n[67]+    )\n[68]+    assert record.failure_class == \"rate_limited\"\n[69]+\n[70]+\n[71]+def test_an_attempt_with_any_other_unknown_key_is_still_refused() -> None:\n[72]+    with pytest.raises(ValidationError, match=r\"extra_forbidden|Extra inputs\"):\n[73]+        ModelDelegateSkillAttemptRecord.model_validate(_ATTEMPT | {\"surprise\": 1})\n[74]+\n[75]+\n[76]+def test_a_quota_rule_carrying_scope_decodes() -> None:\n[77]+    rule = ModelQuotaCodeRule.model_validate(\n[78]+        {\"code\": \"429\", \"disposition\": \"retryable\", \"scope\": \"model\"}\n[79]+    )\n[80]+    assert rule.code == \"429\"\n[81]+\n[82]+\n[83]+def test_a_quota_rule_with_any_other_unknown_key_is_still_refused() -> None:\n[84]+    with pytest.raises(ValidationError, match=r\"extra_forbidden|Extra inputs\"):\n[85]+        ModelQuotaCodeRule.model_validate(\n[86]+            {\"code\": \"429\", \"disposition\": \"retryable\", \"surprise\": \"x\"}\n[87]+        )\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "[27]"
+    ],
+    "forbidden": [
+      "[1]",
+      "[2]",
+      "[3]",
+      "[4]",
+      "[5]",
+      "[6]",
+      "[7]",
+      "[8]",
+      "[9]",
+      "[10]",
+      "[11]",
+      "[12]",
+      "[13]",
+      "[14]",
+      "[15]",
+      "[16]",
+      "[17]",
+      "[18]",
+      "[19]",
+      "[20]",
+      "[21]",
+      "[22]",
+      "[23]",
+      "[24]",
+      "[25]",
+      "[26]",
+      "[28]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

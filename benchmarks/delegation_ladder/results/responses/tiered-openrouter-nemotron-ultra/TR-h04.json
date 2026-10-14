@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h04",
+  "path": "pinned",
+  "sha256": "61d56ced09436feb5152e92e271967ac50ccf7fc050a509353da57b44720bafa",
+  "response": "[219] — The constant `REQUIRED_CHECKS_MANIFEST_PATH` is defined as `\".github/required-checks.yamx\"` (typo: `.yamx`), but the test at line 242 passes `\".github/required-checks.yaml\"` (correct: `.yaml`), so the equality check `set(changed_files) == {REQUIRED_CHECKS_MANIFEST_PATH}` will never match."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e03",
+  "path": "pinned",
+  "sha256": "81f1b240c576a15d86b87b8545da93fb3294f726d2aa1ebcc9f44b171ab5bdfe",
+  "response": "Added six typed read operations (workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases) to node_github_repo_gateway_effect with request parameters and pagination limits to support PR authoring write effects with claim and quota guards (OMN-20912, #3729)."
+}

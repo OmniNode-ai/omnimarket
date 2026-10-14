@@ -1,0 +1,1 @@
+{"task_id": "R6-13", "model_rung": "unpinned-ladder", "sha256": "2098c8a61e6700314dfa525d6f478f795ad4cb57eaffb835f72d1dc91b651659", "response": "```python\nfrom omnibase_core.cli.cli_init import init\n\ncli.add_command(new_group, \"new\")\ncli.add_command(init)\n```"}

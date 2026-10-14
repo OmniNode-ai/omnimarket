@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e07",
+  "title": "one-change changelog entry (omnibase_core#987)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnibase_core@643aa53d8ea0",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-10351.\n\n--- change 1 (repo omnibase_core, pull request #987) ---\nfeat(OMN-10351): add EnumFileZone for tiered QA gate classification (#987)\n* feat(OMN-10351): add EnumFileZone for tiered QA gate classification\n\nIntroduces EnumFileZone (StrEnum) with six directory-role values:\nproduction, test, config, generated, docs, build. Distinct from\nEnumFileType which classifies by extension/format — a .py file is\nPRODUCTION under src/ but TEST under tests/.\n\n* feat(OMN-10355): implement file zone classifier (#994)\n\nPure function classify_path(Path) -> EnumFileZone with priority order:\ngenerated > production > test > config > docs > build.\nResolves symlinks before classification. 8 unit tests covering all zones\nand the symlink resolution case.\n\n* feat(OMN-10354): add ModelZonePolicy for per-zone QA gate config (#995)\n\nFrozen Pydantic model with zone:EnumFileZone, qa_depth:Literal, and\nfour bool gate fields (lint, test, review, security_scan). Stacked on\njonah/omn-10351-enum-file-zone.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnibase_core, pull request #987) ---\nfeat(OMN-10351): add EnumFileZone for tiered QA gate classification (#987)\n* feat(OMN-10351): add EnumFileZone for tiered QA gate classification\n\nIntroduces EnumFileZone (StrEnum) with six directory-role values:\nproduction, test, config, generated, docs, build. Distinct from\nEnumFileType which classifies by extension/format — a .py file is\nPRODUCTION under src/ but TEST under tests/.\n\n* feat(OMN-10355): implement file zone classifier (#994)\n\nPure function classify_path(Path) -> EnumFileZone with priority order:\ngenerated > production > test > config > docs > build.\nResolves symlinks before classification. 8 unit tests covering all zones\nand the symlink resolution case.\n\n* feat(OMN-10354): add ModelZonePolicy for per-zone QA gate config (#995)\n\nFrozen Pydantic model with zone:EnumFileZone, qa_depth:Literal, and\nfour bool gate fields (lint, test, review, security_scan). Stacked on\njonah/omn-10351-enum-file-zone. omnibase_core#987",
+    "must_contain": [
+      "#987",
+      "OMN-10351"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

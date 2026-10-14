@@ -1008,7 +1008,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         assert "REBASING" not in declared_states
 
     async def test_contract_declares_sweep_and_ci_red_routes(self) -> None:
-        """The existing sweep route and event-triggered red triage both remain wired."""
+        """The sweep route, event-triggered red triage and dev-head red dispatch stay wired."""
         import importlib
 
         mod = importlib.import_module(
@@ -1020,13 +1020,15 @@ class TestPrLifecycleOrchestratorGoldenChain:
         routing = contract["handler_routing"]
         assert routing["routing_strategy"] == "operation_match"
         handlers = routing["handlers"]
-        assert len(handlers) == 2
+        assert len(handlers) == 3
         assert [entry["operation"] for entry in handlers] == [
             "pr_lifecycle",
             "ci_red_triage",
+            "dev_head_red_dispatch",
         ]
         assert handlers[0]["event_type"] == "omnimarket.pr-lifecycle-orchestrator-start"
         assert handlers[1]["topic"] == "onex.evt.omnimarket.ci-run-failed.v1"
+        assert handlers[2]["topic"] == "onex.evt.omnimarket.dev-head-red.v1"
 
     async def test_correlation_id_preserved_in_result(self) -> None:
         """correlation_id from command appears unchanged in result."""

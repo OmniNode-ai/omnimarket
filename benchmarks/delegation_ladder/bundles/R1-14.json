@@ -1,0 +1,22 @@
+{
+  "task_id": "R1-14",
+  "title": "rewrite a merged change as a subject line",
+  "task_type": "document",
+  "provenance": "The squash-commit description of a real merged change, omnimarket a0dfed41a2686f2e82bae4e48e6efedeb87ec84a.",
+  "prompt": "Rewrite this merged change's description as a commit-message subject line: imperative mood, no trailing period. Keep the ticket identifier OMN-19441 and the name `_request_reap_context` exactly as written. Add nothing the description does not state. At most 16 words.\n\nCHANGE (omnimarket#3474):\nOMN-19441: Remove redundant delivery margin from reaper deadline\n\n* [OMN-19441] Commit recovered command-keyed TLA+ model with review record, Model.cfg, 11 mutant configs, 7 witness configs, TLC logs, and content digest. Add tests/formal/test_delegation_reaper_model.py.\n\n* OMN-19441: Remove delivery margin from reaper context and update stalled-handler regression\n\nRemove the additional delivery margin from `_request_reap_context` to align the deadline with the required timing of execution budget plus reaper grace (240 plus 60 is 300 seconds). Update the stalled-handler regression to observe no reaper terminal at 299 seconds, exactly one `no_terminal` terminal at 300 seconds, and retain late real results only as attempt evidence without emitting again at 301 seconds. Correct the fixture and deadline expectations while maintaining coverage for omitted, short, and capped requested execution budgets.\n\n* OMN-19441: bind reaper deadline evidence in the contract\n\nState the reaper deadline as execution timeout plus 60 seconds and add AC7 with evidence id dod-omn19441-ac7-reaper-deadline-without-delivery-margin, bound to test_stalled_handler_is_reaped_at_execution_budget_plus_grace. repo-evidence / dod-verify failed because every bound check was carried unchanged from the merge base's contract.\n\n* OMN-19441: import the delegate-skill request and response models from their wire package after dev removed the node re-exports\n\n* OMN-19441: shorten the ac7 DoD item id to fit the 50-character contract limit\n\n---------\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Rewrite this merged change's description as a commit-message subject line: imperative mood, no trailing period. Keep the ticket identifier OMN-19441 and the name `_request_reap_context` exactly as written. Add nothing the description does not state. At most 16 words.\n\nCHANGE (omnimarket#3474):\nOMN-19441: Remove redundant delivery margin from reaper deadline\n\n* [OMN-19441] Commit recovered command-keyed TLA+ model with review record, Model.cfg, 11 mutant configs, 7 witness configs, TLC logs, and content digest. Add tests/formal/test_delegation_reaper_model.py.\n\n* OMN-19441: Remove delivery margin from reaper context and update stalled-handler regression\n\nRemove the additional delivery margin from `_request_reap_context` to align the deadline with the required timing of execution budget plus reaper grace (240 plus 60 is 300 seconds). Update the stalled-handler regression to observe no reaper terminal at 299 seconds, exactly one `no_terminal` terminal at 300 seconds, and retain late real results only as attempt evidence without emitting again at 301 seconds. Correct the fixture and deadline expectations while maintaining coverage for omitted, short, and capped requested execution budgets.\n\n* OMN-19441: bind reaper deadline evidence in the contract\n\nState the reaper deadline as execution timeout plus 60 seconds and add AC7 with evidence id dod-omn19441-ac7-reaper-deadline-without-delivery-margin, bound to test_stalled_handler_is_reaped_at_execution_budget_plus_grace. repo-evidence / dod-verify failed because every bound check was carried unchanged from the merge base's contract.\n\n* OMN-19441: import the delegate-skill request and response models from their wire package after dev removed the node re-exports\n\n* OMN-19441: shorten the ac7 DoD item id to fit the 50-character contract limit\n\n---------\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "must_contain": [
+      "OMN-19441",
+      "_request_reap_context"
+    ],
+    "must_not_contain": [
+      "omn-19441: remove redundant delivery margin from reaper deadline"
+    ],
+    "max_words": 16
+  },
+  "fixture_files": {},
+  "rung": "R1",
+  "dependent_reasoning_steps": 1
+}

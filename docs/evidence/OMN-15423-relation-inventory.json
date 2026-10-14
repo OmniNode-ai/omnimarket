@@ -8355,6 +8355,7 @@
       "partitioning": [],
       "producer": "node_projection_tenant_credentials",
       "readers": [
+        "node_claude_review_gateway_effect",
         "node_local_secret_store_effect",
         "node_projection_tenant_credentials"
       ],
@@ -8912,6 +8913,7 @@
         "node_branch_claim_check_effect",
         "node_lab_job_check_effect",
         "node_pr_landing_orchestrator",
+        "node_pr_lifecycle_orchestrator",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect"

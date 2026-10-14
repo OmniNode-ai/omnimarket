@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e03",
+  "path": "pinned",
+  "sha256": "8e483b75a20835c3ea2e8c62193abd0158772ca042aa823ba270fe1f628f3c82",
+  "response": "[18] — it reads `extra=\"ignorx\"` (an invalid Pydantic value) instead of `extra=\"ignore\"`, contradicting the test line [20] `\"\"\"Test that extra fields are silently ignored (extra='ignore').\"\"\"` and its assertion at [30] `assert not hasattr(contract, \"unknown_field\")`, which requires ignore behavior to hold."
+}

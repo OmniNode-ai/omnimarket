@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e05",
+  "path": "pinned",
+  "sha256": "bbf464cd53f7d3a435180707ee416c5bba55f6c07f91f8bd5e8821337d19f189",
+  "response": "#2884 (OMN-19514) adds a nullable `delegation_events.ticket_id` via migration 0047 (with a partial index), threads it through the terminal projection model, a ticket-extraction fold, both effect writers, and the delegate-skill response (decoded before it is declared), annotates it in the projection exposure allowlist as a server-side join key, and carries the post-release 0.4.217 bump. This is the consumer half of decision-workflow eval plan Task 4: a delegation run is joined to the ticket it worked, so a DoD verdict for that ticket can be joined to the delegated attempt it judged."
+}

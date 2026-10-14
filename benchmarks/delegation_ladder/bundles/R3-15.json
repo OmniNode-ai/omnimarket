@@ -1,0 +1,17 @@
+{
+  "task_id": "R3-15",
+  "title": "what classify_treatment_group returns for a given call",
+  "task_type": "review",
+  "provenance": "omnibase_core.overlays.control_mode at omnibase_core d677b4e78219113139b5d20ac81efcdcef78e3e0. The question is taken from an assertion in the module's own repository test; the held answer holds because that test passes against this source.",
+  "prompt": "Read this module and answer the question about it.\n\n```python\n# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.\n# SPDX-License-Identifier: MIT\n\n\"\"\"\nControl mode session overlay for A/B savings measurement.\n\nA control session has all intelligence capabilities removed so that raw\nClaude Code token usage can be measured as a baseline. Comparing control\nsessions against treatment sessions (with full intelligence) yields the\ntoken savings estimate.\n\nPart of the Token Savings Estimation epic (OMN-5546).\n\n.. versionadded:: 0.29.0\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom omnibase_core.models.contracts.model_contract_patch import ModelContractPatch\nfrom omnibase_core.models.contracts.model_profile_reference import ModelProfileReference\n\n__all__ = [\n    \"CONTROL_MODE_REMOVED_CAPABILITIES\",\n    \"build_control_mode_patch\",\n    \"classify_treatment_group\",\n    \"is_control_session\",\n]\n\nCONTROL_MODE_REMOVED_CAPABILITIES: frozenset[str] = frozenset(\n    {\n        \"intelligence_pattern_injection\",\n        \"intelligence_local_model_routing\",\n        \"intelligence_validator_hooks\",\n        \"intelligence_memory_rag_retrieval\",\n    }\n)\n\n\ndef is_control_session(resolved_capabilities: set[str]) -> bool:\n    \"\"\"A session is control only when ALL intelligence capabilities are absent.\"\"\"\n    return CONTROL_MODE_REMOVED_CAPABILITIES.isdisjoint(resolved_capabilities)\n\n\ndef classify_treatment_group(resolved_capabilities: set[str]) -> str:\n    \"\"\"Classify a session into a treatment group.\n\n    Returns:\n        ``\"control\"`` — all intelligence capabilities absent.\n        ``\"treatment\"`` — all intelligence capabilities present.\n        ``\"unknown\"`` — partial/mixed capability state.\n    \"\"\"\n    has_all = CONTROL_MODE_REMOVED_CAPABILITIES.issubset(resolved_capabilities)\n    has_none = CONTROL_MODE_REMOVED_CAPABILITIES.isdisjoint(resolved_capabilities)\n    if has_none:\n        return \"control\"\n    if has_all:\n        return \"treatment\"\n    return \"unknown\"\n\n\ndef build_control_mode_patch() -> ModelContractPatch:\n    \"\"\"Build a ``ModelContractPatch`` that removes all intelligence capabilities.\n\n    The returned patch is intended to be applied as a SESSION-scope overlay\n    via :meth:`ContractMergeEngine.merge_with_overlays`.\n    \"\"\"\n    return ModelContractPatch(\n        extends=ModelProfileReference(profile=\"compute_pure\", version=\"1.0.0\"),\n        capability_outputs__remove=sorted(CONTROL_MODE_REMOVED_CAPABILITIES),\n    )\n```\n\nQUESTION: What exactly does `classify_treatment_group(set())` return? Answer as `RESULT: ` followed by the value exactly as Python's repr prints it, and nothing else.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "RESULT: 'control'"
+    ],
+    "forbidden": []
+  },
+  "fixture_files": {},
+  "rung": "R3",
+  "dependent_reasoning_steps": 2
+}
