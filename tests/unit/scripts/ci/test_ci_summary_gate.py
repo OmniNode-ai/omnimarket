@@ -1341,6 +1341,44 @@ def test_docs_only_marker_resolves_pending_tier_skip(
     assert code == expected, report
 
 
+def test_docs_only_marker_stuck_in_flight_never_reaches_success() -> None:
+    """A marker that never completes holds PENDING on every poll, never SUCCESS.
+
+    The poller's deadline converts a sustained PENDING to FAILURE, so a stuck
+    marker fails closed instead of admitting the skipped tier.
+    """
+
+    tier = DOCS_ONLY_SKIPPABLE_GATE_JOBS[0]
+    jobs = [
+        _job(tier, conclusion="skipped") if j["name"] == tier else j
+        for j in _healthy_jobs()
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
+    for _ in range(3):
+        code, report = evaluate(jobs)
+        assert code == EXIT_PENDING, report
+        assert tier in report
+
+
+def test_docs_only_marker_pending_yields_to_a_real_failure() -> None:
+    """A proven failure elsewhere is terminal even while a tier skip waits."""
+
+    tier = DOCS_ONLY_SKIPPABLE_GATE_JOBS[0]
+    failing = next(g for g in STRICT_GATE_JOBS if g != tier)
+    jobs = [
+        _job(tier, conclusion="skipped")
+        if j["name"] == tier
+        else _job(failing, conclusion="failure")
+        if j["name"] == failing
+        else j
+        for j in _healthy_jobs()
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert failing in report
+
+
 def test_docs_only_marker_does_not_relax_non_tier_strict_gate() -> None:
     """The relaxation is per-name, not a blanket `|| skipped` (cf. OMN-15315).
 
