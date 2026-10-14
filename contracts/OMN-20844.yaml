@@ -51,6 +51,15 @@ requirements:
       - id: "AC10"
         statement: |-
           AC10: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
+  - id: "req-structural-hard-corpus"
+    statement: "A hard tier for code_generation and review that is hard by structure (files touched, a cause in another file than the one the test imports, input size near the local rung's context limit), run on every pinned rung and the unpinned ladder, with failure and escalation reported per structural feature."
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
+      - id: "AC12"
+        statement: |-
+          AC12: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -157,3 +166,22 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC10"]
+  - id: "dod-omn20844-ac11-hard-corpus-scored-mechanically"
+    description: "AC11: every hard task records its structural features; the merged change passes a hard code_generation task and a no-op edit fails it; an edit to a file not shown is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k 'hard or search_replace'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
+  - id: "dod-omn20844-ac12-feature-table-from-records"
+    description: "AC12: the committed hard-tier feature table is the one the committed records render, and the records rescore to their recorded verdicts from the saved responses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov -k hard"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14-hard"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]

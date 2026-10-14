@@ -48,6 +48,7 @@ class EnumScorerKind(StrEnum):
     UNIT_TEST_EXECUTION = "unit_test_execution"
     DIAGNOSIS_LOCATION = "diagnosis_location"
     PATCH_APPLY_AND_TEST = "patch_apply_and_test"
+    MULTI_FILE_EDIT_AND_TEST = "multi_file_edit_and_test"
 
 
 class EnumOutcome(StrEnum):

@@ -73,6 +73,7 @@ from benchmarks.delegation_ladder.scorers import (  # noqa: E402
     score_exact_match,
     score_grounding_coverage,
     score_grounding_rubric,
+    score_multi_file_edit_and_test,
     score_patch_apply_and_test,
     score_unit_test_execution,
     sha256_of,
@@ -80,6 +81,8 @@ from benchmarks.delegation_ladder.scorers import (  # noqa: E402
 )
 
 BUNDLES = HERE / "bundles"
+# The structural hard corpus (build_bundles.py hard); its ids start H.
+HARD_BUNDLES = HERE / "bundles_hard"
 FIXTURES = HERE / "fixtures"
 RESULTS = HERE / "results"
 
@@ -1005,21 +1008,26 @@ def rescore_dir(directory: Path, *, write: bool = False) -> int:
     re-derived verdicts (the first verdict kept as ``first_scorer_outcome``) and
     exits zero.
     """
-    bundles = {b.task_id: b for b in load_bundles(None)}
+    bundles = {b.task_id: b for b in load_bundles(None, include_hard=True)}
     checked = changed = 0
     for jsonl in _results_files([directory]):
         records = _read_jsonl(jsonl)
         updated: list[dict[str, Any]] = []
-        for recorded in records:
+
+        def cell(recorded: dict[str, Any]) -> tuple[str, float, str]:
             saved = (
                 directory
                 / "responses"
                 / recorded["model_rung"]
                 / f"{recorded['task_id']}.json"
             )
-            outcome, point, detail = _rescore_cell(
-                bundles[recorded["task_id"]], saved, recorded
-            )
+            return _rescore_cell(bundles[recorded["task_id"]], saved, recorded)
+
+        # Each cell scores in its own temporary directory, so cells can run at
+        # once; the hard tier's cells each run a repository test file twice.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            verdicts = list(pool.map(cell, records))
+        for recorded, (outcome, point, detail) in zip(records, verdicts, strict=True):
             checked += 1
             if outcome != recorded["scorer_outcome"]:
                 changed += 1
@@ -1039,13 +1047,17 @@ def rescore_dir(directory: Path, *, write: bool = False) -> int:
     return 0 if write else (1 if changed else 0)
 
 
-def print_table(dirs: list[Path], *, by_difficulty: bool = False) -> int:
+def print_table(
+    dirs: list[Path], *, by_difficulty: bool = False, by_feature: bool = False
+) -> int:
     from benchmarks.delegation_ladder.summarise_results import (
+        bundle_features,
         class_rung_table,
         class_separation,
         difficulty_tier,
         first_failing_tier,
         render_difficulty_table,
+        render_feature_report,
         render_table,
         tier_rung_table,
     )
@@ -1065,6 +1077,23 @@ def print_table(dirs: list[Path], *, by_difficulty: bool = False) -> int:
         }
         tier_rows = tier_rung_table(list(records.values()), tiers, list(RUNGS))
         print(render_difficulty_table(tier_rows, first_failing_tier(tier_rows)))
+        return 0
+    if by_feature:
+        hard = [
+            (b, f)
+            for b in load_bundles(None, include_hard=True)
+            if (f := bundle_features(b.scorer_config)) is not None
+        ]
+        features = {b.task_id: f for b, f in hard}
+        pinned = [name for name, rung in RUNGS.items() if rung.pin]
+        print(
+            render_feature_report(
+                list(records.values()),
+                features,
+                {b.task_id: b.task_type for b, _ in hard},
+                pinned,
+            )
+        )
         return 0
     rows = class_rung_table(list(records.values()), list(RUNGS))
     print(render_table(rows, class_separation(rows)))
@@ -1176,6 +1205,8 @@ def score(bundle: ModelTaskBundle, response: str) -> ModelScore:
             return score_diagnosis_location(response, config)
         case EnumScorerKind.PATCH_APPLY_AND_TEST:
             return score_patch_apply_and_test(response, config, FIXTURES)
+        case EnumScorerKind.MULTI_FILE_EDIT_AND_TEST:
+            return score_multi_file_edit_and_test(response, config)
 
 
 def run_one(
@@ -1261,10 +1292,16 @@ def run_one(
     )
 
 
-def load_bundles(only: list[str] | None) -> list[ModelTaskBundle]:
+def load_bundles(
+    only: list[str] | None, *, include_hard: bool = False
+) -> list[ModelTaskBundle]:
+    """The ladder corpus; the hard corpus too when asked for or named by ``only``."""
+    paths = sorted(BUNDLES.glob("*.json"))
+    if include_hard or only:
+        paths += sorted(HARD_BUNDLES.glob("*.json"))
     bundles = [
         ModelTaskBundle.model_validate_json(p.read_text(encoding="utf-8"))
-        for p in sorted(BUNDLES.glob("*.json"))
+        for p in paths
     ]
     if only:
         wanted = {token.upper() for token in only}
@@ -1293,6 +1330,11 @@ def main() -> int:
         "--by-difficulty",
         action="store_true",
         help="With --table: split the test and code_generation classes by tier.",
+    )
+    parser.add_argument(
+        "--by-feature",
+        action="store_true",
+        help="With --table: failure and escalation by structural feature (hard corpus).",
     )
     parser.add_argument(
         "--rescore",
@@ -1350,7 +1392,9 @@ def main() -> int:
     if args.rescore is not None:
         return rescore_dir(args.rescore, write=args.write)
     if args.table is not None:
-        return print_table(args.table, by_difficulty=args.by_difficulty)
+        return print_table(
+            args.table, by_difficulty=args.by_difficulty, by_feature=args.by_feature
+        )
     if args.rung is not None:
         return run_rung_benchmark(args)
     if args.path is None:

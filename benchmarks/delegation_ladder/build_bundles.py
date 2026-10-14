@@ -52,6 +52,17 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from benchmarks.delegation_ladder.models import (
+    EnumRung,
+    EnumScorerKind,
+    ModelTaskBundle,
+)
+from benchmarks.delegation_ladder.scorers import (
+    git_text,
+    materialise_tree,
+    run_tree_test,
+)
+
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures"
 BUNDLES = HERE / "bundles"
@@ -2170,8 +2181,287 @@ def write_mined(
     return written
 
 
+# --------------------------------------------------------------------------
+# The structural hard corpus (OMN-20844): multi-file fixes, a cause in another
+# file than the one the failing test imports, and inputs padded toward the
+# local rung's context limit. Each task is a merged omnimarket commit whose own
+# test passes at the merge and fails with the commit's source files put back to
+# the parent; the scorer re-runs exactly that, so nothing is judged by eye.
+# --------------------------------------------------------------------------
+
+HARD_BUNDLES = HERE / "bundles_hard"
+
+# (merged commit, the test that commit added or changed). Picked from the
+# first-parent history of omnimarket dev at 29555c1082f2a8f6d76bd18ac4a73c77bf48a20b
+# for a spread of files touched and of where the cause sits.
+HARD_COMMITS: tuple[tuple[str, str], ...] = (
+    (
+        "272fde1064b71d207b57c2a206febe14637cdd68",
+        "tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py",
+    ),
+    (
+        "56d792624915857a39365ee58508ca1c1c367859",
+        "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py",
+    ),
+    (
+        "7edc88f40c542f3cd06a0302cf04e15aa378c3ca",
+        "tests/unit/test_occ_contention_omn_15247.py",
+    ),
+    (
+        "611dedc42eb9740873845c582f7ef6407dd95a73",
+        "tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py",
+    ),
+    (
+        "7036d5794b81fb36c11a671c15a07526d1794b07",
+        "tests/nodes/node_delegation_output_materialize_effect/test_materialize_refusals.py",
+    ),
+    (
+        "bf08d061a1c03327f4b4d85868e88add17806250",
+        "tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py",
+    ),
+    (
+        "4f2cd57b33ae9ecc707361fb04f729523872b347",
+        "tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py",
+    ),
+    (
+        "cdba07dc7337ac7fc347f1e84045a69e4f75e4ff",
+        "tests/unit/delegation/test_unbound_local_model_probe_omn17427.py",
+    ),
+    (
+        "15afc64f9df1d957b57b3a3e10fefa905ee757a5",
+        "tests/test_omn17372_byok_bus_transport_auth.py",
+    ),
+    (
+        "a0f4654f2ab8d5e523c8acac1b80530ce863fc41",
+        "tests/unit/nodes/node_delegate_skill_orchestrator/test_claim_store_contract_schema_omn19661.py",
+    ),
+)
+
+# Prompt-size targets in characters. Source code runs near 3.3 characters per
+# token, so "medium" sits near a 32768-token slot and "large" near the 65536
+# tokens the local-coder rung declares (routing_tiers.yaml max_context_tokens).
+HARD_SIZE_TARGETS: dict[str, int] = {"small": 0, "medium": 95_000, "large": 190_000}
+# The size tier rotates independently of the commit order, so size is not
+# confounded with files touched or cross-file cause; the two classes rotate
+# with different offsets for the same reason.
+HARD_SIZE_ROTATION: tuple[str, ...] = ("small", "medium", "large")
+HARD_CLASS_OFFSET: dict[str, int] = {"code_generation": 0, "review": 1}
+
+_HARD_FAILURE_TAIL_LINES = 45
+
+
+def _hard_changed_files(commit: str) -> list[str]:
+    out = git_text(
+        "diff-tree", "--no-commit-id", "--name-only", "-r", commit, "--", "src"
+    )
+    return [line for line in out.splitlines() if line.endswith(".py")]
+
+
+def _hard_test_imports(commit: str, test_path: str) -> list[str]:
+    """Source files the failing test imports directly, as repository paths."""
+    text = git_text("show", f"{commit}:{test_path}")
+    modules = sorted(
+        set(re.findall(r"^\s*from (omnimarket[\w.]*) import", text, re.MULTILINE))
+        | set(re.findall(r"^\s*import (omnimarket[\w.]*)", text, re.MULTILINE))
+    )
+    paths: list[str] = []
+    for module in modules:
+        base = "src/" + module.replace(".", "/")
+        for candidate in (base + ".py", base + "/__init__.py"):
+            if git_text("ls-tree", "--name-only", commit, candidate).strip():
+                paths.append(candidate)
+                break
+    return paths
+
+
+def _hard_required_files(commit: str, test_path: str, changed: list[str]) -> list[str]:
+    """The changed files whose parent version alone makes the test fail."""
+    required: list[str] = []
+    for path in changed:
+        with tempfile.TemporaryDirectory(prefix="hard-req-") as tmp:
+            tree = Path(tmp)
+            materialise_tree(commit, tree, [path])
+            rc, _ = run_tree_test(tree, test_path, 180)
+        if rc != 0:
+            required.append(path)
+    return required
+
+
+def _hard_padding(commit: str, shown: list[str], need: int) -> list[str]:
+    """Real sibling source files at the parent, nearest directories first."""
+    picked: list[str] = []
+    if need <= 0:
+        return picked
+    seen = set(shown)
+    dirs: list[str] = []
+    for path in shown:
+        parts = path.split("/")[:-1]
+        while len(parts) > 2:
+            joined = "/".join(parts)
+            if joined not in dirs:
+                dirs.append(joined)
+            parts = parts[:-1]
+    dirs.sort(key=lambda d: -d.count("/"))
+    total = 0
+    for directory in dirs:
+        listing = git_text(
+            "ls-tree", "-r", "--name-only", f"{commit}^", directory + "/"
+        )
+        for path in sorted(listing.splitlines()):
+            if path in seen or not path.endswith(".py") or path.endswith("__init__.py"):
+                continue
+            size = len(git_text("show", f"{commit}^:{path}"))
+            if size < 400 or total + size > need * 1.06:
+                continue
+            picked.append(path)
+            seen.add(path)
+            total += size
+            if total >= need:
+                return picked
+    return picked
+
+
+def _hard_prompt(
+    task_type: str,
+    test_path: str,
+    test_text: str,
+    failure: str,
+    files: dict[str, str],
+) -> str:
+    sources = "\n".join(
+        f"### {path}\n```python\n{text.rstrip()}\n```\n" for path, text in files.items()
+    )
+    head = (
+        f"FAILING TEST ({test_path}):\n```python\n{test_text.rstrip()}\n```\n\n"
+        f"CURRENT FAILURE:\n```\n{failure.rstrip()}\n```\n\n"
+        f"SOURCE FILES ({len(files)}, each shown in full as it is now):\n\n{sources}"
+    )
+    if task_type == "code_generation":
+        return (
+            "A test in this Python repository fails. Fix the source so that it passes.\n\n"
+            "Rules the grader enforces:\n"
+            "- Change only the source files shown under SOURCE FILES. The test is fixed.\n"
+            "- Write each edit as a line `FILE: <path>`, then a search block and its "
+            "replacement, exactly in this form:\n"
+            "FILE: src/omnimarket/example.py\n"
+            "<<<<<<< SEARCH\n<lines copied exactly from the file as shown>\n=======\n"
+            "<the lines that replace them>\n>>>>>>> REPLACE\n"
+            "- Each SEARCH text must appear exactly once in its file, whitespace included.\n"
+            "- Use as many edits, in as many files, as the fix needs.\n"
+            "- Your edits are applied to the files as shown and the failing test file is "
+            "run in full; every test in it must pass.\n\n"
+            f"{head}\n"
+            "Respond with the edits only. Do not show your reasoning, do not narrate your "
+            "steps, and do not preface the answer with anything."
+        )
+    return (
+        "A test in this Python repository fails. Review the source and decide where "
+        "the defect is.\n\n"
+        f"{head}\n"
+        "QUESTION: Which of the source files shown must be changed for the failing test "
+        "to pass? Answer with one line per file, `FILE: <path>` with the path exactly as "
+        "shown, naming every file that must change and no other.\n\n"
+        "Respond with the answer only. Do not show your reasoning, do not narrate your "
+        "steps, and do not preface the answer with anything."
+    )
+
+
+def build_hard_corpus() -> list[ModelTaskBundle]:
+    bundles: list[ModelTaskBundle] = []
+    for index, (commit, test_path) in enumerate(HARD_COMMITS):
+        changed = _hard_changed_files(commit)
+        imported = _hard_test_imports(commit, test_path)
+        required = _hard_required_files(commit, test_path, changed)
+        cross_file = not (set(changed) & set(imported))
+        with tempfile.TemporaryDirectory(prefix="hard-build-") as tmp:
+            tree = Path(tmp)
+            materialise_tree(commit, tree, changed)
+            rc, failure = run_tree_test(tree, test_path, 180)
+        if rc == 0:
+            raise RuntimeError(f"{commit}: {test_path} passes on the parent source")
+        failure_tail = "\n".join(failure.splitlines()[-_HARD_FAILURE_TAIL_LINES:])
+        test_text = git_text("show", f"{commit}:{test_path}")
+        core = sorted(set(changed) | set(imported))
+        subject = git_text("log", "-1", "--format=%s", commit).strip()
+        for task_type, prefix in (("code_generation", "H6"), ("review", "H3")):
+            size_tier = HARD_SIZE_ROTATION[
+                (index + HARD_CLASS_OFFSET[task_type]) % len(HARD_SIZE_ROTATION)
+            ]
+            files = {p: git_text("show", f"{commit}^:{p}") for p in core}
+            base_len = len(
+                _hard_prompt(task_type, test_path, test_text, failure_tail, files)
+            )
+            padding = _hard_padding(
+                commit, core, HARD_SIZE_TARGETS[size_tier] - base_len
+            )
+            shown = sorted(core + padding)
+            files = {p: git_text("show", f"{commit}^:{p}") for p in shown}
+            prompt = _hard_prompt(task_type, test_path, test_text, failure_tail, files)
+            features: dict[str, object] = {
+                "files_touched": len(changed),
+                "files_required": len(required),
+                "cross_file_cause": cross_file,
+                "files_shown": len(shown),
+                "context_chars": len(prompt),
+                "size_tier": size_tier,
+            }
+            provenance = (
+                f"omnimarket merged commit {commit} ({subject}), changing "
+                f"{len(changed)} source file(s). Its own test {test_path} passes at "
+                "the commit and fails with those files at the parent; the files are "
+                "shown at the parent."
+            )
+            config: dict[str, object] = {"features": features}
+            if task_type == "code_generation":
+                scorer = EnumScorerKind.MULTI_FILE_EDIT_AND_TEST
+                config |= {
+                    "repo_commit": commit,
+                    "changed_files": changed,
+                    "editable_files": shown,
+                    "test_path": test_path,
+                    "timeout_s": 240,
+                }
+                title = f"fix a failing test across {len(shown)} shown files"
+            else:
+                scorer = EnumScorerKind.EXACT_MATCH
+                config |= {
+                    "accepted": [f"FILE: {p}" for p in required],
+                    "forbidden": [f"FILE: {p}" for p in shown if p not in changed],
+                }
+                title = f"name the files a failing test needs changed, of {len(shown)}"
+            bundles.append(
+                ModelTaskBundle(
+                    task_id=f"{prefix}-{index + 1:02d}",
+                    rung=EnumRung.R6_PRODUCE_PATCH
+                    if task_type == "code_generation"
+                    else EnumRung.R3_CODE_READING_QA,
+                    title=title,
+                    task_type=task_type,
+                    provenance=provenance,
+                    prompt=prompt,
+                    scorer=scorer,
+                    scorer_config=config,
+                    dependent_reasoning_steps=len(changed) + int(cross_file) + 1,
+                )
+            )
+    return bundles
+
+
+def write_hard_corpus() -> int:
+    HARD_BUNDLES.mkdir(exist_ok=True)
+    for bundle in build_hard_corpus():
+        (HARD_BUNDLES / f"{bundle.task_id}.json").write_text(
+            bundle.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+        print(bundle.task_id, bundle.scorer_config["features"])
+    return 0
+
+
 def main() -> None:
     BUNDLES.mkdir(parents=True, exist_ok=True)
+    if sys.argv[1:2] == ["hard"]:
+        write_hard_corpus()
+        return
     if sys.argv[1:2] == ["mine"]:
         screened = frozenset(
             json.loads(MINED_SOURCES.read_text(encoding="utf-8")).get(

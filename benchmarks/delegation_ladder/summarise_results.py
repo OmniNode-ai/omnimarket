@@ -530,3 +530,212 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# --------------------------------------------------------------------------
+# Structural features of the hard corpus (OMN-20844)
+# --------------------------------------------------------------------------
+
+# Prompt characters, measured. Near 3.3 characters per source token, "under
+# 60k" fits any rung, "60k-150k" passes a 32768-token slot, and "over 150k"
+# nears or passes the 65536 tokens the local-coder rung declares.
+CONTEXT_BINS: tuple[tuple[str, int], ...] = (
+    ("under 60k chars", 60_000),
+    ("60k-150k chars", 150_000),
+    ("over 150k chars", 10**9),
+)
+
+FEATURE_SPLITS: tuple[tuple[str, str, str], ...] = (
+    ("files touched", "1 file", "2-3 files"),
+    ("cross-file cause", "no", "yes"),
+)
+
+
+def bundle_features(scorer_config: dict[str, object]) -> dict[str, Any] | None:
+    """A hard task's recorded structural features, or None for any other task."""
+    features = scorer_config.get("features")
+    return dict(features) if isinstance(features, dict) else None
+
+
+def context_bin(chars: int) -> str:
+    return next(label for label, bound in CONTEXT_BINS if chars < bound)
+
+
+def feature_levels(features: dict[str, Any]) -> dict[str, str]:
+    """One level per structural feature, from a bundle's recorded features."""
+    return {
+        "files touched": "1 file"
+        if int(features["files_touched"]) == 1
+        else "2-3 files",
+        "cross-file cause": "yes" if features["cross_file_cause"] else "no",
+        "context size": context_bin(int(features["context_chars"])),
+    }
+
+
+def newcombe_difference(
+    k1: int, n1: int, k2: int, n2: int, z: float = 1.96
+) -> tuple[float, float, float]:
+    """``p2 - p1`` and its Newcombe (Wilson hybrid) 95% interval."""
+    p1 = k1 / n1 if n1 else 0.0
+    p2 = k2 / n2 if n2 else 0.0
+    l1, u1 = wilson_interval(k1, n1, z)
+    l2, u2 = wilson_interval(k2, n2, z)
+    d = p2 - p1
+    low = d - math.sqrt((p2 - l2) ** 2 + (u1 - p1) ** 2)
+    high = d + math.sqrt((u2 - p2) ** 2 + (p1 - l1) ** 2)
+    return d, low, high
+
+
+def _share(k: int, n: int) -> str:
+    if n == 0:
+        return "0/0"
+    low, high = wilson_interval(k, n)
+    return f"{k}/{n} {k / n:.0%} ({low:.0%}-{high:.0%})"
+
+
+def _correct(record: dict[str, Any]) -> bool:
+    return record.get("scorer_outcome") == "pass"
+
+
+def _left_local(record: dict[str, Any]) -> bool:
+    trace = record.get("ladder") or {}
+    tiers = [trace.get("answered_tier")] + [
+        attempt.get("tier") for attempt in trace.get("refused") or []
+    ]
+    return any(tier not in (None, "local") for tier in tiers)
+
+
+def feature_rows(
+    records: Sequence[dict[str, Any]],
+    features: dict[str, dict[str, Any]],
+    pinned: Sequence[str],
+    ladder: str = "unpinned-ladder",
+) -> list[dict[str, Any]]:
+    """Per feature level: failed pinned cells, failed tasks, ladder escalations.
+
+    A cell fails when the mechanical scorer did not pass its answer (no answer
+    counts as a failure); "not accepted" also counts a correct answer that the
+    delegation's own quality gate refused. A task fails when fewer than half
+    of the pinned rungs that ran it produced a passing answer. The ladder
+    escalated when its receipt tried more than one rung, and left the local
+    tier when any rung it tried was not local (routing can send a large input
+    straight to a cloud rung, which tries one rung and escalates nothing).
+    """
+    levels = {task: feature_levels(f) for task, f in features.items()}
+    by_task: dict[str, list[dict[str, Any]]] = {}
+    for rec in records:
+        if rec["task_id"] in levels and rec["model_rung"] in pinned:
+            by_task.setdefault(rec["task_id"], []).append(rec)
+    ladder_recs = {
+        r["task_id"]: r
+        for r in records
+        if r["model_rung"] == ladder and r["task_id"] in levels
+    }
+    rows: list[dict[str, Any]] = []
+    for feature in ("files touched", "cross-file cause", "context size"):
+        order = [label for label, _ in CONTEXT_BINS]
+        present = {lv[feature] for lv in levels.values()}
+        ranked = (
+            [label for label in order if label in present]
+            if feature == "context size"
+            else sorted(present)
+        )
+        for level in ranked:
+            tasks = [t for t, lv in levels.items() if lv[feature] == level]
+            cells = [r for t in tasks for r in by_task.get(t, [])]
+            failed_tasks = [
+                t
+                for t in tasks
+                if by_task.get(t)
+                and sum(1 for r in by_task[t] if _correct(r)) * 2 < len(by_task[t])
+            ]
+            ran = [t for t in tasks if by_task.get(t)]
+            lad = [ladder_recs[t] for t in tasks if t in ladder_recs]
+            rows.append(
+                {
+                    "feature": feature,
+                    "level": level,
+                    "tasks": len(tasks),
+                    "cells": len(cells),
+                    "cells_failed": sum(1 for r in cells if not _correct(r)),
+                    "cells_not_accepted": sum(1 for r in cells if not r["accepted"]),
+                    "tasks_ran": len(ran),
+                    "tasks_failed": len(failed_tasks),
+                    "ladder_runs": len(lad),
+                    "ladder_escalated": sum(
+                        1
+                        for r in lad
+                        if (r.get("ladder") or {}).get("escalations", 0) > 0
+                    ),
+                    "ladder_left_local": sum(1 for r in lad if _left_local(r)),
+                    "ladder_failed": sum(1 for r in lad if not _correct(r)),
+                }
+            )
+    return rows
+
+
+def _difference(
+    first: dict[str, Any], last: dict[str, Any], key: str, n_key: str
+) -> str:
+    d, low, high = newcombe_difference(first[key], first[n_key], last[key], last[n_key])
+    return f"{d:+.0%} ({low:+.0%} to {high:+.0%})"
+
+
+def render_feature_table(rows: Sequence[dict[str, Any]]) -> str:
+    out = [
+        "| feature | level | tasks | pinned cells failed | pinned cells not accepted "
+        "| tasks failed (most rungs) | ladder escalated | ladder left local "
+        "| ladder failed |",
+        "| -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+    ]
+    for r in rows:
+        out.append(
+            f"| {r['feature']} | {r['level']} | {r['tasks']} "
+            f"| {_share(r['cells_failed'], r['cells'])} "
+            f"| {_share(r['cells_not_accepted'], r['cells'])} "
+            f"| {_share(r['tasks_failed'], r['tasks_ran'])} "
+            f"| {_share(r['ladder_escalated'], r['ladder_runs'])} "
+            f"| {_share(r['ladder_left_local'], r['ladder_runs'])} "
+            f"| {_share(r['ladder_failed'], r['ladder_runs'])} |"
+        )
+    out += [
+        "",
+        "Difference, last level minus first, with a Newcombe 95% interval:",
+        "",
+        "| feature | levels | pinned cells failed | tasks failed | ladder escalated "
+        "| ladder left local |",
+        "| -- | -- | -- | -- | -- | -- |",
+    ]
+    for feature in ("files touched", "cross-file cause", "context size"):
+        group = [r for r in rows if r["feature"] == feature]
+        if len(group) < 2:
+            continue
+        first, last = group[0], group[-1]
+
+        out.append(
+            f"| {feature} | {last['level']} vs {first['level']} "
+            f"| {_difference(first, last, 'cells_failed', 'cells')} | {_difference(first, last, 'tasks_failed', 'tasks_ran')} "
+            f"| {_difference(first, last, 'ladder_escalated', 'ladder_runs')} "
+            f"| {_difference(first, last, 'ladder_left_local', 'ladder_runs')} |"
+        )
+    return "\n".join(out)
+
+
+def render_feature_report(
+    records: Sequence[dict[str, Any]],
+    features: dict[str, dict[str, Any]],
+    task_types: dict[str, str],
+    pinned: Sequence[str],
+) -> str:
+    """The feature table over every hard task, then over each class alone."""
+    blocks = [
+        f"### all hard tasks ({len(features)})\n\n"
+        + render_feature_table(feature_rows(records, features, pinned))
+    ]
+    for task_type in sorted(set(task_types.values())):
+        subset = {t: f for t, f in features.items() if task_types.get(t) == task_type}
+        blocks.append(
+            f"### {task_type} ({len(subset)})\n\n"
+            + render_feature_table(feature_rows(records, subset, pinned))
+        )
+    return "\n\n".join(blocks)
