@@ -550,6 +550,15 @@ _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
     ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
 )
+# OMN-21015 AC2: the counterpart of node_projection_delegation migration 0060, the
+# model-routing view whose tiers each list their models with run count, share and
+# cost. Its own step, replacing the OMN-20754 definition of that one view: a store
+# that has already recorded the OMN-20754 step would never run it again.
+_DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP = "omn21015_model_routing_tier_models"
+_DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL = (
+    "projection_delegation_model_routing",
+    "sqlite/delegation_model_routing_view_v2.sql",
+)
 # OMN-20008: the counterpart of node_projection_savings migration 090's savings
 # view, serving the local exposure with each run's stored call provenance.
 _DELEGATION_SAVINGS_VIEW_STEP = "omn20008_delegation_savings_view"
@@ -785,6 +794,16 @@ class SqliteDatabaseAdapter:
                     "added the metering-summary savings share column",
                 )
             )
+        if not cls._store_step_recorded(
+            conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
+        ):
+            pending.append(
+                (
+                    _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP,
+                    cls._replace_delegation_model_routing_view,
+                    "listed each tier's models in the delegation model-routing view",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -894,6 +913,19 @@ class SqliteDatabaseAdapter:
             ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
             conn.execute(f"DROP VIEW IF EXISTS {view}")
             conn.execute(ddl)
+
+    @staticmethod
+    def _replace_delegation_model_routing_view(conn: sqlite3.Connection) -> None:
+        """OMN-21015 AC2: the model-routing view whose tiers list their models.
+
+        Runs after the OMN-20754 step, which created the first definition; this
+        one drops it and creates the revision. A later revision is a new step.
+        """
+        package, _ = _DELEGATION_SUMMARY_VIEW_SQL
+        view, resource = _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute(f"DROP VIEW IF EXISTS {view}")
+        conn.execute(ddl)
 
     @staticmethod
     def _create_delegation_savings_view(conn: sqlite3.Connection) -> None:
