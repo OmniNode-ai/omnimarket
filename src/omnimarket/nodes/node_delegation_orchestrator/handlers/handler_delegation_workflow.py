@@ -2331,6 +2331,14 @@ class DelegationWorkflowState:
     tenant_id: str | None = None
 
 
+def _pinned_backend_ref(workflow: DelegationWorkflowState) -> str | None:
+    """The backend the caller pinned this run to, or ``None`` (OMN-20844)."""
+    if workflow.request is None:
+        return None
+    backend_id = workflow.request.backend_id
+    return backend_id if isinstance(backend_id, str) and backend_id else None
+
+
 class HandlerDelegationWorkflow:
     """Delegation orchestrator with correlation_id-keyed FSM state machine.
 
@@ -2498,12 +2506,16 @@ class HandlerDelegationWorkflow:
         """
         next_tier: str | None = None
         no_higher_tier_reason: str | None = None
+        # OMN-20844: a caller pin holds for the whole run. The COMPUTE refuses
+        # to escalate a pinned run, so no next tier is resolved for one.
+        pinned_backend_ref = _pinned_backend_ref(workflow)
 
         # Only resolve a next tier when the cheap pure preconditions allow it; the
         # COMPUTE re-checks them, but resolving the tier here would be wasted I/O
         # (and, for current_tier_name=None, impossible).
         if (
-            error_retryable
+            pinned_backend_ref is None
+            and error_retryable
             and workflow.escalation_count < max_escalation_attempts
             and workflow.current_tier_name is not None
         ):
@@ -2539,6 +2551,7 @@ class HandlerDelegationWorkflow:
                 next_tier_name=next_tier,
                 non_retryable_reason=non_retryable_reason,
                 no_higher_tier_reason=no_higher_tier_reason,
+                pinned_backend_ref=pinned_backend_ref,
             )
         )
 
@@ -4046,6 +4059,10 @@ class HandlerDelegationWorkflow:
         other non-terminal branch.
         """
         tier = workflow.current_tier_name
+        # OMN-20844: a sibling answers a pinned run under the pin's name. A
+        # pinned run takes no sibling hop; the escalation decision ends it.
+        if _pinned_backend_ref(workflow) is not None:
+            return None
         # Fail closed on an unidentified failed backend (e.g. a routing decision
         # from before OMN-14402, or a replayed/legacy row whose
         # selected_backend_ref defaulted to ""): without a concrete ref to

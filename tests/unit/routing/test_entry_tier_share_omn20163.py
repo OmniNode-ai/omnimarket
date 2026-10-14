@@ -326,10 +326,9 @@ def test_entry_tier_share_backend_pin_takes_precedence(
     _bind(tmp_path, monkeypatch, share=1.0)
     request = _request(_DRAWN).model_copy(update={"backend_id": "local-backend"})
     assert routing.delta(request).selected_backend_ref == "local-backend"
-    assert (
-        routing.delta(request, min_tier_name="cheap_frontier").tier_name
-        == "cheap_frontier"
-    )
+    # OMN-20844: the pin holds on re-routes, so one past the pin's tier refuses.
+    with pytest.raises(ProtocolConfigurationError, match="local-backend"):
+        routing.delta(request, min_tier_name="cheap_frontier")
 
 
 def test_entry_miss_retries_local_before_metered(

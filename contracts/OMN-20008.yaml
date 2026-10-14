@@ -117,3 +117,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn20008_savings_pct_of_counterfactual.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20008-ac5-bundle-pin"
+    description: "AC5's delivery to an installed dashboard: onex dashboard pins omnidash v1.1.10 or later, the first release carrying the Savings card's percentage line (omnidash#384). Fails on the v1.1.9 pin."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn20008.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
