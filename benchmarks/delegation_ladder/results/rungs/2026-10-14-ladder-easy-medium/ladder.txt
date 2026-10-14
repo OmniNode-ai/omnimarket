@@ -33,7 +33,7 @@
 | R6-15 | code_generation | local-h202-chat | 0 | yes | 21.8 | - |
 | R6-18 | code_generation | local-coder | 0 | yes | 19.3 | - |
 | R6-19 | code_generation | local-coder | 0 | yes | 20.7 | - |
-| R6-20 | code_generation | local-coder | 0 | no | 18.0 | - |
+| R6-20 | code_generation | local-coder | 0 | yes | 18.0 | - |
 | R6-25 | code_generation | local-coder | 0 | yes | 22.6 | - |
 | R6-26 | code_generation | local-h202-chat | 0 | no | 22.6 | - |
 
@@ -42,4 +42,4 @@ tasks: 36
 - local-coder answered 15 of 36
 - no rung answered 3 of 36
 climbed at least once: 6 of 36
-gate accepted, scorer failed: 14 of 36
+gate accepted, scorer failed: 13 of 36
