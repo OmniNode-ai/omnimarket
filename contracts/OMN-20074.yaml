@@ -257,6 +257,9 @@ dod_evidence:
     description: "A disposable container reads the bundled manifest through the duplication-sweep handler and runs the retired-boundary regression. The hosted runner needs only Docker and the checked-out source; the same probe fails against the merge-base manifest."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -k test_d2_bundled_manifest_lists_no_retired_change_control_boundary"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |-
           docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/duplication-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/duplication-tests -k test_d2_bundled_manifest_lists_no_retired_change_control_boundary
