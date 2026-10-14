@@ -208,6 +208,13 @@ requirements:
       - id: "AC34"
         statement: |-
           AC34: hostile-reviewer.yml clones omniintelligence at 3fcbf795087a79081c0ceeb676216bf64c5d49ae, the merge commit of omniintelligence#1072 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py -q fails over the merge base's workflow, which pins 64b950973a5686d33e0b439fb80749d66362d06d
+  - id: "req-omn17427-precommit-commit-path"
+    statement: "A commit no longer pays for whole-repo scans that CI runs on every pull request, and the staged-paths hygiene scan returns the whole-tree verdict."
+    acceptance:
+      - id: "AC35"
+        statement: "AC35: check-direct-model-call and topic-naming-lint run at the pre-push stage, with the direct-model-call --base taken from the merge base with origin/dev, and the ci.yml jobs that back them run on every pull request -- falsifier: uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
+      - id: "AC36"
+        statement: "AC36: the commit-stage public-repo-hygiene and deployment-config hooks are handed the staged paths, nothing else narrows them, .public-repo-hygiene.yaml still enforces added lines, and each has a whole-tree caller job -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -293,6 +300,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The Hostile Reviewer clones omniintelligence at the retry-budget revision."
     command: "uv run pytest tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py -q"
+  - kind: "tests"
+    description: "The two whole-repo scans run at push and their ci.yml jobs run on every pull request."
+    command: "uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
+  - kind: "tests"
+    description: "The commit-stage hygiene hooks take the staged paths and keep a whole-tree caller job."
+    command: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -558,3 +571,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC34"]
+  - id: "dod-omn17427-ac34-precommit-push-scans"
+    description: "check-direct-model-call and topic-naming-lint run at push; the CI jobs backing them run on every pull request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC35"]
+  - id: "dod-omn17427-ac35-hygiene-staged-paths"
+    description: "The commit-stage hygiene hooks take the staged paths, and the whole-tree caller job remains."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC36"]

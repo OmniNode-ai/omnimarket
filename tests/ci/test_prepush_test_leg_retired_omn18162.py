@@ -72,7 +72,12 @@ RETIRED_HOOK_ID = "prepush-smart-tests"
 # The pre-push stage after OMN-18162, by hook id, in file order. The plan
 # records the pre-change count for this repo as 2 (type check, smart tests).
 # The ticket contract check (OMN-20864) is a non-test pre-push hook.
+# OMN-17427 moved the two whole-repo scans that ci.yml already runs on every PR
+# (direct model call, topic naming lint) from every commit to every push; neither
+# runs a test runner.
 EXPECTED_PRE_PUSH_HOOK_IDS: tuple[str, ...] = (
+    "check-direct-model-call",
+    "topic-naming-lint",
     "ticket-contract-prerequisite",
     "mypy-type-check",
 )

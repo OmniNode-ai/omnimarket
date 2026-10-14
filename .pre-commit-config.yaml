@@ -132,9 +132,17 @@ repos:
       # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
       # sanctioned delegation node package named in omnibase_core's policy.yaml.
       # Shrink-only baseline, declared here so the shape ratchet accepts it.
+      # OMN-17427: the gate always scans the whole repository (a new call site can
+      # be a new caller of an old one), ~37s on every commit; the ci.yml
+      # direct-model-call-gate job runs the same scan on every PR. It runs once per
+      # push instead, with growth judged against the merge base (a pre-push tree
+      # equals HEAD, so --base HEAD would judge nothing).
       - id: check-direct-model-call
         require_serial: true
-        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml, --base, HEAD]
+        stages: [pre-push]
+        entry: >-
+          bash -c 'exec "$VIRTUAL_ENV/bin/python" -m omnibase_core.nodes.node_direct_model_call_check_effect.runtime_direct_model_call "$@" --base "$(git merge-base HEAD origin/dev)"' --
+        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml]
 
   # Transport-import + node-purity gates — first purity gate in omnimarket
   # (OMN-13283 / GAP-8a, under OMN-9048). Scoped to COMPUTE and REDUCER node code,
@@ -300,17 +308,31 @@ repos:
   # omniclaude commit, as .github/workflows/public-repo-hygiene.yml, over the
   # lines the commit adds, so the local and CI verdicts cannot diverge. The five
   # classes in `enforce_classes` of .public-repo-hygiene.yaml fail the commit;
-  # the whole-tree residue is reported. The hook declares no `args`, `files` or
-  # `exclude` here: it is meant to run on every commit, over every file type.
+  # the whole-tree residue is reported. The hook runs on every commit that stages
+  # a file, over every file type, with no `files` or `exclude` narrowing.
   # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
   # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
   - repo: https://github.com/OmniNode-ai/omniclaude
     rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae
     hooks:
+      # OMN-17427: .public-repo-hygiene.yaml declares enforce_scope: added-lines, so
+      # the commit verdict is the findings on lines the index adds, and every such
+      # line sits in a staged file. Scanning the whole tracked tree (~33s, and
+      # ~15s for deployment-config) only re-reports the residue, which CI's
+      # public-repo-hygiene job still prints. pre-merge-commit is not installed
+      # here (default_install_hook_types), so the commit stage is the only local run.
       - id: public-repo-hygiene
         require_serial: true
+        args: [--staged]
+        pass_filenames: true
+        always_run: false
+        stages: [pre-commit]
       - id: deployment-config
         require_serial: true
+        args: [--staged]
+        pass_filenames: true
+        always_run: false
+        stages: [pre-commit]
 
   # Essential file formatting
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -816,12 +838,15 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-17427: lints every contract and Python file (~23s) on every commit;
+      # the ci.yml topic-naming-lint job runs the same scans with the same baseline
+      # on every PR, so it runs once per push here.
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system
         entry: bash scripts/validation/run_topic_lint.sh
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       - id: routing-tier-backend-bindability
         name: Routing tiers reference only backends a lane can bind
