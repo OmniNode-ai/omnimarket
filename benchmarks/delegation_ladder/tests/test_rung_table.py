@@ -26,6 +26,8 @@ from benchmarks.delegation_ladder.models import EnumOutcome, ModelTaskBundle
 from benchmarks.delegation_ladder.run_ladder import (
     RUNGS,
     load_bundles,
+    parse_onex_stdout,
+    read_receipt_facts,
     rescore_record,
     rung_command,
 )
@@ -351,3 +353,62 @@ def test_the_task_set_meets_the_per_class_minimum() -> None:
         counts[bundle.task_type] = counts.get(bundle.task_type, 0) + 1
     assert set(counts) == set(CLASS_ORDER)
     assert all(n >= 25 for n in counts.values()), counts
+
+
+def _onex_doc(*, decision: str, response: str) -> str:
+    attempt = {
+        "backend_id": "openrouter-nemotron-super",
+        "acceptance_decision": decision,
+        "acceptance_reason": "quality_bar_met" if decision == "accept" else "weak",
+    }
+    payload = {
+        "status": "completed",
+        "response": response,
+        "quality_gate_passed": decision == "accept",
+        "attempts": [attempt],
+        "metrics": {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cost_usd": 0.0,
+            "latency_ms": 1200,
+        },
+    }
+    doc = {"run_id": "r-1", "result": {"terminal_payload": {"payload": payload}}}
+    return "log line\n" + json.dumps(doc)
+
+
+def test_an_accepted_onex_receipt_is_read_for_response_cost_and_latency() -> None:
+    got = parse_onex_stdout(_onex_doc(decision="accept", response="ok"), Path("/s"))
+    assert got["response"] == "ok"
+    assert got["cost_usd"] == pytest.approx(0.0)
+    assert got["model_latency_ms"] == 1200
+    assert got["backend_id_answered"] == "openrouter-nemotron-super"
+    assert "failure_kind" not in got
+
+
+def test_a_gate_refused_onex_answer_keeps_its_text_but_is_not_delivered() -> None:
+    got = parse_onex_stdout(_onex_doc(decision="reject", response="right"), Path("/s"))
+    assert got["response"] == "right"
+    assert got["failure_kind"] == "gate_reject:weak"
+
+
+def test_a_run_with_no_receipt_names_what_the_cli_said_on_stderr() -> None:
+    got = parse_onex_stdout("", Path("/s"), "Error: the clone is on a detached HEAD")
+    assert got["failure_kind"] == "no_receipt"
+    assert "detached HEAD" in got["detail"]
+
+
+def test_receipt_facts_name_the_serving_endpoint_and_whether_the_pin_held(
+    tmp_path: Path,
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text(
+        json.dumps({"endpoint": "local", "backend_pin_honoured": True, "other": 1})
+    )
+    assert read_receipt_facts(str(receipt)) == {
+        "endpoint": "local",
+        "backend_pin_honoured": True,
+    }
+    # No receipt on this host (the run happened elsewhere): nothing is invented.
+    assert read_receipt_facts(str(tmp_path / "missing.json")) == {}
+    assert read_receipt_facts(None) == {}

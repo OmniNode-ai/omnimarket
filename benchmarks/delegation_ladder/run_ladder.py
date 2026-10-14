@@ -614,7 +614,9 @@ def rung_command(
     ]
 
 
-def parse_onex_stdout(stdout: str, state_root: Path) -> dict[str, Any]:
+def parse_onex_stdout(
+    stdout: str, state_root: Path, stderr: str = ""
+) -> dict[str, Any]:
     """Fields of one ``onex delegate --json`` run, or a ``failure_kind``."""
     rec: dict[str, Any] = {"response": ""}
     line = next(
@@ -623,7 +625,7 @@ def parse_onex_stdout(stdout: str, state_root: Path) -> dict[str, Any]:
     )
     if line is None:
         rec["failure_kind"] = "no_receipt"
-        rec["detail"] = stdout.strip()[-300:]
+        rec["detail"] = (stderr.strip() or stdout.strip())[-300:]
         return rec
     doc = json.loads(line)
     rec["run_id"] = doc.get("run_id")
@@ -715,6 +717,26 @@ def parse_harness_stdout(stdout: str, stderr: str) -> dict[str, Any]:
     return rec
 
 
+def read_receipt_facts(receipt_path: str | None) -> dict[str, Any]:
+    """What the run's own receipt says about where it was answered, if readable.
+
+    ``endpoint`` names the host that served the model; ``backend_pin_honoured``
+    says whether the pinned rung answered or the ladder moved the task, which
+    would make the row another rung's result under this rung's name.
+    """
+    if not receipt_path or not Path(receipt_path).is_file():
+        return {}
+    try:
+        receipt = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {
+        key: receipt[key]
+        for key in ("endpoint", "backend_pin_honoured", "model")
+        if key in receipt
+    }
+
+
 def run_on_rung(
     bundle: ModelTaskBundle,
     rung: ModelRung,
@@ -751,7 +773,7 @@ def run_on_rung(
         )
         wall_ms = int((time.monotonic() - started) * 1000)
         got = (
-            parse_onex_stdout(completed.stdout, state_root)
+            parse_onex_stdout(completed.stdout, state_root, completed.stderr)
             if rung.surface == "onex"
             else parse_harness_stdout(completed.stdout, completed.stderr)
         )
@@ -761,6 +783,12 @@ def run_on_rung(
         got = {"response": "", "failure_kind": f"client_timeout_{timeout_s}s"}
 
     response = got.pop("response", "") or ""
+    if rung.surface == "onex":
+        facts = read_receipt_facts(got.get("receipt"))
+        got.update(
+            receipt_endpoint=facts.get("endpoint"),
+            backend_pin_honoured=facts.get("backend_pin_honoured"),
+        )
     transcript_dir.mkdir(parents=True, exist_ok=True)
     (transcript_dir / f"{bundle.task_id}.json").write_text(
         json.dumps(
@@ -799,6 +827,7 @@ def run_on_rung(
         "response_chars": len(response),
         "wall_ms": wall_ms,
         "host": socket.gethostname(),
+        "driver_sha": _driver_sha(),
         "command": " ".join(argv),
         **got,
     }
@@ -807,6 +836,17 @@ def run_on_rung(
     elif not scored_pass:
         record["failure_kind"] = f"scorer_{outcome}"
     return record
+
+
+def _driver_sha() -> str | None:
+    """The commit of the checkout the driver ran from, so a cell names its code."""
+    done = subprocess.run(
+        ["git", "-C", str(HERE), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.stdout.strip() or None if done.returncode == 0 else None
 
 
 def rescore_record(
