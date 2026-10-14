@@ -75,7 +75,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_apply_reviewer_pool.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'if p["head_sha"] in rerun.get(p["pr"], set()):'
-  - id: "dod-omn19998-budget-cancel-evidence-check-readiness"
+  - id: "dod-omn19998-budget-cancel-evidence-readiness"
     description: "Both real spawned-effect scenarios trigger the handler timeout only after the blocked provider call starts, and retain every existing terminal and attempt assertion."
     source: "manual"
     checks:
