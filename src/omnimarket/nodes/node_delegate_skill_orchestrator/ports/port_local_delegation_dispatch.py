@@ -163,6 +163,13 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.models.delegation.wire.model_answer_gate_request import (
+    EnumAnswerGateKind,
+    EnumIndependentJudgeVerdict,
+    ModelAnswerGateRequest,
+    ModelAnswerJudgeCall,
+    ModelIndependentJudgeVerdict,
+)
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunRequest,
@@ -209,13 +216,6 @@ from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.handler_deleg
 from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.judge_selection import (
     render_judge_prompt,
     select_independent_judge,
-)
-from omnimarket.nodes.node_delegation_answer_gate_compute.models.model_answer_gate_request import (
-    EnumAnswerGateKind,
-    EnumIndependentJudgeVerdict,
-    ModelAnswerGateRequest,
-    ModelAnswerJudgeCall,
-    ModelIndependentJudgeVerdict,
 )
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies

@@ -26,6 +26,11 @@ from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_required,
     resolve_task_class_verification,
 )
+from omnimarket.models.delegation.wire.model_answer_gate_request import (
+    EnumAnswerGateKind,
+    EnumIndependentJudgeVerdict,
+    ModelAnswerGateRequest,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
     ModelQualityGateResult,
@@ -34,11 +39,6 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
 from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.judge_selection import (
     answer_gate_contract,
     model_family,
-)
-from omnimarket.nodes.node_delegation_answer_gate_compute.models.model_answer_gate_request import (
-    EnumAnswerGateKind,
-    EnumIndependentJudgeVerdict,
-    ModelAnswerGateRequest,
 )
 from omnimarket.nodes.node_delegation_answer_gate_compute.models.model_answer_gate_result import (
     ModelAnswerGateResult,

@@ -139,3 +139,10 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_answer_gate_compute/handlers/handler_delegation_answer_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c "import sys; s = sys.stdin.read(); assert all(part in s for part in (\"class HandlerDelegationAnswerGate:\", \"and judge_family != producer_family\", \"tests_passed = run is not None and run.passed\"))"'
+  - id: "dod-omn20489-shared-answer-gate-models"
+    description: "AC8: dispatch and the answer gate share request and judge models without importing another node's private models; the boundary check rejects a cross-node model import and the dispatch tests reject incorrect acceptance behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_no_cross_node_reach_in.py tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC8"]

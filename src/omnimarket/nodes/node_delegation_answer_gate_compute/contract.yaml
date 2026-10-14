@@ -29,7 +29,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_delegation_answer_gate_compute.handlers.handler_delegation_answer_gate
   class: HandlerDelegationAnswerGate
-  input_model: omnimarket.nodes.node_delegation_answer_gate_compute.models.model_answer_gate_request.ModelAnswerGateRequest
+  input_model: omnimarket.models.delegation.wire.model_answer_gate_request.ModelAnswerGateRequest
 
 descriptor:
   node_archetype: compute

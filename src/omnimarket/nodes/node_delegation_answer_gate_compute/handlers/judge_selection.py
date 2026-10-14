@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_delegation_answer_gate_compute.models.model_answer_gate_request import (
+from omnimarket.models.delegation.wire.model_answer_gate_request import (
     EnumIndependentJudgeVerdict,
 )
 
