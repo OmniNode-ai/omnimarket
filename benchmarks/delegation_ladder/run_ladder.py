@@ -1164,16 +1164,46 @@ def run_on_rung(
         "response_sha256": sha256_of(response),
         "response_chars": len(response),
         "wall_ms": wall_ms,
-        "host": socket.gethostname(),
+        "host": PUBLISHED_HOST,
         "driver_sha": _driver_sha(),
-        "command": " ".join(argv),
         **got,
     }
+    for private in PRIVATE_RECORD_FIELDS:
+        record.pop(private, None)
+    for text_field in ("scorer_detail", "detail"):
+        if isinstance(record.get(text_field), str):
+            record[text_field] = publishable_text(record[text_field])
     if not delivered:
         record["failure_kind"] = got.get("failure_kind")
     elif not scored_pass:
         record["failure_kind"] = f"scorer_{outcome}"
     return record
+
+
+# A record is committed to a public repository, so it names neither the machine
+# that ran it nor the internal runs behind it. The command line, the run and
+# delegation ids and the receipt path identify internal systems and add nothing a
+# reader can reproduce from; the host is a fixed label.
+PUBLISHED_HOST = "lab-host"
+PRIVATE_RECORD_FIELDS = ("command", "run_id", "receipt", "delegation_id")
+_PRIVATE_TEXT: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\$?\{?OMNI_HOME\}?(?:/[^\s\"',)]*)?"), "<registry>"),
+    (re.compile(r"[\w.-]*\.onex_state[^\s\"',)]*"), "<state>"),
+    (re.compile(r"/(?:home|Users|data|scratch|srv|mnt)/[^\s\"',)]+"), "<path>"),
+    (re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.ts\.net\b"), "<host>"),
+    (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "<address>"),
+    (
+        re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"),
+        "<id>",
+    ),
+)
+
+
+def publishable_text(text: str) -> str:
+    """``text`` with paths, addresses, hostnames and run ids replaced."""
+    for pattern, placeholder in _PRIVATE_TEXT:
+        text = pattern.sub(placeholder, text)
+    return text
 
 
 def _difficulty(bundle: ModelTaskBundle) -> str | None:
@@ -1890,6 +1920,11 @@ def main() -> int:
     surface = parser.add_mutually_exclusive_group()
     surface.add_argument("--path", choices=["local", "cloud"])
     surface.add_argument("--backend", choices=list(BACKENDS))
+    surface.add_argument(
+        "--rung",
+        choices=sorted(RUNGS),
+        help="Run the task set against one pinned delegation rung (OMN-20844).",
+    )
     parser.add_argument("--set", choices=["ladder", "tiered"], default="ladder")
     parser.add_argument("--classes", nargs="+")
     parser.add_argument("--difficulty", choices=[d.value for d in EnumDifficulty])
@@ -1905,11 +1940,6 @@ def main() -> int:
         default="0/1",
         help="K/N (also i/N for --rung): run only the tasks whose position modulo N is K, so one rung "
         "can be split across hosts.",
-    )
-    parser.add_argument(
-        "--rung",
-        choices=sorted(RUNGS),
-        help="Run the task set against one pinned delegation rung (OMN-20844).",
     )
     parser.add_argument(
         "--write",

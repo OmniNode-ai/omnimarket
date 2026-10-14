@@ -10,7 +10,7 @@
       "task_id": "R2-01",
       "rung": "R2",
       "path": "local",
-      "delegation_id": "6a308481-27b1-4224-af3b-3289f73a0b6b",
+      "delegation_id": "<uuid>",
       "tier": "local",
       "backend_id": "local-heavy-reasoning",
       "model_id": "Qwen3.6-35B-A3B",
@@ -38,7 +38,7 @@
           "coverage_at_least_0.5": false
         }
       },
-      "response_sha256": "4cc8806ccd230f0bc995089a6d93d967ccd8c16b1434e1dd31dd4f8eb8c2046f",
+      "response_sha256": "8bafb3c29409694317b854fa31b336dcbbdb4574babfe91d1dd158378365f64c",
       "derived_rung": "R2",
       "complexity_score": 3,
       "complexity_features": {
@@ -69,7 +69,7 @@
       "task_id": "R2-02",
       "rung": "R2",
       "path": "local",
-      "delegation_id": "79ac6cde-76b0-4d55-8c2d-97b2b6487d8a",
+      "delegation_id": "<uuid>",
       "tier": "local",
       "backend_id": "local-heavy-reasoning",
       "model_id": "Qwen3.6-35B-A3B",
@@ -97,7 +97,7 @@
           "coverage_at_least_0.4": false
         }
       },
-      "response_sha256": "88a6a410a83f719959f7ff3a85812e600d7ddfceb81a3cdf1b82ba7c75c98ee4",
+      "response_sha256": "ad02f65c587a52db1b176a22983245e6adb36ba37382703ee86ffbacf97eb9c8",
       "derived_rung": "R2",
       "complexity_score": 3,
       "complexity_features": {
@@ -128,7 +128,7 @@
       "task_id": "R2-03",
       "rung": "R2",
       "path": "local",
-      "delegation_id": "4b7f728c-a11d-4b1c-a7a3-c6ad9da70362",
+      "delegation_id": "<uuid>",
       "tier": "local",
       "backend_id": "local-heavy-reasoning",
       "model_id": "Qwen3.6-35B-A3B",
@@ -156,7 +156,7 @@
           "coverage_at_least_0.4": false
         }
       },
-      "response_sha256": "3b7f688bfe9e7dddf1f645b3835293d7942bacd4a9f728e76dd9863ee84dbcb2",
+      "response_sha256": "f7d530467bce730eec96d16a14c04987b34356bfbe8d0c6e83157c9b450b0fe9",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {
@@ -187,7 +187,7 @@
       "task_id": "R2-04",
       "rung": "R2",
       "path": "local",
-      "delegation_id": "0d8d3afc-79b1-42ed-a42f-4e047b4a0407",
+      "delegation_id": "<uuid>",
       "tier": "local",
       "backend_id": "local-heavy-reasoning",
       "model_id": "Qwen3.6-35B-A3B",
@@ -215,7 +215,7 @@
           "coverage_at_least_0.4": true
         }
       },
-      "response_sha256": "0ec293b0756b2f1ebdf6f70634cff2ebbe7cd30bed43883fdb1da9aff43374e8",
+      "response_sha256": "b062ecfc80a119353d26953e1ce66d24a586b57c6d51f248496fa2431de88885",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {

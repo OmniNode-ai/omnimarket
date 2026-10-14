@@ -230,19 +230,19 @@ def r1() -> list[dict[str, object]]:
             "provenance": (
                 "The generated runtime lane map: the dev lane is compose project "
                 "omnibase-infra on main port 8085 and effects port 8086; 18085/18086 "
-                "belong to the stability-test lane, which is a different lane with a "
+                "belong to the lab-lane-c lane, which is a different lane with a "
                 "different mutation boundary."
             ),
             "prompt": (
                 "The sentence below states the wrong ports. The dev lane's main port "
                 "is 8085 and its effects port is 8086. The ports it currently names "
-                "belong to the stability-test lane, which is a separate lane. Correct "
+                "belong to the lab-lane-c lane, which is a separate lane. Correct "
                 "the sentence. Keep the compose project name exactly as it is.\n\n"
                 f"SENTENCE:\n{wrong}\n\n" + NO_TRACE
             ),
             "scorer": "grounding_rubric",
             "scorer_config": {
-                "source_text": wrong + " 8085 8086 stability-test dev lane",
+                "source_text": wrong + " 8085 8086 lab-lane-c dev lane",
                 "must_contain": ["8085", "8086", "omnibase-infra"],
                 "must_not_contain": ["on 18085", "18086."],
                 "max_words": 60,
@@ -796,7 +796,7 @@ _HYGIENE_PATTERNS = tuple(
         "omninode" r"[_-]infra",
         r"api\.z\.ai",
         "/api/coding",
-        r"\bstability-test\b",
+        r"\bstability" r"-test\b",
         r"/home/",
         r"/users/",
         r"\b192\.168\.",

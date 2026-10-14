@@ -117,9 +117,10 @@ refuse on added lines (private repository names, private addresses, lab lane
 names); in the committed prompts each such span is masked with `x` characters
 of the same length. The runs were fed the unmasked text, which is the text of
 the public repository at those commits; the scorer runs against the
-repository, so no verdict depends on the masking. Absolute lab
-paths in the records are written as placeholders (`$OMNI_HOME`, `$HOME`,
-`$LAB_RUN`) and the host as its lab label.
+repository, so no verdict depends on the masking. The records
+keep no command line, run id, delegation id or receipt path, the host is the
+fixed label `lab-host`, and paths, hostnames and addresses inside their text
+fields are written as placeholders.
 
 How the runs were made
 ----------------------

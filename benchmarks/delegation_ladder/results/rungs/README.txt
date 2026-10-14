@@ -83,18 +83,22 @@ counted in `pin moved` and never as that rung's accepted answer.
 Scrubbing
 ---------
 
-Absolute lab paths and addresses in the records (`command`, `receipt`, `detail`)
-are written as placeholders (`$OMNI_HOME`, `$LAB_RUN`, `$LAB_UNIT`, `$HOME`), so
-the committed files carry no lab topology. In four saved responses (glm-5.3,
-nemotron-super and nemotron-ultra on R4-18, the unpinned ladder on R4-07) the
-model had written a `/home/...` path into its own test fixture; it is written
-`/srv/...` there, the `response_sha256` of those four cells was recomputed, and
-each cell was rescored to the verdict it was recorded with before this was
-committed.
+A record names neither the machine that ran it nor the internal runs behind it.
+The command line, the run and delegation ids and the receipt path are not kept,
+the `host` field is the fixed label `lab-host`, and paths, hostnames, addresses
+and run ids inside `detail` and `scorer_detail` are written as placeholders
+(`<registry>`, `<state>`, `<path>`, `<host>`, `<address>`, `<id>`). Nothing the
+tables or the rescoring read was changed: the verdict, the score, the
+`response_sha256`, the wall time and the token counts are as recorded.
 
-Host names in the records are the lab-run host labels: h200 is the Mac host,
-h201 and h202 are the two Linux GPU hosts. A local backend id that carried the
-second Linux host's name is written `local-h202-chat`.
+In four saved responses (glm-5.3, nemotron-super and nemotron-ultra on R4-18,
+the unpinned ladder on R4-07) the model had written a `/home/...` path into its
+own test fixture; it is written `/srv/...` there, the `response_sha256` of those
+four cells was recomputed, and each cell was rescored to the verdict it was
+recorded with before this was committed.
+
+A local backend id that carried a lab host's name is written `local-h202-chat`;
+it is a backend id of the delegation routing table, not a host address.
 
 Rescoring
 ---------
