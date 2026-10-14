@@ -18,7 +18,6 @@ import pytest
 
 from benchmarks.delegation_ladder.run_ladder import RUNGS, load_bundles, rescore_dir
 from benchmarks.delegation_ladder.summarise_results import (
-    CLASS_ORDER,
     DIFFICULTY_ORDER,
     MINIMUM_TASKS_PER_CLASS,
     class_rung_table,
@@ -35,9 +34,10 @@ pytestmark = pytest.mark.unit
 HERE = Path(__file__).resolve().parent.parent
 RESULTS = HERE / "results" / "rungs" / "2026-10-14"
 LADDER = HERE / "results" / "rungs" / "2026-10-14-ladder"
+LADDER_EASY_MEDIUM = HERE / "results" / "rungs" / "2026-10-14-ladder-easy-medium"
 
-# The two classes the later run (the nemotron rungs and the tiers) covers; the
-# other three classes were run on the lab Qwen and both GLM rungs only.
+# The classes this result set covers. The lab Qwen and both GLM rungs were also
+# run over document, review and reasoning; those records are not committed here.
 TIERED_CLASSES = ("test", "code_generation")
 
 
@@ -72,7 +72,7 @@ def test_every_default_rung_answered_every_task_of_the_classes_it_ran() -> None:
 
 def test_every_class_holds_at_least_the_minimum_tasks_for_every_rung() -> None:
     rows = class_rung_table(list(_records().values()), list(RUNGS))
-    assert set(CLASS_ORDER) == {row["task_type"] for row in rows}
+    assert set(TIERED_CLASSES) == {row["task_type"] for row in rows}
     for row in rows:
         assert row["tasks"] >= MINIMUM_TASKS_PER_CLASS, row
         assert row["meets_minimum_tasks"] is True
@@ -151,19 +151,25 @@ def test_the_committed_tier_table_is_the_table_the_records_give() -> None:
     assert (RESULTS / "tiers.txt").read_text(encoding="utf-8") == expected
 
 
-def _ladder_records() -> list[dict[str, object]]:
+def _ladder_records(directory: Path = LADDER) -> list[dict[str, object]]:
     return [
         json.loads(line)
-        for path in sorted(LADDER.glob("*.jsonl"))
+        for path in sorted(directory.glob("*.jsonl"))
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
 
 
-def test_the_unpinned_ladder_ran_each_hard_task_once_and_traced_it() -> None:
-    hard = {task_id for task_id, tier in _tiers().items() if tier == "hard"}
-    records = _ladder_records()
-    assert sorted(r["task_id"] for r in records) == sorted(hard)
+@pytest.mark.parametrize(
+    ("directory", "tiers"),
+    [(LADDER, {"hard"}), (LADDER_EASY_MEDIUM, {"easy", "medium"})],
+)
+def test_the_unpinned_ladder_ran_each_task_of_its_tiers_once_and_traced_it(
+    directory: Path, tiers: set[str]
+) -> None:
+    wanted = {task_id for task_id, tier in _tiers().items() if tier in tiers}
+    records = _ladder_records(directory)
+    assert sorted(r["task_id"] for r in records) == sorted(wanted)
     for record in records:
         trace = record["ladder"]
         assert isinstance(trace, dict)
@@ -174,9 +180,12 @@ def test_the_unpinned_ladder_ran_each_hard_task_once_and_traced_it() -> None:
             assert trace["answered_tier"], record["task_id"]
 
 
-def test_the_committed_ladder_summary_is_the_one_the_records_give() -> None:
+@pytest.mark.parametrize("directory", [LADDER, LADDER_EASY_MEDIUM])
+def test_the_committed_ladder_summary_is_the_one_the_records_give(
+    directory: Path,
+) -> None:
     from benchmarks.delegation_ladder.summarise_results import render_ladder_table
 
-    assert (LADDER / "ladder.txt").read_text(encoding="utf-8") == render_ladder_table(
-        _ladder_records()
-    )
+    assert (directory / "ladder.txt").read_text(
+        encoding="utf-8"
+    ) == render_ladder_table(_ladder_records(directory))
