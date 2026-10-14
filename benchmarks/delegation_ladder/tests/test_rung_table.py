@@ -27,6 +27,7 @@ from benchmarks.delegation_ladder.run_ladder import (
     RUNGS,
     load_bundles,
     parse_onex_stdout,
+    partition_infra_failures,
     read_receipt_facts,
     rescore_record,
     rung_command,
@@ -412,3 +413,50 @@ def test_receipt_facts_name_the_serving_endpoint_and_whether_the_pin_held(
     # No receipt on this host (the run happened elsewhere): nothing is invented.
     assert read_receipt_facts(str(tmp_path / "missing.json")) == {}
     assert read_receipt_facts(None) == {}
+
+
+def test_a_row_the_ladder_moved_to_another_backend_is_never_accepted_for_the_pin() -> (
+    None
+):
+    moved = _record("r-1", "review", "x", accepted=True)
+    moved["backend_pin_honoured"] = False
+    kept = _record("r-2", "review", "x", accepted=True)
+    kept["backend_pin_honoured"] = True
+    unknown = _record(
+        "r-3", "review", "x", accepted=True
+    )  # a harness row: no receipt field
+    row = class_rung_table([moved, kept, unknown])[0]
+    assert row["accepted"] == 2
+    assert row["pin_moved"] == 1
+    assert row["gate_refused_correct"] == 1
+
+
+def test_only_plumbing_failures_are_run_again() -> None:
+    def rec(kind: str | None, outcome: str) -> dict[str, object]:
+        return {
+            "task_id": kind or "ok",
+            "failure_kind": kind,
+            "scorer_outcome": outcome,
+        }
+
+    records = [
+        rec("no_terminal_payload", "no_answer"),
+        rec("client_timeout_420s", "no_answer"),
+        rec("no_receipt", "no_answer"),
+        rec("gate_reject:weak", "pass"),
+        rec("scorer_fail", "fail"),
+        rec(None, "pass"),
+        rec("timeout", "no_answer"),  # a harness (model) timeout is the result
+    ]
+    stand, redo = partition_infra_failures(records)
+    assert [r["task_id"] for r in redo] == [
+        "no_terminal_payload",
+        "client_timeout_420s",
+        "no_receipt",
+    ]
+    assert [r["task_id"] for r in stand] == [
+        "gate_reject:weak",
+        "scorer_fail",
+        "ok",
+        "timeout",
+    ]

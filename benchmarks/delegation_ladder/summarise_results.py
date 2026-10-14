@@ -177,7 +177,14 @@ def class_rung_table(
             if not group:
                 continue
             n = len(group)
-            accepted = sum(1 for r in group if r["accepted"])
+            # A pinned row the ladder moved to another backend is that backend's
+            # answer under this rung's name: it is never accepted for this rung.
+            moved = sum(1 for r in group if r.get("backend_pin_honoured") is False)
+            accepted = sum(
+                1
+                for r in group
+                if r["accepted"] and r.get("backend_pin_honoured") is not False
+            )
             correct = sum(1 for r in group if r["scorer_outcome"] == "pass")
             low, high = wilson_interval(accepted, n)
             latencies = [
@@ -199,8 +206,12 @@ def class_rung_table(
                     "gate_refused_correct": sum(
                         1
                         for r in group
-                        if r["scorer_outcome"] == "pass" and not r["accepted"]
+                        if r["scorer_outcome"] == "pass"
+                        and not (
+                            r["accepted"] and r.get("backend_pin_honoured") is not False
+                        )
                     ),
+                    "pin_moved": moved,
                     "no_answer": sum(
                         1 for r in group if r["scorer_outcome"] == "no_answer"
                     ),

@@ -871,6 +871,28 @@ def rescore_record(
     return score(bundle, response).outcome.value
 
 
+# Failures that say the plumbing broke rather than what the rung answered: no
+# receipt came back, the lane's own wait expired, or the client gave up. A rung
+# that is merely slow reproduces them on a lone rerun; a contended lane does not.
+_INFRA_FAILURES = ("no_receipt", "no_terminal_payload", "client_timeout")
+
+
+def is_infra_failure(record: dict[str, Any]) -> bool:
+    kind = str(record.get("failure_kind") or "")
+    return record.get("scorer_outcome") == "no_answer" and kind.startswith(
+        _INFRA_FAILURES
+    )
+
+
+def partition_infra_failures(
+    records: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split a rung's records into those that stand and those to run once more."""
+    stand = [r for r in records if not is_infra_failure(r)]
+    redo = [r for r in records if is_infra_failure(r)]
+    return stand, redo
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
@@ -964,7 +986,23 @@ def run_rung_benchmark(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix = "" if count == 1 else f".shard-{index}of{count}"
     jsonl = out_dir / f"{rung.name}{suffix}.jsonl"
-    done = {r["task_id"] for r in _read_jsonl(jsonl)}
+    existing = _read_jsonl(jsonl)
+    if args.rerun_infra:
+        # The first attempt of a plumbing failure is archived, not discarded;
+        # the rerun is the one attempt that stands, and a rerun that fails the
+        # same way is the result for that cell.
+        stand, redo = partition_infra_failures(existing)
+        if redo:
+            archive = out_dir / "first-attempt"
+            archive.mkdir(exist_ok=True)
+            with (archive / jsonl.name).open("a", encoding="utf-8") as handle:
+                for record in redo:
+                    handle.write(json.dumps(record) + "\n")
+            jsonl.write_text(
+                "".join(json.dumps(r) + "\n" for r in stand), encoding="utf-8"
+            )
+        existing = stand
+    done = {r["task_id"] for r in existing}
     todo = [b for b in bundles if b.task_id not in done]
     state_root = Path(args.state_root or Path(registry_root) / ".onex_state")
     bus_flags = IN_PROCESS_FLAGS if args.in_process else DEPLOYED_LANE_FLAGS
@@ -1145,6 +1183,12 @@ def main() -> int:
     )
     parser.add_argument("--out-dir", type=Path, default=RESULTS / "rungs")
     parser.add_argument("--shard", default="0/1", help="i/N: this host's slice.")
+    parser.add_argument(
+        "--rerun-infra",
+        action="store_true",
+        help="Run once more the cells that failed in the plumbing (no receipt, the "
+        "lane's wait expired, client timeout); archive their first attempt.",
+    )
     parser.add_argument("--ticket", default="OMN-20844")
     parser.add_argument("--lane", default="omn20844-bnc2")
     parser.add_argument("--state-root", default=None)
