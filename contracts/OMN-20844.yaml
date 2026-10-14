@@ -249,6 +249,9 @@ dod_evidence:
     description: "AC16: committed cells of a unit_test_execution task and a patch_apply_and_test task, on every rung, rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py::test_every_saved_response_rescores_to_the_recorded_verdict -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14 --only R4-01 R6-01"
         cwd: "${OMNI_HOME}/omnimarket"
