@@ -2237,9 +2237,10 @@ HARD_COMMITS: tuple[tuple[str, str], ...] = (
     ),
 )
 
-# Prompt-size targets in characters. Source code runs near 3.3 characters per
-# token, so "medium" sits near a 32768-token slot and "large" near the 65536
-# tokens the local-coder rung declares (routing_tiers.yaml max_context_tokens).
+# Prompt-size targets in characters. The receipts read about 4.1 characters
+# per token on these prompts, so "medium" is about 24k tokens and "large" about
+# 48k, three quarters of the 65536 tokens local-coder declares
+# (routing_tiers.yaml max_context_tokens).
 HARD_SIZE_TARGETS: dict[str, int] = {"small": 0, "medium": 95_000, "large": 190_000}
 # The size tier rotates independently of the commit order, so size is not
 # confounded with files touched or cross-file cause; the two classes rotate

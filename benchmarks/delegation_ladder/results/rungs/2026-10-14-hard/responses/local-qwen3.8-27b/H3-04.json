@@ -1,0 +1,1 @@
+{"task_id": "H3-04", "model_rung": "local-qwen3.8-27b", "sha256": "0159d94207d67b73e7f2e5b43bd50a4a9c6aa2cc18a9f61dd6f07f8ea25101a2", "response": "FILE: src/omnimarket/nodes/node_merge_sweep_orchestrator/handlers/handler_merge_sweep_run.py"}

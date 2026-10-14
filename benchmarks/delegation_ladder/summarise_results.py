@@ -536,9 +536,9 @@ if __name__ == "__main__":
 # Structural features of the hard corpus (OMN-20844)
 # --------------------------------------------------------------------------
 
-# Prompt characters, measured. Near 3.3 characters per source token, "under
-# 60k" fits any rung, "60k-150k" passes a 32768-token slot, and "over 150k"
-# nears or passes the 65536 tokens the local-coder rung declares.
+# Prompt characters, measured. The receipts read about 4.1 characters per
+# token on these prompts, so "over 150k" is upward of 37k tokens, beyond a
+# 32768-token slot and toward the 65536 tokens the local-coder rung declares.
 CONTEXT_BINS: tuple[tuple[str, int], ...] = (
     ("under 60k chars", 60_000),
     ("60k-150k chars", 150_000),
@@ -597,6 +597,10 @@ def _correct(record: dict[str, Any]) -> bool:
     return record.get("scorer_outcome") == "pass"
 
 
+def _answered(record: dict[str, Any]) -> bool:
+    return record.get("scorer_outcome") != "no_answer"
+
+
 def _left_local(record: dict[str, Any]) -> bool:
     trace = record.get("ladder") or {}
     tiers = [trace.get("answered_tier")] + [
@@ -615,7 +619,10 @@ def feature_rows(
 
     A cell fails when the mechanical scorer did not pass its answer (no answer
     counts as a failure); "not accepted" also counts a correct answer that the
-    delegation's own quality gate refused. A task fails when fewer than half
+    delegation's own quality gate refused, and "failed, answer seen" counts
+    only cells whose answer reached the scorer (a gate that withholds the
+    answer, or a harness out of time, leaves nothing to score). A task fails
+    when fewer than half
     of the pinned rungs that ran it produced a passing answer. The ladder
     escalated when its receipt tried more than one rung, and left the local
     tier when any rung it tried was not local (routing can send a large input
@@ -659,6 +666,10 @@ def feature_rows(
                     "cells": len(cells),
                     "cells_failed": sum(1 for r in cells if not _correct(r)),
                     "cells_not_accepted": sum(1 for r in cells if not r["accepted"]),
+                    "cells_answered": sum(1 for r in cells if _answered(r)),
+                    "cells_answered_failed": sum(
+                        1 for r in cells if _answered(r) and not _correct(r)
+                    ),
                     "tasks_ran": len(ran),
                     "tasks_failed": len(failed_tasks),
                     "ladder_runs": len(lad),
@@ -683,15 +694,17 @@ def _difference(
 
 def render_feature_table(rows: Sequence[dict[str, Any]]) -> str:
     out = [
-        "| feature | level | tasks | pinned cells failed | pinned cells not accepted "
+        "| feature | level | tasks | pinned cells failed | failed, answer seen "
+        "| pinned cells not accepted "
         "| tasks failed (most rungs) | ladder escalated | ladder left local "
         "| ladder failed |",
-        "| -- | -- | -- | -- | -- | -- | -- | -- | -- |",
+        "| -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |",
     ]
     for r in rows:
         out.append(
             f"| {r['feature']} | {r['level']} | {r['tasks']} "
             f"| {_share(r['cells_failed'], r['cells'])} "
+            f"| {_share(r['cells_answered_failed'], r['cells_answered'])} "
             f"| {_share(r['cells_not_accepted'], r['cells'])} "
             f"| {_share(r['tasks_failed'], r['tasks_ran'])} "
             f"| {_share(r['ladder_escalated'], r['ladder_runs'])} "
@@ -702,9 +715,10 @@ def render_feature_table(rows: Sequence[dict[str, Any]]) -> str:
         "",
         "Difference, last level minus first, with a Newcombe 95% interval:",
         "",
-        "| feature | levels | pinned cells failed | tasks failed | ladder escalated "
+        "| feature | levels | pinned cells failed | failed, answer seen "
+        "| tasks failed | ladder escalated "
         "| ladder left local |",
-        "| -- | -- | -- | -- | -- | -- |",
+        "| -- | -- | -- | -- | -- | -- | -- |",
     ]
     for feature in ("files touched", "cross-file cause", "context size"):
         group = [r for r in rows if r["feature"] == feature]
@@ -714,7 +728,9 @@ def render_feature_table(rows: Sequence[dict[str, Any]]) -> str:
 
         out.append(
             f"| {feature} | {last['level']} vs {first['level']} "
-            f"| {_difference(first, last, 'cells_failed', 'cells')} | {_difference(first, last, 'tasks_failed', 'tasks_ran')} "
+            f"| {_difference(first, last, 'cells_failed', 'cells')} "
+            f"| {_difference(first, last, 'cells_answered_failed', 'cells_answered')} "
+            f"| {_difference(first, last, 'tasks_failed', 'tasks_ran')} "
             f"| {_difference(first, last, 'ladder_escalated', 'ladder_runs')} "
             f"| {_difference(first, last, 'ladder_left_local', 'ladder_runs')} |"
         )
