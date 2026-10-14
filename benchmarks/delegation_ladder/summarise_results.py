@@ -417,6 +417,47 @@ def render_difficulty_table(
     return "\n".join(lines).strip() + "\n"
 
 
+def render_ladder_table(records: Sequence[dict[str, Any]]) -> str:
+    """Markdown for the unpinned-ladder run: one row per task, then who answered.
+
+    Each record carries the ``ladder`` trace of its own run. ``climbed`` is a
+    run that tried more than one rung; a rung that was refused is listed with the
+    gate rule or verdict the receipt gave for it.
+    """
+    lines = [
+        "| task | class | answered by | escalations | accepted | wall s | refused rungs (why) |",
+        "| -- | -- | -- | -- | -- | -- | -- |",
+    ]
+    answered: dict[str, int] = {}
+    climbed = 0
+    for record in sorted(records, key=lambda r: r["task_id"]):
+        # A run with no receipt has no trace: it answered nobody and tried one rung.
+        trace = record.get("ladder") or {
+            "answered_by": None,
+            "escalations": 0,
+            "refused": [],
+        }
+        who = trace["answered_by"]
+        answered[who or "no rung"] = answered.get(who or "no rung", 0) + 1
+        climbed += 1 if trace["escalations"] > 0 else 0
+        why = "; ".join(
+            f"{r['backend_id']}: {r['reason'] or r['decision']}"
+            for r in trace["refused"]
+        )
+        lines.append(
+            f"| {record['task_id']} | {record['task_type']} | {who or 'none'} "
+            f"| {trace['escalations']} | {'yes' if record['accepted'] else 'no'} "
+            f"| {record['wall_ms'] / 1000:.1f} | {why or '-'} |"
+        )
+    total = len(records)
+    lines += ["", f"tasks: {total}"]
+    for name, count in sorted(answered.items(), key=lambda kv: (-kv[1], kv[0])):
+        label = "no rung" if name == "no rung" else name
+        lines.append(f"- {label} answered {count} of {total}")
+    lines.append(f"climbed at least once: {climbed} of {total}")
+    return "\n".join(lines).strip() + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", nargs="+", type=Path)

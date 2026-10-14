@@ -42,6 +42,15 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: re-scoring the benchmark's stored review answers with the fixed gate shows no R3b answer refused by cites_specific_lines on any rung, and a cites-nothing answer on numbered input still refused -- falsifier: an R3b answer refused by the rule after the fix, or a numbered-input prompt whose cites-nothing answer passes.
+  - id: "req-rung-benchmark-driver-and-tiers"
+    statement: "The delegation ladder's own runner carries the rung benchmark, with a tested per-rung, per-class result table, difficulty tiers for the test and code_generation classes, and the unpinned-ladder trace of the hard tier."
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
+      - id: "AC10"
+        statement: |-
+          AC10: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -49,6 +58,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC7 and AC8: the real R3b prompts and two stored refused answers pass the fixed gate; numbered listing, cat -n listing, diff hunk, line N and path:N inputs keep the rule and an answer citing nothing is refused; an empty stored answer stays refused."
     command: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py tests/unit/delegation/test_omn19432_rule_waived_by_prompt_layout.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC9: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -121,3 +133,27 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq waived_unless_prompt_matches'"
+  - id: "dod-omn20844-ac9-driver-tested"
+    description: "AC9: the tier thresholds fill every tier of the test and code_generation classes with at least eight committed tasks, the tier table and the first-failing-tier rule have negative controls, and the unpinned-ladder command carries no backend pin."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn20844-ac9-rerun-reproduces-a-cell"
+    description: "AC9: the committed results rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn20844-ac10-tier-table-and-minimum"
+    description: "AC10: the committed tier table is the table the committed records give, and each tier of the test and code_generation classes holds at least eight tasks for every rung."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]

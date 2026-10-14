@@ -19,16 +19,26 @@ import pytest
 from benchmarks.delegation_ladder.run_ladder import RUNGS, load_bundles, rescore_dir
 from benchmarks.delegation_ladder.summarise_results import (
     CLASS_ORDER,
+    DIFFICULTY_ORDER,
     MINIMUM_TASKS_PER_CLASS,
     class_rung_table,
     class_separation,
+    difficulty_tier,
+    first_failing_tier,
+    render_difficulty_table,
     render_table,
+    tier_rung_table,
 )
 
 pytestmark = pytest.mark.unit
 
 HERE = Path(__file__).resolve().parent.parent
 RESULTS = HERE / "results" / "rungs" / "2026-10-14"
+LADDER = HERE / "results" / "rungs" / "2026-10-14-ladder"
+
+# The two classes the later run (the nemotron rungs and the tiers) covers; the
+# other three classes were run on the lab Qwen and both GLM rungs only.
+TIERED_CLASSES = ("test", "code_generation")
 
 
 def _records() -> dict[tuple[str, str], dict[str, object]]:
@@ -45,13 +55,16 @@ def test_there_are_results_to_check() -> None:
     assert _records(), f"no records under {RESULTS}"
 
 
-def test_every_default_rung_answered_every_task_exactly_once() -> None:
-    expected = {b.task_id for b in load_bundles(None)}
+def test_every_default_rung_answered_every_task_of_the_classes_it_ran() -> None:
+    bundles = load_bundles(None)
     records = _records()
     for name, rung in RUNGS.items():
         if not rung.in_default_set:
             continue
         got = {task for (model_rung, task) in records if model_rung == name}
+        classes = {b.task_type for b in bundles if b.task_id in got}
+        assert set(TIERED_CLASSES) <= classes, f"{name} did not run {TIERED_CLASSES}"
+        expected = {b.task_id for b in bundles if b.task_type in classes}
         assert got == expected, (
             f"{name}: missing {sorted(expected - got)[:5]}, extra {sorted(got - expected)[:5]}"
         )
@@ -59,7 +72,7 @@ def test_every_default_rung_answered_every_task_exactly_once() -> None:
 
 def test_every_class_holds_at_least_the_minimum_tasks_for_every_rung() -> None:
     rows = class_rung_table(list(_records().values()), list(RUNGS))
-    assert {row["task_type"] for row in rows} == set(CLASS_ORDER)
+    assert set(CLASS_ORDER) == {row["task_type"] for row in rows}
     for row in rows:
         assert row["tasks"] >= MINIMUM_TASKS_PER_CLASS, row
         assert row["meets_minimum_tasks"] is True
@@ -105,3 +118,65 @@ def test_a_pinned_onex_row_that_the_ladder_moved_is_not_counted_for_its_rung() -
             and r.get("backend_pin_honoured") is not False
         )
         assert row["accepted"] == accepted_in_records
+
+
+def _tiers() -> dict[str, str]:
+    return {
+        b.task_id: tier
+        for b in load_bundles(None)
+        if (tier := difficulty_tier(b.task_type, len(b.prompt))) is not None
+    }
+
+
+def test_every_tier_of_every_tiered_class_holds_eight_tasks_for_every_rung() -> None:
+    rows = tier_rung_table(list(_records().values()), _tiers(), list(RUNGS))
+    seen = {
+        (r["task_type"], r["difficulty"], r["model_rung"]): r["tasks"] for r in rows
+    }
+    for name, rung in RUNGS.items():
+        if not rung.in_default_set:
+            continue
+        for task_type in TIERED_CLASSES:
+            for tier in DIFFICULTY_ORDER:
+                assert seen.get((task_type, tier, name), 0) >= 8, (
+                    name,
+                    task_type,
+                    tier,
+                )
+
+
+def test_the_committed_tier_table_is_the_table_the_records_give() -> None:
+    rows = tier_rung_table(list(_records().values()), _tiers(), list(RUNGS))
+    expected = render_difficulty_table(rows, first_failing_tier(rows))
+    assert (RESULTS / "tiers.txt").read_text(encoding="utf-8") == expected
+
+
+def _ladder_records() -> list[dict[str, object]]:
+    return [
+        json.loads(line)
+        for path in sorted(LADDER.glob("*.jsonl"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def test_the_unpinned_ladder_ran_each_hard_task_once_and_traced_it() -> None:
+    hard = {task_id for task_id, tier in _tiers().items() if tier == "hard"}
+    records = _ladder_records()
+    assert sorted(r["task_id"] for r in records) == sorted(hard)
+    for record in records:
+        trace = record["ladder"]
+        assert isinstance(trace, dict)
+        assert trace["escalations"] >= 0
+        if trace["answered_by"] is None:
+            assert record["accepted"] is False, record["task_id"]
+        else:
+            assert trace["answered_tier"], record["task_id"]
+
+
+def test_the_committed_ladder_summary_is_the_one_the_records_give() -> None:
+    from benchmarks.delegation_ladder.summarise_results import render_ladder_table
+
+    assert (LADDER / "ladder.txt").read_text(encoding="utf-8") == render_ladder_table(
+        _ladder_records()
+    )

@@ -30,6 +30,7 @@ from benchmarks.delegation_ladder.summarise_results import (
     difficulty_tier,
     first_failing_tier,
     render_difficulty_table,
+    render_ladder_table,
     tier_rung_table,
 )
 
@@ -297,3 +298,70 @@ def test_a_ladder_with_no_attempts_is_an_empty_trace_not_an_error() -> None:
         "escalations": 0,
         "refused": [],
     }
+
+
+def _ladder_record(
+    task_id: str, trace: dict, *, accepted: bool, wall_ms: int = 60_000
+) -> dict:
+    return {
+        "task_id": task_id,
+        "task_type": "test",
+        "difficulty": "hard",
+        "accepted": accepted,
+        "scorer_outcome": "pass" if accepted else "fail",
+        "wall_ms": wall_ms,
+        "ladder": trace,
+    }
+
+
+def test_the_ladder_table_gives_one_row_per_task_with_the_why_of_each_refusal() -> None:
+    climbed = ladder_trace(
+        [
+            _attempt(
+                "local-coder", "local", "climb", "deterministic_floor_failed", "x"
+            ),
+            _attempt("openrouter-nemotron-ultra", "cheap_frontier", "accept", "ok", ""),
+        ]
+    )
+    stayed = ladder_trace([_attempt("local-coder", "local", "accept", "ok", "")])
+    text = render_ladder_table(
+        [
+            _ladder_record("R4-05", climbed, accepted=True, wall_ms=90_000),
+            _ladder_record("R4-07", stayed, accepted=False, wall_ms=30_000),
+        ]
+    )
+    assert "| R4-05 | test | openrouter-nemotron-ultra | 1 | " in text
+    assert "local-coder: deterministic_floor_failed" in text
+    assert "| R4-07 | test | local-coder | 0 | " in text
+    assert "90.0" in text
+
+
+def test_the_ladder_table_counts_who_answered_and_how_often_it_climbed() -> None:
+    climbed = ladder_trace(
+        [
+            _attempt("local-coder", "local", "climb", "gate", "x"),
+            _attempt("openrouter-nemotron-ultra", "cheap_frontier", "accept", "ok", ""),
+        ]
+    )
+    stayed = ladder_trace([_attempt("local-coder", "local", "accept", "ok", "")])
+    nobody = ladder_trace([_attempt("local-coder", "local", "terminate", "gate", "x")])
+    text = render_ladder_table(
+        [
+            _ladder_record("A", climbed, accepted=True),
+            _ladder_record("B", stayed, accepted=True),
+            _ladder_record("C", stayed, accepted=False),
+            _ladder_record("D", nobody, accepted=False),
+        ]
+    )
+    assert "- local-coder answered 2 of 4" in text
+    assert "- openrouter-nemotron-ultra answered 1 of 4" in text
+    assert "- no rung answered 1 of 4" in text
+    assert "climbed at least once: 1 of 4" in text
+
+
+def test_a_ladder_run_that_returned_no_receipt_is_a_row_answered_by_nobody() -> None:
+    record = _ladder_record("R4-05", {}, accepted=False)
+    del record["ladder"]
+    text = render_ladder_table([record])
+    assert "| R4-05 | test | none | 0 | no | 60.0 | - |" in text
+    assert "- no rung answered 1 of 1" in text
