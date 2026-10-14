@@ -460,3 +460,23 @@ def test_only_plumbing_failures_are_run_again() -> None:
         "ok",
         "timeout",
     ]
+
+
+def test_a_runtime_shut_down_mid_delegation_is_plumbing_but_a_model_failure_is_not() -> (
+    None
+):
+    shutdown = {
+        "task_id": "R4-01",
+        "failure_kind": "status_failed",
+        "scorer_outcome": "no_answer",
+        "detail": "the runtime running this delegation shut down (redeploy, restart)",
+    }
+    model_error = {
+        "task_id": "R4-02",
+        "failure_kind": "status_failed",
+        "scorer_outcome": "no_answer",
+        "detail": "provider returned 500",
+    }
+    stand, redo = partition_infra_failures([shutdown, model_error])
+    assert [r["task_id"] for r in redo] == ["R4-01"]
+    assert [r["task_id"] for r in stand] == ["R4-02"]

@@ -430,6 +430,7 @@ def render_ladder_table(records: Sequence[dict[str, Any]]) -> str:
     ]
     answered: dict[str, int] = {}
     climbed = 0
+    gate_took_wrong = 0
     for record in sorted(records, key=lambda r: r["task_id"]):
         # A run with no receipt has no trace: it answered nobody and tried one rung.
         trace = record.get("ladder") or {
@@ -440,6 +441,7 @@ def render_ladder_table(records: Sequence[dict[str, Any]]) -> str:
         who = trace["answered_by"]
         answered[who or "no rung"] = answered.get(who or "no rung", 0) + 1
         climbed += 1 if trace["escalations"] > 0 else 0
+        gate_took_wrong += 1 if who and not record["accepted"] else 0
         why = "; ".join(
             f"{r['backend_id']}: {r['reason'] or r['decision']}"
             for r in trace["refused"]
@@ -455,6 +457,7 @@ def render_ladder_table(records: Sequence[dict[str, Any]]) -> str:
         label = "no rung" if name == "no rung" else name
         lines.append(f"- {label} answered {count} of {total}")
     lines.append(f"climbed at least once: {climbed} of {total}")
+    lines.append(f"gate accepted, scorer failed: {gate_took_wrong} of {total}")
     return "\n".join(lines).strip() + "\n"
 
 

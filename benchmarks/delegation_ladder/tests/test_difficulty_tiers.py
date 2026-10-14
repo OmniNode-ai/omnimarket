@@ -365,3 +365,18 @@ def test_a_ladder_run_that_returned_no_receipt_is_a_row_answered_by_nobody() -> 
     text = render_ladder_table([record])
     assert "| R4-05 | test | none | 0 | no | 60.0 | - |" in text
     assert "- no rung answered 1 of 1" in text
+
+
+def test_the_ladder_table_counts_answers_the_gate_took_and_the_scorer_failed() -> None:
+    stayed = ladder_trace([_attempt("local-coder", "local", "accept", "ok", "")])
+    nobody = ladder_trace([_attempt("local-coder", "local", "terminate", "gate", "x")])
+    text = render_ladder_table(
+        [
+            _ladder_record("A", stayed, accepted=True),
+            _ladder_record("B", stayed, accepted=False),
+            _ladder_record("C", stayed, accepted=False),
+            _ladder_record("D", nobody, accepted=False),
+        ]
+    )
+    # B and C passed the gate and were wrong; D never passed it: only B and C count.
+    assert "gate accepted, scorer failed: 2 of 4" in text

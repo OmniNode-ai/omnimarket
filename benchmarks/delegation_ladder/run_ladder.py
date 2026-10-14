@@ -922,10 +922,17 @@ def rescore_record(
 _INFRA_FAILURES = ("no_receipt", "no_terminal_payload", "client_timeout")
 
 
+# The runtime was redeployed or restarted under a delegation in flight. Its
+# terminal is ``status_failed`` like a model failure's, so the sentence names it.
+_RUNTIME_SHUTDOWN = "the runtime running this delegation shut down"
+
+
 def is_infra_failure(record: dict[str, Any]) -> bool:
     kind = str(record.get("failure_kind") or "")
-    return record.get("scorer_outcome") == "no_answer" and kind.startswith(
-        _INFRA_FAILURES
+    if record.get("scorer_outcome") != "no_answer":
+        return False
+    return kind.startswith(_INFRA_FAILURES) or (
+        kind == "status_failed" and _RUNTIME_SHUTDOWN in str(record.get("detail") or "")
     )
 
 
