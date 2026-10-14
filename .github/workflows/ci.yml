@@ -504,6 +504,13 @@ jobs:
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
 
+      # OMN-20601: the house routing-overlay write command has a producer and
+      # the node contract declares its runtime profile. Paired with the
+      # house-routing-overlay-publisher hook. This tests the publisher's own
+      # output; it does not scan omnimarket code for routing tables.
+      - name: House routing-overlay publisher (OMN-20601)
+        run: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py -q -n 0
+
       # Paired with ticket-contract-prerequisite-regression (pre-commit).
       - name: Ticket contract authoring refusal controls (OMN-20864)
         run: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
