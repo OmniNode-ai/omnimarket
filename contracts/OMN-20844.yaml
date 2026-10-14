@@ -93,6 +93,18 @@ requirements:
       - id: "AC15"
         statement: |-
           AC15: all four L6 credential chains start on the declared house tier without a backend pin; rejected and absent credentials retain their typed refusals and leave every successor untouched, while the outage first fails on the customer BYOK backend with MODEL_UNAVAILABLE and reaches a declared successor with escalation_count >= 1.
+  - id: "req-pinned-run-stays-on-its-backend"
+    statement: "A delegation pinned to one backend runs on that backend or fails with a typed reason; it is never answered by another backend under the pin's name."
+    acceptance:
+      - id: "AC20"
+        statement: |-
+          AC20: on the bus path a pinned run whose call fails in transport, or whose answer the gate refuses, takes no same-tier sibling hop and no escalation and terminates with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still moves -- falsifier: a routing intent emitted for the pinned run, or the unpinned control not moving.
+      - id: "AC21"
+        statement: |-
+          AC21: the routing reducer never resolves a backend other than the pin for a pinned request: a same-tier re-route re-selects the pin, and a re-route past the pin's tier or with the pin excluded refuses -- falsifier: a routing decision for a pinned request naming another backend.
+      - id: "AC22"
+        statement: |-
+          AC22: on the in-process path (LocalDelegationDispatchPort) a pinned run whose call fails in transport, or whose answer the gate refuses, calls no backend but the pin and returns status failed with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still reaches the sibling -- falsifier: a call to another backend for the pinned run, or the unpinned control not reaching the sibling.
   - id: "req-declared-literal-answer-not-content-free"
     statement: "The quality gate does not refuse a correct short answer that matches the shape its prompt declared, as content-free."
     acceptance:
@@ -118,6 +130,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC16: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
     command: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC20 to AC22: workflow, escalation COMPUTE, routing reducer and in-process port tests for a pinned run, with the unpinned controls."
+    command: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_pin_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov"
   - kind: "tests"
     description: "AC30: the declared-literal shape, the literals the gate accepts under it, and the empty, filler, refusal and undeclared-prompt controls that stay refused."
     command: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
@@ -277,6 +292,30 @@ dod_evidence:
         check_value: "uv run pytest tests/chains/local/test_chain_l6_typed_credential_refusals_omn18698.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC15"]
+  - id: "dod-omn20844-ac20-pinned-run-fails-typed"
+    description: "AC20: a pinned run's transport failure and gate refusal end in pinned_backend_failed with no routing intent; the unpinned control still moves to the sibling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov -k 'transport_failure or gate_failure or compute'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC20"]
+  - id: "dod-omn20844-ac21-reducer-keeps-the-pin"
+    description: "AC21: the routing reducer re-selects the pin on a same-tier re-route and refuses a re-route past the pin's tier or with the pin excluded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py -q -n 0 -p no:randomly --no-cov -k 'reroute or escalation_after_pinned or initial'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
+  - id: "dod-omn20844-ac22-in-process-pin"
+    description: "AC22: the in-process port calls only the pin for a pinned run and returns pinned_backend_failed on a transport failure and on a gate refusal; the unpinned control reaches the sibling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_pin_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
   - id: "dod-omn20844-ac30-declared-literal"
     description: "AC30: the TN-h05 shape of prompt declares an exact literal, a non-string Python literal passes the gate under it, and empty, filler, refusal and undeclared-prompt answers are still refused."
     source: "manual"
