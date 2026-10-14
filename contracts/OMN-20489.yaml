@@ -61,7 +61,7 @@ evidence_requirements:
     command: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0"
   - kind: "tests"
     description: "Answer gate over the labelled rows, the code gate with real named tests, and the in-process dispatch with a judge wired."
-    command: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0"
+    command: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -107,30 +107,35 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0 -k 'text or judge or labelled or fixture'"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k 'text or judge or labelled or fixture'"
     binds_ac: ["AC5"]
   - id: "dod-omn20489-gate2-code-gate"
     description: "A slugify answer whose named pytest test passes in a workspace copy is accepted; one whose test fails is refused with the failing test id; no test run is refused as INSUFFICIENT."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0 -k code"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k code"
     binds_ac: ["AC6"]
   - id: "dod-omn20489-gate3-dispatch"
     description: "The in-process dispatch with a judge wired completes a summary its judge accepts, fails one its judge rejects or whose judge call raises, and leaves the verdict unchanged with no judge wired."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -n 0 -k 'dispatch or rejection or acceptance'"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k 'dispatch or rejection or acceptance'"
     binds_ac: ["AC8"]
   - id: "dod-omn20489-ac3-no-routing-change"
-    description: "No commit touching the bifrost routing contract cites this ticket."
+    description: "No commit touching the bifrost routing contract cites this ticket, and the new gate selects an independent judge from that unchanged contract. The selection test cannot pass without the answer-gate implementation."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "bash -c '! git log --format=%B -- src/omnimarket/configs/bifrost_delegation.yaml | grep -q OMN-20489'"
-        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k judge_is_a_routing_contract"
     binds_ac: ["AC7"]
+  - id: "dod-omn20489-deploy-answer-gate"
+    description: "Deploy probe: GitHub serves the answer-gate handler at the checked-out commit, including its independent-judge and named-test acceptance paths. A commit without the handler or either path fails this source readback; no live judge wiring is claimed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_answer_gate_compute/handlers/handler_delegation_answer_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c "import sys; s = sys.stdin.read(); assert all(part in s for part in (\"class HandlerDelegationAnswerGate:\", \"and judge_family != producer_family\", \"tests_passed = run is not None and run.passed\"))"'
