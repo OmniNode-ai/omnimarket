@@ -612,6 +612,9 @@ jobs:
       # OMN-20282: paired with the work-ledger-principal-cli pre-commit hook.
       - name: Work-ledger signing configuration and bus round-trip
         run: uv run --frozen pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q
+      # OMN-20737: paired with the work-ledger-parity-database pre-commit hook.
+      - name: Work-ledger parity database errors and live state reads
+        run: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q
       # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
       # not only in the smart-selected suite, because the test imports no src
       # module and so is never selected by a change to the file that regresses.

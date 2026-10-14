@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20737"
+title: "Work-ledger parity reports database failures as errors"
+summary: >-
+  The existing work-ledger parity reader maps database I/O failures to exit 2,
+  names the exception on stderr, and emits no report or receipt on a failed
+  read. Fake connections exercise permission, missing-table, connection,
+  interface and timeout errors, and faithful and differing state reads.
+  This contract covers AC1. AC2 remains pending the work_ledger_ro state-table
+  grant migration in omnibase_infra and a live read as that role; the fake
+  state-read controls do not establish that grant or satisfy the live criterion.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-parity-database-errors"
+    statement: >-
+      Database read failures must be reported as errors rather than parity
+      results, without emitting a report or receipt containing counts.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a database permission error in parity exits 2 -- falsifier: uv run pytest tests -k parity_database_error_exits_2
+evidence_requirements:
+  - kind: "tests"
+    description: "Database errors return 2; fake database state differences are compared."
+    command: "uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-parity-database-errors"
+    description: >-
+      Fake connections raise permission, missing-table, connection, interface,
+      refused-connection and timeout errors at connect, rows, state, sources
+      and close. JSON, text and receipt modes return 2 with the named error on
+      stderr and empty stdout. The driver-error cases fail before this change.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q -k parity_database_error_exits_2"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-parity-container-smoke"
+    description: >-
+      A disposable Python container runs the focused CLI and database-loader
+      tests from this checkout. This is a hosted-runner-compatible container
+      smoke check of error handling and state comparison, not a grant check
+      against a deployed database. No lab address or database credential is used.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace
+          -e UV_PROJECT_ENVIRONMENT=/tmp/parity-venv -e UV_CACHE_DIR=/tmp/uv-cache
+          ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+          uv run --frozen pytest
+          tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py
+          -q -p no:cacheprovider --basetemp=/tmp/parity-tests
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

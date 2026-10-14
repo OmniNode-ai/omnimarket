@@ -1712,6 +1712,15 @@ repos:
         files: ^(src/omnimarket/(models/work_ledger_append/|nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
         stages: [pre-commit]
 
+      # OMN-20737: paired with the explicit ci.yml regression step.
+      - id: work-ledger-parity-database
+        name: Work-ledger parity database errors and live state reads
+        entry: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_projection_work_ledger/|tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       - id: output-only-release-acceptance
         name: D1 output-only release acceptance (OMN-18932)
         entry: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
