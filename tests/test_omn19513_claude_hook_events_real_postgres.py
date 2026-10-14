@@ -158,7 +158,8 @@ async def _event_rows(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
             "cache_read_input_tokens",
             "assistant_message_count",
         ):
-            assert record.pop(column) is None, column
+            value = record.pop(column)
+            assert value is None, column
         record["event_id"] = str(record["event_id"])
         record["correlation_id"] = str(record["correlation_id"])
         record["causation_id"] = (
