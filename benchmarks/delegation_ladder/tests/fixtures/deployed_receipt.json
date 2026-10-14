@@ -1,0 +1,32 @@
+{
+  "result": {
+    "terminal_payload": {
+      "payload": {
+        "status": "completed",
+        "response": "held value",
+        "quality_gate_passed": true,
+        "quality_score": 0.9,
+        "model_name": "Qwen3.8-27B",
+        "metrics": {
+          "input_tokens": 10,
+          "output_tokens": 2,
+          "total_tokens": 12,
+          "cost_usd": 0.0,
+          "latency_ms": 123
+        },
+        "attempts": [
+          {
+            "tier": "local",
+            "backend_id": "local-coder",
+            "model_id": "Qwen3.8-27B",
+            "quality_gate_passed": true,
+            "acceptance_decision": "accept",
+            "acceptance_reason": "gate passed",
+            "host": "lab-test"
+          }
+        ],
+        "escalation_count": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h08",
+  "title": "predict parse_labels_json (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function parse_labels_json in omnimarket@7acb97b72bd6:scripts/ci/check_pr_hold_marker.py; the call and the asserted result come from tests/unit/scripts/ci/test_check_pr_hold_marker.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nfrom collections.abc import Mapping\n\nimport json\n\ndef parse_labels_json(raw):\n    if raw is None:\n        return None\n    stripped = raw.strip()\n    if not stripped:\n        return None\n    try:\n        parsed = json.loads(stripped)\n    except json.JSONDecodeError:\n        return None\n    if not isinstance(parsed, list):\n        return None\n    names: list[str] = []\n    for entry in parsed:\n        if isinstance(entry, Mapping):\n            name = entry.get('name')\n            if isinstance(name, str):\n                names.append(name)\n        elif isinstance(entry, str):\n            names.append(entry)\n    return tuple(names)\n```\n\nWhat does `parse_labels_json('[{\"name\": \"a\"}, \"b\"]')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "('a', 'b')"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

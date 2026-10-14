@@ -42,6 +42,15 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: re-scoring the benchmark's stored review answers with the fixed gate shows no R3b answer refused by cites_specific_lines on any rung, and a cites-nothing answer on numbered input still refused -- falsifier: an R3b answer refused by the rule after the fix, or a numbered-input prompt whose cites-nothing answer passes.
+  - id: "req-tiered-ladder-benchmark"
+    statement: "The delegation ladder's own runner measures each rung over a tiered public task set and prints a per-class table with 95% intervals, so the rungs can be separated or shown not to be."
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: run_ladder.py runs one pinned rung or the unpinned ladder over the tiered set, writes each finished cell durably and resumes, and summarise_results.py prints per class and rung the accepted share with a Wilson 95% interval, the median latency and the cost where receipts carry it, and names the rungs whose interval is disjoint from every other -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py -q -p no:randomly, plus the one-cell rerun command in the run_ladder.py docstring.
+      - id: "AC10"
+        statement: |-
+          AC10: the tiered set holds at least 25 tasks per class for document, review and reasoning, at least 8 per tier, each mined from merged public history and scored mechanically with a held answer that is re-derived, and every scorer fails its negative control -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -49,6 +58,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC7 and AC8: the real R3b prompts and two stored refused answers pass the fixed gate; numbered listing, cat -n listing, diff hunk, line N and path:N inputs keep the rule and an answer citing nothing is refused; an empty stored answer stays refused."
     command: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py tests/unit/delegation/test_omn19432_rule_waived_by_prompt_layout.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC9 and AC10: the class table, driver plumbing, tiered corpus and scorer controls."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -121,3 +133,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq waived_unless_prompt_matches'"
+  - id: "dod-omn20844-tiered-ladder-benchmark"
+    description: "AC9 and AC10: the driver, the per-class table with intervals, the tiered public corpus and the scorer negative controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9", "AC10"]

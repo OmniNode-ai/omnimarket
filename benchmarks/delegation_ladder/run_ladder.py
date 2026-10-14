@@ -23,6 +23,7 @@ Usage::
     python benchmarks/delegation_ladder/run_ladder.py --path local
     python benchmarks/delegation_ladder/run_ladder.py --path cloud --api-key-file <file>
     python benchmarks/delegation_ladder/run_ladder.py --path local --only R4 R6
+    uv run python benchmarks/delegation_ladder/run_ladder.py --backend local-coder --set tiered --only <TASK_ID> --out /tmp/x.jsonl
 """
 
 from __future__ import annotations
@@ -37,8 +38,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from contextlib import ExitStack
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Literal, Protocol
 
 HERE = Path(__file__).resolve().parent
 if str(HERE.parent.parent) not in sys.path:
@@ -46,18 +49,21 @@ if str(HERE.parent.parent) not in sys.path:
 
 from benchmarks.delegation_ladder.complexity import classify  # noqa: E402
 from benchmarks.delegation_ladder.models import (  # noqa: E402
+    EnumDifficulty,
     EnumOutcome,
     EnumPath,
     EnumScorerKind,
     ModelRunRecord,
     ModelScore,
     ModelTaskBundle,
+    is_accepted,
 )
 from benchmarks.delegation_ladder.scorers import (  # noqa: E402
     score_diagnosis_location,
     score_exact_match,
     score_grounding_coverage,
     score_grounding_rubric,
+    score_literal_equals,
     score_patch_apply_and_test,
     score_unit_test_execution,
     sha256_of,
@@ -88,6 +94,287 @@ class Invocation:
     wall_ms: int
     refused: bool
     notes: str
+    attempts: list[dict[str, object]] = field(default_factory=list)
+    escalation_count: int | None = None
+    host: str | None = None
+
+
+@dataclass(frozen=True)
+class BackendSpec:
+    """The invocation surface and endpoint label of one delegation rung."""
+
+    kind: Literal["onex_delegate", "harness"]
+    host_label: str
+    backend_id: str | None = None
+    model: str | None = None
+    overlay: str | None = None
+
+
+BACKENDS = {
+    "local-coder": BackendSpec(
+        "onex_delegate", "qwen-host-a", backend_id="local-coder"
+    ),
+    "local-omnipc2-chat": BackendSpec(
+        "onex_delegate",
+        "qwen-host-b",
+        backend_id="local-coder",
+        overlay=str(Path.home() / ".omninode/delegation/bifrost_overrides.pc2.yaml"),
+    ),
+    "openrouter-nemotron-ultra": BackendSpec(
+        "onex_delegate", "openrouter-free", backend_id="openrouter-nemotron-ultra"
+    ),
+    "openrouter-nemotron-super": BackendSpec(
+        "onex_delegate", "openrouter-free", backend_id="openrouter-nemotron-super"
+    ),
+    "glm-5.3-flash": BackendSpec("harness", "claude-glm", model="glm-5.3-flash"),
+    "glm-5.3": BackendSpec("harness", "claude-glm", model="glm-5.3"),
+    "unpinned": BackendSpec("onex_delegate", ""),
+}
+
+
+class SubprocessRun(Protocol):
+    """Only the subprocess options used by the pinned driver."""
+
+    def __call__(
+        self,
+        args: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+        env: dict[str, str],
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]: ...
+
+
+def _mapping(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def parse_deployed_receipt(receipt: dict[str, object]) -> Invocation:
+    """Keep terminal failures as empty answers so the scorer counts them."""
+    result = _mapping(receipt.get("result"))
+    terminal = _mapping(result.get("terminal_payload"))
+    # Deployed-lane receipts nest the payload one level down; in-process ones do not.
+    payload = _mapping(terminal.get("payload")) or terminal or result
+    metrics = _mapping(payload.get("metrics"))
+    raw_attempts = payload.get("attempts")
+    attempts = (
+        [_mapping(a) for a in raw_attempts if isinstance(a, dict)]
+        if isinstance(raw_attempts, list)
+        else []
+    )
+    answering = next(
+        (a for a in reversed(attempts) if a.get("acceptance_decision") == "accept"), {}
+    )
+    fields = (
+        "backend_id",
+        "tier",
+        "model_id",
+        "acceptance_decision",
+        "acceptance_reason",
+        "failure_class",
+        "quality_gate_passed",
+        "error_message",
+    )
+    kept = [{key: a.get(key) for key in fields} for a in attempts]
+    for attempt in kept:
+        error = _as_str(attempt.get("error_message"))
+        attempt["error_message"] = error[:200] if error is not None else None
+    status = _as_str(payload.get("status"))
+    response = _as_str(payload.get("response")) or ""
+    return Invocation(
+        response=response if status == "completed" and response.strip() else "",
+        delegation_id=_as_str(result.get("correlation_id")),
+        tier=_as_str(answering.get("tier")),
+        backend_id=_as_str(answering.get("backend_id")),
+        model_id=_as_str(payload.get("model_name"))
+        or _as_str(answering.get("model_id")),
+        input_tokens=_as_int(metrics.get("input_tokens")),
+        output_tokens=_as_int(metrics.get("output_tokens")),
+        total_tokens=_as_int(metrics.get("total_tokens")),
+        cost_usd=_as_float(metrics.get("cost_usd")),
+        model_latency_ms=_as_int(metrics.get("latency_ms")),
+        quality_gate_passed=_as_bool(payload.get("quality_gate_passed")),
+        quality_score=_as_float(payload.get("quality_score")),
+        wall_ms=0,
+        refused=False,
+        notes=f"status={status}; error_message={str(payload.get('error_message') or '')[:200]}",
+        attempts=kept,
+        escalation_count=_as_int(payload.get("escalation_count")),
+        host=_as_str(answering.get("host")),
+    )
+
+
+def _no_answer(wall_ms: int, notes: str) -> Invocation:
+    return replace(
+        parse_deployed_receipt({}), wall_ms=wall_ms, refused=True, notes=notes
+    )
+
+
+def _stdout_receipt(stdout: str) -> dict[str, object] | None:
+    for line in stdout.splitlines():
+        if line.strip().startswith("{"):
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+    return None
+
+
+def invoke_pinned(
+    bundle: ModelTaskBundle,
+    spec: BackendSpec,
+    *,
+    onex: Path,
+    timeout_s: int,
+    run: SubprocessRun = subprocess.run,
+    in_process_overlay: str | None = None,
+) -> Invocation:
+    """One invocation, with injectable plumbing and no delegation retries.
+
+    ``in_process_overlay`` runs a deployed-lane rung in this process instead, on
+    the bifrost overlay it names. The shared lane serves one consumer, so a
+    benchmark that fans out through it times out on queueing, which says
+    nothing about the rung.
+    """
+    env = dict(os.environ)
+    env["ONEX_DELEGATION_ALLOW_PAID"] = "0"
+    env.pop("ONEX_EVENT_BUS_TYPE", None)
+    with tempfile.TemporaryDirectory(prefix=f"ladder-{bundle.task_id}-") as tmp:
+        work = Path(tmp)
+        if spec.kind == "harness":
+            plugin_root = env.get("OMNI_PLUGIN_ROOT")
+            if not plugin_root:
+                raise RuntimeError("OMNI_PLUGIN_ROOT must be set for harness backends")
+            if not spec.model:
+                raise ValueError("harness backend must specify a model")
+            prompt = work / "prompt.txt"
+            prompt.write_text(bundle.prompt, encoding="utf-8")
+            argv = [
+                "python3",
+                str(
+                    Path(plugin_root)
+                    / "skills/harness-delegate/scripts/harness_delegate.py"
+                ),
+                "run",
+                "--harness",
+                "claude-glm",
+                "--model",
+                spec.model,
+                "--task-class",
+                bundle.task_type,
+                "--prompt-file",
+                str(prompt),
+                "--check",
+                'test -s "$HARNESS_ANSWER_FILE"',
+                "--lane",
+                env.get("ONEX_LANE") or "ladder",
+                "--ticket",
+                "OMN-20844",
+                "--out-dir",
+                str(work),
+            ]
+        else:
+            registry_root = env.get("OMNI_HOME")
+            if not registry_root:
+                raise RuntimeError("OMNI_HOME must be set; there is no default")
+            env["PATH"] = (
+                f"{Path(registry_root) / 'omnibase_infra/.venv/bin'}:{env.get('PATH', '')}"
+            )
+            argv = [
+                "bash",
+                str(onex),
+                "delegate",
+                bundle.prompt,
+                "--task-type",
+                bundle.task_type,
+                "--ticket",
+                "OMN-20844",
+            ]
+            overlay = spec.overlay or in_process_overlay
+            if overlay:
+                # LADDER_202_OVERLAY lets a host whose shipped overlay lacks the served
+                # model name point at a per-run copy that has it.
+                env["BIFROST_OVERLAY_PATH"] = (
+                    env.get("LADDER_202_OVERLAY", overlay) if spec.overlay else overlay
+                )
+                argv += [
+                    "--bus",
+                    "inmemory",
+                    "--locus",
+                    "in-process",
+                    "--state-root",
+                    str(Path(registry_root) / ".onex_state"),
+                ]
+            else:
+                argv += [
+                    "--bus",
+                    "kafka",
+                    "--lane",
+                    "dev",
+                    "--locus",
+                    "deployed-lane",
+                    "--state-root",
+                    str(Path(registry_root) / ".onex_state"),
+                ]
+            argv += ["--timeout", str(timeout_s), "--json"]
+            if spec.backend_id:
+                argv += ["--backend-id", spec.backend_id]
+
+        started = time.monotonic()
+        try:
+            completed = run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s + 180,
+                env=env,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stderr = exc.stderr or ""
+            tail = (
+                stderr.decode(errors="replace") if isinstance(stderr, bytes) else stderr
+            )
+            return _no_answer(
+                int((time.monotonic() - started) * 1000),
+                f"client exceeded {timeout_s + 180}s; {tail[-400:]}",
+            )
+        wall_ms = int((time.monotonic() - started) * 1000)
+        if spec.kind == "onex_delegate":
+            receipt = _stdout_receipt(completed.stdout)
+            if receipt is not None:
+                return replace(parse_deployed_receipt(receipt), wall_ms=wall_ms)
+            return _no_answer(
+                wall_ms,
+                f"no receipt; rc={completed.returncode}; {completed.stderr[-400:]}",
+            )
+
+        receipts = list(work.glob("*/receipt.json"))
+        if len(receipts) != 1:
+            raise RuntimeError(
+                f"harness_error: expected one receipt; rc={completed.returncode}; {completed.stderr[-400:]}"
+            )
+        harness = _mapping(json.loads(receipts[0].read_text(encoding="utf-8")))
+        usage = _mapping(harness.get("usage"))
+        answer_file = _as_str(harness.get("answer_file"))
+        response = Path(answer_file).read_text(encoding="utf-8") if answer_file else ""
+        duration = _as_float(harness.get("duration_s"))
+        refused = bool(harness.get("timed_out")) or completed.returncode != 0
+        return replace(
+            parse_deployed_receipt({}),
+            response=response,
+            wall_ms=wall_ms,
+            refused=refused,
+            model_id=spec.model,
+            input_tokens=_as_int(usage.get("input_tokens")),
+            output_tokens=_as_int(usage.get("output_tokens")),
+            model_latency_ms=int(duration * 1000) if duration is not None else None,
+            notes=f"outcome={harness.get('outcome')}; timed_out={harness.get('timed_out')}; error={harness.get('error')}",
+        )
 
 
 # --------------------------------------------------------------------------
@@ -126,15 +413,15 @@ def _recover_rejected(state_root: Path) -> tuple[str, str, str] | None:
 
 
 def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocation:
-    omni_home = os.environ.get("OMNI_HOME")
-    if not omni_home:
+    registry_root = os.environ.get("OMNI_HOME")
+    if not registry_root:
         raise RuntimeError("OMNI_HOME must be set; there is no default (rule 8)")
     env = dict(os.environ)
-    env["OMNI_HOME"] = omni_home
+    env["OMNI_HOME"] = registry_root
     env["ONEX_DELEGATION_ALLOW_PAID"] = "0"
     env.pop("ONEX_EVENT_BUS_TYPE", None)
     env["PATH"] = (
-        f"{Path(omni_home) / 'omnibase_infra' / '.venv' / 'bin'}:{env['PATH']}"
+        f"{Path(registry_root) / 'omnibase_infra' / '.venv' / 'bin'}:{env['PATH']}"
     )
 
     tmp = Path(tempfile.mkdtemp(prefix=f"ladder-{bundle.task_id}-"))
@@ -295,12 +582,12 @@ def invoke_cloud(
     timeout_s: int,
     base_url: str | None = None,
 ) -> Invocation:
-    omni_home = os.environ.get("OMNI_HOME")
-    if not omni_home:
+    registry_root = os.environ.get("OMNI_HOME")
+    if not registry_root:
         raise RuntimeError("OMNI_HOME must be set; there is no default (rule 8)")
     env = dict(os.environ)
     env["PATH"] = (
-        f"{Path(omni_home) / 'omnibase_infra' / '.venv' / 'bin'}:{env['PATH']}"
+        f"{Path(registry_root) / 'omnibase_infra' / '.venv' / 'bin'}:{env['PATH']}"
     )
     env.pop("ONEX_EVENT_BUS_TYPE", None)
 
@@ -505,6 +792,8 @@ def score(bundle: ModelTaskBundle, response: str) -> ModelScore:
             return score_diagnosis_location(response, config)
         case EnumScorerKind.PATCH_APPLY_AND_TEST:
             return score_patch_apply_and_test(response, config, FIXTURES)
+        case EnumScorerKind.LITERAL_EQUALS:
+            return score_literal_equals(response, config)
 
 
 def run_one(
@@ -515,8 +804,19 @@ def run_one(
     timeout_s: int,
     base_url: str | None = None,
     transcript_dir: Path | None = None,
+    *,
+    backend: str | None = None,
+    in_process_overlay: str | None = None,
 ) -> ModelRunRecord:
-    if path is EnumPath.LOCAL:
+    if backend is not None:
+        got = invoke_pinned(
+            bundle,
+            BACKENDS[backend],
+            onex=onex,
+            timeout_s=timeout_s,
+            in_process_overlay=in_process_overlay,
+        )
+    elif path is EnumPath.LOCAL:
         got = invoke_local(bundle, onex, timeout_s)
     else:
         got = invoke_cloud(bundle, onex, api_key_file, timeout_s, base_url)
@@ -559,8 +859,16 @@ def run_one(
     else:
         verdict = score(bundle, got.response)
 
+    # The routing rubric is a production contract and is not changed here. A
+    # predicted-literal task is graded by comparison with a held answer, which is
+    # what the rubric already calls exact_match.
+    rubric_scorer = (
+        EnumScorerKind.EXACT_MATCH
+        if bundle.scorer is EnumScorerKind.LITERAL_EQUALS
+        else bundle.scorer
+    )
     classification = classify(
-        bundle.prompt, bundle.scorer.value, bundle.dependent_reasoning_steps
+        bundle.prompt, rubric_scorer.value, bundle.dependent_reasoning_steps
     )
 
     return ModelRunRecord(
@@ -587,13 +895,28 @@ def run_one(
         complexity_score=classification.score,
         complexity_features=json.loads(classification.features.model_dump_json()),
         notes=got.notes,
+        backend=backend,
+        difficulty=bundle.difficulty,
+        task_type=bundle.task_type,
+        host=(got.host if backend == "unpinned" else BACKENDS[backend].host_label)
+        if backend is not None
+        else None,
+        accepted=is_accepted(verdict.outcome, got.quality_gate_passed),
+        attempts=got.attempts,
+        escalation_count=got.escalation_count,
     )
 
 
-def load_bundles(only: list[str] | None) -> list[ModelTaskBundle]:
+def load_bundles(
+    only: list[str] | None,
+    task_set: str = "ladder",
+    classes: list[str] | None = None,
+    difficulty: EnumDifficulty | None = None,
+) -> list[ModelTaskBundle]:
+    source = BUNDLES / "tiered" if task_set == "tiered" else BUNDLES
     bundles = [
         ModelTaskBundle.model_validate_json(p.read_text(encoding="utf-8"))
-        for p in sorted(BUNDLES.glob("*.json"))
+        for p in sorted(source.glob("*.json"))
     ]
     if only:
         wanted = {token.upper() for token in only}
@@ -602,12 +925,66 @@ def load_bundles(only: list[str] | None) -> list[ModelTaskBundle]:
             for b in bundles
             if b.task_id.upper() in wanted or b.rung.value.upper() in wanted
         ]
-    return bundles
+    return [
+        b
+        for b in bundles
+        if (not classes or b.task_type in classes)
+        and (difficulty is None or b.difficulty == difficulty)
+    ]
+
+
+def remaining_bundles(
+    bundles: list[ModelTaskBundle],
+    done_ids: set[str],
+) -> list[ModelTaskBundle]:
+    return [b for b in bundles if b.task_id not in done_ids]
+
+
+def completed_task_ids(path: Path) -> set[str]:
+    """The latest plumbing failure stays eligible for an explicit resume."""
+    if not path.exists():
+        return set()
+    records: dict[str, dict[str, object]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            record = _mapping(json.loads(line))
+            task_id = _as_str(record.get("task_id"))
+            if task_id is not None:
+                records[task_id] = record
+    return {
+        task_id
+        for task_id, record in records.items()
+        if "harness_error" not in str(record.get("notes", ""))
+        and _mapping(record.get("score")).get("outcome") != "harness_error"
+    }
+
+
+def check_results_file(path: Path, *, resume: bool) -> None:
+    if path.exists() and not resume:
+        raise FileExistsError(f"results file already exists: {path}; use --resume")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--path", required=True, choices=[p.value for p in EnumPath])
+    surface = parser.add_mutually_exclusive_group(required=True)
+    surface.add_argument("--path", choices=["local", "cloud"])
+    surface.add_argument("--backend", choices=list(BACKENDS))
+    parser.add_argument("--set", choices=["ladder", "tiered"], default="ladder")
+    parser.add_argument("--classes", nargs="+")
+    parser.add_argument("--difficulty", choices=[d.value for d in EnumDifficulty])
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--in-process-overlay",
+        default=None,
+        help="Run onex_delegate rungs in this process on this bifrost overlay "
+        "(must carry the served model_name) instead of the shared dev lane.",
+    )
+    parser.add_argument(
+        "--shard",
+        default=None,
+        help="K/N: run only the tasks whose position modulo N is K, so one rung "
+        "can be split across hosts.",
+    )
     parser.add_argument("--only", nargs="*", help="Task ids or rung ids to run.")
     parser.add_argument("--api-key-file", type=Path, default=None)
     parser.add_argument(
@@ -632,25 +1009,73 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
-    omni_home = os.environ.get("OMNI_HOME")
-    if not omni_home:
+    if args.resume and args.backend is None:
+        parser.error("--resume requires --backend")
+    if args.concurrency < 1:
+        parser.error("--concurrency must be positive")
+    out = args.out
+    if args.backend:
+        out = out or RESULTS / f"{args.set}-{args.backend}.jsonl"
+        try:
+            check_results_file(out, resume=args.resume)
+        except FileExistsError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+
+    registry_root = os.environ.get("OMNI_HOME")
+    needs_onex = args.backend is None or BACKENDS[args.backend].kind == "onex_delegate"
+    if needs_onex and not registry_root:
         print("OMNI_HOME must be set; there is no default.", file=sys.stderr)
         return 2
-    onex = Path(omni_home) / "omnibase_infra" / "scripts" / "onex"
-    if not onex.is_file():
+    onex = Path(registry_root or ".") / "omnibase_infra" / "scripts" / "onex"
+    if needs_onex and not onex.is_file():
         print(f"delegate CLI not found at {onex}", file=sys.stderr)
         return 2
 
-    path = EnumPath(args.path)
-    bundles = load_bundles(args.only)
+    if (
+        args.backend
+        and BACKENDS[args.backend].kind == "harness"
+        and not os.environ.get("OMNI_PLUGIN_ROOT")
+    ):
+        print("OMNI_PLUGIN_ROOT must be set for harness backends", file=sys.stderr)
+        return 2
+    path = (
+        (EnumPath.UNPINNED if args.backend == "unpinned" else EnumPath.PINNED)
+        if args.backend
+        else EnumPath(args.path)
+    )
+    bundles = load_bundles(
+        args.only,
+        args.set,
+        args.classes,
+        EnumDifficulty(args.difficulty) if args.difficulty else None,
+    )
+    if args.shard:
+        k, n = (int(x) for x in args.shard.split("/"))
+        bundles = [b for i, b in enumerate(bundles) if i % n == k]
     if not bundles:
         print("no bundles selected", file=sys.stderr)
         return 2
 
-    transcripts = RESULTS / "responses" / path.value
+    if args.backend:
+        assert out is not None
+        if args.resume:
+            bundles = remaining_bundles(bundles, completed_task_ids(out))
+        transcripts = out.parent / "responses" / f"{args.set}-{args.backend}"
+        out.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        transcripts = RESULTS / "responses" / path.value
     print(f"{len(bundles)} tasks, path={path.value}, concurrency={args.concurrency}")
     records: list[ModelRunRecord] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
+    with ExitStack() as stack:
+        journal = (
+            stack.enter_context(out.open("a" if args.resume else "x", encoding="utf-8"))
+            if args.backend and out is not None
+            else None
+        )
+        pool = stack.enter_context(
+            concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency)
+        )
         futures = {
             pool.submit(
                 run_one,
@@ -661,6 +1086,8 @@ def main() -> int:
                 args.timeout,
                 args.base_url,
                 transcripts,
+                backend=args.backend,
+                in_process_overlay=args.in_process_overlay,
             ): bundle
             for bundle in bundles
         }
@@ -694,9 +1121,22 @@ def main() -> int:
                         detail=f"{type(exc).__name__}: {exc}",
                     ),
                     response_sha256=sha256_of(""),
-                    notes="harness failure, not a model result",
+                    notes="harness_error: harness failure, not a model result"
+                    if args.backend
+                    else "harness failure, not a model result",
+                    backend=args.backend,
+                    difficulty=bundle.difficulty,
+                    task_type=bundle.task_type,
+                    accepted=False,
+                    host=BACKENDS[args.backend].host_label
+                    if args.backend and args.backend != "unpinned"
+                    else None,
                 )
             records.append(record)
+            if journal is not None:
+                journal.write(record.model_dump_json() + "\n")
+                journal.flush()
+                os.fsync(journal.fileno())
             print(
                 f"  {record.task_id:<7} {record.score.outcome.value:<13} "
                 f"score={record.score.score:.2f} leak={record.leak_fraction:.2f} "
@@ -704,6 +1144,9 @@ def main() -> int:
             )
 
     records.sort(key=lambda r: r.task_id)
+    if args.backend:
+        print(f"\nwrote {out}")
+        return 0
     RESULTS.mkdir(parents=True, exist_ok=True)
     out = args.out or (
         RESULTS / f"{path.value}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"

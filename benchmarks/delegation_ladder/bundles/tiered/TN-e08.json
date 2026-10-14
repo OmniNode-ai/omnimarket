@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e08",
+  "title": "predict wilson_accept_interval (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function wilson_accept_interval in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_delegation_acceptance_judge_compute/handlers/stats.py; the call and the asserted result come from tests/nodes/node_delegation_acceptance_judge_compute/test_score.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport math\n\n_Z = 1.959963984540054\n\ndef wilson_accept_interval(accepted, n):\n    if not 0 <= accepted <= n:\n        raise ValueError('Wilson counts must satisfy 0 <= accepted <= n')\n    if n == 0:\n        return (0.0, 1.0)\n    p = accepted / n\n    denominator = 1 + _Z ** 2 / n\n    center = (p + _Z ** 2 / (2 * n)) / denominator\n    half = _Z * math.sqrt(p * (1 - p) / n + _Z ** 2 / (4 * n ** 2)) / denominator\n    return (max(0.0, center - half), min(1.0, center + half))\n```\n\nWhat does `wilson_accept_interval(0, 0)` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "(0.0, 1.0)"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

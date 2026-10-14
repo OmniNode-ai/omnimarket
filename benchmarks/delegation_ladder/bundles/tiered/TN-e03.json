@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e03",
+  "title": "predict compute_vts_per_kloc (omnibase_spi)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function compute_vts_per_kloc in omnibase_spi@aa2de2346ff4:src/omnibase_spi/contracts/measurement/vts.py; the call and the asserted result come from tests/unit/contracts/measurement/test_vts.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef compute_vts_per_kloc(vts, lines_changed):\n    return vts / max(1, lines_changed // 1000)\n```\n\nWhat does `compute_vts_per_kloc(100.0, 5)` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "100.0"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

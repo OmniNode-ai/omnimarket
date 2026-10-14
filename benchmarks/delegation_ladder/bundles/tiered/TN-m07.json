@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m07",
+  "title": "predict _build_query_text (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function _build_query_text in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_antipattern_match_effect/handlers/handler_antipattern_match_effect.py; the call and the asserted result come from src/omnimarket/nodes/node_antipattern_match_effect/tests/test_handler_antipattern_match_effect.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef _build_query_text(code_text, description):\n    normalized_description = (description or '').strip()\n    normalized_code_text = (code_text or '').strip()\n    if not normalized_description and (not normalized_code_text):\n        raise ValueError('At least one of code_text or description must be provided.')\n    parts = []\n    if normalized_description:\n        parts.append(normalized_description)\n    if normalized_code_text:\n        parts.append(normalized_code_text)\n    return '\\n'.join(parts)\n```\n\nWhat does `_build_query_text(code_text='def foo(): pass', description=None)` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'def foo(): pass'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

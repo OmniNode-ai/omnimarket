@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h01",
+  "title": "predict added_diff_lines (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function added_diff_lines in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_delegation_rubric_check_compute/handlers/criteria_common.py; the call and the asserted result come from tests/nodes/node_delegation_rubric_check_compute/test_rubric_checks.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport re\n\ndef added_diff_lines(text):\n    hunk_header = re.compile('^@@ -\\\\d+(?:,\\\\d+)? \\\\+\\\\d+(?:,\\\\d+)? @@')\n    in_hunk = False\n    saw_hunk = False\n    collected: list[str] = []\n    lines = text.splitlines()\n    for index, line in enumerate(lines):\n        if hunk_header.match(line):\n            in_hunk = True\n            saw_hunk = True\n            continue\n        if line.startswith('diff --git '):\n            in_hunk = False\n            continue\n        if line.startswith('--- ') and index + 1 < len(lines) and lines[index + 1].startswith('+++ '):\n            in_hunk = False\n            continue\n        if in_hunk:\n            if line.startswith('+'):\n                collected.append(line[1:])\n            elif line[:1] in (' ', '-', '\\\\') or line == '':\n                pass\n            else:\n                in_hunk = False\n    return '\\n'.join(collected) if saw_hunk else None\n```\n\nWhat does `added_diff_lines('diff --git a/f.py b/f.py\\n--- a/f.py\\n+++ b/f.py\\n@@ -1,3 +1,4 @@\\n context line\\n-removed line\\n+a\\n+b\\n more context\\n')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'a\\nb'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e06",
+  "title": "predict _to_pascal_case (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function _to_pascal_case in omnibase_core@d677b4e78219:src/omnibase_core/validation/checker_literal_duplication.py; the call and the asserted result come from tests/unit/validation/test_checker_literal_duplication.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef _to_pascal_case(name):\n    word_boundaries = {'validationlevel': 'ValidationLevel', 'validationmode': 'ValidationMode', 'validationseverity': 'ValidationSeverity', 'validationtype': 'ValidationType', 'validationresult': 'ValidationResult', 'pipelinevalidationmode': 'PipelineValidationMode', 'healthstatus': 'HealthStatus', 'operationstatus': 'OperationStatus', 'servicestatus': 'ServiceStatus', 'basestatus': 'BaseStatus', 'registrationstatus': 'RegistrationStatus', 'serviceresolutionstatus': 'ServiceResolutionStatus', 'nodekind': 'NodeKind', 'nodetype': 'NodeType', 'nodestatus': 'NodeStatus', 'loglevel': 'LogLevel', 'eventpriority': 'EventPriority', 'eventtype': 'EventType', 'servicelifecycle': 'ServiceLifecycle', 'injectionscope': 'InjectionScope', 'steptype': 'StepType', 'computesteptype': 'ComputeStepType', 'environment': 'Environment', 'priority': 'Priority', 'severity': 'Severity', 'status': 'Status', 'category': 'Category'}\n    if name in word_boundaries:\n        return word_boundaries[name]\n    return name.capitalize()\n```\n\nWhat does `_to_pascal_case('unknownname')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'Unknownname'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}
