@@ -95,3 +95,16 @@ committed.
 Host names in the records are the lab-run host labels: h200 is the Mac host,
 h201 and h202 are the two Linux GPU hosts. A local backend id that carried the
 second Linux host's name is written `local-h202-chat`.
+
+Rescoring
+---------
+
+The scorers ran pytest against a subject and then its mutant (or the broken and
+then the patched module) written to one directory within the same second. Python
+keys its cached bytecode on the source's mtime in whole seconds and its length,
+so two same-length sources shared the bytecode and the second run executed the
+first's code: the same saved response scored differently on different runs.
+`_run_pytest` now writes no bytecode, and every record whose response was saved
+was rescored with `--rescore --write`. A record whose verdict changed keeps the
+first verdict as `first_scorer_outcome` (and `first_scorer_detail`). Every change
+was from fail to pass, so the first-scored tables understated the test class most.
