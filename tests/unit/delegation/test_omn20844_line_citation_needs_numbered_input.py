@@ -50,12 +50,15 @@ _RULE = "cites_specific_lines"
 _REFUSAL = "TASK_MISMATCH: missing specific line citations"
 
 # Two of the answers the gate refused, verbatim from the benchmark's stored responses
-# (h201 .onex_state/omn20844-bnch/results/responses/<rung>/<task>.json).
-_QWEN_R3B_01 = (
+# (h201 .onex_state/omn20844-bnch/results/responses/<rung>/<task>.json). The first is
+# R3b-01, delegate run eb2b7408 (stored under the local-qwen3.8-27b rung, answered by
+# openrouter-nemotron-ultra after escalation); the second is R3b-02, run 1dbc7236
+# (openrouter-nemotron-ultra). Both receipts name deciding_rules=cites_specific_lines.
+_R3B_01_ANSWER = (
     'run_focused_tests\n{"repo": "omnibase_core", "path": '
     '"tests/unit/validation/test_occ_merge_eligibility.py", "k_expr": null}'
 )
-_NEMOTRON_ULTRA_R3B_02 = (
+_R3B_02_ANSWER = (
     'reproduce_failing_run\n{\n  "run_id": 34748103920,\n  "repo": "omnibase_infra"\n}'
 )
 _NUMBERED_LISTING = (
@@ -128,7 +131,7 @@ def test_an_unnumbered_module_question_is_not_asked_to_cite_lines(task_id: str) 
 
 @pytest.mark.parametrize(
     ("task_id", "answer"),
-    [("R3b-01", _QWEN_R3B_01), ("R3b-02", _NEMOTRON_ULTRA_R3B_02)],
+    [("R3b-01", _R3B_01_ANSWER), ("R3b-02", _R3B_02_ANSWER)],
 )
 def test_the_correct_answer_the_gate_refused_no_longer_fails_the_line_rule(
     task_id: str, answer: str
