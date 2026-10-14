@@ -97,6 +97,13 @@ requirements:
       - id: "AC13"
         statement: |-
           AC13: the bundled manifest parses with active boundaries, names no onex_change_control producer or consumer, and carries no contract-drift-detected topic -- falsifier: uv run pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -k test_d2_bundled_manifest_lists_no_retired_change_control_boundary fails against the merge-base manifest
+  - id: "req-scripts-off-change-control"
+    statement: |-
+      omnimarket's scripts that nothing in this repository calls and that only served the governance repository's companions are deleted, and the lists that named that repository as a sibling to protect, scan or import no longer name it.
+    acceptance:
+      - id: "AC14"
+        statement: |-
+          AC14: the three uncalled occ scripts do not exist, five files that listed the governance repository no longer name it and the imperative-contract-guard required check names its omnibase_core owner -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "This PR's rejection behavior and hook parity fail against the merge-base implementation and pass at the head."
@@ -265,3 +272,11 @@ dod_evidence:
           docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/duplication-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/duplication-tests -k test_d2_bundled_manifest_lists_no_retired_change_control_boundary
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]
+  - id: "dod-omn20074-scripts-off-change-control"
+    description: "The uncalled occ scripts are deleted and the repository lists no longer name the governance repository."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC14"]

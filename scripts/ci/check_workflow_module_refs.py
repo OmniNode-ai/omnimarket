@@ -65,7 +65,6 @@ ORG_PACKAGES: tuple[str, ...] = (
     "omnimemory",
     "omnidash",
     "omniweb",
-    "onex_change_control",
     "omninode_infra",
     "omninode_bridge",
     "omnistream",
