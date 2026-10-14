@@ -19,7 +19,7 @@ evidence_requirements:
     description: "On the local store and through the real dashboard app: one model under two tiers on one day is two rows; each row's share is its calls over its tenant's calls that day and a day's shares sum to 1; a new call moves every share of the day; another day or tenant never enters; a call naming no tier is not_tier_routed; a replay changes nothing; a store from before keeps its rows and cursors; the deployed writer locks the tenant's day, recounts with the tier and republishes every row of the day. On dev's code all 9 fail."
     command: "uv run pytest tests/projection/test_omn21015_usage_tier_share.py -q -p no:randomly"
   - kind: "tests"
-    description: "The real local dispatch port: an escalated run's two calls stand under their own tiers, the deciding call's tier is the delegation row's, and the day's shares cover both. On dev's code it fails."
+    description: "The real local dispatch port: an escalated run's two calls both stand under the run's tier, the one its delegation row records, and the day's shares cover both. On dev's code it fails."
     command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn21015_local_dispatch_usage_tier.py -q -p no:randomly"
   - kind: "tests"
     description: "Migration 0003 on real Postgres over rows stored before it, run twice: rows and cursors kept under not_tier_routed, the key becomes four columns; the writer's statements then give per-day shares summing to 1 with every moved row re-stamped, and another tenant, another day or a replay changes none of them."
