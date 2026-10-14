@@ -67,6 +67,28 @@ class ModelMorningWatcherSnapshot(BaseModel):
     prs: dict[str, ModelMorningWatcherRecord]
 
 
+class ModelMorningLabWorkTarget(BaseModel):
+    """Where a run's phase agents run as lab work: one repository at one pushed sha.
+
+    The headless agent session of each phase starts in a detached checkout of
+    this commit on the pool host the unit is placed on. Supplied by the caller
+    of the run, never held by the node.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    repo: str = Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
+    )
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    lane: str = Field(
+        default="morning-ground-state", pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    )
+    only_host: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    )
+
+
 class ModelMorningGroundStateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     correlation_id: UUID
@@ -88,6 +110,7 @@ class ModelMorningGroundStateRequest(BaseModel):
         default=600, alias="closureProbeCeilingSeconds", gt=0
     )
     live_lanes: list[str] | None = Field(default=None, alias="liveLanes")
+    lab_work: ModelMorningLabWorkTarget | None = Field(default=None, alias="labWork")
 
     @field_validator("date")
     @classmethod

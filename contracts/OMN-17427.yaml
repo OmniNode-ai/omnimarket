@@ -215,6 +215,11 @@ requirements:
         statement: "AC35: check-direct-model-call and topic-naming-lint run at the pre-push stage, with the direct-model-call --base taken from the merge base with origin/dev, and the ci.yml jobs that back them run on every pull request -- falsifier: uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
       - id: "AC36"
         statement: "AC36: the commit-stage public-repo-hygiene and deployment-config hooks are handed the staged paths, nothing else narrows them, .public-repo-hygiene.yaml still enforces added lines, and each has a whole-tree caller job -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+  - id: "req-morning-phases-lab-work"
+    statement: "The morning ground-state node refuses a phase sent as the unroutable agent_delegation class with a typed error naming the missing capability, and runs each phase as bus lab work instead."
+    acceptance:
+      - id: "AC37"
+        statement: "AC37: the delegation gateway raises MorningPhaseCapabilityPendingError naming agent_orchestration and its tracking before publishing anything, and the default gateway sends every phase as a lab work unit that needs a logged-in agent CLI, at the run's labWork repository and pushed sha, through a full in-memory bus cycle -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -306,6 +311,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The commit-stage hygiene hooks take the staged paths and keep a whole-tree caller job."
     command: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+  - kind: "tests"
+    description: "The morning phases refuse unroutable delegation with a typed error and run as bus lab work."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -587,3 +595,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC36"]
+  - id: "dod-omn17427-ac37-morning-phases-lab-work"
+    description: "The morning phases refuse unroutable delegation with a typed error and run as bus lab work."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]

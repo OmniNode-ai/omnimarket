@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The phase gateway rides the canonical delegation request/reply wiring."""
+"""The phase gateway rides the canonical delegation request/reply wiring.
+
+``agent_delegation`` is declared ``pending_capability`` today, so a live run
+refuses before publishing (test_phase_lab_work.py). These tests hold the wire
+shape for when the class becomes routable: the contract refusal is lifted here.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,9 @@ from omnibase_core.models.resolver.model_handler_resolver_context import (
 from omnibase_core.services.service_handler_resolver import ServiceHandlerResolver
 from pydantic import JsonValue
 
+from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers import (
+    handler_morning_phase_bus,
+)
 from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_ground_state import (
     OVERLAY_ENV,
     HandlerMorningGroundState,
@@ -38,6 +46,13 @@ STUB = {
     "residuals": [],
     "delegation": {"delegated": 1, "runs": ["fixture"], "reason": ""},
 }
+
+
+@pytest.fixture(autouse=True)
+def routable_agent_delegation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        handler_morning_phase_bus, "refuse_unroutable_phase_class", lambda: None
+    )
 
 
 class Rpc:

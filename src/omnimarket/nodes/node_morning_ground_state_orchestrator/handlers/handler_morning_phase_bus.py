@@ -25,6 +25,8 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import BaseModel, JsonValue
 
+from omnimarket.inference.task_class_authority import load_task_class_authority
+
 from ..models import model_phase_results as results
 from ..models.model_morning_ground_state import (
     ModelMorningGroundStateRequest,
@@ -47,6 +49,54 @@ RESULT_TYPES: dict[str, type[BaseModel]] = {
     "dropped-work": results.ModelDroppedWorkResult,
     "session-goal": results.ModelSessionGoalResult,
 }
+
+
+#: The task class each phase is sent as on the delegation path.
+PHASE_TASK_CLASS = "agent_delegation"
+
+
+class MorningPhaseCapabilityPendingError(RuntimeError):
+    """A phase's delegation is refused: the task-class contract declares the
+    class unroutable (``routing_availability``), so no reply can come back.
+
+    Raised before anything is published, in the contract's own words, instead
+    of waiting out the reply budget for a bare request failure.
+    """
+
+    def __init__(
+        self, task_class: str, missing_capability: str, tracking: str, refusal: str
+    ) -> None:
+        super().__init__(refusal)
+        self.task_class = task_class
+        self.missing_capability = missing_capability
+        self.tracking = tracking
+
+
+def refuse_unroutable_phase_class(task_class: str = PHASE_TASK_CLASS) -> None:
+    """Raise the typed refusal when the contract declares ``task_class`` unroutable."""
+    authority = load_task_class_authority()
+    declared = authority.unroutable_task_classes.get(task_class)
+    refusal = authority.unroutable_refusal(task_class)
+    if declared is not None and refusal is not None:
+        raise MorningPhaseCapabilityPendingError(
+            task_class, declared.missing_capability, declared.tracking, refusal
+        )
+
+
+def decode_phase_result(
+    phase: ModelMorningPhaseRequest, content: str
+) -> dict[str, JsonValue] | None:
+    """Decode one phase's JSON result and hold it to the phase's typed model."""
+    decoded = json.loads(content)
+    if decoded is None:
+        return None
+    if phase.label in RESULT_TYPES:
+        # Validate against the ported typed models, preserving explicit null
+        # and omitted optional fields when the downstream brief reads JSON.
+        RESULT_TYPES[phase.label].model_validate(decoded)
+    if not isinstance(decoded, dict):
+        raise ValueError("morning phase result must be an object")
+    return cast(dict[str, JsonValue], decoded)
 
 
 class HandlerMorningPhaseBus:
@@ -114,13 +164,14 @@ class HandlerMorningPhaseBus:
     async def run(
         self, run: ModelMorningGroundStateRequest, phase: ModelMorningPhaseRequest
     ) -> dict[str, JsonValue] | None:
+        refuse_unroutable_phase_class()
         correlation = uuid5(run.correlation_id, phase.label)
         command = ModelDelegationRequest(
             correlation_id=correlation,
             tenant_id=run.tenant_id,
             emitted_at=run.emitted_at,
             prompt=phase.prompt,
-            task_type="agent_delegation",
+            task_type=PHASE_TASK_CLASS,
             max_tokens=8192,
             requested_timeout_seconds=14400,
             context_pack=json.dumps(
@@ -150,16 +201,7 @@ class HandlerMorningPhaseBus:
         content = payload.get("content")
         if not isinstance(content, str):
             raise ValueError("morning phase terminal contains no content")
-        decoded = json.loads(content)
-        if decoded is None:
-            return None
-        if phase.label in RESULT_TYPES:
-            # Validate against the ported typed models, preserving explicit null
-            # and omitted optional fields when the downstream brief reads JSON.
-            RESULT_TYPES[phase.label].model_validate(decoded)
-        if not isinstance(decoded, dict):
-            raise ValueError("morning phase result must be an object")
-        return cast(dict[str, JsonValue], decoded)
+        return decode_phase_result(phase, content)
 
     async def reconcile(self, run: ModelMorningGroundStateRequest) -> None:
         from .handler_morning_ground_state import load_morning_overlay
