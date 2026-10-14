@@ -34,9 +34,9 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_merge_group_repo_evidence_context_omn20497.py -q -p no:randomly --no-cov -n 0 -k 'queue_commit_reports_the_repo_evidence_context'"
     binds_ac: ["AC1"]
   - id: "dod-omn20497-ac2-merge-group-only"
-    description: "AC2: the shim workflow triggers on merge_group only and the caller is left without merge_group."
+    description: "AC2: the repo-evidence / dod-verify job exists exactly once in the shim, its workflow triggers on merge_group only, and the caller is left without merge_group. The existence assertion fails when the new job is absent at the merge base."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/workflows/test_merge_group_repo_evidence_context_omn20497.py -q -p no:randomly --no-cov -n 0 -k 'merge_group_only or names_the_context'"
+        check_value: "uv run pytest tests/unit/workflows/test_merge_group_repo_evidence_context_omn20497.py -q -p no:randomly --no-cov -n 0"
     binds_ac: ["AC2"]
