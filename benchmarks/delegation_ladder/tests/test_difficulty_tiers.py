@@ -28,7 +28,7 @@ from benchmarks.delegation_ladder.run_ladder import (
 from benchmarks.delegation_ladder.summarise_results import (
     DIFFICULTY_ORDER,
     difficulty_tier,
-    first_failing_tier,
+    first_failing_rung_tier,
     render_difficulty_table,
     render_ladder_table,
     tier_rung_table,
@@ -175,7 +175,7 @@ def test_a_gate_refused_row_counts_against_the_tier_not_out_of_it() -> None:
 
 def _first_failing(passes: tuple[int, int, int]) -> dict[str, str | None]:
     rows = tier_rung_table(_rung_records("rung-a", passes), _tiers())
-    return first_failing_tier(rows)["test", "rung-a"]
+    return first_failing_rung_tier(rows)["test", "rung-a"]
 
 
 def test_a_rung_that_clears_every_tier_never_starts_failing() -> None:
@@ -198,7 +198,7 @@ def test_a_rung_starts_failing_at_the_first_tier_it_loses_the_majority() -> None
 
 def test_the_rendered_tier_table_names_each_row_and_where_the_rung_fails() -> None:
     rows = tier_rung_table(_rung_records("rung-a", (8, 5, 1)), _tiers())
-    text = render_difficulty_table(rows, first_failing_tier(rows))
+    text = render_difficulty_table(rows, first_failing_rung_tier(rows))
     assert "### test" in text
     for tier in DIFFICULTY_ORDER:
         assert f"| rung-a | {tier} |" in text

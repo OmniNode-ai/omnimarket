@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21077"
+title: "A code answer is accepted on its deterministic checks and its executed tests, never on a keyword score"
+summary: >-
+  For a code class (execution_required in task_class_contracts.v1.yaml:
+  code_generation, refactor, test, validator_generation) acceptance is every
+  deterministic check passed and passes_existing_tests run and passed. The
+  graded score, whose heuristics look for keywords, is reported and decides
+  nothing. With no named test run the gate refuses the answer as INSUFFICIENT
+  and no rung climbs. The local and the bus path decide with one shared
+  function in quality_bar_authority.py. A request names its tests in its
+  metadata; the in-process port runs them through the named-test runner it is
+  given, and with no runner wired the tests are not run and the answer is
+  refused as INSUFFICIENT. Running the tests on the live delegation path is
+  follow-up work. Rubric-scored classes keep their declared bar.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-code-answer-judged-by-tests"
+    statement: |-
+      A code-class answer is accepted only when every deterministic check passed and its named tests ran and passed, on the local and the bus path, whatever keywords it carries.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: correct code is accepted and stubs are refused on both paths regardless of keywords -- falsifier: the correct add() is accepted, the pass stub with or without import typing is refused, and return a - b is refused by a failing test
+      - id: "AC2"
+        statement: |-
+          AC2: no regression -- falsifier: the suite run at the PR head shows no failure that does not also fail on dev
+  - id: "req-rubric-classes-keep-their-bar"
+    statement: |-
+      A rubric-scored class keeps its declared bar on both paths.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: rubric classes unchanged -- falsifier: a test that a documentation answer still needs its bar
+evidence_requirements:
+  - kind: "tests"
+    description: "Code-class acceptance by executed tests on both paths, and the documentation bar."
+    command: "uv run pytest tests/unit/delegation/test_code_class_acceptance_by_executed_tests_omn21077.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21077-ac1-code-judged-by-tests"
+    description: "The correct add() is accepted and the pass stub (with and without import typing) and return a - b are refused, through the gate, the shared verdict on the local port and the bus handler, and the real local dispatch with a test runner that runs the named pytest test against the answer. Fails at the merge base, where a tested correct add() scores 0.733 and is refused and the import typing stub scores 0.867 and is accepted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_code_class_acceptance_by_executed_tests_omn21077.py -q -p no:randomly --no-cov -n 0 -k 'not documentation'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21077-ac2-no-regression"
+    description: "The delegation suites this change touches still pass, with the expectations that pinned the score bar for code classes updated to the executed-test rule, and the generated event chains hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_judge_unavailable_deterministic_floor_omn13959.py tests/unit/delegation/test_quality_gate_judge_combine_omn13470.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_judge_combine_omn13849.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_judge_unavailable_floor_omn13959.py tests/chains/generated/test_generated_chains.py -q -p no:randomly --no-cov -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21077-ac3-documentation-keeps-its-bar"
+    description: "A document and a documentation answer below the class bar are refused, and at the bar accepted, on the local and the bus path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_code_class_acceptance_by_executed_tests_omn21077.py -q -p no:randomly --no-cov -n 0 -k 'documentation or rubric_classes'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21077-deploy-probe"
+    description: "Deploy smoke on the runtime after the deploy agent rolls this change - from the running container, the shared verdict refuses a code_generation gate result that passed at 1.0 with no executed test run. The command exits nonzero on the merge-base image, which has no is_quality_accepted. It reads deployed code, not this contract or a receipt. Hosted CI has no runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "from uuid import uuid4; from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult as R; from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import is_quality_accepted as q, resolve_required_bar_authority as a; r = R(correlation_id=uuid4(), passed=True, fail_category=\"pass\", quality_score=1.0, score_source=\"deterministic_acceptance\"); assert not q(r, a(task_type=\"code_generation\"), declared_deterministic=(\"passes_existing_tests\",))"'
+        cwd: "${OMNI_HOME}/omnimarket"

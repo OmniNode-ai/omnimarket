@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e06",
+  "path": "pinned",
+  "sha256": "de070568e1586e3cdf03e4f730702f1ee2847d346df2aff67e51733ab267f293",
+  "response": "The `classify_head_checks` classifier now classifies one PR head's check facts into its verdict using the newest copy of each check name, with the verdict following the corpus manifest's precedence. This change addresses ticket OMN-19830 by ensuring red checks receive specific reason codes and classes, and that red `nothing recognises` goes to an agent and is never re-run."
+}

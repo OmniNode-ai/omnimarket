@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -46,6 +47,7 @@ from omnimarket.events.delegation_judge_verdict import (
     EnumDelegationJudgeVerdict,
     ModelDelegationJudgeVerdictEvent,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
@@ -120,6 +122,8 @@ _GOOD_TEST_ARTIFACT_MARKED = "### ANSWER\n" + _GOOD_TEST_ARTIFACT
 _FAIL_JUDGE_SCORE = 0.55
 _PASS_JUDGE_SCORE = 0.95
 _TEST_REQUIRED_BAR = 0.8
+# OMN-21077: judge-veto controls need executed evidence before reaching the veto.
+_PASSED_RUN = ModelNamedTestRun(test_ids=("test_add.py::test_add",), exit_code=0)
 
 
 def _task_class_dod(task_class: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -156,6 +160,7 @@ class TestJudgeVerdictVetoUnit:
         result = quality_gate_delta(
             _test_gate_input(_GOOD_TEST_ARTIFACT),
             judge_adequacy_score=_FAIL_JUDGE_SCORE,
+            named_test_run=_PASSED_RUN,
         )
         assert result.passed is True
         assert result.score_source == "combined"
@@ -167,6 +172,7 @@ class TestJudgeVerdictVetoUnit:
             _test_gate_input(_GOOD_TEST_ARTIFACT),
             judge_adequacy_score=_FAIL_JUDGE_SCORE,
             judge_verdict=EnumDelegationJudgeVerdict.FAIL,
+            named_test_run=_PASSED_RUN,
         )
         assert result.passed is False
         assert result.fail_category == "fail_heuristic"
@@ -183,6 +189,7 @@ class TestJudgeVerdictVetoUnit:
             _test_gate_input(_GOOD_TEST_ARTIFACT),
             judge_adequacy_score=_PASS_JUDGE_SCORE,
             judge_verdict=EnumDelegationJudgeVerdict.PASS,
+            named_test_run=_PASSED_RUN,
         )
         assert result.passed is True
         assert result.fail_category == "pass"
@@ -195,6 +202,7 @@ class TestJudgeVerdictVetoUnit:
             _test_gate_input(_GOOD_TEST_ARTIFACT),
             judge_adequacy_score=0.70,
             judge_verdict=EnumDelegationJudgeVerdict.BORDERLINE,
+            named_test_run=_PASSED_RUN,
         )
         assert result.passed is True
         assert result.score_source == "combined"
@@ -386,7 +394,15 @@ class TestJudgeVerdictVetoRealDispatchPath:
         return gate_result, terminal_events
 
     @pytest.mark.asyncio
-    async def test_deterministic_artifact_completes_over_dispatch_path(self) -> None:
+    async def test_deterministic_artifact_completes_over_dispatch_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # OMN-21077: feed executed-test evidence into the real bus gate reducer.
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_delegation_quality_gate_reducer.handlers."
+            "handler_quality_gate_intent.quality_gate_delta",
+            partial(quality_gate_delta, named_test_run=_PASSED_RUN),
+        )
         workflow = HandlerDelegationWorkflow(workflows={})
         request = ModelDelegationRequest(
             prompt="Write a unit test for add(a, b).",
@@ -399,6 +415,13 @@ class TestJudgeVerdictVetoRealDispatchPath:
 
         assert gate_result.passed is True
         assert gate_result.score_source == "deterministic_acceptance"
+        tests_evaluation = next(
+            evaluation
+            for evaluation in gate_result.rule_evaluations
+            if evaluation.rule == "passes_existing_tests"
+        )
+        assert tests_evaluation.passed is True
+        assert "passes_existing_tests" not in gate_result.skipped_checks
         assert TOPIC_ID_DELEGATION_COMPLETED in _terminal_topics(terminal_events)
         wf = workflow.workflows[request.correlation_id]
         assert wf.state == EnumDelegationState.COMPLETED

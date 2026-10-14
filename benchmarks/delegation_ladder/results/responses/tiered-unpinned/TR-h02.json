@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h02",
+  "path": "unpinned",
+  "sha256": "0b9bee82632eeaca63d1f2d131d03250228459317095f0532ecf98873c3a8582",
+  "response": "The altered line is [127]. It contradicts the test at line 379, which asserts that the transcribed statement matches the canonical criterion text (e.g., \"the gap lookup is index-backed...\"), whereas line 127 sets the statement to `unit.text` which, per the test fixture, includes the label and falsifier (e.g., \"AC1: the gap lookup... -- falsifier: ...\")."
+}

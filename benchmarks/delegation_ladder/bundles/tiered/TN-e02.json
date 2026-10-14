@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e02",
+  "title": "predict page_title (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function page_title in omnimarket@7acb97b72bd6:src/omnimarket/projection/morning_page.py; the call and the asserted result come from tests/unit/projection/test_morning_observability_page_omn17197.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nPAGE_NAME = 'ONEX Status'\n\ndef page_title(service_name):\n    return f'{PAGE_NAME} — {service_name}'\n```\n\nWhat does `page_title('omnimarket-prod-projection-api')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'ONEX Status — omnimarket-prod-projection-api'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

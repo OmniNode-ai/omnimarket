@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m04",
+  "path": "pinned",
+  "sha256": "9949fcfff5427f7d3c6357b1043bcb568d0c13b753e02f4812aae3c259e26940",
+  "response": "- **omnibase_core#1032**: Extracts shared contract-to-topics resolver (`cli_resolve_contract_topics.py`) with `resolve_node_contract` and `resolve_contract_topics` functions.\n- **omnibase_core#1564**: Bumps `required-check-skip-guard-reusable.yml` workflow to `bc923a70a31603407813123f22047403062598ab`.\n- **omnibase_spi#83**: Adds frozen delegation output contracts: `ContractDelegatedResponse`, `ContractDelegationAttribution`, `ContractAttachment`, `ContractComplianceResult`.\n- **omnimarket#3135**: Advances OCC gate caller pins to `omnibase_core#1820` squash `52851458622f` with writer-app pin-only exemption.\n- **omnimarket#3598**: Adds morning ground-state orchestrator node with `contract.yaml` declaring start/terminal bus topics."
+}

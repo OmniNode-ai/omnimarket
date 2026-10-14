@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e08",
+  "title": "one-change changelog entry (omnibase_core#970)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnibase_core@edca47299c55",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-10250.\n\n--- change 1 (repo omnibase_core, pull request #970) ---\nfeat(OMN-10250-W3): add ModelCanaryTier+ModelCanaryTierAssignments to core governance [omnibase_core] (#970)\nPorts ModelCanaryTier and ModelCanaryTierAssignments from\nonex_change_control.canary.schema into the new\nomnibase_core.models.governance namespace (Wave 3 migration).\n\n- model_canary_tier.py: ModelCanaryTier (one class per file, ONEX hook compliant)\n- model_canary_tier_assignments.py: ModelCanaryTierAssignments\n- governance/__init__.py re-exports both classes\n- 5 unit tests (TDD red→green); mypy --strict clean; all pre-commit hooks pass\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnibase_core, pull request #970) ---\nfeat(OMN-10250-W3): add ModelCanaryTier+ModelCanaryTierAssignments to core governance [omnibase_core] (#970)\nPorts ModelCanaryTier and ModelCanaryTierAssignments from\nonex_change_control.canary.schema into the new\nomnibase_core.models.governance namespace (Wave 3 migration).\n\n- model_canary_tier.py: ModelCanaryTier (one class per file, ONEX hook compliant)\n- model_canary_tier_assignments.py: ModelCanaryTierAssignments\n- governance/__init__.py re-exports both classes\n- 5 unit tests (TDD red→green); mypy --strict clean; all pre-commit hooks pass omnibase_core#970",
+    "must_contain": [
+      "#970",
+      "OMN-10250"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

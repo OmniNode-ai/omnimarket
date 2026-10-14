@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m03",
+  "path": "pinned",
+  "sha256": "37205909c135ee02d04cac1e9c528d653ce14dab62445443bd3f5f0a6bb6bce3",
+  "response": "**[69]** — `severity=\"CRITICAx\"` was altered from `severity=\"CRITICAL\"`, contradicting test line [120] (`assert non_durable[0].severity == \"CRITICAL\"` in `test_non_durable_contract_flagged_critical`), which would fail since the emitted finding's severity no longer equals `\"CRITICAL\"`."
+}

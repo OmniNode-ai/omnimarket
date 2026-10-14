@@ -42,24 +42,42 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: re-scoring the benchmark's stored review answers with the fixed gate shows no R3b answer refused by cites_specific_lines on any rung, and a cites-nothing answer on numbered input still refused -- falsifier: an R3b answer refused by the rule after the fix, or a numbered-input prompt whose cites-nothing answer passes.
-  - id: "req-rung-benchmark-driver-and-tiers"
-    statement: "The delegation ladder's own runner carries the rung benchmark, with a tested per-rung, per-class result table, difficulty tiers for the test and code_generation classes, and the unpinned-ladder trace of the hard tier."
+  - id: "req-tiered-ladder-benchmark"
+    statement: "The delegation ladder's own runner measures each rung over a tiered public task set and prints a per-class table with 95% intervals, so the rungs can be separated or shown not to be."
     acceptance:
       - id: "AC9"
         statement: |-
-          AC9: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
+          AC9: run_ladder.py runs one pinned rung or the unpinned ladder over the tiered set, writes each finished cell durably and resumes, and summarise_results.py prints per class and rung the accepted share with a Wilson 95% interval, the median latency and the cost where receipts carry it, and names the rungs whose interval is disjoint from every other -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py -q -p no:randomly, plus the one-cell rerun command in the run_ladder.py docstring.
       - id: "AC10"
         statement: |-
-          AC10: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
-  - id: "req-structural-hard-corpus"
-    statement: "A hard tier for code_generation and review that is hard by structure (files touched, a cause in another file than the one the test imports, input size near the local rung's context limit), run on every pinned rung and the unpinned ladder, with failure and escalation reported per structural feature."
+          AC10: the tiered set holds at least 25 tasks per class for document, review and reasoning, at least 8 per tier, each mined from merged public history and scored mechanically with a held answer that is re-derived, and every scorer fails its negative control -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly.
+  - id: "req-rescore-28-task-benchmark"
+    statement: "The earlier 28-task benchmark is rescored with the scorers that write no bytecode, and the verdicts that changed are listed."
     acceptance:
       - id: "AC11"
         statement: |-
-          AC11: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
+          AC11: every saved cell of the 28-task benchmark (28 local and 28 cloud responses) is rescored with the fixed scorers -- falsifier: the count of rescored cells differs from the count of saved cells.
       - id: "AC12"
         statement: |-
-          AC12: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
+          AC12: the committed flip list is the diff of the recorded and the rescored verdicts of those cells -- falsifier: a cell whose recorded and rescored verdicts differ and is not listed, or a listed cell whose verdicts agree.
+  - id: "req-rung-benchmark-driver-and-tiers"
+    statement: "The delegation ladder's own runner carries the rung benchmark, with a tested per-rung, per-class result table, difficulty tiers for the test and code_generation classes, and the unpinned-ladder trace of the hard tier."
+    acceptance:
+      - id: "AC13"
+        statement: |-
+          AC13: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
+      - id: "AC14"
+        statement: |-
+          AC14: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
+  - id: "req-structural-hard-corpus"
+    statement: "A hard tier for code_generation and review that is hard by structure (files touched, a cause in another file than the one the test imports, input size near the local rung's context limit), run on every pinned rung and the unpinned ladder, with failure and escalation reported per structural feature."
+    acceptance:
+      - id: "AC15"
+        statement: |-
+          AC15: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
+      - id: "AC16"
+        statement: |-
+          AC16: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -68,7 +86,13 @@ evidence_requirements:
     description: "AC7 and AC8: the real R3b prompts and two stored refused answers pass the fixed gate; numbered listing, cat -n listing, diff hunk, line N and path:N inputs keep the rule and an answer citing nothing is refused; an empty stored answer stays refused."
     command: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py tests/unit/delegation/test_omn19432_rule_waived_by_prompt_layout.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC9: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
+    description: "AC9 and AC10: the class table, driver plumbing, tiered corpus and scorer controls."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC11 and AC12: the committed rescore covers every saved cell and its flip list equals the diff of recorded and rescored verdicts, with a negative control."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC13: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
     command: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
@@ -142,46 +166,65 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq waived_unless_prompt_matches'"
-  - id: "dod-omn20844-ac9-driver-tested"
-    description: "AC9: the tier thresholds fill every tier of the test and code_generation classes with at least eight committed tasks, the tier table and the first-failing-tier rule have negative controls, and the unpinned-ladder command carries no backend pin."
+  - id: "dod-omn20844-tiered-ladder-benchmark"
+    description: "AC9 and AC10: the driver, the per-class table with intervals, the tiered public corpus and the scorer negative controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9", "AC10"]
+  - id: "dod-omn20844-ac11-ac12-rescore-28-task"
+    description: "AC11 and AC12: all 56 saved cells of the 28-task benchmark are rescored and the flip list equals the diff of recorded and rescored verdicts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11", "AC12"]
+  - id: "dod-omn20844-ac13-driver-tested"
+    description: "AC13: the tier thresholds fill every tier of the test and code_generation classes with at least eight committed tasks, the tier table and the first-failing-tier rule have negative controls, and the unpinned-ladder command carries no backend pin."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC9"]
-  - id: "dod-omn20844-ac9-rerun-reproduces-a-cell"
-    description: "AC9: the committed results rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model."
+    binds_ac: ["AC13"]
+  - id: "dod-omn20844-ac13-rerun-reproduces-a-cell"
+    description: "AC13: the committed results rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model. The check rescores one committed task's cells on every rung; the full rescore runs in the test suite."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14"
+        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14 --only R4-01"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC9"]
-  - id: "dod-omn20844-ac10-tier-table-and-minimum"
-    description: "AC10: the committed tier table is the table the committed records give, and each tier of the test and code_generation classes holds at least eight tasks for every rung."
+    binds_ac: ["AC13"]
+  - id: "dod-omn20844-ac14-tier-table-and-minimum"
+    description: "AC14: the committed tier table is the table the committed records give, and each tier of the test and code_generation classes holds at least eight tasks for every rung. The full-rescore test is left to the test suite, past the per-check budget."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov -k 'not every_saved_response_rescores'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC10"]
-  - id: "dod-omn20844-ac11-hard-corpus-scored-mechanically"
-    description: "AC11: every hard task records its structural features; the merged change passes a hard code_generation task and a no-op edit fails it; an edit to a file not shown is refused."
+    binds_ac: ["AC14"]
+  - id: "dod-omn20844-ac15-hard-corpus-scored-mechanically"
+    description: "AC15: every hard task records its structural features; the merged change passes a hard code_generation task and a no-op edit fails it; an edit to a file not shown is refused."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k 'hard or search_replace'"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k 'search_replace or structural_features or not_shown'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC11"]
-  - id: "dod-omn20844-ac12-feature-table-from-records"
-    description: "AC12: the committed hard-tier feature table is the one the committed records render, and the records rescore to their recorded verdicts from the saved responses."
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k merged_change_passes"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]
+  - id: "dod-omn20844-ac16-feature-table-from-records"
+    description: "AC16: the committed hard-tier feature table is the one the committed records render, and the cells of the two review tasks the findings rest on (H3-08, H3-10) rescore to their recorded verdicts from the saved responses."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov -k hard"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14-hard"
+        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14-hard --only H3-08 H3-10"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC12"]
+    binds_ac: ["AC16"]

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m02",
+  "path": "pinned",
+  "sha256": "53ee494199149564f76576218aef8058bb6b362d1778205ce42a3d98a2d8a7a0",
+  "response": "**[12]** — `if f.get(\"status\") not in (\"added\", \"modifiex\"):` (the typo `modifiex` makes the emitter skip any `\"modified\"` file, contradicting test line [233] in `test_occ_content_probe_contract_pin_omn_17292.py`, `status=\"modified\",`, which exercises exactly a modified `omnimarket-contract-pin.yaml` that the emitter is supposed to process for candidate extraction)."
+}

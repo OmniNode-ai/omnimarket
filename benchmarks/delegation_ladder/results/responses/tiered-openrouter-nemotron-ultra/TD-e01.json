@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e01",
+  "path": "pinned",
+  "sha256": "953cbd3243b754288d4afd37172edc262ca369ba72508b14160a097a37cc11b2",
+  "response": "Added PLATFORM_RUNTIME_MANIFEST_PUBLISHED, PLATFORM_PROJECTION_DEGRADED, and PLATFORM_PROJECTION_RECOVERED to the TopicBase enum to enable runtime manifest observability and projection health signaling (OMN-11194, #1102)."
+}

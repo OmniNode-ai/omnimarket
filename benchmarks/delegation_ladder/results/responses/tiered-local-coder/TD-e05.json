@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e05",
+  "path": "pinned",
+  "sha256": "3b89e1f03f8053ab4f0faef6bf6b6249b8b1a7449adbad217d5cdc9e7eef62de",
+  "response": "Pull request #2884 adds a nullable ticket_id to delegation_events so that DoD verdicts can be joined to the delegated attempts they judged. This change implements the consumer half of the decision-workflow eval plan Task 4, ensuring that delegation runs are linked to their corresponding tickets."
+}

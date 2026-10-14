@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m01",
+  "path": "pinned",
+  "sha256": "10a5833715ea936cfc26fb287ee07138f4d2cfb67bdacfbdd53c65e333af2b7e",
+  "response": "- **#3026** — Scheduled heals clear release-window and vendor-parity reds once their cause is gone, acting once per head.\n- **#1169** — Documented 47 undocumented BLE001 suppressions and fixed 2 invalid noqa directives (508 → 506).\n- **#3875** — A customer-chosen OpenRouter model, even a :free one, is called once and never re-aimed; a 404 no longer re-aims the call or overwrites the choice.\n- **#1374** — onex run-node fails fast with an actionable SkillRoutingError: unset KAFKA_BOOTSTRAP_SERVERS names the env var and 'onex run <node>' fallback instead of KeyError; unreachable brokers no longer raise an opaque KafkaException.\n- **#3666** — The must-fail runner reads the source's objects when the source is shallow; --shared clones of depth-1 sources previously got no alternates, returning infra_error instead of a verdict."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m08",
+  "path": "pinned",
+  "sha256": "95f0d7366414cf30b6b7c79531b2fefe43b380bbbbc71c46e0e8246ab1d32401",
+  "response": "#1794 adds delegation dispatch request/result models and ProtocolDelegationDispatchPort with RED tests. #3321 fixes routing feedback reducer to treat NaN/infinite/boolean latency as no latency, adding 60 unit tests. #3408 burns down action-pin, transport-mock, and runtime_profiles ratchets to plain checks, pinning workflow actions to commit tags and deleting empty baselines. #2873 makes each rung record stop reason, truncation, and preamble rule; fixes rung that decided run to set cause; quality gate refused answers now read quality_gate_refused on both terminals. #2861 fixes clean install with declared local model to answer every class, resolving ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT refusal when local-heavy-reasoning rung undeclared."
+}

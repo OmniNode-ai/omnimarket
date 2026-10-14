@@ -29,6 +29,9 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityRuleEvaluation,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -39,6 +42,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
     ModelDelegationFailed,
     ModelDelegationResult,
 )
@@ -179,11 +183,15 @@ def _advance_to_gate_evaluated(
     handler: HandlerDelegationWorkflow,
     cid: UUID,
     tier_name: str = "local",
+    *,
+    dod_deterministic: tuple[str, ...] = (),
 ) -> None:
     """Drive the FSM from RECEIVED through to GATE_EVALUATED (inference done)."""
     request = _make_request(correlation_id=cid)
     handler.handle_delegation_request(request)
-    decision = _make_routing_decision(cid, tier_name=tier_name)
+    decision = _make_routing_decision(cid, tier_name=tier_name).model_copy(
+        update={"dod_deterministic": dod_deterministic}
+    )
     handler.handle_routing_decision(decision)
     # OMN-17427: an unmarked response to a marker-required contract is refused
     # and floors the gate; open the answer with the class's declared marker so
@@ -367,12 +375,17 @@ class TestGateFailFallbackNotRecommended:
             assert isinstance(result, ModelDelegationResult)
             assert result.quality_passed is False
 
-    def test_below_bar_escalates_even_when_fallback_not_recommended(
+    def test_executed_test_pass_below_bar_completes_without_escalation(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
-        _advance_to_gate_evaluated(handler, cid, tier_name="local")
+        _advance_to_gate_evaluated(
+            handler,
+            cid,
+            tier_name="local",
+            dod_deterministic=("passes_existing_tests",),
+        )
 
         gate = _make_gate_result(
             cid,
@@ -380,22 +393,31 @@ class TestGateFailFallbackNotRecommended:
             quality_score=0.7,
             failure_reasons=(),
             fallback_recommended=False,
+        ).model_copy(
+            update={
+                "rule_evaluations": (
+                    ModelQualityRuleEvaluation(
+                        rule="passes_existing_tests",
+                        enforcement="blocking",
+                        passed=True,
+                    ),
+                ),
+            }
         )
         events = handler.handle_gate_result(gate)
 
         workflow = handler.workflows[cid]
-        assert workflow.state == EnumDelegationState.ROUTED
-        assert workflow.escalation_count == 1
-        routing_intents = [e for e in events if isinstance(e, ModelRoutingIntent)]
-        assert len(routing_intents) == 1
-        escalations = [
-            e
-            for e in events
-            if isinstance(e, ModelLlmDelegationEscalationTriggeredEvent)
-        ]
-        assert len(escalations) == 1
-        assert "score_below_required_bar" in escalations[0].escalation_reason
-        assert "required_bar=0.800" in escalations[0].escalation_reason
+        # OMN-21077: passing executed checks accept code even below its score bar.
+        assert workflow.state == EnumDelegationState.COMPLETED
+        assert workflow.escalation_count == 0
+        completed = [e for e in events if isinstance(e, ModelDelegationCompleted)]
+        assert len(completed) == 1
+        assert completed[0].quality_passed is True
+        assert completed[0].quality_score == 0.7
+        assert not any(isinstance(e, ModelRoutingIntent) for e in events)
+        assert not any(
+            isinstance(e, ModelLlmDelegationEscalationTriggeredEvent) for e in events
+        )
 
 
 # ---------------------------------------------------------------------------

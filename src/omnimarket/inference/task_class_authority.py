@@ -1334,6 +1334,20 @@ def resolve_facts_first_prompt_policy() -> ModelFactsFirstPromptPolicy | None:
     return _delegation_task_class_authority().facts_first_prompt
 
 
+def resolve_task_class_execution_required(task_class: str) -> bool:
+    """Whether ``task_class`` declares that its answer must be executed.
+
+    OMN-21077: a class whose ``complexity_contract`` declares
+    ``execution_required: true`` is a code class. Its answer is accepted on its
+    deterministic checks and an executed test run, never on a score. An unknown
+    class, or one with no complexity contract, is not a code class.
+    """
+    entry = _delegation_task_class_authority().task_classes.get(task_class)
+    if entry is None or entry.complexity_contract is None:
+        return False
+    return entry.complexity_contract.execution_required
+
+
 __all__ = [
     "EnumGatewayExposure",
     "EnumPromptShape",
@@ -1366,6 +1380,7 @@ __all__ = [
     "resolve_reasoning_preamble_policy",
     "resolve_size_band_thresholds",
     "resolve_task_class_execution_budget",
+    "resolve_task_class_execution_required",
     "resolve_task_class_output_contract",
     "resolve_task_class_prompt_shape",
     "withheld_delegation_refusal",

@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e02",
+  "title": "one-change changelog entry (omnimarket#3373)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnimarket@f859c7af5e1d",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-19980.\n\n--- change 1 (repo omnimarket, pull request #3373) ---\ntest(OMN-19980): a CI guard holds savings to one definition in SQL (#3373)\n* test(OMN-19980): a CI guard holds savings to one definition in SQL\n\nSavings is defined once, in node_metering_summary_compute. Nothing stopped a\nsecond definition from coming back: five applied migrations still spell\n'claude-opus-4.1' AS baseline_model, and a later migration could reintroduce a\nhard-coded baseline or multiply tokens by a price in SQL without any check\nnoticing. The live views are already clean (090, 089 and 093 replaced them), so\nthe guard has to prove that, not assume it.\n\ntests/test_single_savings_definition.py fails on: a string literal feeding a\nbaseline_model column; the last migration defining any of the three savings\nviews carrying one; claude-opus-4.1 anywhere under src/ outside the five frozen\nhistory migrations (and a frozen entry that no longer holds it, so the list can\nonly shrink); SQL, in .sql, Python strings and YAML, that multiplies a token\ncolumn by a price outside node_metering_summary_compute; and ci.yml not running\nthe guard as a named blocking step. That last assertion is what makes the bound\nevidence check fail at the merge base for a real reason.\n\nPython price arithmetic is outside the ticket's SQL scope and is asserted as a\nknown gap, not scanned. 077 holds a placeholder baseline ('cloud-baseline')\nthat the guard found on the real tree; it is frozen as history, superseded by\n089.\n\ncontracts/OMN-19980.yaml binds AC1 to the guard.\n\nOnex-\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnimarket, pull request #3373) ---\ntest(OMN-19980): a CI guard holds savings to one definition in SQL (#3373)\n* test(OMN-19980): a CI guard holds savings to one definition in SQL\n\nSavings is defined once, in node_metering_summary_compute. Nothing stopped a\nsecond definition from coming back: five applied migrations still spell\n'claude-opus-4.1' AS baseline_model, and a later migration could reintroduce a\nhard-coded baseline or multiply tokens by a price in SQL without any check\nnoticing. The live views are already clean (090, 089 and 093 replaced them), so\nthe guard has to prove that, not assume it.\n\ntests/test_single_savings_definition.py fails on: a string literal feeding a\nbaseline_model column; the last migration defining any of the three savings\nviews carrying one; claude-opus-4.1 anywhere under src/ outside the five frozen\nhistory migrations (and a frozen entry that no longer holds it, so the list can\nonly shrink); SQL, in .sql, Python strings and YAML, that multiplies a token\ncolumn by a price outside node_metering_summary_compute; and ci.yml not running\nthe guard as a named blocking step. That last assertion is what makes the bound\nevidence check fail at the merge base for a real reason.\n\nPython price arithmetic is outside the ticket's SQL scope and is asserted as a\nknown gap, not scanned. 077 holds a placeholder baseline ('cloud-baseline')\nthat the guard found on the real tree; it is frozen as history, superseded by\n089.\n\ncontracts/OMN-19980.yaml binds AC1 to the guard.\n\nOnex- omnimarket#3373",
+    "must_contain": [
+      "#3373",
+      "OMN-19980"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

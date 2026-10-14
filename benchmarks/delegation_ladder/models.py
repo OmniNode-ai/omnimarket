@@ -31,6 +31,16 @@ class EnumPath(StrEnum):
 
     LOCAL = "local"
     CLOUD = "cloud"
+    PINNED = "pinned"
+    UNPINNED = "unpinned"
+
+
+class EnumDifficulty(StrEnum):
+    """The task tiers within each class."""
+
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
 
 
 class EnumScorerKind(StrEnum):
@@ -49,6 +59,7 @@ class EnumScorerKind(StrEnum):
     DIAGNOSIS_LOCATION = "diagnosis_location"
     PATCH_APPLY_AND_TEST = "patch_apply_and_test"
     MULTI_FILE_EDIT_AND_TEST = "multi_file_edit_and_test"
+    LITERAL_EQUALS = "literal_equals"
 
 
 class EnumOutcome(StrEnum):
@@ -65,6 +76,11 @@ class EnumOutcome(StrEnum):
     HARNESS_ERROR = "harness_error"
 
 
+def is_accepted(outcome: EnumOutcome, quality_gate_passed: bool | None) -> bool:
+    """A missing node gate leaves acceptance to the mechanical scorer."""
+    return outcome == EnumOutcome.PASS and quality_gate_passed is not False
+
+
 class ModelTaskBundle(BaseModel):
     """One benchmark task: the exact text fed, and the held answer never fed.
 
@@ -77,6 +93,7 @@ class ModelTaskBundle(BaseModel):
     task_id: str
     rung: EnumRung
     title: str
+    difficulty: EnumDifficulty | None = None
     task_type: str = Field(
         description="Passed to the delegate CLI as --task-type. Chosen to match "
         "the work, because the quality gate applies task-type-specific criteria "
@@ -175,3 +192,10 @@ class ModelRunRecord(BaseModel):
     complexity_score: int | None = None
     complexity_features: dict[str, object] = Field(default_factory=dict)
     notes: str = ""
+    backend: str | None = None
+    difficulty: EnumDifficulty | None = None
+    task_type: str | None = None
+    host: str | None = None
+    accepted: bool | None = None
+    attempts: list[dict[str, object]] = Field(default_factory=list)
+    escalation_count: int | None = None

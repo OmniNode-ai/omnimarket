@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e03",
+  "title": "one-change changelog entry (omnimarket#3729)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnimarket@8edc4de4e819",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-20912.\n\n--- change 1 (repo omnimarket, pull request #3729) ---\nfeat(OMN-20912): PR authoring write effect with claim and quota guards (#3729)\n* feat(OMN-20912): typed gateway reads for Actions, PR text and releases\n\n- node_github_repo_gateway_effect gains six read operations: workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases\n- Each operation returns its own typed result model in the existing discriminated union keyed on operation\n- Request model gains run_id, job_id, artifact_id, branch, head_sha, workflow, event, status, limit, tail_bytes, and max_bytes\n- limit defaults to 30 with a maximum of 300\n- tail_bytes defaults to 16 KiB with a maximum of 64 KiB\n- max_bytes defaults to 256 KiB with a maximum of 512 KiB\n- run_jobs and artifacts require run_id\n- job_log_tail requires job_id\n- pr_text requires pr_number\n- artifact_id is accepted only by artifacts\n- List reads follow the Link rel=\"next\" header until the limit is met and set truncated when more items existed\n- A next link that leaves the API root is refused\n- job_log_tail keeps only the last tail_bytes of the log and reports the whole length\n- artifacts fetches one archive only when the artifact belongs to the run, has not expired, and reports a size at most max_bytes\n- artifacts returns fetch_refused with reasons over_size_cap, expired, or not_in_run otherwise\n- A download that runs past the cap is refused the same way\n- PR bodies and comments longer than 16 KiB are cut and flagged\n- New reads send typed requests through the shared landing tran\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnimarket, pull request #3729) ---\nfeat(OMN-20912): PR authoring write effect with claim and quota guards (#3729)\n* feat(OMN-20912): typed gateway reads for Actions, PR text and releases\n\n- node_github_repo_gateway_effect gains six read operations: workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases\n- Each operation returns its own typed result model in the existing discriminated union keyed on operation\n- Request model gains run_id, job_id, artifact_id, branch, head_sha, workflow, event, status, limit, tail_bytes, and max_bytes\n- limit defaults to 30 with a maximum of 300\n- tail_bytes defaults to 16 KiB with a maximum of 64 KiB\n- max_bytes defaults to 256 KiB with a maximum of 512 KiB\n- run_jobs and artifacts require run_id\n- job_log_tail requires job_id\n- pr_text requires pr_number\n- artifact_id is accepted only by artifacts\n- List reads follow the Link rel=\"next\" header until the limit is met and set truncated when more items existed\n- A next link that leaves the API root is refused\n- job_log_tail keeps only the last tail_bytes of the log and reports the whole length\n- artifacts fetches one archive only when the artifact belongs to the run, has not expired, and reports a size at most max_bytes\n- artifacts returns fetch_refused with reasons over_size_cap, expired, or not_in_run otherwise\n- A download that runs past the cap is refused the same way\n- PR bodies and comments longer than 16 KiB are cut and flagged\n- New reads send typed requests through the shared landing tran omnimarket#3729",
+    "must_contain": [
+      "#3729",
+      "OMN-20912"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

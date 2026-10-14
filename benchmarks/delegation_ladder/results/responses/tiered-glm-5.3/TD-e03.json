@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e03",
+  "path": "pinned",
+  "sha256": "437d19347729dd8771087cfb50bca2423b25ea69a1d76a9248199d13aa44671d",
+  "response": "PR #3729 adds six typed read operations to `node_github_repo_gateway_effect` — `workflow_runs`, `run_jobs`, `job_log_tail`, `artifacts`, `pr_text`, and `releases` — each returning its own typed result model in the existing operation-keyed discriminated union, with Link `rel=\"next\"` pagination up to a limit (default 30, max 300), byte caps (`tail_bytes` default 16 KiB/max 64 KiB, `max_bytes` default 256 KiB/max 512 KiB), truncation flags for lists and PR text over 16 KiB, and `fetch_refused` reasons (`over_size_cap`, `expired`, `not_in_run`) plus refusal of next links that leave the API root. These bounded, guarded reads provide the typed Actions, PR text, and release data behind the OMN-20912 PR authoring write effect's claim and quota guards."
+}

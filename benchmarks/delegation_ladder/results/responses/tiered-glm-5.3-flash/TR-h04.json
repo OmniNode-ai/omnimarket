@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h04",
+  "path": "pinned",
+  "sha256": "c746957ababb31207a0e2a9e254826a12fe34cd7dbc95e4b1bfb1082dc0b7d8f",
+  "response": "[219] — it defines `REQUIRED_CHECKS_MANIFEST_PATH = \".github/required-checks.yamx\"` (a typo'd `.yamx` extension), so the equality check at [231] never matches the `changed_files=[\".github/required-checks.yaml\"]` input from `test_required_checks_manifest_uses_focused_guard_test` at [242], which expects the focused guard test to be selected ([249]–[251]) rather than the fallback full unit suite."
+}

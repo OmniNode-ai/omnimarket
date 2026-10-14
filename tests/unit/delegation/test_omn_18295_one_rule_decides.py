@@ -277,8 +277,10 @@ class TestTerminalReasonNamesTheDecider:
 
 
 class _RequiredBarAuthorityStub:
-    """The two fields ``_score_vs_bar_reason`` reads, and nothing else."""
+    """The rubric authority fields ``_score_vs_bar_reason`` reads."""
 
     required_bar = _SUMMARIZATION_BAR
     authority_source = "task_class:summarization"
     score_source = "quality_gate_graded_score"
+    # OMN-21077: summarization retains rubric acceptance and its score bar.
+    acceptance_by_executed_tests = False

@@ -83,8 +83,10 @@ below still fail closed, and they are what make a green replay here probative.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -98,6 +100,8 @@ from omnibase_core.runtime.golden_chain import (
     load_fixture,
 )
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
@@ -109,6 +113,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_intent import (
     ModelQualityGateIntent,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+    delta,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
     HandlerQualityGateIntent,
@@ -130,6 +137,24 @@ _FIXTURE_PATH = _FIXTURE_DIR / "delegation_test_artifact_chain.json"
 _BIFROST_CONTRACT_PATH = _FIXTURE_DIR / "bifrost_delegation_reference.yaml"
 
 _EXPECTED_MARKERS = ("@pytest.mark.unit", "with pytest.raises", "Edge case")
+
+
+def _gate_with_passing_tests(
+    intent: ModelQualityGateIntent, content: str
+) -> ModelQualityGateResult:
+    # OMN-21077: supply executed test evidence while preserving the real handler/gate.
+    test_ids = tuple(
+        f"test_artifact.py::{name}"
+        for name in re.findall(r"^def (test_\w+)\(", content, re.MULTILINE)
+    )
+    assert test_ids, "the recorded artifact must contain named tests"
+    run = ModelNamedTestRun(test_ids=test_ids, exit_code=0)
+    with patch(
+        "omnimarket.nodes.node_delegation_quality_gate_reducer.handlers."
+        "handler_quality_gate_intent.quality_gate_delta",
+        partial(delta, named_test_run=run),
+    ):
+        return HandlerQualityGateIntent().handle(intent)
 
 
 @pytest.fixture(autouse=True)
@@ -207,7 +232,7 @@ def test_delegation_chain_returns_useful_task_artifact() -> None:
     gate_intents = workflow.handle_inference_response(response)
     assert len(gate_intents) == 1
     assert isinstance(gate_intents[0], ModelQualityGateIntent)
-    gate_result = HandlerQualityGateIntent().handle(gate_intents[0])
+    gate_result = _gate_with_passing_tests(gate_intents[0], response.content)
     assert gate_result.passed is True
     assert gate_result.failure_reasons == ()
 
@@ -336,6 +361,6 @@ def test_live_final_artifacts_pass_routing_and_quality_gate_di(task_type: str) -
     gate_intents = workflow.handle_inference_response(response)
     assert len(gate_intents) == 1
     assert isinstance(gate_intents[0], ModelQualityGateIntent)
-    result = HandlerQualityGateIntent().handle(gate_intents[0])
+    result = _gate_with_passing_tests(gate_intents[0], artifact["content"])
     assert result.passed, result.failure_reasons
     assert result.failure_reasons == ()

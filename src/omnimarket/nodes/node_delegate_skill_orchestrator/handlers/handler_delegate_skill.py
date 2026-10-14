@@ -12,9 +12,10 @@ internal.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
@@ -79,6 +80,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
+)
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    ModelNamedTestSpec,
 )
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
@@ -178,6 +182,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -246,6 +251,54 @@ def _attribution_dispatch_kwargs(
     if attribution:
         return {"attribution": attribution}
     return {}
+
+
+class _NamedTestsDispatchKwargs(TypedDict, total=False):
+    """The tests a code-class request names, for the port (OMN-21077).
+
+    Passed only when the request names tests AND the port declares the keyword.
+    omnibase_infra injects its own runtime dispatch port, which runs no tests
+    and would raise ``TypeError`` on an unknown keyword; there the tests are
+    not run, the gate sees no test run, and the code answer is refused as
+    INSUFFICIENT rather than accepted untested.
+    """
+
+    named_tests: ModelNamedTestSpec
+
+
+def _named_tests_dispatch_kwargs(
+    request: ModelDelegateSkillRequest, dispatch: Callable[..., object]
+) -> _NamedTestsDispatchKwargs:
+    try:
+        spec = ModelNamedTestSpec.from_metadata(
+            request.metadata,
+            default_workspace=request.working_directory or request.cwd,
+        )
+    except (ValueError, ValidationError) as exc:
+        logger.warning(
+            "delegate-skill named tests refused (correlation_id=%s): %s",
+            request.correlation_id,
+            exc,
+        )
+        return {}
+    if spec is None:
+        return {}
+    try:
+        parameters = inspect.signature(dispatch).parameters
+    except (TypeError, ValueError):
+        return {"named_tests": spec}
+    accepts = "named_tests" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if not accepts:
+        logger.warning(
+            "delegate-skill named tests not run (correlation_id=%s): this dispatch "
+            "port runs no tests, so the code answer will be refused as INSUFFICIENT",
+            request.correlation_id,
+        )
+        return {}
+    return {"named_tests": spec}
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -1337,6 +1390,10 @@ class HandlerDelegateSkill:
                     **_no_escalation_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
+                    # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
+                    **_named_tests_dispatch_kwargs(
+                        request, self._dispatch_port.dispatch
+                    ),
                 ),
                 timeout=float(
                     execution_timeout_seconds

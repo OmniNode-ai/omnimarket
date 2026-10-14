@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m06",
+  "path": "pinned",
+  "sha256": "48e81c03c018257c292272da5fb974ddc70b9f947b8af398f1db9ef363ee573d",
+  "response": "[62] — Its \"(405, deleted, network error)\" contradicts the fail-open test, whose docstring [194] and raised `GitHubApiError(..., status_code=404)` [201] exercise a 404 (deleted/unresolvable OCC PR), not a 405."
+}

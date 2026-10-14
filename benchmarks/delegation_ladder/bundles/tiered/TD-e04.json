@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e04",
+  "title": "one-change changelog entry (omnibase_spi#67)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnibase_spi@2d6169e39d08",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-1478.\n\n--- change 1 (repo omnibase_spi, pull request #67) ---\nfeat(protocols): add ProtocolIntentClassifier for intent classification [OMN-1478] (#67)\n* feat(protocols): add ProtocolIntentClassifier for intent classification [OMN-1478]\n\nAdd new intelligence protocol domain with ProtocolIntentClassifier for\nclassifying user intents from text content. This protocol enables the\nONEX platform to support intent-based routing and analysis.\n\nChanges:\n- Create protocols/intelligence/ domain with ProtocolIntentClassifier\n- Protocol uses Core models via TYPE_CHECKING (ModelIntentClassificationInput,\n  ModelIntentClassificationOutput from omnibase_core 0.9.3)\n- Add protocol exports to main protocols/__init__.py\n- Add 23 comprehensive tests for protocol compliance\n- Bump omnibase-core dependency to >=0.9.3\n\nSupported intent categories (9 total):\n- Original 6: code_generation, debugging, refactoring, testing,\n  documentation, analysis\n- Intelligence 3: pattern_learning, quality_assessment, semantic_analysis\n\n* chore(tests): remove unused pytest import from conftest [OMN-1478]\n\n* feat(protocols): add ProtocolIntentGraph for intent persistence abstraction [OMN-1479]\n\nAdd ProtocolIntentGraph protocol for intent graph persistence operations:\n- store_intent() - Store intent classification to graph database\n- get_session_intents() - Query intents for a session with filtering\n- health_check() - Health check for graph connectivity\n\nChanges:\n- New protocol in protocols/intelligence/protocol_intent_graph.py\n- 36 comprehensive unit tests for protoco\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnibase_spi, pull request #67) ---\nfeat(protocols): add ProtocolIntentClassifier for intent classification [OMN-1478] (#67)\n* feat(protocols): add ProtocolIntentClassifier for intent classification [OMN-1478]\n\nAdd new intelligence protocol domain with ProtocolIntentClassifier for\nclassifying user intents from text content. This protocol enables the\nONEX platform to support intent-based routing and analysis.\n\nChanges:\n- Create protocols/intelligence/ domain with ProtocolIntentClassifier\n- Protocol uses Core models via TYPE_CHECKING (ModelIntentClassificationInput,\n  ModelIntentClassificationOutput from omnibase_core 0.9.3)\n- Add protocol exports to main protocols/__init__.py\n- Add 23 comprehensive tests for protocol compliance\n- Bump omnibase-core dependency to >=0.9.3\n\nSupported intent categories (9 total):\n- Original 6: code_generation, debugging, refactoring, testing,\n  documentation, analysis\n- Intelligence 3: pattern_learning, quality_assessment, semantic_analysis\n\n* chore(tests): remove unused pytest import from conftest [OMN-1478]\n\n* feat(protocols): add ProtocolIntentGraph for intent persistence abstraction [OMN-1479]\n\nAdd ProtocolIntentGraph protocol for intent graph persistence operations:\n- store_intent() - Store intent classification to graph database\n- get_session_intents() - Query intents for a session with filtering\n- health_check() - Health check for graph connectivity\n\nChanges:\n- New protocol in protocols/intelligence/protocol_intent_graph.py\n- 36 comprehensive unit tests for protoco omnibase_spi#67",
+    "must_contain": [
+      "#67",
+      "OMN-1478"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

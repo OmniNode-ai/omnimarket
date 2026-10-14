@@ -82,6 +82,12 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelProjectionEnvelopeMetadata,
 )
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.models.delegation.wire.model_routing_decision import (
     ModelRoutingDecision,
 )
@@ -176,6 +182,7 @@ __all__: list[str] = [
     "SUPPORTED_ACCEPTANCE_CRITERIA",
     "TASK_DELEGATED_TOPIC_V1",
     "EnumBudgetAction",
+    "EnumNamedTestRunStatus",
     "EnumQualityContractMode",
     "EnumQualityGateCategory",
     "EnumTierCostType",
@@ -204,6 +211,9 @@ __all__: list[str] = [
     "ModelInferenceIntent",
     "ModelInferenceResponseData",
     "ModelNamedTestRun",
+    "ModelNamedTestRunRequest",
+    "ModelNamedTestRunResult",
+    "ModelNamedTestSpec",
     "ModelProjectionEnvelopeMetadata",
     "ModelQualityGateInput",
     "ModelQualityGateIntent",

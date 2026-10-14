@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h02",
+  "path": "pinned",
+  "sha256": "dbe152d5ab7fc6f3e59cde2d6100c54a54a81de5c019bccd15d59150df5d8d6c",
+  "response": "The altered line is [127]. It contradicts the test at line 379, which asserts that the transcribed statement matches the canonical criterion text independently read from the ticket body, whereas the altered line sets the statement to a hardcoded string that does not match the dynamically computed `unit.text`."
+}

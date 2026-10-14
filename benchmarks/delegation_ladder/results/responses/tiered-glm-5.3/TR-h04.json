@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h04",
+  "path": "pinned",
+  "sha256": "1d87dfbe2b6364798e820cf678a3d39e4ad6ffd6f014ff3f39a1352ac921d29e",
+  "response": "**[219]** — `REQUIRED_CHECKS_MANIFEST_PATH = \".github/required-checks.yamx\"` (the `.yamx` typo) can never equal the test's input `changed_files=[\".github/required-checks.yaml\"]` in `test_required_checks_manifest_uses_focused_guard_test`, so the `set(changed_files) == {REQUIRED_CHECKS_MANIFEST_PATH}` branch never fires and the assertion `selection.selected_paths == [\"tests/unit/validation/test_required_check_skip_guard.py\"]` fails."
+}

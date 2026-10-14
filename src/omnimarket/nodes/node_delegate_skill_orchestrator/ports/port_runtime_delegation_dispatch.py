@@ -26,6 +26,9 @@ from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     dispatch_stage,
 )
@@ -121,7 +124,18 @@ class RuntimeDelegationDispatchPort:
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
     ) -> dict[str, object]:
+        # OMN-21077: tests run where the workspace is, and a deployed lane has no
+        # access to the caller's workspace. Refused rather than dropped, so a
+        # caller who named tests is told where they run instead of reading an
+        # INSUFFICIENT refusal for tests that never ran.
+        if named_tests is not None:
+            raise ValueError(
+                "named tests are not run by this dispatch port; a code answer is "
+                "tested against its named tests only on the in-process path, "
+                "by the named-test runner that port is given"
+            )
         # OMN-20844: the canonical delegation request this port publishes has
         # no model field at the Core floor this package locks, so a model the
         # caller named cannot reach the consumer. Refused rather than dropped,

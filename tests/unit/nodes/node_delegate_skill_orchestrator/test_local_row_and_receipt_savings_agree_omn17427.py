@@ -25,6 +25,12 @@ import pytest
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -42,6 +48,16 @@ _TOKENS_IN = 213
 _TOKENS_OUT = 6
 #: The effect handler's hardcoded Opus rate: (213 * 15 + 6 * 75) / 1e6.
 _OPUS_HARDCODED_SAVINGS = 0.003645
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: supply executed passing evidence for this code-class happy path.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -105,11 +121,18 @@ async def _run_local_delegation(
 ) -> tuple[Any, sqlite3.Row]:
     _patch_backend_and_transport(monkeypatch)
     port = LocalDelegationDispatchPort(
-        evidence_db_path=db_path, effect_process_boundary=False
+        named_test_runner=_passing_named_test_runner,
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
     )
     handler = HandlerDelegateSkill(object(), dispatch_port=port)
     response = await handler.handle(
         ModelDelegateSkillRequest(
+            metadata={
+                "named_tests": "test_reverse.py::test_reverse",
+                "named_tests_answer_path": "reverse_impl.py",
+                "named_tests_workspace": str(db_path.parent),
+            },
             prompt="reverse a string",
             task_type="code_generation",
             source="claude-code",

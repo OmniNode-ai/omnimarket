@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m06",
+  "path": "pinned",
+  "sha256": "c960be3d04798959a62f674d8d3fef36e21a2c09e348b3d0567568dbf37afe43",
+  "response": "- **#206** (omnibase_spi): Ports change-aware test selection from omnibase_core (OMN-9852); adds detection scripts and adjacency YAML for all top-level modules; enables `ENABLE_SMART_TESTS` to map changed modules to reverse-dep test directories.\n- **#3702** (omnimarket): Adds `node_pr_title_check_compute` COMPUTE node registered in `pyproject.toml`; ports pr-title/check-title decision from `onex_change_control` workflow.\n- **#3651** (omnimarket): Adds `node_merge_sweep_orchestrator` with contract, metadata, and handler; orchestrates `load_facts`, `read_fleet`, `plan_lanes`, `render_brief`, `run_l` via execution graph.\n- **#1920** (omnibase_core): Validates full contract documents via `ModelContractContent.model_validate`; adds event bus and handler routing subcontracts; removes silent malformed-input dropping.\n- **#2923** (omnimarket): Fixes `PostgresSyncProjectionAdapter` to write contract-declared schema; resolves `search_path` issue causing `UndefinedTable` errors."
+}

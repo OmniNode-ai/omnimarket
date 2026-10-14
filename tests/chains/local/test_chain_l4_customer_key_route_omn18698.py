@@ -39,6 +39,7 @@ assertion, and if an ambient house key were also present it would turn red at
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -47,11 +48,18 @@ import pytest
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
 from omnimarket.routing.customer_key_terminus import (
     CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
     CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
     EnumDelegationSurface,
 )
+from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,
     HOUSE_BACKEND_ID,
@@ -67,6 +75,38 @@ from tests.chains.local.harness import (
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.local_chain]
+
+
+@pytest.fixture(autouse=True)
+def _passing_named_tests(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # OMN-21077: these chain assertions need executed tests for their code happy path.
+    def passing_runner(request: ModelNamedTestRunRequest) -> ModelNamedTestRunResult:
+        return ModelNamedTestRunResult(
+            status=EnumNamedTestRunStatus.COMPLETED,
+            run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+        )
+
+    monkeypatch.setattr(
+        local_chain_harness,
+        "LocalDelegationDispatchPort",
+        partial(
+            local_chain_harness.LocalDelegationDispatchPort,
+            named_test_runner=passing_runner,
+        ),
+    )
+    monkeypatch.setattr(
+        local_chain_harness,
+        "ModelDelegateSkillRequest",
+        partial(
+            local_chain_harness.ModelDelegateSkillRequest,
+            metadata={
+                "named_tests": "test_answer.py::test_answer",
+                "named_tests_answer_path": "answer.py",
+                "named_tests_workspace": str(tmp_path),
+            },
+        ),
+    )
+
 
 # A synthetic value, generated here and never read from anywhere. It stands in
 # for the customer's real key so the pair can prove WHICH credential the

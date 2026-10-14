@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e06",
+  "path": "pinned",
+  "sha256": "dd5a3a8558f4795067238ac70561346d5ab4a3ea2cfcb10ffcf088da6ff5d59a",
+  "response": "In PR #3002 (OMN-19830), the classify_head_checks operation now classifies a PR head's check facts into a verdict using the newest copy of each check name, with blocking checks from required contexts and red CI Summary names, each red receiving a reason code and class, and the verdict following corpus manifest precedence while carrying run attempts. The corpus adds four real heads for timed_out (omnimarket#2564) and runner_infra (omnibase_infra #4049, #4068, #4115) verdicts, and the merge-check classifier learns that an image pre-pull step is the runner's environment."
+}

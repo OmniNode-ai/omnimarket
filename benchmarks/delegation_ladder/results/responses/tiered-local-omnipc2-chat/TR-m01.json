@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m01",
+  "path": "pinned",
+  "sha256": "ba25b0943327129fb6e4674bcbce5d8ed2e808c05410468d0e16b58f3a619134",
+  "response": "**[45]** contradicts the assertion on **line 132** (`assert req.max_tokens == 4096`), which expects the default value to be 4096 while the model defines it as 4097."
+}

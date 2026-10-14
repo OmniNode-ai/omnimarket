@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e06",
+  "path": "pinned",
+  "sha256": "9c56caf4f51c312053de0460f29ccb7a23cc49097aada663bd4a4fa76b551bf0",
+  "response": "[27] — it lists `provider_ix` where the test at line 66 (`test_an_attempt_carrying_the_provider_facts_decodes`, which validates `_ATTEMPT | {\"provider_id\": \"zai\", ...}`) requires `provider_id` in `_FORTHCOMING_ATTEMPT_KEYS`, so the misspelled key would not be dropped and the `extra=\"forbid\"` model would refuse the attempt instead of decoding it."
+}

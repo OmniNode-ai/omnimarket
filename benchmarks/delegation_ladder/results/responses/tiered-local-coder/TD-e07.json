@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e07",
+  "path": "pinned",
+  "sha256": "071e09051685c5353c499151b2bdbe997c13cb6d9f3cc418488ac30ea5562b52",
+  "response": "Pull request #987 introduced EnumFileZone, a StrEnum for tiered QA gate classification, and implemented the classify_path function and ModelZonePolicy for per-zone QA gate configuration. These changes were made to enable directory-role-based classification distinct from file type, allowing files to be categorized by their location (e.g., production vs. test) to support tiered QA gates."
+}

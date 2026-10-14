@@ -519,7 +519,10 @@ class TestGateFailure:
         result: ModelDelegationResult = intents[0]
         assert result.fallback_to_claude is True
         assert result.quality_passed is False
-        assert "score_below_required_bar" in result.failure_reason
+        # OMN-21077: a code-class refusal names the failed criterion, not its score.
+        assert result.failure_reason.startswith("acceptance_criteria_failed:")
+        assert "TASK_MISMATCH: missing markers" in result.failure_reason
+        assert "acceptance=executed_tests" in result.failure_reason
 
 
 # ---------------------------------------------------------------------------
