@@ -73,7 +73,12 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # OMN-20165 declared ``rubric_verdict`` as a recorded-only field below.
 #
 # OMN-20168 declared the attempt lineage and placement fields below.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset()
+#
+# OMN-19855 adds ``backend_pinned``: true on the attempt whose backend the
+# request's ``backend_id`` pin chose, so a pinned run's tier entry is not read
+# as a weighted spread draw. The producer and the declared field land in the
+# change after the release that carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
