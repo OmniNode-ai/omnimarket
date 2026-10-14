@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h07",
+  "path": "pinned",
+  "sha256": "c4f4eae47bc1f223a7e6f6ea92e0edc430415198a9a63677df0965da673132e4",
+  "response": "[130] — `MAX_LAG_SECONDS = 61` contradicts `assert sla[\"max_lag_seconds\"] == 60` in `test_freshness_sla_in_contract` (line [739]), which pins the freshness SLA the handler constant is documented to mirror."
+}

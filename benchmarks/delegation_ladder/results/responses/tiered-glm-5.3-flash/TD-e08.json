@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e08",
+  "path": "pinned",
+  "sha256": "18a35ed2427b21058d40c1b86939f4f65123b64fb013fbb3daeb55c363ce5266",
+  "response": "Added `ModelCanaryTier` and `ModelCanaryTierAssignments` to the new `omnibase_core.models.governance` namespace, with `__init__.py` re-exports and 5 unit tests, in omnibase_core (#970) for ticket OMN-10250. This ports the models from `onex_change_control.canary.schema` as part of the Wave 3 core governance migration."
+}

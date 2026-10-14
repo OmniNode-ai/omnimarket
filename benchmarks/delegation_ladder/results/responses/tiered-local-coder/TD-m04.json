@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m04",
+  "path": "pinned",
+  "sha256": "c508e1d9d02c84d433f0bbb040fcdfdd44e1971335d593e99b909f86647e076b",
+  "response": "Release Notes\n\nomnibase_core #1032: Extracted shared contract-to-topics resolver in cli_resolve_contract_topics.py. Added resolve_node_contract and resolve_contract_topics functions. The resolver prioritizes event_bus.command_topic over subscribe_topics[0].\n\nomnibase_core #1564: Bumped the actions group dependency for required-check-skip-guard-reusable.yml. Updated the workflow reference from 9604842857f74ecdba5b063c67bf142a7649502e to bc923a70a31603407813123f22047403062598ab.\n\nomnibase_spi #83: Added frozen wire-format delegation output contracts. Introduced ContractDelegatedResponse, ContractDelegationAttribution, ContractAttachment, and ContractComplianceResult. All contracts enforce ConfigDict(frozen=True, extra=\"forbid\").\n\nomnimarket #3135: Advanced OCC gate caller pins to carry the writer-app pin-only exemption. Moved occ-preflight and receipt-gate pins to omnibase_core#1820 squash 52851458622f. Recorded four gh-api-gated pin tests in the skip-count baseline.\n\nomnimarket #3598: Hosted the morning ground-state orchestrator node with a deployment overlay. Added node_morning_ground_state_orchestrator with contract.yaml declaring start and terminal bus topics."
+}

@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e09",
+  "path": "pinned",
+  "sha256": "157ff65cc84f777927b9f5fe796e6eeced5f98717cc66de3965821341ed751ac",
+  "response": "PR #3549 (OMN-20712) adds deployment overlays for the lab-fill selection and lab disk hygiene nodes, moving repository roles and census paths from module constants into typed overlay models. This externalizes deployment configuration, keeping the compute nodes pure and enabling overlay-driven resolution."
+}

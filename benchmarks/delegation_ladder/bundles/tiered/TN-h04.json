@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-h04",
+  "title": "predict _required_check_state (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "hard",
+  "provenance": "Function _required_check_state in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_merge_sweep_compute/__main__.py; the call and the asserted result come from tests/unit/nodes/node_merge_sweep_compute/test_main_cli_outputs.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef _required_check_state(pr):\n    rollup = pr.get('statusCheckRollup') or []\n    required = [c for c in rollup if isinstance(c, dict) and c.get('isRequired')]\n    if not required:\n        return (True, False, False)\n    failed_conclusions = {'ACTION_REQUIRED', 'CANCELLED', 'FAILURE', 'FAILED', 'STARTUP_FAILURE', 'STALE', 'TIMED_OUT'}\n    failed = False\n    pending = False\n    pass_conclusions = {'SUCCESS', 'NEUTRAL', 'SKIPPED'}\n    pass_statuses = {'SUCCESS'}\n    for check in required:\n        conclusion = str(check.get('conclusion') or '').upper()\n        status = str(check.get('status') or check.get('state') or '').upper()\n        if conclusion in pass_conclusions or status in pass_statuses:\n            continue\n        if conclusion in failed_conclusions:\n            failed = True\n            continue\n        if status in {'FAILURE', 'ERROR'}:\n            failed = True\n            continue\n        pending = True\n    return (not failed and (not pending), failed, pending)\n```\n\nWhat does `_required_check_state({'statusCheckRollup': [{'isRequired': True, 'status': 'IN_PROGRESS', 'conclusion': None}]})` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "(False, False, True)"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

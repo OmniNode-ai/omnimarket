@@ -23,7 +23,7 @@ from benchmarks.delegation_ladder.summarise_results import (
     class_rung_table,
     class_separation,
     difficulty_tier,
-    first_failing_tier,
+    first_miss_tier,
     render_difficulty_table,
     render_table,
     tier_rung_table,
@@ -147,7 +147,7 @@ def test_every_tier_of_every_tiered_class_holds_eight_tasks_for_every_rung() -> 
 
 def test_the_committed_tier_table_is_the_table_the_records_give() -> None:
     rows = tier_rung_table(list(_records().values()), _tiers(), list(RUNGS))
-    expected = render_difficulty_table(rows, first_failing_tier(rows))
+    expected = render_difficulty_table(rows, first_miss_tier(rows))
     assert (RESULTS / "tiers.txt").read_text(encoding="utf-8") == expected
 
 

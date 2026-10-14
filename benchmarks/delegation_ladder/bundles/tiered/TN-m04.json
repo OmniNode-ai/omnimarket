@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m04",
+  "title": "predict _title_primary_omn_id (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function _title_primary_omn_id in omnimarket@7acb97b72bd6:src/omnimarket/nodes/node_linear_triage/handlers/handler_linear_triage.py; the call and the asserted result come from tests/nodes/node_linear_triage/test_omn_13759_implementing_pr_gate.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport re\n\n_OMN_ID_RE = re.compile('OMN-\\\\d+', re.IGNORECASE)\n\n_TITLE_PAREN_OMN_RE = re.compile('\\\\(\\\\s*(OMN-\\\\d+)', re.IGNORECASE)\n\ndef _norm_omn(value):\n    return value.strip().upper()\n\ndef _title_primary_omn_id(title):\n    m = _TITLE_PAREN_OMN_RE.search(title or '')\n    if m:\n        return _norm_omn(m.group(1))\n    m2 = _OMN_ID_RE.search(title or '')\n    if m2:\n        return _norm_omn(m2.group(0))\n    return None\n```\n\nWhat does `_title_primary_omn_id('OMN-555 do the thing')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'OMN-555'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

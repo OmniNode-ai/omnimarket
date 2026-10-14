@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m03",
+  "path": "pinned",
+  "sha256": "37955c12ff0a31499bcb9133be7982d89f196c5d28a08c3aebe9cb98adfaf016",
+  "response": "**omnibase_core**\n- `validate-union-usage` now runs as one whole-tree ratchet rather than a per-batch cap (#1764); the hook runs once over `src/` with `pass_filenames false`.\n- Gate 5 bans `**kwargs: object` / `**kwargs: Any` in Protocol method signatures (#965), scaffolding the `substrate_gates` package with shared AST-check infrastructure (`BaseGateCheck`, `GateViolation`).\n\n**omnimarket**\n- Empty-string `agent_id` is rejected on `claude_hook_events` / `claude_agent_spans` via `min_length=1` and migration 0002's CHECK (#3071).\n- Added `node_reject_skip_token_compute` plus pre-commit hooks: a pure scan flagging `[skip-<letter>` text unless `# skip-token-allowed: <receipt-id>` is present, covering staged files, commit messages, and PR bodies (#3629).\n- Pinning a non-routable BYOK row now raises `ByokPinNotPermittedError` with the correct catalogue code (#3310)."
+}

@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e09",
+  "title": "predict required_contexts_from_branch_body (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function required_contexts_from_branch_body in omnimarket@7acb97b72bd6:src/omnimarket/events/pr_landing_github/model_github_check_run_fact.py; the call and the asserted result come from tests/unit/nodes/node_pr_landing_github_effect/test_required_contexts_and_held_arm_omn_20866.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef required_contexts_from_branch_body(body):\n    if body is None:\n        raise ValueError('branch response has no body')\n    protection = body.get('protection')\n    if not isinstance(protection, dict):\n        return set()\n    checks = protection.get('required_status_checks')\n    if not isinstance(checks, dict):\n        return set()\n    contexts = checks.get('contexts', [])\n    if not isinstance(contexts, list) or not all((isinstance(c, str) for c in contexts)):\n        raise ValueError('required_status_checks.contexts is not a list of names')\n    return set(contexts)\n```\n\nWhat does `required_contexts_from_branch_body({'protected': False})` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "set()"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

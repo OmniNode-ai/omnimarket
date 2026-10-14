@@ -1,0 +1,5 @@
+Flips: recorded verdict -> rescored verdict, 28-task benchmark (56 cells)
+
+none
+
+0 flip(s) of 56 cells

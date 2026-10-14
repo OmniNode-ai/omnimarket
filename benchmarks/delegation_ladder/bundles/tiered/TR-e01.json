@@ -1,0 +1,37 @@
+{
+  "task_id": "TR-e01",
+  "title": "find the altered line (omnimarket@69f85edac9)",
+  "task_type": "review",
+  "difficulty": "easy",
+  "provenance": "Merged commit omnimarket@69f85edac9ef6a3adf5c0883c66eef7c232790cd. One added source line had the literal 'pr_lifecycle_orchestrator' altered to 'pr_lifecycle_orchestratox'; everything else is the merged diff.",
+  "prompt": "You are reviewing a merged pull request. Its description:\n\nfix(OMN-9403): envelope fixer dispatch events (#776)\n\nThe diff below was altered after the merge: exactly one added line outside the test files was edited so that it no longer agrees with the tests added in the same diff. Every added line carries a label such as [12]. Name the label of the altered line, then one sentence saying which test line it contradicts.\n\nDIFF:\n--- a/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py\n+++ b/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py\n@@ -40,6 +40,7 @@ from pathlib import Path\n from typing import TYPE_CHECKING, Any\n from uuid import UUID\n \n[1]+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope\n from pydantic import BaseModel, ConfigDict, Field\n \n from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (\n@@ -1467,19 +1468,30 @@ class HandlerPrLifecycleOrchestrator:\n         if not self._topic_fixer_dispatch_start:\n             return\n         for pr in fix_prs:\n-            payload = json.dumps(\n[2]+            payload = {\n[3]+                \"pr_number\": pr.pr_number,\n[4]+                \"repo\": pr.repo,\n[5]+                \"stall_category\": pr.block_reason or \"unknown\",\n[6]+                \"blocking_reason\": pr.block_reason or \"\",\n[7]+                \"correlation_id\": str(correlation_id),\n[8]+            }\n[9]+            envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(\n[10]+                payload=payload,\n[11]+                correlation_id=correlation_id,\n[12]+                source_tool=\"pr_lifecycle_orchestratox\",\n[13]+                target_tool=\"node_fixer_dispatcher\",\n[14]+                event_type=self._topic_fixer_dispatch_start,\n[15]+            )\n[16]+            encoded = json.dumps(\n                 {\n-                    \"pr_number\": pr.pr_number,\n-                    \"repo\": pr.repo,\n-                    \"stall_category\": pr.block_reason or \"unknown\",\n-                    \"blocking_reason\": pr.block_reason or \"\",\n-                    \"correlation_id\": str(correlation_id),\n[17]+                    **envelope.model_dump(mode=\"json\"),\n[18]+                    \"event_type\": self._topic_fixer_dispatch_start,\n                 }\n             ).encode()\n             await self._event_bus.publish(\n                 topic=self._topic_fixer_dispatch_start,\n                 key=None,\n-                value=payload,\n[19]+                value=encoded,\n             )\n \n \n--- a/tests/test_omn9403_publisher_wiring.py\n+++ b/tests/test_omn9403_publisher_wiring.py\n@@ -18,6 +18,7 @@ from uuid import uuid4\n \n import pytest\n from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory\n[20]+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope\n \n from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer import (\n     TOPIC_VERIFICATION_RECEIPT_START,\n@@ -160,11 +161,20 @@ class TestFixerDispatchStartPublished:\n             f\"expected 2 fixer-dispatch-start messages, got {len(history)}\"\n         )\n \n-        pr_numbers = {json.loads(msg.value)[\"pr_number\"] for msg in history}\n[21]+        envelopes = [\n[22]+            ModelEventEnvelope[dict[str, object]].model_validate_json(msg.value)\n[23]+            for msg in history\n[24]+        ]\n[25]+\n[26]+        pr_numbers = {envelope.payload[\"pr_number\"] for envelope in envelopes}\n         assert pr_numbers == {201, 202}\n \n-        for msg in history:\n-            payload = json.loads(msg.value)\n[27]+        for envelope in envelopes:\n[28]+            payload = envelope.payload\n[29]+            assert envelope.correlation_id == correlation_id\n[30]+            assert envelope.source_tool == \"pr_lifecycle_orchestrator\"\n[31]+            assert envelope.target_tool == \"node_fixer_dispatcher\"\n[32]+            assert envelope.event_type == TOPIC_FIXER_DISPATCH_START\n             assert payload[\"correlation_id\"] == str(correlation_id)\n             assert \"stall_category\" in payload\n             assert \"repo\" in payload\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "[12]"
+    ],
+    "forbidden": [
+      "[1]",
+      "[2]",
+      "[3]",
+      "[4]",
+      "[5]",
+      "[6]",
+      "[7]",
+      "[8]",
+      "[9]",
+      "[10]",
+      "[11]",
+      "[13]",
+      "[14]",
+      "[15]",
+      "[16]",
+      "[17]",
+      "[18]",
+      "[19]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

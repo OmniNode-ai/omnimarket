@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h01",
+  "path": "pinned",
+  "sha256": "a132d88ab09f9f1c558f7132df6b440fb34d93a2659a338a6f92d7016d7ff75b",
+  "response": "[24] — `_GH_SUBPROCESS_TIMEOUT_SECONDS = 91` was edited from the original 90 (the PR description, the comment above it saying \"90s is generous,\" and the tests all use 90), contradicting the `timeout=90` hardcoded in `_raise_timeout` at line 26 of `tests/integration/node_pr_lifecycle_inventory_compute/test_pr_lifecycle_inventory_gh_timeout.py` (`raise subprocess.TimeoutExpired(cmd=[\"gh\"], timeout=90)`)."
+}

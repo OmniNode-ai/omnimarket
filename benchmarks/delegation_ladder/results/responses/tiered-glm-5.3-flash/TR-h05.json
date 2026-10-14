@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h05",
+  "path": "pinned",
+  "sha256": "bb379575efad429dba9083bccb0d162191b826c5950666a1abc1f79b2e25464b",
+  "response": "**[70]** — it says the outage crash-looped the runtime and `:8086/ready` refused, contradicting the test module docstring at [303] (which, like the PR description and every other retelling in the diff, records the refused endpoint as `:8085/ready`)."
+}

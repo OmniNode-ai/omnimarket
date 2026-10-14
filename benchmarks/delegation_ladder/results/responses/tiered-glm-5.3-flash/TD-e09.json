@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e09",
+  "path": "pinned",
+  "sha256": "a8d8def3c8a864b12c771b4f5c1c0481f2c7557d09b22a99d0eda2aa0ffebbe7",
+  "response": "Adds the lab-fill selection node (`node_lab_fill_selection_compute`, with `select_lab_fill_work` and `mark_approved_work_done`) and the lab disk hygiene node (`node_lab_disk_hygiene_effect`, with `run_lab_disk_hygiene`) to omnimarket in canonical shape from the operator tooling repository, moving deployment facts into overlays — repository roles become a required `ModelLabFillDeployment` field validated via `from_overlay`, and the census path now comes from the request or the overlay (`OMNIMARKET_LAB_DISK_HYGIENE_OVERLAY` / `ONEX_SKILL_OVERLAY_ROOTS`) instead of module constants and a default path (#3549). Selection and hygiene logic are unchanged; the change makes the nodes environment-pure and host-agnostic, with no census meaning no container removal while prunes still run (OMN-20712)."
+}

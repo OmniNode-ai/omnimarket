@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e03",
+  "path": "pinned",
+  "sha256": "c6ea441b13892dc7fa566adb2f76c5424463a0ebcc3263a660466ce2f4119345",
+  "response": "Added six typed gateway read operations (workflow_runs, run_jobs, job_log_tail, artifacts, pr_text, releases) to node_github_repo_gateway_effect with request parameters run_id, job_id, artifact_id, branch, head_sha, workflow, event, status, limit, tail_bytes, and max_bytes, including defaults and caps. This enables typed GitHub Actions data fetching for PR authoring with claim and quota guards (#3729, OMN-20912)."
+}

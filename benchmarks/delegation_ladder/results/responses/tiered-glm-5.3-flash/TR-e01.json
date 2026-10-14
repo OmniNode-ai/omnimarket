@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e01",
+  "path": "pinned",
+  "sha256": "c4b0de9e78744782a00e901ecf10cb7ff4744bcd9a9d9937ddba2e5917e0c33c",
+  "response": "[12] — it sets `source_tool=\"pr_lifecycle_orchestratox\"`, which contradicts test line [30] asserting `envelope.source_tool == \"pr_lifecycle_orchestrator\"`."
+}

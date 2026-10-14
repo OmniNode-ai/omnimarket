@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m08",
+  "path": "pinned",
+  "sha256": "587391ecd8ed16ebe5e4c776996ecbc5f13a049291beec7996d955d734cf84c1",
+  "response": "**Release Notes**\n\n- **#1794** (omnibase_core): Adds delegation dispatch request/result models and `ProtocolDelegationDispatchPort` with RED tests (OMN-19838).\n- **#3321** (omnimarket): Fixes routing feedback reducer to treat NaN, infinite, or boolean latency as no latency; adds 60 deterministic unit tests (OMN-17427).\n- **#3408** (omnimarket): Burns down action-pin, transport-mock, and `runtime_profiles` ratchets to plain checks; pins workflow actions to commit tags; deletes empty baselines (OMN-20558).\n- **#2873** (omnimarket): Each rung records stop reason, truncation, and preamble rule; the deciding rung sets its cause; `quality_gate_refused` appears on both terminals (OMN-19436, OMN-19004).\n- **#2861** (omnimarket): Customer's declared local model now answers every class on clean install; fixes `ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT` refusal when local model present (OMN-19442)."
+}

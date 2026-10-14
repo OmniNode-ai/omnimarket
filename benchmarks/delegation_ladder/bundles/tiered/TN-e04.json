@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e04",
+  "title": "predict safe_float (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function safe_float in omnimarket@7acb97b72bd6:src/omnimarket/projection/runner.py; the call and the asserted result come from tests/test_projection_runner.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef safe_float(value, default=0.0):\n    if value is None:\n        return default\n    try:\n        f = float(value)\n        if f != f:\n            return default\n        return f\n    except (ValueError, TypeError):\n        return default\n```\n\nWhat does `safe_float('3.14')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "3.14"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

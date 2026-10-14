@@ -936,6 +936,11 @@ task_classes:
         - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
+    # OMN-21077: `execution_required: true` above makes this a code class. Its
+    # answer is accepted when every deterministic check passed and
+    # passes_existing_tests ran and passed; with no named test run the gate
+    # refuses it as INSUFFICIENT. The bar is resolved and reported but decides
+    # nothing, because the heuristics in the graded score look for keywords.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.85
@@ -1021,10 +1026,13 @@ task_classes:
         # (name_resolution); reject-only, skipped without a grounding source.
         - names_resolve
         - final_artifact_only
+        # OMN-21077: a refactor is code, judged by whether it still works.
+        - passes_existing_tests
       heuristic:
         - no_refusal
         - follows_codebase_conventions
         - no_obvious_regressions
+    # OMN-21077: advisory for this class, as on code_generation.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.85
@@ -1440,6 +1448,8 @@ task_classes:
         - final_artifact_only
         - uses_pytest_mark_unit
         - pytest_tests_present
+        # OMN-21077: the tests a test answer writes are judged by running them.
+        - passes_existing_tests
       heuristic:
         - no_refusal
         - covers_edge_cases
@@ -1471,6 +1481,7 @@ task_classes:
           deterministic:
             - response_non_empty
             - final_artifact_only
+    # OMN-21077: advisory for this class, as on code_generation.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1536,6 +1547,7 @@ task_classes:
     # local answer scored 1.0. The block is code_generation's, value for value:
     # same acceptance authority (deterministic_acceptance), same deterministic
     # DoD floor, so the same bar and the same caller override bounds.
+    # OMN-21077: advisory for this class, as on code_generation.
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.85

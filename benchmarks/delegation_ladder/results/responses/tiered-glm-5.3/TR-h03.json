@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h03",
+  "path": "pinned",
+  "sha256": "5b827e7321a9637f4b2587c73d3261e92e55b8779399cbc7f5e1edbc27ded6cd",
+  "response": "**[29]** — `window_size = 11` in `detect_repetition_loop`.\n\nIt contradicts test line [418], the comment in `test_window_boundary_no_false_positive` (\"12 unique triples, **window=10** so no window contains a repeat\"), since the detector as written uses a window of 11, not the window of 10 the test (and the detector's own docstring at [25]) specifies."
+}

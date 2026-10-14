@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e07",
+  "path": "pinned",
+  "sha256": "9127dd9167a413e9e0a27e93d628b59f2f52cb06ca5ba0ace92f7ea5228b8483",
+  "response": "[8] — the typo `duplicates['with_single_commanx']` makes the headline line impossible to emit, contradicting the test's exact-match assertion at [76]–[79] (`assert headline == \"- duplicate terminals (single command): 1 [correlation ids with more than one terminal: 2]\"`, which requires the correct `with_single_command` key)."
+}

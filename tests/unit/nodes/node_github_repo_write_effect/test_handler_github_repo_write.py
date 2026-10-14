@@ -54,6 +54,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
     EnumRepoWriteRefusal,
+    ModelRepoWriteClaim,
     ModelRepoWriteCompleted,
     ModelRepoWriteConfig,
     ModelRepoWriteFailed,
@@ -155,6 +156,7 @@ def _handler(
     *,
     claims: ProtocolPrClaimLookup | None = None,
     enforce: bool = True,
+    runtime_claims_dir: str = "",
 ) -> HandlerGithubRepoWriteEffect:
     config = ModelRepoWriteConfig(
         github_mode=EnumRepoWriteMode.DRY_RUN,
@@ -163,6 +165,7 @@ def _handler(
     return HandlerGithubRepoWriteEffect(
         transport,
         claim_lookup=claims or _NoClaims(),
+        runtime_claims_dir=runtime_claims_dir,
         config=config,
         clock=lambda: _NOW,
     )
@@ -460,6 +463,228 @@ async def test_pr_close_with_the_lanes_claim_closes_the_pr(tmp_path: Path) -> No
     assert transport.drained()
 
 
+# --- pr_close with the claim the caller took (OMN-21067) ------------------------
+#
+# The claim lands in the caller's registry, on the caller's host; the effect
+# runs on the bus lane's runtime and cannot read it. The caller carries the
+# claim on the command, and the effect checks it.
+
+
+def _stamp(offset_seconds: float) -> str:
+    return datetime.fromtimestamp(_NOW + offset_seconds, tz=UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _carried(**kw: object) -> ModelRepoWriteClaim:
+    fields: dict[str, object] = {
+        "pr_key": f"{_REPO.lower()}#4000",
+        "lane_id": _LANE,
+        "claimed_by_run": _RUN,
+        "action": "close",
+        "claimed_at": _stamp(-60),
+        **kw,
+    }
+    return ModelRepoWriteClaim.model_validate(fields)
+
+
+def _close_with(
+    claim: ModelRepoWriteClaim | None, **kw: object
+) -> ModelRepoWriteRequest:
+    return _req(
+        EnumRepoWriteOperation.PR_CLOSE,
+        pr_number=4000,
+        expected_head_sha=_HEAD,
+        requested_by_run=_RUN,
+        claim=claim,
+        **kw,
+    )
+
+
+def _close_exchanges() -> list[tuple[ModelGithubHttpRequest, ModelGithubHttpResponse]]:
+    return [
+        (pull_request_request(_REPO, 4000), _ok(_pr())),
+        (
+            edit_pull_request_request(_REPO, 4000, {"state": "closed"}),
+            _ok(_pr(state="closed")),
+        ),
+    ]
+
+
+async def test_pr_close_with_the_carried_claim_closes_with_no_registry_claim() -> None:
+    # AC1: the effect's registry holds nothing, the command carries the claim.
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried())
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert transport.drained()
+
+
+async def test_pr_close_with_the_carried_claim_closes_past_an_unreadable_dir(
+    tmp_path: Path,
+) -> None:
+    # AC1: --claims-dir named the caller's directory; the runtime's copy of
+    # that path is empty, which used to refuse every close.
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(), claims_dir=str(tmp_path))
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert transport.drained()
+
+
+async def test_a_carried_claim_with_a_recent_heartbeat_is_live() -> None:
+    # AC1: the registry's own liveness rule: a claim older than two hours is
+    # live while its heartbeat is under thirty minutes old.
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(
+            _carried(claimed_at=_stamp(-3 * 3600), last_heartbeat_at=_stamp(-300))
+        )
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+
+
+async def test_a_dry_run_close_with_the_carried_claim_plans_the_calls() -> None:
+    transport = _Recorded([])
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(), dry_run=True)
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert transport.sent == []
+
+
+async def test_pr_close_with_no_claim_anywhere_is_refused(tmp_path: Path) -> None:
+    # AC2: nothing carried, nothing in the registry: still refused.
+    for kw in ({}, {"claims_dir": str(tmp_path)}):
+        transport = _Recorded([])
+        result = await _handler(
+            transport, claims=HandlerPrClaimLookup(), runtime_claims_dir=str(tmp_path)
+        ).handle(_close_with(None, **kw))
+        assert isinstance(result, ModelRepoWriteFailed)
+        assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+        assert "no live claim" in result.detail
+        assert transport.sent == []
+
+
+@pytest.mark.parametrize(
+    ("claim_kw", "detail"),
+    [
+        ({"lane_id": "some-other-lane"}, "some-other-lane"),
+        ({"claimed_by_run": "another-run"}, "another-run"),
+        ({"pr_key": "omninode-ai/omnibase_spi#4001"}, "4001"),
+        (
+            {"claimed_at": _stamp(-3 * 3600), "last_heartbeat_at": _stamp(-3600)},
+            "expired",
+        ),
+        ({"claimed_at": _stamp(3600)}, "future"),
+        ({"claimed_at": _stamp(-60), "last_heartbeat_at": _stamp(3600)}, "future"),
+    ],
+    ids=["other-lane", "other-run", "other-pr", "expired", "future", "future-beat"],
+)
+async def test_a_carried_claim_that_is_not_the_requesters_live_claim_is_refused(
+    claim_kw: dict[str, object], detail: str
+) -> None:
+    # AC2: carrying a claim is not enough; it must be this lane's and run's,
+    # on this PR, and live.
+    transport = _Recorded([])
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(**claim_kw))
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert detail in result.detail
+    assert transport.sent == []
+
+
+async def test_a_peers_live_registry_claim_beats_the_carried_claim(
+    tmp_path: Path,
+) -> None:
+    # AC2: the registry the effect reads says another lane holds the PR.
+    _acquire(tmp_path, lane="peer-lane", run="peer-run")
+    transport = _Recorded([])
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(), claims_dir=str(tmp_path))
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert "peer-lane" in result.detail
+    assert transport.sent == []
+
+
+async def test_a_peers_claim_in_the_runtime_registry_beats_the_carried_claim(
+    tmp_path: Path,
+) -> None:
+    # AC2: the same, where the request names no directory and the runtime
+    # reads its own.
+    _acquire(tmp_path, lane="peer-lane", run="peer-run")
+    transport = _Recorded([])
+    result = await _handler(
+        transport, claims=HandlerPrClaimLookup(), runtime_claims_dir=str(tmp_path)
+    ).handle(_close_with(_carried()))
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert "peer-lane" in result.detail
+
+
+async def test_the_requesters_own_runtime_registry_claim_closes_without_a_carried_one(
+    tmp_path: Path,
+) -> None:
+    _acquire(tmp_path, lane=_LANE, run=_RUN)
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(
+        transport, claims=HandlerPrClaimLookup(), runtime_claims_dir=str(tmp_path)
+    ).handle(_close_with(None))
+    assert isinstance(result, ModelRepoWriteCompleted)
+
+
+@pytest.mark.parametrize("filed_as", [_REPO, _REPO.lower(), _REPO.upper()])
+def test_the_lookup_finds_a_claim_filed_under_another_case(
+    tmp_path: Path, filed_as: str
+) -> None:
+    # pr_claim_registry_cli.py files a claim under the key as typed; the
+    # effect asks for the lowercase canonical key. On a case-sensitive
+    # filesystem those are two files.
+    registry = HandlerPrClaimRegistry()
+    assert registry.handle(
+        ModelPrClaimRegistryRequest(
+            operation=EnumPrClaimOperation.ACQUIRE,
+            claims_dir=str(tmp_path),
+            now=_stamp(-60),
+            instance_id_path=str(tmp_path / "instance-id"),
+            host="lab-host",
+            pr_key=f"{filed_as}#4000",
+            run_id=_RUN,
+            action="close",
+            lane_id=_LANE,
+        )
+    ).succeeded
+    claim = HandlerPrClaimLookup().active_claim(
+        claims_dir=str(tmp_path), pr_key=f"{_REPO.lower()}#4000", now=_stamp(0)
+    )
+    assert claim is not None
+    assert (claim.lane_id, claim.claimed_by_run) == (_LANE, _RUN)
+
+
+def test_the_lookup_does_not_match_another_pr_number(tmp_path: Path) -> None:
+    _acquire(tmp_path, lane=_LANE, run=_RUN)
+    assert (
+        HandlerPrClaimLookup().active_claim(
+            claims_dir=str(tmp_path),
+            pr_key=f"{_REPO.lower()}#40",
+            now=_stamp(0),
+        )
+        is None
+    )
+
+
+def test_a_carried_claim_with_an_unparseable_timestamp_is_not_a_claim() -> None:
+    with pytest.raises(ValueError, match="claimed_at"):
+        _carried(claimed_at="yesterday")
+
+
 async def test_quota_floor_refuses_the_next_call_before_it_is_sent(
     tmp_path: Path,
 ) -> None:
@@ -754,7 +979,7 @@ async def test_dry_run_close_still_needs_the_claim(tmp_path: Path) -> None:
         (
             EnumRepoWriteOperation.PR_CLOSE,
             {"pr_number": 1, "expected_head_sha": _HEAD},
-            "claims_dir",
+            "requested_by_run",
         ),
         (EnumRepoWriteOperation.PR_CREATE, {"head": "h"}, "base"),
         (EnumRepoWriteOperation.WORKFLOW_DISPATCH, {"workflow": "ci.yml"}, "ref"),

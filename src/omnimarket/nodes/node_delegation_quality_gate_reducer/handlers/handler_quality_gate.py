@@ -120,9 +120,11 @@ from omnimarket.inference.task_class_authority import (
     EnumQualityRuleEnforcement,
     resolve_quality_rule,
     resolve_reasoning_preamble_policy,
+    resolve_task_class_execution_required,
 )
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
@@ -272,6 +274,13 @@ _DETERMINISTIC_SCORE_SOURCE = SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 # caller; the reducer stays pure and runs nothing itself. With no run supplied,
 # the check is SKIPPED: recorded, excluded from the fraction, never a pass,
 # just like names_resolve without a grounding source.
+#
+# OMN-21077: except for a code class (``execution_required: true``). A code
+# answer is judged by whether it works, so for those classes a declared
+# passes_existing_tests with no run is a deterministic FAILURE carrying the
+# INSUFFICIENT prefix: no tests named means the answer is not checked, and an
+# answer that is not checked is never accepted.
+_NO_NAMED_TEST_RUN_REASON = NO_NAMED_TEST_RUN_REASON
 
 # OMN-13470: when an LLM-judge adequacy score is combined with the deterministic
 # graded score, the result records ``score_source="combined"`` so downstream
@@ -1738,6 +1747,7 @@ def _evaluate_deterministic_checks(
     *,
     grounding_source: str | None = None,
     named_test_run: ModelNamedTestRun | None = None,
+    require_executed_tests: bool = False,
 ) -> tuple[list[str], list[str], list[ModelQualityRuleEvaluation]]:
     """Run all deterministic DoD checks.
 
@@ -1746,7 +1756,9 @@ def _evaluate_deterministic_checks(
         human-readable messages of checks that were evaluated and failed;
         ``skipped`` names checks without the evidence needed to evaluate them.
         ``passes_existing_tests`` reads a supplied named-test run (OMN-21076)
-        and is skipped only when none is supplied. A skipped check produces
+        and is skipped only when none is supplied, unless
+        ``require_executed_tests`` (a code class, OMN-21077) makes the missing
+        run an INSUFFICIENT failure. A skipped check produces
         neither a pass nor a failure and is excluded from the deterministic
         passed/total fraction by the caller.
 
@@ -1774,10 +1786,13 @@ def _evaluate_deterministic_checks(
                 continue
             reason = _unresolved_names_failure_reason(names_verdict.unresolved)
         elif check == "passes_existing_tests":
-            if named_test_run is None:
+            if named_test_run is not None:
+                reason = _check_passes_existing_tests(named_test_run)
+            elif require_executed_tests:
+                reason = _NO_NAMED_TEST_RUN_REASON
+            else:
                 skipped.append(check)
                 continue
-            reason = _check_passes_existing_tests(named_test_run)
         elif check == "output_parses":
             reason = _check_output_parses(content)
         elif check == "signature_preserved":
@@ -2266,6 +2281,7 @@ def _run_contract_checks(
     *,
     grounding_source: str | None = None,
     named_test_run: ModelNamedTestRun | None = None,
+    require_executed_tests: bool = False,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -2285,6 +2301,7 @@ def _run_contract_checks(
             dod_deterministic,
             grounding_source=grounding_source,
             named_test_run=named_test_run,
+            require_executed_tests=require_executed_tests,
         )
     )
     (
@@ -3316,7 +3333,9 @@ def _delta_over_answer_segment(
             other path is byte-identical to pre-OMN-18297 behaviour.
         named_test_run: Optional outcome of named tests run upstream against the
             delegated code. ``None`` leaves ``passes_existing_tests`` skipped,
-            excluded from the scored total, and never counted as a pass.
+            excluded from the scored total, and never counted as a pass -- or,
+            for a code class (``execution_required``), an INSUFFICIENT
+            deterministic failure (OMN-21077).
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -3349,6 +3368,10 @@ def _delta_over_answer_segment(
         dod_heuristic,
         grounding_source=grounding_source,
         named_test_run=named_test_run,
+        # OMN-21077: a code class is judged by tests run against its answer.
+        require_executed_tests=resolve_task_class_execution_required(
+            gate_input.task_type
+        ),
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic

@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e06",
+  "path": "pinned",
+  "sha256": "26f289dfeaa5cb47c829caa1d3845624a497da0d2bc000e20d3957500d7d8b74",
+  "response": "PR #3002 (OMN-19830) adds the triage compute's classify_head_checks operation, which classifies a PR head's check facts into its verdict — the newest copy of each check name decides, blocking checks are the required contexts plus what a red CI Summary names, each red gets a reason code from the merge-check classifier, the verdict follows the corpus manifest's precedence and carries each blocking result's run attempt — and it expands the corpus with four real heads for the timed_out and runner_infra verdicts while teaching the merge-check classifier that an image pre-pull step is the runner's environment. This lets the classifier reproduce the labelled check-run corpus, filling the timed_out and runner_infra verdicts the 2026-09-26 corpus lacked, with any red nothing recognises going to an agent and never being re-run."
+}

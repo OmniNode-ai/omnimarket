@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m01",
+  "path": "pinned",
+  "sha256": "c66eb4743aaec71b6b551480b4d826b3bf1716c1b6ba33c6c53eea5e4e34544a",
+  "response": "[45] — This line sets `max_tokens: int = 4097` as the default, but test line 132 asserts `req.max_tokens == 4096`."
+}

@@ -1,0 +1,21 @@
+{
+  "task_id": "TD-e05",
+  "title": "one-change changelog entry (omnimarket#2884)",
+  "task_type": "document",
+  "difficulty": "easy",
+  "provenance": "Squash commits of omnimarket@99ab60876130",
+  "prompt": "Summarize the merged change below in at most two sentences for a changelog: what changed, then why. Name the pull request number exactly as written (#NNNN). Use only facts stated in the change text. Also name the ticket OMN-19514.\n\n--- change 1 (repo omnimarket, pull request #2884) ---\nfeat(OMN-19514): delegation_events carries the ticket its terminal carried (#2884)\n* feat(OMN-19514): delegation_events carries the ticket its terminal carried\n\nConsumer half of the decision-workflow eval plan Task 4: a delegation run is\njoined to the ticket it worked, so a DoD verdict for that ticket can be joined\nto the delegated attempt it judged.\n\n- migration 0047 adds nullable delegation_events.ticket_id plus a partial index\n- the terminal projection model accepts ticket_id (raw JSON value; a malformed\n  one never dead-letters the row)\n- a pure fold (HandlerDelegationTicketFold) returns the column for a\n  well-formed ticket, nothing for an absent one, and a named refusal for a\n  malformed one; both effect writers persist what it returns\n- the delegate-skill response decodes a ticket_id key before it declares it\n  (step 1 of the consumer-first order the wire compatibility gate enforces);\n  step 2 declares it and the handler copies the request ticket onto the\n  terminal once a release carries this\n- ticket_id is annotated in the projection exposure allowlist as a\n  server-side join key\n- carries the post-release 0.4.217 bump, byte-identical to omnimarket#2874,\n  so the release-identity gate passes; whichever lands first, the other's\n  copy merges as a no-op\n\nOnex-Lane: dod-loop-join\nOnex-Session: b57923e38cc64f7ab8b80e3e4c5f3086\n\n* fix(OMN-19514): the projection decodes any ticket value as text, so step 2 declares str on the response without a type overrid\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "--- change 1 (repo omnimarket, pull request #2884) ---\nfeat(OMN-19514): delegation_events carries the ticket its terminal carried (#2884)\n* feat(OMN-19514): delegation_events carries the ticket its terminal carried\n\nConsumer half of the decision-workflow eval plan Task 4: a delegation run is\njoined to the ticket it worked, so a DoD verdict for that ticket can be joined\nto the delegated attempt it judged.\n\n- migration 0047 adds nullable delegation_events.ticket_id plus a partial index\n- the terminal projection model accepts ticket_id (raw JSON value; a malformed\n  one never dead-letters the row)\n- a pure fold (HandlerDelegationTicketFold) returns the column for a\n  well-formed ticket, nothing for an absent one, and a named refusal for a\n  malformed one; both effect writers persist what it returns\n- the delegate-skill response decodes a ticket_id key before it declares it\n  (step 1 of the consumer-first order the wire compatibility gate enforces);\n  step 2 declares it and the handler copies the request ticket onto the\n  terminal once a release carries this\n- ticket_id is annotated in the projection exposure allowlist as a\n  server-side join key\n- carries the post-release 0.4.217 bump, byte-identical to omnimarket#2874,\n  so the release-identity gate passes; whichever lands first, the other's\n  copy merges as a no-op\n\nOnex-Lane: dod-loop-join\nOnex-Session: b57923e38cc64f7ab8b80e3e4c5f3086\n\n* fix(OMN-19514): the projection decodes any ticket value as text, so step 2 declares str on the response without a type overrid omnimarket#2884",
+    "must_contain": [
+      "#2884",
+      "OMN-19514"
+    ],
+    "must_not_contain": [],
+    "max_words": 90
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

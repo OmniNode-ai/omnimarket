@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m01",
+  "title": "predict _normalized_branch (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function _normalized_branch in omnibase_core@d677b4e78219:src/omnibase_core/validation/validator_receipt_gate.py; the call and the asserted result come from tests/unit/validation/test_receipt_gate_internal_guards.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\ndef _normalized_branch(value):\n    if value is None:\n        return ''\n    branch = value.strip()\n    for prefix in ('refs/heads/', 'heads/'):\n        if branch.startswith(prefix):\n            branch = branch.removeprefix(prefix)\n    return branch\n```\n\nWhat does `_normalized_branch('  main  ')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'main'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

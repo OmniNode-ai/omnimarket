@@ -29,6 +29,13 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
 )
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -37,6 +44,16 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     transport,
 )
 from omnimarket.routing import delegation_backend_resolution
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: supply executed passing evidence for this code-class happy path.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -141,6 +158,7 @@ def test_local_dispatch_materializes_evidence_row(
     _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
@@ -153,6 +171,11 @@ def test_local_dispatch_materializes_evidence_row(
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=correlation_id,
@@ -191,12 +214,11 @@ def test_local_dispatch_materializes_evidence_row(
     assert row["task_type"] == "code_generation"
     assert row["model_name"] == "Qwen3.6-35B-A3B"
     assert bool(row["quality_gate_passed"]) is True
-    # OMN-13597: the verdict is the REAL canonical-gate verdict, and the score is
-    # the reducer's graded score (NOT a hardcoded 1.0). A clean code answer passes
-    # the code_generation DoD; its graded score reflects partial heuristic credit.
+    # OMN-21077: executed checks decide code acceptance; the score is telemetry.
     assert isinstance(result["quality_score"], float)
     assert 0.0 < float(result["quality_score"]) <= 1.0
     assert float(result["quality_score"]) != 1.0
+    assert row["actual_score"] == result["quality_score"]
     assert result["quality_gate_passed"] is True
     assert row["tokens_input"] == 11
     assert row["tokens_output"] == 22
@@ -216,12 +238,18 @@ def test_local_dispatch_absence_stays_unclassified_even_with_canary_prompt(
     _patch_routing(monkeypatch, fake_backends)
     _patch_transport(monkeypatch)
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
 
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="scheduled chain canary synthetic smoke",
             task_type="code_generation",
             correlation_id=uuid4(),
@@ -252,6 +280,7 @@ def test_local_dispatch_evidence_is_idempotent(
     _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
@@ -259,6 +288,11 @@ def test_local_dispatch_evidence_is_idempotent(
     for _ in range(2):
         asyncio.run(
             port.dispatch(
+                named_tests=ModelNamedTestSpec(
+                    workspace_root=str(tmp_path),
+                    answer_path="reverse_impl.py",
+                    test_ids=("test_reverse.py::test_reverse",),
+                ),
                 prompt="reverse a string",
                 task_type="code_generation",
                 correlation_id=correlation_id,
@@ -300,11 +334,17 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
     _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=uuid4(),
@@ -383,11 +423,17 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=uuid4(),
@@ -432,11 +478,17 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
     captured = _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=uuid4(),
@@ -470,11 +522,17 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
     captured = _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=uuid4(),
@@ -505,11 +563,17 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
     captured = _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=uuid4(),
@@ -545,11 +609,17 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
     captured = _patch_transport(monkeypatch)
 
     port = LocalDelegationDispatchPort(
+        named_test_runner=_passing_named_test_runner,
         evidence_db_path=db_path,
         effect_process_boundary=False,
     )
     result = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(tmp_path),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=uuid4(),

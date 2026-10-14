@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m03",
+  "path": "pinned",
+  "sha256": "1a9f5dc7523bb9d70508d1ade8e2700f7294d09fea523b5ab93b2c7e91c1fc57",
+  "response": "- omnibase_core#1764: Fix validate-union-usage to run once over src/ (pass_filenames false) instead of per pre-commit batch, excluding protocols/.\n- omnibase_core#965: Add Gate 5 banning **kwargs: object/Any in Protocol method signatures; scaffold substrate_gates package with BaseGateCheck, GateViolation, has_allow_annotation, main_for_gate.\n- omnimarket#3071: Reject empty-string agent_id on claude_hook_events/claude_agent_spans via min_length=1 and migration 0002 CHECK constraint.\n- omnimarket#3629: Add node_reject_skip_token_compute (contract.yaml, metadata.yaml, models, handler) scanning for [skip-<letter> violations unless \"# skip-token-allowed: <receipt-id>\" present; scopes staged files by type and commit messages/PR bodies.\n- omnimarket#3310: Raise ByokPinNotPermittedError for non-routable BYOK pins instead of misleading endpoint error; aligns with registration refusal; three new tests including GLM general_api."
+}

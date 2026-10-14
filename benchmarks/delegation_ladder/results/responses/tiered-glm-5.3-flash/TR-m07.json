@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m07",
+  "path": "pinned",
+  "sha256": "14df09a78c943fb2dc54ac6d3f59b6481460b985a26139bfe98452f7e6bb3ce6",
+  "response": "[22] — the misspelled `\"criterion_hasx\"` key makes the criterion_hash comparison vacuous (both hashes come back empty, are discarded, and `len(hashes) <= 1` is always true), so a second-lane record with a changed criterion would still count as re-acceptance and clear the binding, contradicting `test_second_lane_acceptance_of_a_changed_criterion_does_not_clear`'s `assert len(self_accepted_bindings(items)) == 2` at line [189]."
+}

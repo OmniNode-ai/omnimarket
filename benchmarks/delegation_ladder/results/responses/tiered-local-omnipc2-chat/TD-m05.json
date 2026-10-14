@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m05",
+  "path": "pinned",
+  "sha256": "cb87284dcd76222f443eeab9230bb0514cffb5bfb26a792089689f6398bc5f1f",
+  "response": "**Release Notes**\n\n- **#1301**: ArtifactStore Phase 1 hardening adds retention classes, quota enforcement, and restricted-tier read support.\n- **#1146**: Adds ModelKnowledgeContextBundle and sub-models, including ModelAntipatternEntry, ModelAntipatternExample, and ModelAntipatternRegistry with validation rules.\n- **#3331**: Fills routing boundary and outcome test gaps, covering complexity thresholds, token bands, and delegation outcomes.\n- **#3686**: Wires landing orchestrator config, head-checks, and PR state ingress, enforcing dry-run modes for specific operations.\n- **#265**: Bumps actions/setup-python from 6 to 7."
+}

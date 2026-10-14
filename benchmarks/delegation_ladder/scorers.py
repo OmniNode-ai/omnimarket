@@ -24,6 +24,7 @@ Two properties are deliberate and load-bearing:
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import re
@@ -616,4 +617,74 @@ def score_patch_apply_and_test(
             else f"focused test still fails after the patch: {patched_out[-400:]}"
         ),
         checklist=checklist,
+    )
+
+
+# --------------------------------------------------------------------------
+# Predict a call's value
+# --------------------------------------------------------------------------
+
+_LITERAL_PREFIX_RE = re.compile(
+    r"^\s*(?:\*\*|#+)?\s*(?:final answer|answer|result|output|returns?)\s*[:=]\s*",
+    re.IGNORECASE,
+)
+
+
+def _same_literal(a: object, b: object) -> bool:
+    """Equality that does not let ``True == 1`` or ``1 == 1.0`` through."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same_literal(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(
+            _same_literal(x, y) for x, y in zip(a, b, strict=True)
+        )
+    return bool(a == b)
+
+
+def _literal_candidates(answer: str) -> list[str]:
+    """The answer as given, unfenced, and each line, so wrapping does not decide."""
+    text = answer.strip()
+    fence = _FENCE_RE.findall(text)
+    candidates = [text] + [f.strip() for f in fence]
+    candidates += [ln.strip() for ln in text.splitlines() if ln.strip()]
+    cleaned: list[str] = []
+    for item in candidates:
+        item = _LITERAL_PREFIX_RE.sub("", item).strip().strip("`").strip()
+        if item.endswith(".") and not item.endswith(".."):
+            item = item[:-1]
+        cleaned.append(item)
+    return cleaned
+
+
+def score_literal_equals(response: str, config: dict[str, object]) -> ModelScore:
+    """Did the answer evaluate to the held Python literal, type for type?
+
+    The held value was produced by executing the call, so it is not an opinion.
+    Formatting does not decide the verdict: quotes, spacing, a code fence or an
+    ``Answer:`` prefix are all folded away, and a value of the wrong TYPE fails.
+    """
+    answer, _ = split_answer(response)
+    expected_text = _text(config, "expected")
+    expected = ast.literal_eval(expected_text)
+    for candidate in _literal_candidates(answer):
+        try:
+            got = ast.literal_eval(candidate)
+        except (ValueError, SyntaxError, MemoryError, RecursionError):
+            continue
+        if _same_literal(got, expected):
+            return ModelScore(
+                outcome=EnumOutcome.PASS,
+                score=1.0,
+                mechanical=True,
+                detail="evaluates to the held value",
+                checklist={"matches_held_value": True},
+            )
+    return ModelScore(
+        outcome=EnumOutcome.FAIL,
+        score=0.0,
+        mechanical=True,
+        detail=f"no literal in the answer equals {expected_text[:80]}",
+        checklist={"matches_held_value": False},
     )

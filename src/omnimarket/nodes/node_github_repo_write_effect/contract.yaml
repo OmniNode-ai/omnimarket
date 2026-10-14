@@ -25,8 +25,12 @@ description: >
   refuse a moved head (head_moved) before any mutation; pr_create and workflow_dispatch check
   the branch tip when given an expected head. A retried command with the same
   idempotency key writes nothing twice. pr_close is refused (claim_not_held)
-  unless the requesting lane and run hold a live claim on the PR in
-  node_pr_claim_registry_effect.
+  unless the requesting lane and run hold a live claim on the PR. The claim is
+  read from node_pr_claim_registry_effect's registry when this runtime keeps
+  one; a live claim there held by another lane or run refuses the close. With
+  none there, the claim the caller took (lane, run, action, taken-at,
+  heartbeat) and carried on the command is checked against the request and the
+  registry's liveness rule. A close with neither is refused.
   Before creating an M4 pull request, the cited ticket contracts are read at
   the branch head and checked through node_dod_verify's static prerequisites.
   Missing or invalid evidence is refused with contract_required, naming the
@@ -53,7 +57,7 @@ operations:
     description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr ready. GET the PR (expected head), GraphQL markPullRequestReadyForReview."
     transport: graphql
   - name: pr_close
-    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr close. Claim check in node_pr_claim_registry_effect, GET the PR (expected head), PATCH state=closed."
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr close. Claim check: the runtime's claim registry, else the claim carried on the command; GET the PR (expected head), PATCH state=closed."
     transport: rest
   - name: pr_comment
     description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr comment. Scan comments for the idempotency marker, POST /repos/{o}/{r}/issues/{n}/comments."

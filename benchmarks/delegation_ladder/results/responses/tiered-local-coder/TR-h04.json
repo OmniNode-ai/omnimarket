@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h04",
+  "path": "pinned",
+  "sha256": "8309648ec3f6c93ccf228fe24c4d0a1554797941ed82ad39cd8ae806fa28672e",
+  "response": "The altered line is **[219]**. It contradicts the test assertion on **line 242** (and line 249), which expects the selection logic to trigger for the file `.github/required-checks.yaml`, whereas line 219 defines the matching path constant as `.github/required-checks.yamx`."
+}
