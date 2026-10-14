@@ -164,9 +164,7 @@ scripts/ci/install_canary/run_install_canary.py
 scripts/ci/install_canary/stub_openai_server.py
 scripts/ci/merge_queue_enqueue.py
 scripts/ci/merge_test_durations.py
-scripts/ci/occ_behavior_proof_backfill.py
 scripts/ci/occ_companion_merge_heal.py
-scripts/ci/occ_conflicted_companion_remint.py
 scripts/ci/occ_receipt_runner.py
 scripts/ci/occ_window_quiet_wait.py
 scripts/ci/parity_red_on_base_baseline.py

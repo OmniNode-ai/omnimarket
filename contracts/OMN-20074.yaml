@@ -77,6 +77,13 @@ requirements:
       - id: "AC10"
         statement: |-
           AC10: staged prose, committed evidence, commit messages and PR bodies carrying a bypass token remain blocked with a receipt-id approval comment; clean text still passes and the node agrees with its exported hook -- falsifier: the head's rejection tests fail against the merge-base handler and hook, which still accept approval comments.
+  - id: "req-ci-off-change-control"
+    statement: |-
+      omnimarket's ci.yml checks out no onex_change_control tree, the contract topic graph expects none, and the three occ-* workflows that only operated on companions nothing here mints are deleted; the S7 replay and the emitter golden gate stay until S9.
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: ci.yml has no step checking out OmniNode-ai/onex_change_control, GRAPH_PACKAGES omits it, occ-conflicted-companion-remint.yml, occ-behavior-proof-backfill.yml and occ-n10-streak-report.yml do not exist and occ-s7-replay.yml and occ-emitter-golden-gate.yml do -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "This PR's rejection behavior and hook parity fail against the merge-base implementation and pass at the head."
@@ -108,6 +115,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The topic hook is one omnibase_core block at a full sha with its exclude and settings unchanged and no onex_change_control block."
     command: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
+  - kind: "tests"
+    description: "CI checks out no change control tree, the topic graph expects none, three dead occ workflows are deleted and two stay."
+    command: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -200,3 +210,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_precommit_topic_hook_core_omn20074.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn20074-ci-off-change-control"
+    description: "ci.yml checks out no change control tree and the dead occ workflows are gone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]

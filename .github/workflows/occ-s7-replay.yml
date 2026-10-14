@@ -11,12 +11,9 @@
 # job runs the replay where the reads are allowed, under the workflow's own
 # token, one repository per dispatch.
 #
-# Why a workflow of its own: the one other read-only, dispatch-only OCC report,
-# occ-n10-streak-report.yml, reads onex_change_control with OCC_AUTOAUTHOR_TOKEN
-# and its header marks that token and its (absent) schedule as deliberate
-# non-decisions not to be resolved by editing that file. Adding this job there
-# would run both jobs on every dispatch of either, or edit the streak job to
-# gate it. The other OCC workflows are cron, pull_request or write workflows.
+# Why a workflow of its own: it is the one read-only, dispatch-only OCC report
+# here (OMN-20074 deleted occ-n10-streak-report.yml, the other one), and the
+# remaining OCC workflows are cron, pull_request or write workflows.
 #
 # READ-ONLY. `permissions: contents: read`, the default GITHUB_TOKEN, no secret,
 # no cron, not a required check. It clones public repositories, reads their PRs
