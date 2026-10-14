@@ -94,6 +94,24 @@ def default_watcher_state_path() -> Path | None:
     return Path(registry_root) / ".claude_scratch" / "pr-watcher" / "state.json"
 
 
+def default_claims_dir() -> Path | None:
+    """The caller's PR claim registry: where ``pr_claim_registry_cli.py`` claims.
+
+    ``$ONEX_PR_CLAIMS_DIR``, else ``$ONEX_STATE_DIR/pr-queue/claims``, else
+    ``$OMNI_HOME/.onex_state/pr-queue/claims``.
+    """
+    declared = os.environ.get("ONEX_PR_CLAIMS_DIR")
+    if declared:
+        return Path(declared)
+    state_dir = os.environ.get("ONEX_STATE_DIR")
+    if state_dir:
+        return Path(state_dir) / "pr-queue" / "claims"
+    registry_root = os.environ.get("OMNI_HOME")
+    if not registry_root:
+        return None
+    return Path(registry_root) / ".onex_state" / "pr-queue" / "claims"
+
+
 def default_clone_path(repo: str) -> Path | None:
     """``$ONEX_SCM_CLONE_ROOT/<repo name>`` when it is a git checkout.
 
@@ -609,6 +627,7 @@ __all__: list[str] = [
     "CLONE_ROOT_ENV",
     "WATCHER_MAX_AGE",
     "HandlerScmLocalState",
+    "default_claims_dir",
     "default_clone_path",
     "default_watcher_state_path",
 ]

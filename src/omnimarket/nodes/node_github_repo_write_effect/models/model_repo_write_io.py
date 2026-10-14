@@ -16,6 +16,7 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID
@@ -86,6 +87,54 @@ _HEAD_REQUIRED = frozenset(
 )
 
 
+def parse_claim_stamp(stamp: str) -> datetime:
+    """A claim timestamp as the claim registry writes it, naive meaning UTC."""
+    parsed = datetime.fromisoformat(stamp.rstrip("Z"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+class ModelRepoWriteClaim(BaseModel):
+    """The PR claim a caller took, carried on a pr_close command (OMN-21067).
+
+    The claim file lives in the caller's claim registry, on the caller's host;
+    the effect runs elsewhere and cannot read it. The caller reads its own
+    claim and sends these fields, the ones the registry records when a claim
+    is taken. The effect checks them against the request and the clock; the
+    claim registry it can read still decides when it holds a claim on the PR.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_key: str = Field(min_length=1, description="Canonical lowercase org/repo#n.")
+    lane_id: str = Field(min_length=1, description="The lane that took the claim.")
+    claimed_by_run: str = Field(min_length=1, description="The run it was taken under.")
+    action: str = Field(min_length=1, description="What the holder is doing.")
+    claimed_at: str = Field(min_length=1, description="UTC time the claim was taken.")
+    last_heartbeat_at: str | None = Field(
+        default=None, description="UTC time of the last heartbeat, when it has one."
+    )
+
+    @model_validator(mode="after")
+    def _timestamps_parse(self) -> ModelRepoWriteClaim:
+        for name in ("claimed_at", "last_heartbeat_at"):
+            stamp = getattr(self, name)
+            if stamp is None:
+                continue
+            try:
+                parse_claim_stamp(stamp)
+            except ValueError as exc:
+                raise ValueError(f"{name} {stamp!r} is not a UTC timestamp") from exc
+        return self
+
+    @property
+    def latest_stamp(self) -> datetime:
+        """The later of the claim time and the last heartbeat."""
+        stamps = [parse_claim_stamp(self.claimed_at)]
+        if self.last_heartbeat_at is not None:
+            stamps.append(parse_claim_stamp(self.last_heartbeat_at))
+        return max(stamps)
+
+
 class ModelRepoWriteRequest(BaseModel):
     """One write operation against one repository."""
 
@@ -108,6 +157,12 @@ class ModelRepoWriteRequest(BaseModel):
         default=None,
         min_length=1,
         description="pr_close: the run id the claim was taken under.",
+    )
+    claim: ModelRepoWriteClaim | None = Field(
+        default=None,
+        description="pr_close: the claim the caller took, read from the caller's "
+        "own registry and carried here because the effect cannot read that "
+        "directory. Without one, the effect's own registry must hold the claim.",
     )
     pr_number: int | None = Field(default=None, gt=0)
     expected_head_sha: str | None = Field(
@@ -135,8 +190,8 @@ class ModelRepoWriteRequest(BaseModel):
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
-        description="pr_close: the directory node_pr_claim_registry_effect keeps "
-        "claims in, as the registry itself takes it.",
+        description="pr_close: a directory node_pr_claim_registry_effect keeps "
+        "claims in, as the effect's runtime sees it. Not the caller's directory.",
     )
     dry_run: bool = Field(
         default=False,
@@ -163,15 +218,8 @@ class ModelRepoWriteRequest(BaseModel):
             ]
         if op is EnumRepoWriteOperation.PR_COMMENT and not self.body:
             missing.append("body")
-        if op is EnumRepoWriteOperation.PR_CLOSE:
-            missing += [
-                n
-                for n, v in (
-                    ("claims_dir", self.claims_dir),
-                    ("requested_by_run", self.requested_by_run),
-                )
-                if v is None
-            ]
+        if op is EnumRepoWriteOperation.PR_CLOSE and self.requested_by_run is None:
+            missing.append("requested_by_run")
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             missing += [
                 n
@@ -267,7 +315,9 @@ __all__: list[str] = [
     "EnumRepoWriteMode",
     "EnumRepoWriteOperation",
     "EnumRepoWriteRefusal",
+    "ModelRepoWriteClaim",
     "ModelRepoWriteCompleted",
     "ModelRepoWriteFailed",
     "ModelRepoWriteRequest",
+    "parse_claim_stamp",
 ]

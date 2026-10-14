@@ -219,8 +219,10 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
     delta as evaluate_quality_gate,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    NO_HIGHER_TIER_REASON_TOKEN,
     backend_id_for_tier,
     credential_withheld_rung,
+    describe_no_higher_tier_available,
     first_eligible_tier,
     is_free_tier,
     measure_grounding_input_tokens,
@@ -344,6 +346,13 @@ _DELEGATION_EVENTS_TABLE = "delegation_events"
 # without a contract-declared budget still escalates the same bounded number of
 # times on both paths.
 _DEFAULT_MAX_ESCALATIONS = 2
+
+# OMN-20844: the ``terminal_failure_reason`` values a quality-refused ladder
+# stops with, spelled as the bus orchestrator spells them
+# (``handler_escalation_decision`` and ``handler_delegation_workflow``), so a
+# receipt from either path keys the same way.
+_MAX_ESCALATION_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"
+_NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
 
 # OMN-13943: failure classes that must NOT trigger an up-tier escalation retry.
 # Mirrors the bus orchestrator's ``_should_escalate_inference_error`` posture
@@ -2485,7 +2494,14 @@ class LocalDelegationDispatchPort:
                 continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
-            if not ladder_stopped_by_veto and escalation_count < max_escalations:
+            # OMN-20844: why the ladder stopped, in the bus orchestrator's
+            # precedence (veto, then budget, then ladder), for the terminal.
+            ladder_stop_reasons: list[str] = []
+            if ladder_stopped_by_veto:
+                ladder_stop_reasons.append(_NO_RUNG_CAN_SATISFY_REASON)
+            elif escalation_count >= max_escalations:
+                ladder_stop_reasons.append(_MAX_ESCALATION_ATTEMPTS_REACHED_REASON)
+            else:
                 next_backend = self._resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
@@ -2494,9 +2510,16 @@ class LocalDelegationDispatchPort:
                     excluded_backend_refs=frozenset(excluded_backend_refs),
                     spread_key=str(correlation_id),
                     quota_state=self._quota_snapshot(quota_observations),
+                    stop_reasons=ladder_stop_reasons,
                 )
 
             if next_backend is None:
+                ladder_stop_reason = (
+                    ladder_stop_reasons[-1]
+                    if ladder_stop_reasons
+                    else f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+                    f"current_tier='{current_tier}'"
+                )
                 # Cannot escalate (budget exhausted or no higher eligible tier):
                 # terminal FAILED, carrying the cumulative metered cost of every
                 # attempt made so far.
@@ -2584,6 +2607,11 @@ class LocalDelegationDispatchPort:
                     "quality_gate_passed": False,
                     "quality_score": gate_result.quality_score,
                     "quality_gates_failed": list(gate_result.failure_reasons),
+                    # OMN-20844: the typed stop reason. ``failure_reason`` is
+                    # what the handler reads into the receipt's
+                    # ``error_message``, which was empty on this terminal.
+                    "terminal_failure_reason": ladder_stop_reason,
+                    "failure_reason": ladder_stop_reason,
                     "delegation_latency_ms": result.latency_ms,
                     "input_tokens": result.tokens_in,
                     "output_tokens": result.tokens_out,
@@ -2936,8 +2964,14 @@ class LocalDelegationDispatchPort:
         excluded_backend_refs: frozenset[str] = frozenset(),
         spread_key: str | None = None,
         quota_state: ModelProviderQuotaSnapshot | None = None,
+        stop_reasons: list[str] | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
+
+        OMN-20844: ``stop_reasons``, when given, receives one typed reason for
+        a ``None`` return, prefixed with ``NO_HIGHER_TIER_REASON_TOKEN`` as the
+        bus orchestrator's terminal is, so the caller's terminal can say why
+        the ladder stopped instead of carrying no reason at all.
 
         OMN-19432: ``spread_key`` (the run's correlation id) lets the tier's
         first-choice pick be spread across same-model peers, as the bus path's
@@ -2984,10 +3018,29 @@ class LocalDelegationDispatchPort:
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
         )
+
+        def stopped(reason: str) -> None:
+            if stop_reasons is not None:
+                stop_reasons.append(reason)
+
         if next_tier is None:
+            stopped(
+                describe_no_higher_tier_available(
+                    current_tier,
+                    excluded_tiers,
+                    task_type=task_type,
+                    excluded_backend_refs=excluded_backend_refs,
+                    correlation_id=spread_key,
+                )
+            )
             return None
+        stop_prefix = (
+            f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
+            f"current_tier='{current_tier}'; next tier '{next_tier}'"
+        )
         backend_id = backend_id_for_tier(next_tier, task_type, spread_key=spread_key)
         if backend_id is None:
+            stopped(f"{stop_prefix} selects no backend for the task class")
             return None
         if backend_id in excluded_backend_refs:
             # Defensive backstop (OMN-15803): next_eligible_tier judged this
@@ -3003,6 +3056,7 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 task_type,
             )
+            stopped(f"{stop_prefix} re-selects already-tried backend '{backend_id}'")
             return None
         try:
             escalated = resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -3017,6 +3071,7 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 task_type,
             )
+            stopped(f"{stop_prefix} backend '{backend_id}' has no resolvable endpoint")
             return None
         if escalated.backend_id in excluded_backend_refs:
             # OMN-20157: the next tier's house rung is substituted to a customer
@@ -3029,6 +3084,10 @@ class LocalDelegationDispatchPort:
                 backend_id,
                 escalated.backend_id,
                 task_type,
+            )
+            stopped(
+                f"{stop_prefix} backend '{backend_id}' resolves to already-tried "
+                f"backend '{escalated.backend_id}'"
             )
             return None
         return escalated
