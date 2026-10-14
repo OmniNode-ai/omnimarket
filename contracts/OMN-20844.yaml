@@ -250,7 +250,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py::test_every_saved_response_rescores_to_the_recorded_verdict -q -p no:randomly --no-cov"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py::test_an_executing_task_of_each_scorer_rescores_on_every_rung -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14 --only R4-01 R6-01"

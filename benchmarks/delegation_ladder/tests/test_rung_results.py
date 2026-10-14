@@ -89,6 +89,19 @@ def test_every_saved_response_rescores_to_the_recorded_verdict() -> None:
     assert rescore_dir(RESULTS) == 0
 
 
+# One task per executing scorer: the cells the AC16 evidence rescores offline.
+EXECUTING_CELLS = {"R4-01": "unit_test_execution", "R6-01": "patch_apply_and_test"}
+
+
+def test_an_executing_task_of_each_scorer_rescores_on_every_rung() -> None:
+    bundles = {b.task_id: b for b in load_bundles(list(EXECUTING_CELLS))}
+    assert {t: b.scorer.value for t, b in bundles.items()} == EXECUTING_CELLS
+    rungs = {r["model_rung"] for r in _records().values()}
+    for task_id in EXECUTING_CELLS:
+        assert {m for (m, t) in _records() if t == task_id} == rungs, task_id
+    assert rescore_dir(RESULTS, only=list(EXECUTING_CELLS)) == 0
+
+
 def test_the_committed_table_is_the_table_the_records_give() -> None:
     rows = class_rung_table(list(_records().values()), list(RUNGS))
     expected = render_table(rows, class_separation(rows))
