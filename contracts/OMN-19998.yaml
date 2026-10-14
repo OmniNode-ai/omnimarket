@@ -21,6 +21,11 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: omniclaude#2752's shape (both hostile-review checks failed at head 6b3bf7bcb3 after its one rerun) is presented as a product red with both reviewer checks, the decision dispatches a real_red worker leased on those checks, and with the worker ladder spent it reports escalation_exhausted -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py -q fails at the merge base"
+  - id: "req-budget-cancel-evidence-check-readiness"
+    statement: "The cancellation evidence check waits for the blocked provider call before triggering handler budget expiry, so interpreter boot cannot change the stage it tests."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: both spawned customer-route cancellation scenarios retain their exact inference stage, routing, credential and attempt evidence even when total child startup consumes the original 12-second handler budget -- falsifier: delay spawn startup and run uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q with the test at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -70,3 +75,11 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_apply_reviewer_pool.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'if p["head_sha"] in rerun.get(p["pr"], set()):'
+  - id: "dod-omn19998-budget-cancel-evidence-check-readiness"
+    description: "Both real spawned-effect scenarios trigger the handler timeout only after the blocked provider call starts, and retain every existing terminal and attempt assertion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
