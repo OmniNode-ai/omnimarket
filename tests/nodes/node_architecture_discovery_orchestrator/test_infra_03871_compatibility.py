@@ -16,6 +16,10 @@ REPO = Path(__file__).resolve().parents[3]
 
 def test_infra_release_floor_and_lock_include_vendored_migrations() -> None:
     project = tomllib.loads((REPO / "pyproject.toml").read_text())
+    lock = tomllib.loads((REPO / "uv.lock").read_text())
+    package = next(p for p in lock["package"] if p["name"] == "omnibase-infra")
+    locked_version = Version(package["version"])
+    assert locked_version >= Version("0.38.71")
     for dependencies in (
         project["project"]["dependencies"],
         project["tool"]["uv"]["override-dependencies"],
@@ -25,11 +29,48 @@ def test_infra_release_floor_and_lock_include_vendored_migrations() -> None:
             for value in dependencies
             if Requirement(value).name == "omnibase-infra"
         )
-        assert Version("0.38.71") in requirement.specifier
+        floors = [s for s in requirement.specifier if s.operator in {">=", ">"}]
+        assert floors
+        assert all(Version(s.version) >= Version("0.38.71") for s in floors)
+        assert locked_version in requirement.specifier
         assert Version("0.38.70") not in requirement.specifier
-    lock = tomllib.loads((REPO / "uv.lock").read_text())
-    package = next(p for p in lock["package"] if p["name"] == "omnibase-infra")
-    assert Version(package["version"]) >= Version("0.38.71")
+
+
+@pytest.mark.parametrize(
+    ("floor", "locked", "accepted"),
+    [
+        ("0.38.71", "0.38.71", True),
+        ("0.38.72", "0.38.72", True),
+        ("0.38.73", "0.38.73", True),
+        ("0.38.70", "0.38.72", False),
+        ("0.38.70.1", "0.38.72", False),
+        ("0.38.72", "0.38.71", False),
+        ("0.38.71", "0.39.0", False),
+    ],
+)
+def test_infra_release_floor_accepts_newer_releases_and_refuses_incompatible_pins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    floor: str,
+    locked: str,
+    accepted: bool,
+) -> None:
+    import sys
+
+    dependency = f'"omnibase-infra>={floor},<0.39.0"'
+    (tmp_path / "pyproject.toml").write_text(
+        f"[project]\ndependencies = [{dependency}]\n"
+        f"[tool.uv]\noverride-dependencies = [{dependency}]\n"
+    )
+    (tmp_path / "uv.lock").write_text(
+        f'[[package]]\nname = "omnibase-infra"\nversion = "{locked}"\n'
+    )
+    monkeypatch.setattr(sys.modules[__name__], "REPO", tmp_path)
+    if accepted:
+        test_infra_release_floor_and_lock_include_vendored_migrations()
+    else:
+        with pytest.raises(AssertionError):
+            test_infra_release_floor_and_lock_include_vendored_migrations()
 
 
 def test_workspace_validation_carries_invoke_command_before_agent_runs(

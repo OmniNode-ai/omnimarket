@@ -3203,11 +3203,40 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - id: pins
+        name: Read the sibling release pins from this head's uv.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import tomllib
+
+          with open("uv.lock", "rb") as lock_file:
+              packages = tomllib.load(lock_file).get("package", [])
+          pins = {}
+          failed = False
+          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+              entries = [package for package in packages if package.get("name") == name]
+              sources = [package.get("source") for package in entries]
+              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+                  failed = True
+                  continue
+              pins[output] = entries[0]["version"]
+          if failed:
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
+              for key, version in pins.items():
+                  line = f"{key}={version}"
+                  print(line)
+                  print(line, file=output_file)
+          PY
       - name: Checkout omnibase_infra (sibling, test-time overlay only)
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.71
+          ref: v${{ steps.pins.outputs.infra_version }}
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python

@@ -1,0 +1,56 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-18946"
+title: "Infra release checks accept newer locked releases"
+summary: >-
+  CI checkout refs derive from uv.lock. The migration compatibility check
+  accepts a higher floor while requiring a released pin within the declared
+  range and a floor at least 0.38.71. This check-only change unblocks the
+  0.38.72 migration dependency in omnimarket PR 3881.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn18946-ci-release-checks"
+    statement: "CI checks the locked infra release and permits later migration floors."
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          AC4: The compatibility check accepts 0.38.71, 0.38.72 and later compatible
+          locked floors and rejects lower floors, a lock below the floor and
+          a lock outside the declared upper bound. Falsifier: the newer-floor
+          parameter cases fail before this change.
+      - id: "AC5"
+        statement: >-
+          AC5: Every non-hosted infra checkout resolves the release tag from the
+          lock before checkout and refuses absent, duplicate or unreleased
+          pins. Falsifier: the resolver tests reject a static v0.38.71 checkout.
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused compatibility, sibling checkout and overlay wiring checks."
+    command: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py tests/ci/test_sibling_pins_omn20001.py tests/ci/test_ci_bus_overlay_parity.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18946-ci-floor"
+    description: "Compatible newer floors pass and inconsistent release bounds fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q -k infra_release_floor"
+    binds_ac: ["AC4"]
+  - id: "dod-omn18946-ci-pins"
+    description: "Every checkout resolver follows the lock and refuses invalid sources."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py tests/ci/test_ci_bus_overlay_parity.py -q"
+    binds_ac: ["AC5"]
+  - id: "dod-omn18946-ci-pins-deploy-probe"
+    description: "Hosted-runner probe reads the compatibility test at this commit and requires the newer-floor regression cases; the base lacks those cases and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'def test_infra_release_floor_accepts_newer_releases_and_refuses_incompatible_pins('
