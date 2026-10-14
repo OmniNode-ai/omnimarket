@@ -69,6 +69,12 @@ requirements:
       - id: "AC14"
         statement: |-
           AC14: a spent escalation budget ends with terminal_failure_reason max_escalation_attempts_reached, and a next rung that resolves to an already-tried route ends with a reason naming the next tier and the already-tried backend -- falsifier: either terminal carrying no reason, or the budget case calling the no-higher-tier description.
+  - id: "req-unpinned-credential-chain-control"
+    statement: "The L6 credential chains distinguish terminal credential refusals from retryable provider outages on an unpinned run."
+    acceptance:
+      - id: "AC15"
+        statement: |-
+          AC15: all four L6 credential chains start on the declared house tier without a backend pin; rejected and absent credentials retain their typed refusals and leave every successor untouched, while the outage first fails on the customer BYOK backend with MODEL_UNAVAILABLE and reaches a declared successor with escalation_count >= 1.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -187,3 +193,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq ladder_stop_reason'"
+  - id: "dod-omn20844-unpinned-credential-chain-control"
+    description: "AC15: the L6 golden chain and two credential refusals retain their assertions; the outage positive control names its first failed BYOK attempt and the successor it reaches on an unpinned run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/local/test_chain_l6_typed_credential_refusals_omn18698.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]
