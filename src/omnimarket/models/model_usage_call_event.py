@@ -42,6 +42,9 @@ class ModelUsageCallEvent(BaseModel):
     # How the call's cost was obtained. A call that does not say is UNKNOWN, never
     # assumed measured: only a measured cost may reach measured_cost_usd.
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
+    # OMN-21015: the routing tier of the backend that served the call. A call
+    # that does not say was not tier-routed, and is stored under not_tier_routed.
+    cost_tier_name: str = ""
     session_id: str | None = None
     timestamp: datetime = Field(
         validation_alias=AliasChoices("timestamp", "emitted_at", "created_at")

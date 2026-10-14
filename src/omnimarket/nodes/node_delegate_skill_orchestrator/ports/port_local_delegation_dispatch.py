@@ -1860,7 +1860,11 @@ class LocalDelegationDispatchPort:
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
                 attempt_usage.append(
-                    _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                    _AttemptUsage.of(
+                        transport_result,
+                        model_id=backend.model_id,
+                        cost_tier_name=_routing_tier_name(backend),
+                    )
                 )
                 attempts.append(
                     {
@@ -2050,7 +2054,9 @@ class LocalDelegationDispatchPort:
             cumulative_cost_usd += result.actual_cost_usd
             attempt_usage.append(
                 _AttemptUsage.of(
-                    result, model_id=result.served_model_id or backend.model_id
+                    result,
+                    model_id=result.served_model_id or backend.model_id,
+                    cost_tier_name=_routing_tier_name(backend),
                 )
             )
 
@@ -4068,6 +4074,7 @@ class LocalDelegationDispatchPort:
                     completion_tokens=usage.tokens_out if is_deciding else 0,
                     estimated_cost_usd=float(usage.cost_usd),
                     usage_source=usage.usage_source,
+                    cost_tier_name=usage.cost_tier_name,
                     timestamp=emitted_at,
                 )
                 apply_usage_call(
@@ -4180,13 +4187,21 @@ class _AttemptUsage:
     cost_usd: Decimal
     usage_source: EnumUsageSource
     answered: bool
+    # OMN-21015: the routing tier of the backend that served this attempt, so an
+    # escalated run's calls each stand under their own tier.
+    cost_tier_name: str = ""
 
     @classmethod
     def of(
-        cls, result: ModelLlmDelegationCallResult, *, model_id: str
+        cls,
+        result: ModelLlmDelegationCallResult,
+        *,
+        model_id: str,
+        cost_tier_name: str,
     ) -> _AttemptUsage:
         return cls(
             model_id=model_id,
+            cost_tier_name=cost_tier_name,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,

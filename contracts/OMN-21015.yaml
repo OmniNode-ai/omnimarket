@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21015"
+title: "The local dashboard shows the demo's in-scope figures on Overview, Runs and Usage, and meets four dashboard requirements not yet built"
+summary: "The omnimarket table half of AC4. Each usage-by-model-day row carries its tier and its share of its tenant's calls that day, as Jonah ruled on 2026-10-14: the usage call event carries a tier and the tier joins the row key (migration 0003 on Postgres; store step omn21015_usage_by_model_day_tier_share on the local store). Each call carries the tier of the backend that served it, which for a run that was not escalated is the run's tier. The token series and the Usage page's table are omnidash's half. AC2 and AC3 land in their own changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criterion this change serves, as declared on the OMN-21015 ticket body, read on 2026-10-14. The ticket body is the source and this block is the copy.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: Usage shows tokens in and tokens out per day as a stacked series split by model (requirement US-1), and its by-model table shows each model's share of calls and its tier beside the calls column it already has -- falsifier: the window sums differ from `onex metering --json`, or the shares do not sum to 100
+evidence_requirements:
+  - kind: "tests"
+    description: "On the local store and through the real dashboard app: one model under two tiers on one day is two rows; each row's share is its calls over its tenant's calls that day and a day's shares sum to 1; a new call moves every share of the day; another day or tenant never enters; a call naming no tier is not_tier_routed; a replay changes nothing; a store from before keeps its rows and cursors; the deployed writer locks the tenant's day, recounts with the tier and republishes every row of the day. On dev's code all 9 fail."
+    command: "uv run pytest tests/projection/test_omn21015_usage_tier_share.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The real local dispatch port: an escalated run's two calls stand under their own tiers, the deciding call's tier is the delegation row's, and the day's shares cover both. On dev's code it fails."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn21015_local_dispatch_usage_tier.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Migration 0003 on real Postgres over rows stored before it, run twice: rows and cursors kept under not_tier_routed, the key becomes four columns; the writer's statements then give per-day shares summing to 1 with every moved row re-stamped, and another tenant, another day or a replay changes none of them."
+    command: "uv run pytest tests/test_omn21015_usage_tier_share_real_postgres.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21015-usage-tier-share-local-store"
+    description: "On the local store and through the dashboard app, usage-by-model-day serves each row's tier and its share of its tenant's calls that day: one model under two tiers is two rows, a day's shares sum to 1 and all move with each new call, another day or tenant never enters, a call naming no tier is not_tier_routed, a replay changes nothing, an older store keeps its rows and cursors; the deployed writer locks the tenant's day and republishes every row of it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn21015_usage_tier_share.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21015-usage-tier-share-dispatch"
+    description: "The local delegate path books an escalated run's calls each under the tier of the backend that served it; the deciding call's tier is the one the delegation row records for the run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn21015_local_dispatch_usage_tier.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21015-usage-tier-share-real-postgres"
+    description: "Migration 0003 on real Postgres keeps rows stored before it under not_tier_routed with their cursors, is re-runnable, and moves the key to four columns; the writer's statements then serve per-day shares summing to 1 with every moved row's cursor re-stamped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21015_usage_tier_share_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

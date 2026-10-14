@@ -204,15 +204,20 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
     cost_usd REAL NOT NULL,
     occurred_at TEXT NOT NULL,
     ingested_at TEXT NOT NULL,
-    usage_source TEXT NOT NULL DEFAULT 'unknown'
+    usage_source TEXT NOT NULL DEFAULT 'unknown',
+    cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed'
 )
 """
 
-_USAGE_BY_MODEL_DAY_DDL = """
-CREATE TABLE IF NOT EXISTS usage_by_model_day (
+# OMN-21015: the tier joins the key and each row carries its share of its
+# tenant's calls that day. A template, because the store step that moves an
+# older store onto this key builds the new table beside the old one.
+_USAGE_BY_MODEL_DAY_DDL_TEMPLATE = """
+CREATE TABLE IF NOT EXISTS {table} (
     tenant_id TEXT NOT NULL,
     usage_day TEXT NOT NULL,
     model_id TEXT NOT NULL,
+    cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed',
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL,
@@ -221,9 +226,13 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day (
     call_count INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
     projection_cursor INTEGER,
-    PRIMARY KEY (tenant_id, usage_day, model_id)
+    call_share REAL,
+    PRIMARY KEY (tenant_id, usage_day, model_id, cost_tier_name)
 )
 """
+_USAGE_BY_MODEL_DAY_DDL = _USAGE_BY_MODEL_DAY_DDL_TEMPLATE.format(
+    table="usage_by_model_day"
+)
 
 # OMN-20006: columns the usage-by-model-day exposure serves that a store written
 # before them lacks. The read node refuses an exposure whose declared column the
@@ -516,6 +525,14 @@ CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
 _USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 # The SQLite counterpart of usage_by_model_day migration 0002.
 _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
+# The SQLite counterpart of usage_by_model_day migration 0003. The statements
+# that read the old table live with the node that owns it, as the delegation
+# views' do.
+_USAGE_BY_MODEL_DAY_TIER_STEP = "omn21015_usage_by_model_day_tier_share"
+_USAGE_BY_MODEL_DAY_TIER_KEY_SQL = (
+    "omnimarket.nodes.node_projection_usage_by_model_day",
+    "sqlite/usage_by_model_day_tier_key.sql",
+)
 # OMN-20709: the SQLite counterpart of node_projection_delegation migration
 # 0050's projection_delegation_summary view. It lives with the node that owns
 # delegation_events and the Postgres view; the file explains the differences.
@@ -745,6 +762,14 @@ class SqliteDatabaseAdapter:
                     "added the usage-by-model-day columns and cursor triggers",
                 )
             )
+        if not cls._store_step_recorded(conn, _USAGE_BY_MODEL_DAY_TIER_STEP):
+            pending.append(
+                (
+                    _USAGE_BY_MODEL_DAY_TIER_STEP,
+                    cls._key_usage_by_model_day_on_tier,
+                    "keyed usage-by-model-day on the tier with each row's share",
+                )
+            )
         if not cls._store_step_recorded(conn, _DELEGATION_SUMMARY_VIEW_STEP):
             pending.append(
                 (
@@ -840,6 +865,50 @@ class SqliteDatabaseAdapter:
         conn.execute(_USAGE_BY_MODEL_DAY_CURSOR_SEQ_SEED)
         for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
             conn.execute(trigger)
+
+    @classmethod
+    def _key_usage_by_model_day_on_tier(cls, conn: sqlite3.Connection) -> None:
+        """OMN-21015: move a store written before it onto the tier key, run once
+        per store as a store step, after the OMN-20006 step.
+
+        SQLite cannot change a primary key in place, so an older aggregate is
+        copied into a new table that replaces it, every row under
+        not_tier_routed with its cursor kept; dropping the old table drops its
+        cursor triggers, so they are created again. A kept row's call_share is
+        NULL, not computed, until its day takes a new call, as on Postgres. The
+        cursor sequence is moved past every kept cursor, so a later write never
+        repeats one.
+        """
+        if "cost_tier_name" not in cls._existing_columns(
+            conn, "usage_by_model_day_calls"
+        ):
+            conn.execute(
+                "ALTER TABLE usage_by_model_day_calls ADD COLUMN cost_tier_name "
+                "TEXT NOT NULL DEFAULT 'not_tier_routed'"
+            )
+        keyed = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(usage_by_model_day)")
+            if row["pk"]
+        }
+        if "cost_tier_name" not in keyed:
+            conn.execute(
+                _USAGE_BY_MODEL_DAY_DDL_TEMPLATE.format(
+                    table="usage_by_model_day_omn21015"
+                )
+            )
+            package, resource = _USAGE_BY_MODEL_DAY_TIER_KEY_SQL
+            script = files(package).joinpath(resource).read_text(encoding="utf-8")
+            body = "\n".join(
+                line for line in script.splitlines() if not line.startswith("--")
+            )
+            # One execute per statement: executescript would commit the step's
+            # write transaction part way through.
+            for statement in body.split(";"):
+                if statement.strip():
+                    conn.execute(statement)
+            for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
+                conn.execute(trigger)
 
     @classmethod
     def _add_metering_summary_measure_columns(cls, conn: sqlite3.Connection) -> None:

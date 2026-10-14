@@ -38,6 +38,8 @@ _MIGRATIONS = tuple(
     for name in (
         "0000_create_usage_by_model_day.sql",
         "0002_usage_by_model_day_measured_cost.sql",
+        # OMN-21015: the tier joins the key; the writer's statements bind it.
+        "0003_usage_by_model_day_tier_share.sql",
     )
 )
 _SCHEMA = "omn19978_usage_by_model_day_test"
@@ -82,11 +84,16 @@ async def _apply_all(conn: asyncpg.Connection) -> None:
             delta.output_tokens,
             delta.cost_usd,
             delta.occurred_at,
+            delta.cost_tier_name,
             delta.usage_source.value,
         )
         if inserted:
             await conn.fetch(
-                _scoped(_RECOUNT_AGGREGATE), delta.tenant_id, day, delta.model_id
+                _scoped(_RECOUNT_AGGREGATE),
+                delta.tenant_id,
+                day,
+                delta.model_id,
+                delta.cost_tier_name,
             )
 
 
@@ -132,7 +139,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.execute(f"CREATE SCHEMA {schema}")
-        base, measured = (m.read_text(encoding="utf-8") for m in _MIGRATIONS)
+        base, measured, tiered = (m.read_text(encoding="utf-8") for m in _MIGRATIONS)
         await conn.execute(base.replace("public.", f"{schema}."))
         # A row written before 0002 exists: the migration must keep it, as
         # unknown / NULL / 0, and be re-runnable.
@@ -143,6 +150,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
         )
         for _ in range(2):
             await conn.execute(measured.replace("public.", f"{schema}."))
+        await conn.execute(tiered.replace("public.", f"{schema}."))
         old = await conn.fetchrow(
             f"SELECT usage_source FROM {schema}.usage_by_model_day_calls"
         )
@@ -184,6 +192,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
                 delta.output_tokens,
                 delta.cost_usd,
                 delta.occurred_at,
+                delta.cost_tier_name,
                 delta.usage_source.value,
             )
             await conn.fetch(
@@ -191,6 +200,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
                 delta.tenant_id,
                 usage_day,
                 delta.model_id,
+                delta.cost_tier_name,
             )
         rows = {
             str(r["usage_day"]): r

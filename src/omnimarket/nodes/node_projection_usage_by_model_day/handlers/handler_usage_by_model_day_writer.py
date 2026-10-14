@@ -28,8 +28,8 @@ from omnimarket.projection.tenant_isolation import TENANT_GUC
 _INSERT_CALL = """
     INSERT INTO public.usage_by_model_day_calls (
         call_id, tenant_id, usage_day, model_id, input_tokens, output_tokens,
-        cost_usd, occurred_at, usage_source
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        cost_usd, occurred_at, cost_tier_name, usage_source
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ON CONFLICT (call_id) DO NOTHING
     RETURNING call_id
 """
@@ -39,18 +39,21 @@ _INSERT_CALL = """
 # their meaning: every call.
 _RECOUNT_AGGREGATE = """
     INSERT INTO public.usage_by_model_day (
-        tenant_id, usage_day, model_id, input_tokens, output_tokens,
-        cost_usd, measured_cost_usd, unmeasured_call_count, call_count, updated_at
+        tenant_id, usage_day, model_id, cost_tier_name, input_tokens,
+        output_tokens, cost_usd, measured_cost_usd, unmeasured_call_count,
+        call_count, updated_at
     )
-    SELECT tenant_id, usage_day, model_id, SUM(input_tokens), SUM(output_tokens),
+    SELECT tenant_id, usage_day, model_id, cost_tier_name, SUM(input_tokens),
+           SUM(output_tokens),
            SUM(cost_usd),
            SUM(cost_usd) FILTER (WHERE usage_source = 'measured'),
            COUNT(*) FILTER (WHERE usage_source <> 'measured'),
            COUNT(*), clock_timestamp()
     FROM public.usage_by_model_day_calls
     WHERE tenant_id = $1 AND usage_day = $2 AND model_id = $3
-    GROUP BY tenant_id, usage_day, model_id
-    ON CONFLICT (tenant_id, usage_day, model_id) DO UPDATE SET
+      AND cost_tier_name = $4
+    GROUP BY tenant_id, usage_day, model_id, cost_tier_name
+    ON CONFLICT (tenant_id, usage_day, model_id, cost_tier_name) DO UPDATE SET
         input_tokens = EXCLUDED.input_tokens,
         output_tokens = EXCLUDED.output_tokens,
         cost_usd = EXCLUDED.cost_usd,
@@ -59,9 +62,27 @@ _RECOUNT_AGGREGATE = """
         call_count = EXCLUDED.call_count,
         updated_at = EXCLUDED.updated_at,
         projection_cursor = EXCLUDED.projection_cursor
-    RETURNING tenant_id, usage_day, model_id, input_tokens, output_tokens,
-              cost_usd, measured_cost_usd, unmeasured_call_count, call_count,
-              updated_at, projection_cursor
+"""
+
+# OMN-21015: each row's share of its tenant's calls that day. A new call changes
+# every share of the day, so every row of it is rewritten, its cursor re-stamped
+# from the column's own sequence (granted to the writer by migration 0001), and
+# every one is returned to be republished.
+_RESHARE_DAY = """
+    UPDATE public.usage_by_model_day AS agg
+    SET call_share = agg.call_count::double precision / day.calls,
+        updated_at = clock_timestamp(),
+        projection_cursor = nextval('public.usage_by_model_day_projection_cursor_seq')
+    FROM (
+        SELECT SUM(call_count) AS calls
+        FROM public.usage_by_model_day
+        WHERE tenant_id = $1 AND usage_day = $2
+    ) AS day
+    WHERE agg.tenant_id = $1 AND agg.usage_day = $2 AND day.calls > 0
+    RETURNING agg.tenant_id, agg.usage_day, agg.model_id, agg.cost_tier_name,
+              agg.input_tokens, agg.output_tokens, agg.cost_usd,
+              agg.measured_cost_usd, agg.unmeasured_call_count, agg.call_count,
+              agg.call_share, agg.updated_at, agg.projection_cursor
 """
 
 
@@ -150,8 +171,9 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
         delta = self._derive.handle(ModelUsageCallEvent.model_validate(payload))
         usage_day = date.fromisoformat(delta.usage_day)
         # execute() acquires a new connection/transaction for each statement.
-        # Keep the insert and recount on ONE connection instead. Lock the key
-        # before inserting so concurrent calls cannot recount stale snapshots.
+        # Keep the insert, recount and shares on ONE connection instead. Lock
+        # the tenant's day before inserting: every share of the day moves with
+        # each call, so two calls of one day must not share-out stale counts.
         async with self.db.pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config($1, $2, true)", TENANT_GUC, delta.tenant_id
@@ -163,7 +185,6 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                         "usage_by_model_day",
                         delta.tenant_id,
                         delta.usage_day,
-                        delta.model_id,
                     ]
                 ),
             )
@@ -177,29 +198,40 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                 delta.output_tokens,
                 delta.cost_usd,
                 delta.occurred_at,
+                delta.cost_tier_name,
                 delta.usage_source.value,
             )
             if not inserted:
                 return None
-            returned = await conn.fetch(
+            await conn.execute(
                 _RECOUNT_AGGREGATE,
                 delta.tenant_id,
                 usage_day,
                 delta.model_id,
+                delta.cost_tier_name,
             )
-            row = _wire_row(dict(returned[0]))
+            day = [
+                _wire_row(dict(r))
+                for r in await conn.fetch(_RESHARE_DAY, delta.tenant_id, usage_day)
+            ]
         if self._snapshot_exposure is not None:
-            await self.publish_snapshot_delta(
-                self._snapshot_exposure,
-                op="upsert",
-                row=row,
-                source_event_id=delta.call_id,
-                source_topic=meta.topic,
-                source_partition=meta.partition,
-                source_offset=meta.offset,
-                tenant_id=delta.tenant_id,
-            )
-        return row
+            for day_row in day:
+                await self.publish_snapshot_delta(
+                    self._snapshot_exposure,
+                    op="upsert",
+                    row=day_row,
+                    source_event_id=delta.call_id,
+                    source_topic=meta.topic,
+                    source_partition=meta.partition,
+                    source_offset=meta.offset,
+                    tenant_id=delta.tenant_id,
+                )
+        return next(
+            r
+            for r in day
+            if r["model_id"] == delta.model_id
+            and r["cost_tier_name"] == delta.cost_tier_name
+        )
 
 
 __all__ = ["UsageByModelDayProjectionWriter"]
