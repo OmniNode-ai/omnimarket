@@ -60,6 +60,12 @@ requirements:
       - id: "AC12"
         statement: |-
           AC12: the committed flip list is the diff of the recorded and the rescored verdicts of those cells -- falsifier: a cell whose recorded and rescored verdicts differ and is not listed, or a listed cell whose verdicts agree.
+  - id: "req-declared-literal-answer-not-content-free"
+    statement: "The quality gate does not refuse a correct short answer that matches the shape its prompt declared, as content-free."
+    acceptance:
+      - id: "AC30"
+        statement: |-
+          AC30: a prompt whose last lines say "Reply with only the Python literal it evaluates to" resolves to a declared shape, and under that shape a non-string Python literal answer ((None, None), None, False, 42, [], a fenced literal) is not refused as an ultra-short content-free response, while an empty answer, a filler word, a quoted filler word, a refusal and the same literal under a prompt that declares no shape are still refused -- falsifier: a listed literal refused under the declared shape, or a listed filler answer accepted, or the literal accepted under an undeclared prompt.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -73,6 +79,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC11 and AC12: the committed rescore covers every saved cell and its flip list equals the diff of recorded and rescored verdicts, with a negative control."
     command: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC30: the declared-literal shape, the literals the gate accepts under it, and the empty, filler, refusal and undeclared-prompt controls that stay refused."
+    command: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -161,3 +170,11 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11", "AC12"]
+  - id: "dod-omn20844-ac30-declared-literal-not-content-free"
+    description: "AC30: the TN-h05 shape of prompt declares an exact literal, a non-string Python literal passes the gate under it, and empty, filler, refusal and undeclared-prompt answers are still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]

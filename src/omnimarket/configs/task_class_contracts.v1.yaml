@@ -167,6 +167,13 @@ response_shape_directives:
     # a one-word answer pass: finish_reason=stop also fires on a configured stop
     # sequence and the gate never sees the prompt.
     - "^\\s*(?:just\\s+)?say\\s+[\"'`]?[\\w-]+[\"'`]?\\s*[.!]?\\s*$"
+    # OMN-20844: a request for a bare Python value ("Reply with only the Python
+    # literal it evaluates to") names its answer's form the same way. The noun
+    # must END the object phrase (punctuation, end of text, or a relative clause
+    # such as `it evaluates to`): "reply with only the number of failing tests
+    # and explain" declares nothing. The directive closes long prompts, which is
+    # why the resolver scans the tail of a prompt as well as its head.
+    - "(?:answer|reply|respond|output|return) with (?:only|just|exactly) (?:the |a |one )?(?:python )?(?:literal|number|integer|tuple|boolean)(?=\\s*(?:[:.,;!]|$)|\\s+(?:it|that|which|you|exactly|as)\\b)"
   single_word:
     - "in (?:exactly )?one word"
     - "in a single word"

@@ -39,7 +39,22 @@ _SHAPE_PRECEDENCE: tuple[EnumRequestedResponseShape, ...] = (
 # framing counts. Matching the whole prompt would let a research question that
 # merely discusses one-word answers resolve as constrained; capping the scanned
 # window keeps the directive a property of the ask.
+#
+# The framing sits at either end of a prompt: a short ask leads with it, and a
+# task that carries a program or a document states its output requirement last
+# (OMN-20844: "Reply with only the Python literal ..." closes a prompt whose
+# first 400 characters are code). So the window is the head and the tail, joined
+# by a newline; a prompt no longer than the window is scanned whole, exactly as
+# before. The join keeps `^`/`$` anchored patterns anchored to the whole prompt:
+# a longer prompt's window starts with its head and ends with its tail, so an
+# anchored directive can only match when the prompt IS that directive.
 _DIRECTIVE_SCAN_CHARS = 400
+
+
+def _directive_window(prompt: str) -> str:
+    if len(prompt) <= 2 * _DIRECTIVE_SCAN_CHARS:
+        return prompt
+    return f"{prompt[:_DIRECTIVE_SCAN_CHARS]}\n{prompt[-_DIRECTIVE_SCAN_CHARS:]}"
 
 
 @lru_cache(maxsize=64)
@@ -66,7 +81,7 @@ def resolve_requested_response_shape(
         The single most specific declared shape that matched, or
         ``UNCONSTRAINED`` when none did.
     """
-    window = prompt[:_DIRECTIVE_SCAN_CHARS]
+    window = _directive_window(prompt)
     for shape in _SHAPE_PRECEDENCE:
         for pattern in directives.get(shape, ()):
             if _compile(pattern).search(window):
