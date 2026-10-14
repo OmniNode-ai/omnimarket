@@ -75,6 +75,7 @@ RETIRED_HOOK_ID = "prepush-smart-tests"
 EXPECTED_PRE_PUSH_HOOK_IDS: tuple[str, ...] = (
     "ticket-contract-prerequisite",
     "mypy-type-check",
+    "main-target-guard",
 )
 
 # Tokens that mean "this hook runs a test runner". Matched against a hook's
