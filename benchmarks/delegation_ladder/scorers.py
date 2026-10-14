@@ -621,6 +621,184 @@ def score_patch_apply_and_test(
 
 
 # --------------------------------------------------------------------------
+# Multi-file edits against a repository tree (the structural hard corpus)
+# --------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def git_text(*args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> None:
+    """Write src, tests and pyproject at ``commit``, with some files at the parent."""
+    archive = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "archive",
+            commit,
+            "src",
+            "tests",
+            "pyproject.toml",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    subprocess.run(["tar", "-x", "-C", str(dest)], input=archive, check=True)
+    for path in revert_to_parent:
+        (dest / path).write_text(
+            git_text("show", f"{commit}^:{path}"), encoding="utf-8"
+        )
+
+
+def run_tree_test(tree: Path, test_path: str, timeout_s: int) -> tuple[int, str]:
+    """Run one repository test file against ``tree/src``; return ``(rc, output)``."""
+    env = {
+        **os.environ,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": str(tree / "src"),
+    }
+    argv = [sys.executable, "-m", "pytest", test_path, "-q", "-x", "--no-header"]
+    argv += ["-p", "no:cacheprovider", "-o", "addopts="]
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=tree,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, f"timed out after {timeout_s}s"
+    output = (completed.stdout + completed.stderr).replace(str(tree) + "/", "")
+    return completed.returncode, output
+
+
+_FILE_LINE_RE = re.compile(
+    r"^\s*(?:#+\s*)?(?:\*\*)?FILE:(?:\*\*)?\s*`?([^\s`*]+)`?", re.IGNORECASE
+)
+
+
+def parse_search_replace(answer: str) -> list[tuple[str, str, str]]:
+    """``(path, search, replace)`` per edit block, in the order written."""
+    edits: list[tuple[str, str, str]] = []
+    current: str | None = None
+    lines = answer.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = _FILE_LINE_RE.match(line)
+        if match:
+            current = match.group(1)
+        elif line.strip().startswith("<<<<<<< SEARCH") and current is not None:
+            search: list[str] = []
+            replace: list[str] = []
+            i += 1
+            while i < len(lines) and lines[i].strip() != "=======":
+                search.append(lines[i])
+                i += 1
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith(">>>>>>> REPLACE"):
+                replace.append(lines[i])
+                i += 1
+            edits.append((current, "\n".join(search), "\n".join(replace)))
+        i += 1
+    return edits
+
+
+def apply_search_replace(
+    tree: Path, edits: list[tuple[str, str, str]], editable: list[str]
+) -> str | None:
+    """Apply every edit to ``tree``; return why one could not apply, or None."""
+    for path, search, replace in edits:
+        if path not in editable:
+            return f"edit names a file not shown: {path}"
+        if not search.strip():
+            return f"empty SEARCH block in {path}"
+        target = tree / path
+        text = target.read_text(encoding="utf-8")
+        count = text.count(search)
+        if count != 1:
+            return f"SEARCH text found {count} times in {path}"
+        target.write_text(text.replace(search, replace, 1), encoding="utf-8")
+    return None
+
+
+def score_multi_file_edit_and_test(
+    response: str, config: dict[str, object]
+) -> ModelScore:
+    """Apply search/replace edits to the commit's tree at the parent and run its test.
+
+    The control comes first, as in the single-block scorer: the commit's own
+    test must FAIL on the files as shown (the parent's), or the task cannot
+    discriminate and the verdict is a harness error, never a pass.
+    """
+    answer, _ = split_answer(response)
+    edits = parse_search_replace(answer)
+    if not edits:
+        return ModelScore(
+            outcome=EnumOutcome.FAIL,
+            score=0.0,
+            mechanical=True,
+            detail="no FILE/SEARCH/REPLACE edit in the response",
+            checklist={"produced_edits": False},
+        )
+    commit = _text(config, "repo_commit")
+    test_path = _text(config, "test_path")
+    changed = _strs(config, "changed_files")
+    editable = _strs(config, "editable_files")
+    timeout_s = int(_number(config, "timeout_s", 240))
+    with tempfile.TemporaryDirectory(prefix="ladder-hard-") as tmp:
+        tree = Path(tmp)
+        materialise_tree(commit, tree, changed)
+        control_rc, control_out = run_tree_test(tree, test_path, timeout_s)
+        refused = apply_search_replace(tree, edits, editable)
+        patched_rc, patched_out = 1, ""
+        if refused is None:
+            patched_rc, patched_out = run_tree_test(tree, test_path, timeout_s)
+    if control_rc == 0:
+        return ModelScore(
+            outcome=EnumOutcome.HARNESS_ERROR,
+            score=0.0,
+            mechanical=True,
+            detail="the commit's test PASSES on the files as shown; the task cannot "
+            "discriminate: " + control_out[-400:],
+            checklist={"control_fails": False},
+        )
+    files_edited = len({path for path, _, _ in edits})
+    if refused is not None:
+        return ModelScore(
+            outcome=EnumOutcome.FAIL,
+            score=0.0,
+            mechanical=True,
+            detail=refused,
+            sub_scores={"files_edited": float(files_edited)},
+            checklist={"control_fails": True, "edits_apply": False},
+        )
+    passed = patched_rc == 0
+    return ModelScore(
+        outcome=EnumOutcome.PASS if passed else EnumOutcome.FAIL,
+        score=1.0 if passed else 0.0,
+        mechanical=True,
+        detail="the commit's test passes after the edits"
+        if passed
+        else "the commit's test still fails: " + patched_out[-800:],
+        sub_scores={"files_edited": float(files_edited)},
+        checklist={"control_fails": True, "edits_apply": True, "test_passes": passed},
+    )
+
+
+# --------------------------------------------------------------------------
 # Predict a call's value
 # --------------------------------------------------------------------------
 

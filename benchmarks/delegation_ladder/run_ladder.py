@@ -32,11 +32,13 @@ and a rung's share is that rung's own::
     python -m benchmarks.delegation_ladder.run_ladder --rung glm-5.3 --out-dir D
     python -m benchmarks.delegation_ladder.run_ladder --rung glm-5.3 --only R1-01 --out-dir D
     python -m benchmarks.delegation_ladder.run_ladder --rescore D
+    python -m benchmarks.delegation_ladder.run_ladder --rescore D --only R1-01
     python -m benchmarks.delegation_ladder.run_ladder --table D [D ...]
 
 The second line is the one-cell rerun. ``--shard i/N`` splits a rung's tasks
 across hosts; ``--rescore`` re-derives every scorer verdict offline from the
-saved responses, so a cell can be checked without spending a model call.
+saved responses (with ``--only``, just those tasks' cells), so a cell can be
+checked without spending a model call.
 """
 
 from __future__ import annotations
@@ -86,6 +88,7 @@ from benchmarks.delegation_ladder.scorers import (  # noqa: E402
     score_grounding_coverage,
     score_grounding_rubric,
     score_literal_equals,
+    score_multi_file_edit_and_test,
     score_patch_apply_and_test,
     score_unit_test_execution,
     sha256_of,
@@ -93,6 +96,8 @@ from benchmarks.delegation_ladder.scorers import (  # noqa: E402
 )
 
 BUNDLES = HERE / "bundles"
+# The structural hard corpus (build_bundles.py hard); its ids start H.
+HARD_BUNDLES = HERE / "bundles_hard"
 FIXTURES = HERE / "fixtures"
 RESULTS = HERE / "results"
 
@@ -1454,25 +1459,24 @@ def _rescore_parallel_cells(
 def rescore_dir(
     directory: Path, *, write: bool = False, only: list[str] | None = None
 ) -> int:
-    """Rescore every record under ``directory``, or the cells of the ``only`` tasks.
+    """Rescore every record under ``directory``, or only the tasks ``only`` names.
 
     Without ``write`` it reports each cell whose verdict differs and exits
     non-zero if any does. With ``write`` it rewrites the records with the
     re-derived verdicts (the first verdict kept as ``first_scorer_outcome``) and
-    exits zero. ``only`` (task ids or rung ids, as ``--only``) checks a few
-    cells offline; it cannot be combined with ``write``, which rewrites whole files.
+    exits zero. ``only`` cannot be combined with ``write``: a rewrite of a
+    filtered file would drop the cells left out.
     """
     if write and only:
-        raise ValueError("--write rewrites whole results files; drop --only")
-    bundles = {b.task_id: b for b in load_bundles(None)}
-    wanted = {b.task_id for b in load_bundles(only)} if only else set(bundles)
-    files = {
-        path: [r for r in _read_jsonl(path) if r["task_id"] in wanted]
-        for path in _results_files([directory])
-    }
-    if only and not any(files.values()):
-        print(f"no recorded cell under {directory} matches --only {only}")
-        return 2
+        raise ValueError("--rescore --write rewrites whole files; drop --only")
+    wanted = {token.upper() for token in only} if only else None
+    bundles = {b.task_id: b for b in load_bundles(None, include_hard=True)}
+    files: dict[Path, list[dict[str, Any]]] = {}
+    for path in _results_files([directory]):
+        records = _read_jsonl(path)
+        if wanted is not None:
+            records = [r for r in records if str(r["task_id"]).upper() in wanted]
+        files[path] = records
     cells = [
         (
             bundles[recorded["task_id"]],
@@ -1489,16 +1493,30 @@ def rescore_dir(
         EnumScorerKind.UNIT_TEST_EXECUTION,
         EnumScorerKind.PATCH_APPLY_AND_TEST,
     }
-    if hasattr(os, "fork") and any(
-        bundle.scorer in executing for bundle, _, _ in cells
-    ):
+    forked = [
+        index
+        for index, (bundle, _, _) in enumerate(cells)
+        if hasattr(os, "fork") and bundle.scorer in executing
+    ]
+    threaded = sorted(set(range(len(cells))) - set(forked))
+    scored: dict[int, tuple[str, float, str]] = {}
+    if forked:
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=1,
             mp_context=multiprocessing.get_context("spawn"),
         ) as coordinator:
-            verdicts = iter(coordinator.submit(_rescore_parallel_cells, cells).result())
-    else:
-        verdicts = iter([_rescore_cell(*cell) for cell in cells])
+            forked_verdicts = coordinator.submit(
+                _rescore_parallel_cells, [cells[index] for index in forked]
+            ).result()
+        scored.update(zip(forked, forked_verdicts, strict=True))
+    # Each other cell scores in its own temporary directory, so cells can run
+    # at once; the hard tier's cells each run a repository test file twice.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        threaded_verdicts = list(
+            pool.map(lambda index: _rescore_cell(*cells[index]), threaded)
+        )
+    scored.update(zip(threaded, threaded_verdicts, strict=True))
+    verdicts = iter(scored[index] for index in range(len(cells)))
     checked = changed = 0
     for jsonl, records in files.items():
         updated: list[dict[str, Any]] = []
@@ -1523,13 +1541,17 @@ def rescore_dir(
     return 0 if write else (1 if changed else 0)
 
 
-def print_table(dirs: list[Path], *, by_difficulty: bool = False) -> int:
+def print_table(
+    dirs: list[Path], *, by_difficulty: bool = False, by_feature: bool = False
+) -> int:
     from benchmarks.delegation_ladder.summarise_results import (
+        bundle_features,
         class_rung_table,
         class_separation,
         difficulty_tier,
-        first_miss_tier,
+        first_failing_rung_tier,
         render_difficulty_table,
+        render_feature_report,
         render_table,
         tier_rung_table,
     )
@@ -1548,7 +1570,24 @@ def print_table(dirs: list[Path], *, by_difficulty: bool = False) -> int:
             if (tier := difficulty_tier(b.task_type, len(b.prompt))) is not None
         }
         tier_rows = tier_rung_table(list(records.values()), tiers, list(RUNGS))
-        print(render_difficulty_table(tier_rows, first_miss_tier(tier_rows)))
+        print(render_difficulty_table(tier_rows, first_failing_rung_tier(tier_rows)))
+        return 0
+    if by_feature:
+        hard = [
+            (b, f)
+            for b in load_bundles(None, include_hard=True)
+            if (f := bundle_features(b.scorer_config)) is not None
+        ]
+        features = {b.task_id: f for b, f in hard}
+        pinned = [name for name, rung in RUNGS.items() if rung.pin]
+        print(
+            render_feature_report(
+                list(records.values()),
+                features,
+                {b.task_id: b.task_type for b, _ in hard},
+                pinned,
+            )
+        )
         return 0
     rows = class_rung_table(list(records.values()), list(RUNGS))
     print(render_table(rows, class_separation(rows)))
@@ -1580,8 +1619,7 @@ def run_rung_benchmark(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    shard = args.shard or "0/1"
-    index, count = (int(x) for x in shard.split("/"))
+    index, count = (int(x) for x in args.shard.split("/"))
     bundles = [b for i, b in enumerate(load_bundles(args.only)) if i % count == index]
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1609,7 +1647,7 @@ def run_rung_benchmark(args: argparse.Namespace) -> int:
     bus_flags = IN_PROCESS_FLAGS if args.in_process else DEPLOYED_LANE_FLAGS
     print(
         f"{rung.name}: {len(todo)} to run, {len(done)} already recorded, "
-        f"shard {shard}, concurrency {args.concurrency}, host {socket.gethostname()}",
+        f"shard {args.shard}, concurrency {args.concurrency}, host {socket.gethostname()}",
         flush=True,
     )
 
@@ -1667,6 +1705,8 @@ def score(
             return score_patch_apply_and_test(
                 response, config, FIXTURES, test_runner=test_runner
             )
+        case EnumScorerKind.MULTI_FILE_EDIT_AND_TEST:
+            return score_multi_file_edit_and_test(response, config)
         case EnumScorerKind.LITERAL_EQUALS:
             return score_literal_equals(response, config)
 
@@ -1787,11 +1827,17 @@ def load_bundles(
     task_set: str = "ladder",
     classes: list[str] | None = None,
     difficulty: EnumDifficulty | None = None,
+    *,
+    include_hard: bool = False,
 ) -> list[ModelTaskBundle]:
+    """The chosen corpus; for the ladder set the hard corpus too when asked for or named by ``only``."""
     source = BUNDLES / "tiered" if task_set == "tiered" else BUNDLES
+    paths = sorted(source.glob("*.json"))
+    if task_set != "tiered" and (include_hard or only):
+        paths += sorted(HARD_BUNDLES.glob("*.json"))
     bundles = [
         ModelTaskBundle.model_validate_json(p.read_text(encoding="utf-8"))
-        for p in sorted(source.glob("*.json"))
+        for p in paths
     ]
     if only:
         wanted = {token.upper() for token in only}
@@ -1844,7 +1890,23 @@ def main() -> int:
     surface = parser.add_mutually_exclusive_group()
     surface.add_argument("--path", choices=["local", "cloud"])
     surface.add_argument("--backend", choices=list(BACKENDS))
-    surface.add_argument(
+    parser.add_argument("--set", choices=["ladder", "tiered"], default="ladder")
+    parser.add_argument("--classes", nargs="+")
+    parser.add_argument("--difficulty", choices=[d.value for d in EnumDifficulty])
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--in-process-overlay",
+        default=None,
+        help="Run onex_delegate rungs in this process on this bifrost overlay "
+        "(must carry the served model_name) instead of the shared dev lane.",
+    )
+    parser.add_argument(
+        "--shard",
+        default="0/1",
+        help="K/N (also i/N for --rung): run only the tasks whose position modulo N is K, so one rung "
+        "can be split across hosts.",
+    )
+    parser.add_argument(
         "--rung",
         choices=sorted(RUNGS),
         help="Run the task set against one pinned delegation rung (OMN-20844).",
@@ -1858,6 +1920,11 @@ def main() -> int:
         "--by-difficulty",
         action="store_true",
         help="With --table: split the test and code_generation classes by tier.",
+    )
+    parser.add_argument(
+        "--by-feature",
+        action="store_true",
+        help="With --table: failure and escalation by structural feature (hard corpus).",
     )
     parser.add_argument(
         "--rescore",
@@ -1887,22 +1954,6 @@ def main() -> int:
         action="store_true",
         help="Use --bus inmemory --locus in-process when the deployed lane has no consumer.",
     )
-    parser.add_argument("--set", choices=["ladder", "tiered"], default="ladder")
-    parser.add_argument("--classes", nargs="+")
-    parser.add_argument("--difficulty", choices=[d.value for d in EnumDifficulty])
-    parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--in-process-overlay",
-        default=None,
-        help="Run onex_delegate rungs in this process on this bifrost overlay "
-        "(must carry the served model_name) instead of the shared dev lane.",
-    )
-    parser.add_argument(
-        "--shard",
-        default=None,
-        help="K/N: run only the tasks whose position modulo N is K, so one rung "
-        "can be split across hosts.",
-    )
     parser.add_argument("--only", nargs="*", help="Task ids or rung ids to run.")
     parser.add_argument("--api-key-file", type=Path, default=None)
     parser.add_argument(
@@ -1928,9 +1979,13 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.rescore is not None:
+        if args.write and args.only:
+            parser.error("--rescore --write rewrites whole files; drop --only")
         return rescore_dir(args.rescore, write=args.write, only=args.only)
     if args.table is not None:
-        return print_table(args.table, by_difficulty=args.by_difficulty)
+        return print_table(
+            args.table, by_difficulty=args.by_difficulty, by_feature=args.by_feature
+        )
     if args.rung is not None:
         return run_rung_benchmark(args)
     if args.path is None and args.backend is None:

@@ -16,15 +16,18 @@ from pathlib import Path
 
 import pytest
 
+from benchmarks.delegation_ladder.models import ModelTaskBundle
 from benchmarks.delegation_ladder.run_ladder import RUNGS, load_bundles, rescore_dir
 from benchmarks.delegation_ladder.summarise_results import (
     DIFFICULTY_ORDER,
     MINIMUM_TASKS_PER_CLASS,
+    bundle_features,
     class_rung_table,
     class_separation,
     difficulty_tier,
-    first_miss_tier,
+    first_failing_rung_tier,
     render_difficulty_table,
+    render_feature_report,
     render_table,
     tier_rung_table,
 )
@@ -35,6 +38,7 @@ HERE = Path(__file__).resolve().parent.parent
 RESULTS = HERE / "results" / "rungs" / "2026-10-14"
 LADDER = HERE / "results" / "rungs" / "2026-10-14-ladder"
 LADDER_EASY_MEDIUM = HERE / "results" / "rungs" / "2026-10-14-ladder-easy-medium"
+HARD = HERE / "results" / "rungs" / "2026-10-14-hard"
 
 # The classes this result set covers. The lab Qwen and both GLM rungs were also
 # run over document, review and reasoning; those records are not committed here.
@@ -160,7 +164,7 @@ def test_every_tier_of_every_tiered_class_holds_eight_tasks_for_every_rung() -> 
 
 def test_the_committed_tier_table_is_the_table_the_records_give() -> None:
     rows = tier_rung_table(list(_records().values()), _tiers(), list(RUNGS))
-    expected = render_difficulty_table(rows, first_miss_tier(rows))
+    expected = render_difficulty_table(rows, first_failing_rung_tier(rows))
     assert (RESULTS / "tiers.txt").read_text(encoding="utf-8") == expected
 
 
@@ -202,3 +206,54 @@ def test_the_committed_ladder_summary_is_the_one_the_records_give(
     assert (directory / "ladder.txt").read_text(
         encoding="utf-8"
     ) == render_ladder_table(_ladder_records(directory))
+
+
+def _hard_records() -> list[dict[str, object]]:
+    return [
+        json.loads(line)
+        for path in sorted(HARD.glob("*.jsonl"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _hard_bundles() -> list[ModelTaskBundle]:
+    return [
+        b
+        for b in load_bundles(None, include_hard=True)
+        if bundle_features(b.scorer_config) is not None
+    ]
+
+
+def _hard_features() -> dict[str, dict[str, object]]:
+    return {
+        b.task_id: f
+        for b in _hard_bundles()
+        if (f := bundle_features(b.scorer_config)) is not None
+    }
+
+
+def test_the_hard_corpus_is_kept_out_of_the_ladder_corpus_by_default() -> None:
+    assert not [b for b in load_bundles(None) if b.task_id.startswith("H")]
+    assert len(_hard_features()) == 20
+
+
+def test_every_hard_record_is_a_hard_task_run_once_per_rung() -> None:
+    features = _hard_features()
+    seen: set[tuple[str, str]] = set()
+    for record in _hard_records():
+        key = (str(record["model_rung"]), str(record["task_id"]))
+        assert record["task_id"] in features, key
+        assert key not in seen, key
+        seen.add(key)
+
+
+def test_the_committed_hard_feature_table_is_the_table_the_records_give() -> None:
+    pinned = [name for name, rung in RUNGS.items() if rung.pin]
+    expected = render_feature_report(
+        _hard_records(),
+        _hard_features(),
+        {b.task_id: b.task_type for b in _hard_bundles()},
+        pinned,
+    )
+    assert (HARD / "features.txt").read_text(encoding="utf-8") == expected + "\n"
