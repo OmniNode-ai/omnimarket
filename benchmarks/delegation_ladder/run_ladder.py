@@ -894,14 +894,10 @@ def _driver_sha() -> str | None:
     return done.stdout.strip() or None if done.returncode == 0 else None
 
 
-def rescore_record(
+def _rescore_cell(
     bundle: ModelTaskBundle, saved: Path, recorded: dict[str, Any]
-) -> str:
-    """Re-derive one cell's scorer verdict from its saved response, offline.
-
-    Refuses when the saved bytes are not the bytes the record was scored from:
-    a verdict re-derived from different text reproduces nothing.
-    """
+) -> tuple[str, float, str]:
+    """``(outcome, score, detail)`` re-derived from a cell's saved response."""
     blob = json.loads(saved.read_text(encoding="utf-8"))
     response = blob["response"]
     digest = sha256_of(response)
@@ -912,8 +908,45 @@ def rescore_record(
             f"record {recorded['response_sha256'][:12]})"
         )
     if not response.strip() and recorded.get("scorer_outcome") == "no_answer":
-        return "no_answer"
-    return score(bundle, response).outcome.value
+        return "no_answer", 0.0, str(recorded.get("scorer_detail", ""))
+    verdict = score(bundle, response)
+    return verdict.outcome.value, verdict.score, verdict.detail
+
+
+def rescore_record(
+    bundle: ModelTaskBundle, saved: Path, recorded: dict[str, Any]
+) -> str:
+    """Re-derive one cell's scorer verdict from its saved response, offline.
+
+    Refuses when the saved bytes are not the bytes the record was scored from:
+    a verdict re-derived from different text reproduces nothing.
+    """
+    return _rescore_cell(bundle, saved, recorded)[0]
+
+
+def rescored_record(
+    recorded: dict[str, Any], outcome: str, point: float, detail: str
+) -> dict[str, Any]:
+    """The record with a re-derived verdict, the very first verdict kept beside it.
+
+    Acceptance stays what it is made of: delivered past the gate AND passed by
+    the scorer. A rescored pass the gate refused is still not accepted.
+    """
+    if outcome == recorded["scorer_outcome"]:
+        return dict(recorded)
+    record = dict(recorded)
+    record.setdefault("first_scorer_outcome", recorded["scorer_outcome"])
+    record.setdefault("first_scorer_detail", recorded.get("scorer_detail"))
+    record["scorer_outcome"] = outcome
+    record["score"] = point
+    record["scorer_detail"] = detail[:300]
+    record["accepted"] = bool(record["delivered"] and outcome == EnumOutcome.PASS.value)
+    if record["delivered"]:
+        if outcome == EnumOutcome.PASS.value:
+            record.pop("failure_kind", None)
+        else:
+            record["failure_kind"] = f"scorer_{outcome}"
+    return record
 
 
 # Failures that say the plumbing broke rather than what the rung answered: no
@@ -964,28 +997,46 @@ def _results_files(dirs: list[Path]) -> list[Path]:
     return files
 
 
-def rescore_dir(directory: Path) -> int:
-    """Rescore every record under ``directory``; non-zero if any cell differs."""
+def rescore_dir(directory: Path, *, write: bool = False) -> int:
+    """Rescore every record under ``directory``.
+
+    Without ``write`` it reports each cell whose verdict differs and exits
+    non-zero if any does. With ``write`` it rewrites the records with the
+    re-derived verdicts (the first verdict kept as ``first_scorer_outcome``) and
+    exits zero.
+    """
     bundles = {b.task_id: b for b in load_bundles(None)}
-    checked = mismatched = 0
+    checked = changed = 0
     for jsonl in _results_files([directory]):
-        for recorded in _read_jsonl(jsonl):
+        records = _read_jsonl(jsonl)
+        updated: list[dict[str, Any]] = []
+        for recorded in records:
             saved = (
                 directory
                 / "responses"
                 / recorded["model_rung"]
                 / f"{recorded['task_id']}.json"
             )
-            got = rescore_record(bundles[recorded["task_id"]], saved, recorded)
+            outcome, point, detail = _rescore_cell(
+                bundles[recorded["task_id"]], saved, recorded
+            )
             checked += 1
-            if got != recorded["scorer_outcome"]:
-                mismatched += 1
+            if outcome != recorded["scorer_outcome"]:
+                changed += 1
                 print(
-                    f"MISMATCH {recorded['model_rung']} {recorded['task_id']}: "
-                    f"recorded {recorded['scorer_outcome']}, rescored {got}"
+                    f"{'REWRITTEN' if write else 'MISMATCH'} {recorded['model_rung']} "
+                    f"{recorded['task_id']}: recorded {recorded['scorer_outcome']}, "
+                    f"rescored {outcome}"
                 )
-    print(f"rescored {checked} cell(s), {mismatched} mismatch(es)")
-    return 1 if mismatched else 0
+            updated.append(rescored_record(recorded, outcome, point, detail))
+        if write:
+            jsonl.write_text(
+                "".join(json.dumps(r) + "\n" for r in updated), encoding="utf-8"
+            )
+    print(
+        f"rescored {checked} cell(s), {changed} {'rewritten' if write else 'mismatch(es)'}"
+    )
+    return 0 if write else (1 if changed else 0)
 
 
 def print_table(dirs: list[Path], *, by_difficulty: bool = False) -> int:
@@ -1234,6 +1285,11 @@ def main() -> int:
         help="Run the task set against one pinned delegation rung (OMN-20844).",
     )
     parser.add_argument(
+        "--write",
+        action="store_true",
+        help="With --rescore: write the re-derived verdicts into the records.",
+    )
+    parser.add_argument(
         "--by-difficulty",
         action="store_true",
         help="With --table: split the test and code_generation classes by tier.",
@@ -1292,7 +1348,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.rescore is not None:
-        return rescore_dir(args.rescore)
+        return rescore_dir(args.rescore, write=args.write)
     if args.table is not None:
         return print_table(args.table, by_difficulty=args.by_difficulty)
     if args.rung is not None:

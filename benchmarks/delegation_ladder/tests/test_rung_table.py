@@ -30,6 +30,7 @@ from benchmarks.delegation_ladder.run_ladder import (
     partition_infra_failures,
     read_receipt_facts,
     rescore_record,
+    rescored_record,
     rung_command,
 )
 from benchmarks.delegation_ladder.scorers import sha256_of
@@ -480,3 +481,54 @@ def test_a_runtime_shut_down_mid_delegation_is_plumbing_but_a_model_failure_is_n
     stand, redo = partition_infra_failures([shutdown, model_error])
     assert [r["task_id"] for r in redo] == ["R4-01"]
     assert [r["task_id"] for r in stand] == ["R4-02"]
+
+
+def _scored(outcome: str, *, delivered: bool = True) -> dict[str, object]:
+    accepted = delivered and outcome == "pass"
+    record: dict[str, object] = {
+        "task_id": "R4-06",
+        "scorer_outcome": outcome,
+        "score": 1.0 if outcome == "pass" else 0.0,
+        "scorer_detail": "as first scored",
+        "delivered": delivered,
+        "accepted": accepted,
+    }
+    if delivered and outcome != "pass":
+        record["failure_kind"] = f"scorer_{outcome}"
+    return record
+
+
+def test_a_rescored_cell_takes_the_new_verdict_and_keeps_the_first_one() -> None:
+    got = rescored_record(_scored("fail"), "pass", 1.0, "now passes")
+    assert got["scorer_outcome"] == "pass"
+    assert got["accepted"] is True
+    assert got["score"] == pytest.approx(1.0)
+    assert got["scorer_detail"] == "now passes"
+    assert "failure_kind" not in got
+    assert got["first_scorer_outcome"] == "fail"
+    assert got["first_scorer_detail"] == "as first scored"
+
+
+def test_a_rescored_pass_that_now_fails_loses_its_acceptance() -> None:
+    got = rescored_record(_scored("pass"), "fail", 0.0, "now fails")
+    assert got["accepted"] is False
+    assert got["failure_kind"] == "scorer_fail"
+    assert got["first_scorer_outcome"] == "pass"
+
+
+def test_a_rescored_pass_is_not_accepted_when_the_gate_refused_the_answer() -> None:
+    got = rescored_record(_scored("fail", delivered=False), "pass", 1.0, "now passes")
+    assert got["scorer_outcome"] == "pass"
+    assert got["accepted"] is False
+
+
+def test_an_unchanged_verdict_leaves_the_record_as_it_was() -> None:
+    recorded = _scored("fail")
+    assert rescored_record(recorded, "fail", 0.0, "as first scored") == recorded
+    assert "first_scorer_outcome" not in rescored_record(recorded, "fail", 0.0, "x")
+
+
+def test_a_cell_rescored_twice_keeps_the_very_first_verdict() -> None:
+    once = rescored_record(_scored("fail"), "pass", 1.0, "p")
+    twice = rescored_record(once, "fail", 0.0, "f")
+    assert twice["first_scorer_outcome"] == "fail"

@@ -25,6 +25,7 @@ Two properties are deliberate and load-bearing:
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -360,10 +361,17 @@ def _run_pytest(workdir: Path, test_name: str, timeout_s: int) -> tuple[int, str
     test tree in scope. This is the only selection the harness ever runs on the
     launching host.
     """
+    # The subject is rewritten in this directory between runs (real, then mutant;
+    # broken, then patched). A cached bytecode file is keyed on the source's
+    # mtime in whole seconds and its length, so two same-length sources written
+    # within one second would share it and the second run would execute the
+    # first's code. Writing no bytecode makes the verdict a function of the text.
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", test_name, "-q", "-p", "no:cacheprovider"],
             cwd=workdir,
+            env=env,
             capture_output=True,
             text=True,
             timeout=timeout_s,

@@ -531,3 +531,55 @@ def test_every_diagnosis_trace_regenerates_from_its_committed_fixtures() -> None
             f"{proof.name} no longer produces the committed trace's verdict: "
             f"committed {committed_tally.group()!r}, produced {produced_tally.group()!r}"
         )
+
+
+# --------------------------------------------------------------------------
+# A verdict is a function of the response, not of the clock (OMN-20844)
+# --------------------------------------------------------------------------
+
+
+def test_a_verdict_does_not_depend_on_whether_both_sources_were_written_in_one_second() -> (
+    None
+):
+    """The real source and its mutant are written to one directory back to back.
+
+    When they have the same length and are written within one second, Python
+    reuses the bytecode it cached for the first as if it were the second's, so
+    the mutant runs as the real function. Rescoring one saved response then gave
+    different verdicts on different runs of the same host. Eight scorings of the
+    same answer must agree, and agree with the correct verdict.
+    """
+    config: dict[str, object] = {
+        "subject_text": "def add(a, b):\n    return a + b\n",
+        "mutant_text": "def add(a, b):\n    return a - b\n",
+        "timeout_s": 60,
+    }
+    answer = (
+        "```python\nfrom subject import add\n\n\ndef test_add():\n"
+        "    assert add(2, 3) == 5\n```"
+    )
+    outcomes = {
+        score_unit_test_execution(answer, config, FIXTURES).outcome.value
+        for _ in range(8)
+    }
+    assert outcomes == {"pass"}
+
+
+def test_a_patch_is_scored_on_the_patched_source_not_a_cached_copy_of_the_broken_one() -> (
+    None
+):
+    config: dict[str, object] = {
+        "prelude_text": "",
+        "prefix_body_text": "def add(a, b):\n    return a - b\n",
+        "suffix_text": "",
+        "focused_test_text": (
+            "from subject import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
+        ),
+        "timeout_s": 60,
+    }
+    fix = "```python\ndef add(a, b):\n    return a + b\n```"
+    outcomes = {
+        score_patch_apply_and_test(fix, config, FIXTURES).outcome.value
+        for _ in range(8)
+    }
+    assert outcomes == {"pass"}
