@@ -16,6 +16,9 @@ import pytest
 from omnimarket.nodes.node_claude_code_binding_install_effect.binding_install_error import (
     BindingInstallError,
 )
+from omnimarket.nodes.node_claude_code_binding_install_effect.handlers import (
+    handler_binding_install,
+)
 from omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install import (
     HandlerClaudeCodeBindingInstall,
 )
@@ -45,6 +48,28 @@ _GIT_LOCATION_ENV = (
     "GIT_OBJECT_DIRECTORY",
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
 )
+
+
+@pytest.fixture(autouse=True)
+def _work_tree_probe_ends_at_tmp_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Judge only the directories inside tmp_path.
+
+    A shared /tmp may hold a stray .git entry; the probe walks every parent of the
+    target, so without this the verdict would depend on the host's /tmp.
+    """
+
+    def inside_tmp_path_work_tree(path: Path) -> bool:
+        return any(
+            (p / ".git").exists()
+            for p in (path, *path.parents)
+            if p == tmp_path or tmp_path in p.parents
+        )
+
+    monkeypatch.setattr(
+        handler_binding_install, "_inside_a_work_tree", inside_tmp_path_work_tree
+    )
 
 
 def scrub_git_location_env(env: Mapping[str, str]) -> dict[str, str]:
