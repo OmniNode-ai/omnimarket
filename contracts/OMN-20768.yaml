@@ -39,3 +39,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20768_local_pr_facts.py -q -k 'merge_event or stays_unresolved'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-local-pr-reads-deploy-container-smoke"
+    description: "A disposable Python container reads and compiles the shipped local gh shim and checks that its local PR, contents, pull-files and dispatcher entrypoints are present. A missing module, syntax error or missing entrypoint fails the probe. AC1 and AC2 retain the behavior tests; this source smoke needs only Docker and the checked-out source on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --network none -v "${PWD}:/workspace:ro" -w /workspace ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 python -c 'import ast; from pathlib import Path; path = Path("src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py"); source = path.read_text(); compile(source, str(path), "exec"); functions = {node.name for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)}; required = {"_pr_view", "_contents", "_pull_files", "_api", "answer", "install_gh_shim", "main"}; assert required <= functions, sorted(required - functions); print("local gh shim: source compiles and local-read entrypoints are present")'
+        cwd: "${OMNI_HOME}/omnimarket"
