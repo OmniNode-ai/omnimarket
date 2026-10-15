@@ -118,7 +118,7 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
-  - id: "dod-omn20287-ac9-grounded-input-budget-per-task-class"
+  - id: "dod-omn20287-ac9-budget-per-task-class"
     description: "AC9 hosted probe. The per-task-class budget tests pass at the head and fail at the merge base, where one budget value refuses a 20,000 token code_generation turn."
     source: "manual"
     checks:
