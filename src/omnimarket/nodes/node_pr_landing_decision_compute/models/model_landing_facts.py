@@ -143,6 +143,14 @@ class ModelLandingPrFacts(BaseModel):
         ),
     )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
+    merge_queue: bool = Field(
+        default=False,
+        description=(
+            "The PR's base lands through a GitHub merge queue, which builds each "
+            "entry on the latest base: a behind head is queued as it is, never "
+            "updated first unless it is red (OMN-19998)."
+        ),
+    )
     suspensions: tuple[EnumLandingSuspension, ...] = ()
     collaborator: bool = Field(
         default=False, description="A collaborator's PR: never eligible (R2 excluded)."

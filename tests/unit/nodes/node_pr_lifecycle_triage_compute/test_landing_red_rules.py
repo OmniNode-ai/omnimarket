@@ -449,16 +449,16 @@ def _pool_pr(n: int, head: str) -> dict[str, Any]:
     }
 
 
-def test_reviewer_pool_earns_one_rerun_per_head_and_never_a_worker() -> None:
+def test_reviewer_pool_earns_one_rerun_per_head_then_a_worker() -> None:
     head = "a" * 40
     first = lf.apply_reviewer_pool([_pool_pr(1, head)], state_records=[], in_flight=0)
     assert first[0]["red_class"] == "runner_saturation"  # the decision's one rerun
     assert first[0]["ci"] == "red"
     rec = [{"pr": "OmniNode-ai/omnibase_infra#1", "rerun_heads": [head]}]
     after = lf.apply_reviewer_pool([_pool_pr(1, head)], state_records=rec, in_flight=0)
-    assert after[0]["ci"] == "pending"  # no worker, no second rerun
-    assert after[0]["red_class"] is None
-    assert after[0]["red_checks"] == []
+    assert after[0]["ci"] == "red"  # OMN-19998: past its one rerun, the PR's own red
+    assert after[0]["red_class"] == "product"
+    assert after[0]["red_checks"] == ["Hostile Review Gate"]
     new_head = lf.apply_reviewer_pool(
         [_pool_pr(1, "b" * 40)], state_records=rec, in_flight=0
     )

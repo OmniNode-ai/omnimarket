@@ -46,7 +46,6 @@ REPOS=(
   "omnimemory"
   "omninode_infra"
   "omniweb"
-  "onex_change_control"
   "omnibase_compat"
   "omnimarket"
 )

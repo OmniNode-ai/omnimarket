@@ -632,6 +632,39 @@ class TestOperationalOutcomeMaps:
         assert (await handler.handle_async(event)).events == ()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("artifact", [None, {}])
+    async def test_remote_no_response_terminal_ignores_late_artifact(
+        self,
+        artifact: dict[str, ModelSchemaValue] | None,
+    ) -> None:
+        cid = uuid4()
+        handler = _routed_workflow(cid)
+        task_id = uuid4()
+        missing = ModelAgentTaskLifecycleEvent(
+            task_id=task_id,
+            correlation_id=cid,
+            lifecycle_type=EnumAgentTaskLifecycleType.COMPLETED,
+            artifact=artifact,
+            occurred_at=datetime.now(UTC),
+        )
+
+        terminal = _only_terminal(list(await handler.handle(missing)))
+        _assert_no_response_shape(terminal, _OUTCOME.INFERENCE_FAILED)
+        assert terminal.content == ""
+
+        late_completion = missing.model_copy(
+            update={
+                "artifact": {"answer": ModelSchemaValue.from_value("late answer")},
+                "occurred_at": datetime.now(UTC),
+            }
+        )
+        assert await handler.handle(late_completion) == []
+        assert await handler.handle(missing) == []
+        assert handler.workflows[cid].state is EnumDelegationState.FAILED
+        assert terminal.quality_score is None
+        assert terminal.content_verdict is _VERDICT.NOT_APPLICABLE
+
+    @pytest.mark.asyncio
     async def test_remote_completion_with_artifact_remains_usable(self) -> None:
         cid = uuid4()
         handler = _routed_workflow(cid)

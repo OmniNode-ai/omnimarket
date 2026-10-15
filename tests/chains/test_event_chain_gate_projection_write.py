@@ -993,10 +993,21 @@ def _delegation_row_adapter(tmp_path: Path) -> SqliteDatabaseAdapter:
     return adapter
 
 
+@pytest.mark.parametrize(
+    ("status", "input_tokens", "output_tokens", "failure_cause"),
+    [
+        pytest.param("completed", 298, 59, None, id="success"),
+        pytest.param("failed", 363, 6, "quality_gate_refused", id="quality-refused"),
+    ],
+)
 async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     tmp_path: Path,
+    status: str,
+    input_tokens: int,
+    output_tokens: int,
+    failure_cause: str | None,
 ) -> None:
     """A refused attribution is a failed dispatch, never one ERROR line and an ack (OMN-16831 AC4).
 
@@ -1015,19 +1026,38 @@ async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
     3. no ``projection-delegation-applied`` terminal was published;
     4. the store holds zero rows for the correlation, and the paired positive
        control, the same terminal carrying a registered tenant, lands exactly
-       one, so a zero cannot be a store that refuses everything.
+       one, so a zero cannot be a store that refuses everything. Its token
+       counts, ticket, lane, outcome, score and tenant match the terminal on
+       both the success and quality-refused paths observed in the lab.
     """
     unattributed = {
         key: value
         for key, value in DELEGATION_PROJECTION_CASE.wire_payload.items()
         if key != "tenant_id"
     }
-    refused_case = replace(DELEGATION_PROJECTION_CASE, wire_payload=unattributed)
+    unattributed.update(
+        status=status,
+        metrics={
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
+        ticket_id="OMN-16831",
+        caller_lane="rem-16831",
+        quality_gate_passed=status == "completed",
+        actual_score=1.0 if status == "completed" else 0.0,
+        terminal_failure_cause=failure_cause,
+    )
+    terminal_case = replace(
+        DELEGATION_PROJECTION_CASE,
+        entry_topic=f"onex.evt.omnimarket.delegate-skill-{status}.v1",
+        wire_payload=unattributed,
+    )
     refused_db = _delegation_row_adapter(tmp_path / "refused")
     correlation = str(unattributed["correlation_id"])
 
     refused = await _run_projection_chain(
-        refused_case, monkeypatch, caplog, db_adapter=refused_db
+        terminal_case, monkeypatch, caplog, db_adapter=refused_db
     )
 
     assert DELEGATION_PROJECTION_CASE.writer_handler_name in refused.handlers_entered
@@ -1049,7 +1079,7 @@ async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
     attributed_db = _delegation_row_adapter(tmp_path / "attributed")
     attributed = await _run_projection_chain(
         replace(
-            DELEGATION_PROJECTION_CASE,
+            terminal_case,
             wire_payload={**unattributed, "tenant_id": tenant},
         ),
         monkeypatch,
@@ -1063,4 +1093,13 @@ async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
     rows = attributed_db.query("delegation_events", {"correlation_id": correlation})
     assert len(rows) == 1, rows
     assert str(rows[0]["tenant_id"]) == str(PROJECTION_TENANT_UUID)
+    assert rows[0]["tokens_input"] == input_tokens
+    assert rows[0]["tokens_output"] == output_tokens
+    assert rows[0]["ticket_id"] == "OMN-16831"
+    assert rows[0]["caller_lane"] == "rem-16831"
+    assert rows[0]["terminal_ok"] == (status == "completed")
+    assert rows[0]["terminal_failure_cause"] == failure_cause
+    assert rows[0]["actual_score"] == unattributed["actual_score"]
+    assert not attributed.dlq_failure_reasons
+    assert not attributed.quarantine_messages
     assert attributed.terminal_messages

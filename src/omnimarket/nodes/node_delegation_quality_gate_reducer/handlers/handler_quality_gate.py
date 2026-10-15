@@ -560,6 +560,17 @@ _ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
     "without evidence",
 )
 
+# OMN-20489: a summary of a scan report, a CI log or a changelog reports the word
+# "unverified" as a fact ("0 unverified secrets", `score_unverified_because`), so
+# the bare word is not the summary disclaiming its own accuracy. Three of the
+# 120 calibration answers were vetoed on it. Every other phrase, which does say
+# the writer cannot vouch for the text, stays, and so does the `(unverified)`
+# marker exemption. Scoped to the summarization class by the check name
+# `accurate_summary`; `accurate` keeps the full list for every other class.
+_SUMMARY_ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = tuple(
+    phrase for phrase in _ACCURACY_UNCERTAINTY_PHRASES if phrase != "unverified"
+)
+
 
 _THINKING_TRACE_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
@@ -1409,6 +1420,115 @@ def _check_exactly_two_sentences(content: str) -> str | None:
     return None
 
 
+# OMN-20489: the sentence limit a summarization prompt states ("in at most 4
+# sentences"). The two lenient accepts of the 120-answer calibration (a 5-sentence
+# answer to "at most 4" and a 6-sentence answer to "at most 5") were faithful, so
+# no grounding check could see them; only a count can.
+_SENTENCE_LIMIT_CHECK = "within_sentence_limit"
+_SENTENCE_LIMIT_WORDS: dict[str, int] = {
+    word: value
+    for value, word in enumerate(
+        (
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+        ),
+        start=1,
+    )
+}
+_SENTENCE_LIMIT_RE = re.compile(
+    r"\b(?:at\s+most|no\s+more\s+than)\s+(\d+|" + "|".join(_SENTENCE_LIMIT_WORDS) + r")"
+    r"\s+sentences?\b",
+    re.IGNORECASE,
+)
+_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+")
+# A sentence ends at . ! or ? (plus closing quotes or brackets), then whitespace,
+# then the start of another sentence. A dot inside a version, a file name or a
+# number is not followed by whitespace, and "e.g. foo" continues in lower case.
+_SENTENCE_BOUNDARY_RE = re.compile(
+    r"""(?<=[.!?])["')\]*_]*\s+(?=["'(\[`*_]*[A-Z0-9])"""
+)
+_SENTENCE_ABBREVIATION_RE = re.compile(r"(?:\be\.g|\bi\.e|\bvs|\bcf|\betc)\.$", re.I)
+
+
+def _sentence_limit(prompt: str | None) -> int | None:
+    """The first "at most N sentences" limit the prompt states, if any."""
+    if prompt is None:
+        return None
+    match = _SENTENCE_LIMIT_RE.search(prompt)
+    if match is None:
+        return None
+    raw = match.group(1).lower()
+    return int(raw) if raw.isdigit() else _SENTENCE_LIMIT_WORDS[raw]
+
+
+def _count_prose_sentences(content: str) -> int:
+    """Count sentences the way the limit is read: a list item is one sentence.
+
+    A semicolon run-on is one sentence, a soft-wrapped line continues its
+    paragraph, and code spans never end one. This is a count for a ceiling, not
+    a parser: the 120-answer calibration set agrees with a careful reading on
+    every answer's side of its limit.
+    """
+    text = _CODE_SPAN_RE.sub("X", content)
+    items: list[str] = []
+    for block in re.split(r"\n\s*\n", text):
+        current: str | None = None
+        for line in block.splitlines():
+            if not line.strip():
+                continue
+            if _LIST_ITEM_RE.match(line) or line.lstrip().startswith("#"):
+                if current is not None:
+                    items.append(current)
+                current = _LIST_ITEM_RE.sub("", line).strip().lstrip("#").strip()
+            else:
+                current = (
+                    line.strip() if current is None else f"{current} {line.strip()}"
+                )
+        if current is not None:
+            items.append(current)
+    count = 0
+    for item in items:
+        if not item:
+            continue
+        count += 1 + sum(
+            1
+            for match in _SENTENCE_BOUNDARY_RE.finditer(item)
+            if not _SENTENCE_ABBREVIATION_RE.search(item[: match.start()])
+        )
+    return count
+
+
+def _check_within_sentence_limit(
+    content: str, grounding_source: str | None = None
+) -> str | None:
+    """Heuristic, reject-only: the answer stays within the prompt's sentence limit.
+
+    The prompt is the grounding source. With no stated limit, or no prompt, there
+    is nothing to hold the answer to and the check passes.
+    """
+    limit = _sentence_limit(grounding_source)
+    if limit is None:
+        return None
+    count = _count_prose_sentences(content)
+    if count > limit:
+        return (
+            f"TASK_MISMATCH: response has {count} sentences, "
+            f"the prompt allows at most {limit}"
+        )
+    return None
+
+
 def _check_max_words_per_sentence(content: str, threshold: int) -> str | None:
     """Deterministic: each sentence must stay below the configured word limit."""
     sentences = _sentences(content)
@@ -1737,7 +1857,11 @@ def _unquoted_offsets(
     return offsets
 
 
-def _check_accurate(content: str, grounding_source: str | None = None) -> str | None:
+def _check_accurate(
+    content: str,
+    grounding_source: str | None = None,
+    phrases: tuple[str, ...] | None = None,
+) -> str | None:
     """Heuristic: response must not explicitly disclaim its own accuracy.
 
     True semantic accuracy requires source context that ModelQualityGateInput
@@ -1768,7 +1892,7 @@ def _check_accurate(content: str, grounding_source: str | None = None) -> str | 
     )
     source_core = _core_joined(source_words) if source_words is not None else None
     detected: list[str] = []
-    for phrase in _ACCURACY_UNCERTAINTY_PHRASES:
+    for phrase in _ACCURACY_UNCERTAINTY_PHRASES if phrases is None else phrases:
         offsets = _unquoted_offsets(lowered, phrase, words, source_words, source_core)
         if offsets:
             detected.append(f"{phrase}@offset={offsets[0]}")
@@ -1779,6 +1903,15 @@ def _check_accurate(content: str, grounding_source: str | None = None) -> str | 
     return None
 
 
+def _check_accurate_summary(
+    content: str, grounding_source: str | None = None
+) -> str | None:
+    """``accurate`` for a summary: the bare word "unverified" is not a disclaimer."""
+    return _check_accurate(
+        content, grounding_source, _SUMMARY_ACCURACY_UNCERTAINTY_PHRASES
+    )
+
+
 # OMN-19433: heuristic checks that read the grounding source as well as the
 # response. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, the response-only
 # form, so the set of known check names is unchanged.
@@ -1786,6 +1919,9 @@ _GROUNDING_AWARE_HEURISTIC_CHECKS: dict[
     str, Callable[[str, str | None], str | None]
 ] = {
     "accurate": _check_accurate,
+    # OMN-20489: summarization's own forms of `accurate` and a sentence ceiling.
+    "accurate_summary": _check_accurate_summary,
+    _SENTENCE_LIMIT_CHECK: _check_within_sentence_limit,
 }
 
 
@@ -1953,6 +2089,8 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "cites_sources": _check_cites_sources,
     "concise": _check_concise,
     "accurate": _check_accurate,
+    "accurate_summary": _check_accurate_summary,
+    _SENTENCE_LIMIT_CHECK: _check_within_sentence_limit,
     "semantic_adequacy": _check_semantic_adequacy,
     # OMN-16932: adequacy authority for a contract-declared constrained
     # response shape. Deliberately NOT in _REJECT_ONLY_HEURISTIC_CHECKS -
@@ -1965,6 +2103,8 @@ _REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "no_refusal",
         "accurate",
+        "accurate_summary",
+        _SENTENCE_LIMIT_CHECK,
         "concise",
         "covers_args_returns_raises",
         "cites_specific_lines",
@@ -2211,6 +2351,12 @@ def _evaluate_heuristic_checks(
     claims_check = _claim_grounding_check_name()
 
     for check in dod_heuristic:
+        if check == _SENTENCE_LIMIT_CHECK and grounding_source is None:
+            # OMN-20489: the limit is stated in the prompt. With no prompt the
+            # check is recorded SKIPPED, as the other source-reading checks are,
+            # so it neither inflates nor deflates the score.
+            skipped_heuristic.append(check)
+            continue
         if check in _GROUNDING_AWARE_HEURISTIC_CHECKS:
             # OMN-19433: this check also reads the text the response was
             # derived from, so a phrase quoted from it is not held against the

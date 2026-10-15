@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.314"
+version = "0.4.315"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -225,7 +225,12 @@ dependencies = [
     # migrations, so the Sibling Release Compatibility Gate finds them in the
     # pinned release. 0.38.71 declares the same omnibase-compat, omnibase-core
     # and omnibase-spi bounds as 0.38.70, so this bump cascades nothing.
-    "omnibase-infra>=0.38.71,<0.39.0",
+    # OMN-18946: floor raised to 0.38.72, the first omnibase_infra release that
+    # vendors the claude_hook_events 0007 node migration (omnibase_infra#4933), so the
+    # Sibling Release Compatibility Gate finds it in the pinned release. 0.38.72
+    # declares the same omnibase-compat, omnibase-core and omnibase-spi bounds as
+    # 0.38.71, so this bump cascades nothing.
+    "omnibase-infra>=0.38.72,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -374,6 +379,7 @@ node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
 node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
+node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_gate_compute"
 node_glm_allowance_compute = "omnimarket.nodes.node_glm_allowance_compute"
 node_claude_review_budget_compute = "omnimarket.nodes.node_claude_review_budget_compute"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
@@ -384,6 +390,7 @@ node_delegation_dod_verify_request_compute = "omnimarket.nodes.node_delegation_d
 node_delegation_acceptance_judged_publish_effect = "omnimarket.nodes.node_delegation_acceptance_judged_publish_effect"
 node_delegation_acceptance_judged_replay_compute = "omnimarket.nodes.node_delegation_acceptance_judged_replay_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
+node_delegation_tier_comparison_compute = "omnimarket.nodes.node_delegation_tier_comparison_compute"
 node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
@@ -553,6 +560,7 @@ node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_hea
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
+node_work_ledger_render_effect = "omnimarket.nodes.node_work_ledger_render_effect"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
 node_work_ledger_seq_gap_effect = "omnimarket.nodes.node_work_ledger_seq_gap_effect"
 node_projection_alert_channel_liveness = "omnimarket.nodes.node_projection_alert_channel_liveness"
@@ -736,6 +744,7 @@ node_monitor_alert_responder = "omnimarket.nodes.node_monitor_alert_responder"
 # remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 node_rebase_effect = "omnimarket.nodes.node_rebase_effect"
 node_ci_rerun_effect = "omnimarket.nodes.node_ci_rerun_effect"
+node_superseded_run_cancel_effect = "omnimarket.nodes.node_superseded_run_cancel_effect"
 node_ci_fix_effect = "omnimarket.nodes.node_ci_fix_effect"
 node_conflict_hunk_effect = "omnimarket.nodes.node_conflict_hunk_effect"
 node_content_ingestion_effect = "omnimarket.nodes.node_content_ingestion_effect"
@@ -1150,7 +1159,12 @@ override-dependencies = [
     # migrations, so the Sibling Release Compatibility Gate finds them in the
     # pinned release. 0.38.71 declares the same omnibase-compat, omnibase-core
     # and omnibase-spi bounds as 0.38.70, so this bump cascades nothing.
-    "omnibase-infra>=0.38.71,<0.39.0",
+    # OMN-18946: floor raised to 0.38.72, the first omnibase_infra release that
+    # vendors the claude_hook_events 0007 node migration (omnibase_infra#4933), so the
+    # Sibling Release Compatibility Gate finds it in the pinned release. 0.38.72
+    # declares the same omnibase-compat, omnibase-core and omnibase-spi bounds as
+    # 0.38.71, so this bump cascades nothing.
+    "omnibase-infra>=0.38.72,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

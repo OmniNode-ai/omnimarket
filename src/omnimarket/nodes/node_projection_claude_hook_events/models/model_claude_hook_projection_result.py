@@ -54,6 +54,15 @@ class ModelClaudeHookEventRow(BaseModel):
     model: str | None = Field(default=None, min_length=1)
     host: str | None = Field(default=None, min_length=1)
     exit_code: int | None = None
+    #: OMN-18946: who refused a call and why, and what a stretch of assistant
+    #: messages cost. Each is NULL on every event that does not state it.
+    guard: str | None = Field(default=None, min_length=1)
+    refusal_reason: str | None = Field(default=None, min_length=1)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cache_creation_input_tokens: int | None = Field(default=None, ge=0)
+    cache_read_input_tokens: int | None = Field(default=None, ge=0)
+    assistant_message_count: int | None = Field(default=None, ge=0)
 
 
 class ModelClaudeAgentSpanUpdate(BaseModel):

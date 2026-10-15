@@ -64,7 +64,14 @@ task_classes:
     heuristic:
       - no_refusal
       - concise
-      - accurate
+      # OMN-20489: mirrors the shipped contract. `accurate_summary` is `accurate`
+      # without the bare word "unverified"; every phrase these cases use still
+      # trips it.
+      - accurate_summary
+      # OMN-20489: mirrors the shipped contract. Scored with no grounding source
+      # (no prompt, so no stated limit), so it is recorded SKIPPED and changes no
+      # score below.
+      - within_sentence_limit
       - semantic_adequacy
       # OMN-18297: mirrors the shipped contract. The calibration corpus scores
       # with no grounding source, so this check is recorded SKIPPED and excluded

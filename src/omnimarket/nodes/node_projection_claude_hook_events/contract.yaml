@@ -66,6 +66,8 @@ golden_path:
   - "The pure fold derives the event row, the subagent span contribution and any out-of-order parent repair"
   - "The writer inserts the event row keyed on the producer's deterministic event_id, so a redelivery writes nothing"
   - "The writer upserts the agent span, recounting tool calls from the event table rather than incrementing"
+  - "A guard's refusal arrives as a derived GuardRefusal event (OMN-18946); its row names the guard and the reason class and shares the refused call's tool_use_id"
+  - "A Stop, SubagentStop or SessionEnd that found new assistant messages arrives as derived AssistantUsage events (OMN-18946), one per model; their rows carry the token counts"
   - "Emit projection-applied event to onex.evt.omnimarket.projection-claude-hook-events-applied.v1"
 
 dod_evidence:
@@ -81,6 +83,12 @@ dod_evidence:
     description: "An undeclared writer is skipped by the shared runtime and writes zero rows silently"
   - test: tests/test_omn19513_claude_hook_events_real_postgres.py::test_scenarios_read_back_from_real_postgres
     description: "The writer's SQL, against real Postgres, reproduces the expected rows, and a replay changes nothing"
+  - test: tests/test_omn18946_claude_hook_events_refusal_usage.py::test_a_refusal_folds_to_a_row_naming_the_guard_and_the_reason
+    description: "OMN-18946: a GuardRefusal event folds to a row naming the guard and its reason class, joined to the refused call by tool_use_id"
+  - test: tests/test_omn18946_claude_hook_events_refusal_usage.py::test_a_usage_event_folds_to_a_row_with_tokens_and_the_api_model
+    description: "OMN-18946: an AssistantUsage event folds to a row carrying input, output and cache tokens, the message count and the API's model id"
+  - test: tests/test_omn19513_claude_hook_events_real_postgres.py::test_a_refused_call_joins_its_guard_and_a_session_total_is_readable
+    description: "OMN-18946: against real Postgres, a refused call's guard joins to its PreToolUse and a session's token total sums from its AssistantUsage rows"
 
 db_io:
   db_tables:

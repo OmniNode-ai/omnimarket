@@ -49,6 +49,7 @@ REQUIRED_FALSE_PASS_CLASSES: tuple[str, ...] = (
 
 REQUIRED_GATE_CHECKS: tuple[str, ...] = (
     "accurate",
+    "accurate_summary",
     "cites_sources",
     "cites_specific_lines",
     "claims_grounded",
@@ -83,6 +84,7 @@ REQUIRED_GATE_CHECKS: tuple[str, ...] = (
     "structured_output",
     "task_completed",
     "uses_pytest_mark_unit",
+    "within_sentence_limit",
 )
 
 

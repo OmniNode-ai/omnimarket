@@ -1,7 +1,8 @@
 name: projection_savings
 version: "1.0.0"
 description: >
-  Projects savings-estimated events into savings_estimates table.
+  Projects savings-estimated events, delegation terminals and compactions the
+  compaction mod answered or shortened into savings_estimates table.
   SOW WARN blocker for cost attribution.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
