@@ -16,11 +16,6 @@ requirements:
         statement: "AC2: A mixed store's measured savings total equals the real rows' total, fixtures excluded by default -- falsifier: the mixed-store pytest includes a fixture row in the sum"
       - id: "AC3"
         statement: "AC3: Every fixture row carries the fixture label through to the exposure rows -- falsifier: the lab-step exposure read returns a fixture row without `data_source: fixture`"
-  - id: "req-ci-summary-docs-only-marker-pending"
-    statement: "CI Summary keeps a skipped tier pending while the docs-only marker has not completed, and never defers a tier failure or a non-tier skip."
-    acceptance:
-      - id: "AC4"
-        statement: "AC4: CI Summary with the docs-only marker still pending keeps a skipped tier pending instead of rejecting it, and never defers a tier failure or a non-tier skip -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:randomly --no-cov -n 0 -k docs_only_marker fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Seed replay, mixed-store savings and exposure provenance tests."
@@ -116,3 +111,17 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:randomly --no-cov -n 0 -k docs_only_marker"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn19970-retire-ac4-ci-summary"
+    description: "Retires the AC4 binding: the ticket no longer carries AC4 (its criteria are AC1 to AC3), so the CI Summary docs-only-marker evidence settles nothing on this ticket and stops counting as criteria drift."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: "dod-omn19970-ci-summary-docs-only-marker-pending"
+        label: "AC4"
+        reason_kind: "no_longer_applicable"
+        reason: "The ticket dropped AC4; its criteria are AC1 to AC3, and this evidence settles nothing on it now."
+        retired_by: "omn19970-lab"
+        retired_at: "2026-10-15T12:10:00Z"
