@@ -1,0 +1,31 @@
+schema_version: "1.0.0"
+ticket_id: OMN-18531
+title: "The typed ruling, consent and correction events carry the prompt-link fields (plan task TA.4, parser slice)"
+summary: Plan task TA.4 of the Claude Code context and delegation adapter plan adds optional prompt-link fields to RULING, OPERATOR-CONSENT and CORRECTION rows. This slice is the row parser and the typed events; the ledger grammar and the recorder are separate pull requests.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn18531-ta4-parser-fields
+    statement: parse_ledger_row types prompt_id, covers, prompt_match, confirms, confirmed_by and reviewed on a ruling, the same link fields on an operator consent, and operator_span on a correction, and the typed events round-trip through JSON.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a linked RULING, an ambiguous RULING, a linked OPERATOR-CONSENT and a CORRECTION with operator_span each parse to an event carrying every field and round-trip through the event union -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q`'
+evidence_requirements:
+  - kind: tests
+    description: The prompt-link parser tests pass, and six of them fail on the parser without the fields.
+    command: uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn-18531-ta4-ac1
+    description: The typed events carry the prompt-link fields after parse_ledger_row and after a JSON round trip.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - AC1
