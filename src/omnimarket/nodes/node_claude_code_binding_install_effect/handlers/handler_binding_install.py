@@ -17,6 +17,12 @@ import json
 import shutil
 from pathlib import Path
 
+from omnimarket.models.claude_code_binding import (
+    EnumBindingKind,
+    ModelBindingRenderRequest,
+    ModelBindingRenderResult,
+    ModelClientBinding,
+)
 from omnimarket.nodes.node_claude_code_binding_install_effect.binding_install_error import (
     BindingInstallError,
 )
@@ -27,16 +33,6 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models import (
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import (
     ADAPTER_COMMAND,
     HandlerClaudeCodeBindingRender,
-)
-from omnimarket.nodes.node_claude_code_binding_render_compute.models import (
-    ModelBindingRenderRequest,
-    ModelBindingRenderResult,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
-    EnumBindingKind,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
-    ModelClientBinding,
 )
 
 _OWN_COMMAND_PREFIX = f"{ADAPTER_COMMAND} --binding "

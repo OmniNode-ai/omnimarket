@@ -24,6 +24,7 @@ from omnimarket.delegation.response_contract_conformance import (
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.task_class_authority import (
     resolve_delegation_output_authority,
+    resolve_reasoning_preamble_policy,
     resolve_task_class_output_contract,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
@@ -395,6 +396,63 @@ def _refusal(
     )
 
 
+#: Leading blank lines. Only whole blank lines go, so a first answer line that
+#: is indented code keeps its indentation.
+_LEADING_BLANK_LINES_RE = re.compile(r"\A(?:[ \t]*\r?\n)+")
+
+
+def final_answer_text(content: str) -> tuple[str, str]:
+    """The final answer a caller receives, and the reasoning removed from it.
+
+    OMN-21088: ``result.response`` is the final answer only, on every output
+    mode and every path. This removes, in order:
+
+    * every paired reasoning block (``<think>...</think>`` and the other
+      declared trace tags) wherever it sits, and everything up to an unpaired
+      closing trace tag (the model's own terminator for a trace whose opener
+      the template ate);
+    * one answer-marker line (``### ANSWER``, ``=== ANSWER ===``, ``<answer>``
+      and their heading or emphasis variants) when it OPENS what is left, and a
+      closing ``</answer>`` that ends it. A marker line inside the answer is
+      the answer's own text and stays;
+    * leading blank lines and trailing whitespace.
+
+    The removed reasoning is returned beside the answer so a receipt can keep
+    it under its own field. A clean answer comes back unchanged with an empty
+    reasoning string. Idempotent: the answer it returns is a fixed point.
+    """
+    policy = resolve_reasoning_preamble_policy()
+    closing_tags = policy.closing_trace_tags if policy is not None else ()
+    removed: list[str] = []
+    text = content
+    for closing in closing_tags:
+        opening = f"<{closing[2:]}"
+        block = re.compile(re.escape(opening) + r".*?" + re.escape(closing), re.DOTALL)
+        removed.extend(match.group(0) for match in block.finditer(text))
+        text = block.sub("", text)
+    for closing in closing_tags:
+        index = text.find(closing)
+        if index != -1:
+            removed.append(text[: index + len(closing)])
+            text = text[index + len(closing) :]
+    markers = set(policy.answer_markers) if policy is not None else set()
+    authority = resolve_delegation_output_authority()
+    markers.update(authority.markdown_markers)
+    markers.update(authority.plain_text_markers)
+    normalized = {_normalize_marker_line(marker) for marker in markers}
+    text = _LEADING_BLANK_LINES_RE.sub("", text)
+    first, newline, rest = text.partition("\n")
+    if first.strip() and _normalize_marker_line(first) in normalized:
+        text = _LEADING_BLANK_LINES_RE.sub("", rest if newline else "")
+        if first.strip().lower() == "<answer>":
+            stripped = text.rstrip()
+            if stripped.lower().endswith("</answer>"):
+                text = stripped[: -len("</answer>")]
+    text = text.rstrip()
+    reasoning = "\n\n".join(part.strip() for part in removed if part.strip())
+    return text, reasoning
+
+
 __all__ = [
     "EnumDeliverableBoundaryMode",
     "EnumDeliverableExtractionRefusal",
@@ -403,6 +461,7 @@ __all__ = [
     "ModelPlainTextOutputConstraints",
     "canonical_deliverable_contract_sha256",
     "extract_deliverable",
+    "final_answer_text",
     "resolve_deliverable_contract",
     "resolve_task_class_deliverable_contract",
 ]

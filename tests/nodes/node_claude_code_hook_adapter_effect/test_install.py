@@ -13,6 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.claude_code_binding import (
+    EnumClientMaxMode,
+    ModelBindingRenderRequest,
+)
 from omnimarket.nodes.node_claude_code_binding_install_effect.binding_install_error import (
     BindingInstallError,
 )
@@ -27,12 +31,6 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models import (
 )
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import (
     HandlerClaudeCodeBindingRender,
-)
-from omnimarket.nodes.node_claude_code_binding_render_compute.models import (
-    ModelBindingRenderRequest,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
-    EnumClientMaxMode,
 )
 
 from .conftest import make_binding

@@ -5,8 +5,9 @@
 
 hook record carrying a planted fake credential
   -> the emit effect's fan-out transform for onex.cmd.omniintelligence.content-captured.v1
+     (passthrough: OMN-19513, RULING 2026-10-15T04:24:42Z, raw on the bus)
   -> node_projection_session_content's writer (the runtime's projection entry)
-  -> one row, the credential replaced by its marker, the rest of the text intact
+  -> one row, the text stored raw, the credential included
   -> the runtime's terminal event is gated on rows_upserted >= 1
 """
 
@@ -18,9 +19,7 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.nodes.node_emit_daemon.event_registry import (
-    TOPIC_SCOPED_TRANSFORM_REGISTRY,
-)
+from omnimarket.nodes.node_emit_daemon.event_registry import TRANSFORM_REGISTRY
 from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     resolve_event_type,
 )
@@ -54,7 +53,8 @@ class _RecordingDb:
 @pytest.mark.unit
 def test_golden_chain_hook_record_to_session_content_row() -> None:
     (target,) = resolve_event_type("content.captured")
-    transform = TOPIC_SCOPED_TRANSFORM_REGISTRY[target.transform_name]
+    assert target.transform_name == "passthrough"
+    transform = TRANSFORM_REGISTRY[target.transform_name]
 
     hook_record: dict[str, Any] = {
         "session_id": "golden-session",
@@ -69,7 +69,8 @@ def test_golden_chain_hook_record_to_session_content_row() -> None:
         "content": "token is " + PLANTED + " and the build passed",
         "emitted_at": "2026-09-25T12:00:00+00:00",
     }
-    published = transform(hook_record, target.topic)
+    published = transform(hook_record)
+    assert published == hook_record
 
     writer = SessionContentProjectionWriter()
     db = _RecordingDb()
@@ -79,8 +80,7 @@ def test_golden_chain_hook_record_to_session_content_row() -> None:
     assert result["rows_upserted"] == 1
     (row,) = db.rows
     stored = [value for value in row if isinstance(value, str)]
-    assert not any(PLANTED in value for value in stored)
-    assert "token is [REDACTED:github_token] and the build passed" in stored
+    assert "token is " + PLANTED + " and the build passed" in stored
     assert "golden-session:turn-1" in stored
     assert "toolu_golden" in stored
 

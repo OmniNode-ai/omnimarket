@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from omnibase_core.nodes.node_compute import NodeCompute
 
-from omnimarket.nodes.node_claude_code_binding_render_compute.models import (
+from omnimarket.models.claude_code_binding import (
     ModelBindingRenderRequest,
     ModelBindingRenderResult,
 )

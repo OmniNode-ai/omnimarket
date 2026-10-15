@@ -8,20 +8,16 @@ import re
 
 import pytest
 
+from omnimarket.models.claude_code_binding import (
+    EnumClientMaxMode,
+    ModelBindingRenderRequest,
+    ModelClientArgument,
+)
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import (
     HandlerClaudeCodeBindingRender,
 )
-from omnimarket.nodes.node_claude_code_binding_render_compute.models import (
-    ModelBindingRenderRequest,
-)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error import (
     BindingRenderError,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
-    EnumClientMaxMode,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
-    ModelClientArgument,
 )
 
 from .conftest import make_binding

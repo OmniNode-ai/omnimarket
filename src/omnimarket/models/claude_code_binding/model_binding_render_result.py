@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_claude_code_binding_render_compute.models.model_binding_registration import (
+from omnimarket.models.claude_code_binding.model_binding_registration import (
     ModelBindingRegistration,
 )
 

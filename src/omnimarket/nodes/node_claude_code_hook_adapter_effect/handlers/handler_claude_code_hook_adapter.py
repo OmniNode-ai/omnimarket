@@ -12,12 +12,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from omnimarket.models.claude_code_binding import (
+    ModelClientBinding,
+)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_verdict import (
     compute_client_verdict,
     hook_output_for,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
-    ModelClientBinding,
     ModelHookAdapterRequest,
     ModelHookAdapterResult,
 )

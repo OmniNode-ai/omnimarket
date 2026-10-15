@@ -10,10 +10,8 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
+from omnimarket.models.claude_code_binding import (
     EnumBindingKind,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelClientArgument,
     ModelClientBinding,
 )

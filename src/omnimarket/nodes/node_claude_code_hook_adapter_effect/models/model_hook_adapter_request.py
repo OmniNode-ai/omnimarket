@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_binding import (
+from omnimarket.models.claude_code_binding import (
     ModelClientBinding,
 )
 

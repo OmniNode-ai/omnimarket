@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
+from omnimarket.models.claude_code_binding.enum_client_max_mode import (
     EnumClientMaxMode,
 )
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
+from omnimarket.models.claude_code_binding.model_client_binding import (
     ModelClientBinding,
 )
 

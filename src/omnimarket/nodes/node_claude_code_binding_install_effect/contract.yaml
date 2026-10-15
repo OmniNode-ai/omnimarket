@@ -20,7 +20,6 @@ node_version:
   patch: 0
 
 node_type: EFFECT_GENERIC
-runtime_profiles: [main]
 
 description: >
   Writes the rendered module to the Claude Code mods location (never inside a repository), reads it back and compares its sha256 with the render's, and writes additive registrations into the user settings only. Installs only rows whose probe rows the capability report marks supported.
@@ -53,6 +52,7 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 5000
+  runtime_profiles: [effects]
 
 capabilities:
   - name: hook.claude_code.binding_install

@@ -15,11 +15,11 @@ import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
+from omnimarket.models.claude_code_binding import (
     EnumClientVerdictAction,
+    ModelClientBinding,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
-    ModelClientBinding,
     ModelClientVerdict,
     ModelReceiptEvent,
 )

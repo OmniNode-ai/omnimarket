@@ -2,12 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Models for the Claude Code hook adapter effect node."""
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_argument import (
-    ModelClientArgument,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_binding import (
-    ModelClientBinding,
-)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_section import (
     ModelClientSection,
 )
@@ -25,8 +19,6 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_receipt_
 )
 
 __all__ = [
-    "ModelClientArgument",
-    "ModelClientBinding",
     "ModelClientSection",
     "ModelClientVerdict",
     "ModelHookAdapterRequest",

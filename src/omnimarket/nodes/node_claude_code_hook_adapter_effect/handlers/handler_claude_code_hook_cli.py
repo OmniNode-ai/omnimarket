@@ -24,7 +24,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO, cast
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
+from omnimarket.models.claude_code_binding import (
     EnumClientMaxMode,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (

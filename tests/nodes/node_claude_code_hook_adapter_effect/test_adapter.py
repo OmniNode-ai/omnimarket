@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 import pytest
 import yaml
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
+from omnimarket.models.claude_code_binding import (
     EnumClientMaxMode,
     EnumClientVerdictAction,
 )

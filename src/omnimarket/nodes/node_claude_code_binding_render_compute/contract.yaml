@@ -27,16 +27,16 @@ description: >
 
 input_model:
   name: ModelBindingRenderRequest
-  module: omnimarket.nodes.node_claude_code_binding_render_compute.models
+  module: omnimarket.models.claude_code_binding
 
 output_model:
   name: ModelBindingRenderResult
-  module: omnimarket.nodes.node_claude_code_binding_render_compute.models
+  module: omnimarket.models.claude_code_binding
 
 handler:
   module: omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render
   class: HandlerClaudeCodeBindingRender
-  input_model: omnimarket.nodes.node_claude_code_binding_render_compute.models.ModelBindingRenderRequest
+  input_model: omnimarket.models.claude_code_binding.ModelBindingRenderRequest
 
 handler_routing:
   routing_strategy: payload_type_match
@@ -46,7 +46,7 @@ handler_routing:
         module: omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render
       event_model:
         name: ModelBindingRenderRequest
-        module: omnimarket.nodes.node_claude_code_binding_render_compute.models
+        module: omnimarket.models.claude_code_binding
 
 descriptor:
   node_archetype: compute

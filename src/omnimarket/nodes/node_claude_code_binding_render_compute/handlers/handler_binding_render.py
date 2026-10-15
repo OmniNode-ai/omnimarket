@@ -14,23 +14,19 @@ import hashlib
 import json
 import re
 
-from omnimarket.nodes.node_claude_code_binding_render_compute.handlers import (
-    template_claude_code_binding as tpl,
-)
-from omnimarket.nodes.node_claude_code_binding_render_compute.models import (
+from omnimarket.models.claude_code_binding import (
+    EnumBindingKind,
+    EnumClientMaxMode,
     ModelBindingRegistration,
     ModelBindingRenderRequest,
     ModelBindingRenderResult,
+    ModelClientBinding,
+)
+from omnimarket.nodes.node_claude_code_binding_render_compute.handlers import (
+    template_claude_code_binding as tpl,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error import (
     BindingRenderError,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.enums import (
-    EnumBindingKind,
-    EnumClientMaxMode,
-)
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
-    ModelClientBinding,
 )
 
 ADAPTER_COMMAND = "onex-claude-code-hook"
