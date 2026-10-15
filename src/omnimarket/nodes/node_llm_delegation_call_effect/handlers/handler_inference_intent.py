@@ -85,6 +85,7 @@ from omnimarket.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     resolve_byok_backend_by_endpoint,
 )
+from omnimarket.routing.delegation_backend_resolution import describe_model_name_source
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 logger = logging.getLogger(__name__)
@@ -261,6 +262,35 @@ class ModelAttributionMismatchError(RuntimeError):
     ``model_used``: the configured id is exactly the value this guard found to be
     false, so stamping it would restate the false attribution on the response.
     """
+
+
+def _model_source_attribution(model_id: str, endpoint_url: str) -> str:
+    """Return the sentence naming where a mismatching ``model_id`` was configured.
+
+    OMN-18670. The intent carries the resolved model and endpoint but not their
+    provenance, so the source is recovered from the routing authority's own merge
+    of the tracked contract and any machine-local overlay. When it cannot be
+    recovered the sentence says so and names the command that prints it, rather
+    than leaving the operator to re-derive the resolution path by hand.
+    """
+    try:
+        source = describe_model_name_source(model_id, endpoint_url)
+    except Exception:
+        logger.warning(
+            "model_attribution_mismatch: could not read the routing contract to "
+            "name the source of model_name=%r",
+            model_id,
+            exc_info=True,
+        )
+        source = None
+    if source:
+        return f" The configured value came from: {source}."
+    return (
+        " No merged routing backend declares this model for this endpoint, so "
+        "this refusal cannot name the file that supplied it; run "
+        "`python -m omnimarket.cli.cli_explain_routing` to print the merged "
+        "routing with a per-key source."
+    )
 
 
 class InferenceUsageError(RuntimeError):
@@ -1026,6 +1056,7 @@ class HandlerInferenceIntent:
                 f"{transport.served_models_url(base_url)} (OMN-16419 fail-closed "
                 "guard on the inference-intent path, OMN-17098 -- refusing to "
                 "silently attribute this call to a model that is not running)."
+                f"{_model_source_attribution(intent.model, base_url)}"
             )
 
         messages, provider_request_options = _build_messages_and_request_options(intent)
