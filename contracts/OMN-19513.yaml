@@ -42,10 +42,10 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value"
     binds_ac: ["AC2"]
   - id: "dod-omn19513-deploy-probe"
-    description: "PR #3937 on OmniNode-ai/omnimarket: the claude_hook_events wire model at the PR head carries the raw value field."
+    description: "Deploy probe. Read the claude_hook_events wire model from GitHub at the checked-out commit and require the content reference to carry the raw value field. It fails at the merge base, whose wire model carries the sha256 digest field instead."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=6e8f05b2c97cd4204549a4ab54e4d326547df8b9 --jq .content | base64 -d | grep -c '    value: str'"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq \"    value: str\"'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
