@@ -52,6 +52,7 @@ from pydantic import SecretStr, ValidationError
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+    resolve_local_byok_credential_plan,
 )
 from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
     CapturedSecretReaderNotConfiguredError,
@@ -84,6 +85,7 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     PROVIDERS,
     HandlerModelSetup,
+    ModelSetupRefusedError,
     key_looks_like,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
@@ -1192,8 +1194,24 @@ _OLLAMA_HOW = (
 )
 
 
+def _write_model_list(provider: str, models: tuple[str, ...]) -> tuple[str, ...]:
+    """Store a key's whole ordered model list through the local secret store node."""
+    try:
+        written = HandlerLocalSecretStore().handle(
+            ModelLocalSecretRequest(
+                operation="set_models",
+                secret_ref=f"llm.{provider}.api_key",
+                models=models,
+                model_chosen_by="customer",
+            )
+        )
+    except LocalSecretStoreRefusedError as refusal:
+        raise ModelSetupRefusedError(str(refusal)) from None
+    return written.models
+
+
 def _model_handler() -> HandlerModelSetup:
-    return HandlerModelSetup()
+    return HandlerModelSetup(write_model_list=_write_model_list)
 
 
 def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
@@ -1255,38 +1273,55 @@ models_group = click.Group(
 @click.argument("provider", type=_model_choice)
 @click.option(
     "--model",
-    "model_option",
-    default=None,
+    "model_options",
+    multiple=True,
     help=(
-        "The model your key runs, checked against the provider's list for it. "
-        "For OpenRouter you choose it: without --model a terminal is asked and "
-        "a script is refused."
+        "A model your key runs, checked against the provider's list for it; "
+        "repeat it to choose several, first is tried first. For OpenRouter you "
+        "choose it: without --model a terminal is asked and a script is refused."
     ),
 )
 @_model_json
-def add_model(provider: str, model_option: str | None, as_json: bool) -> None:
+def add_model(provider: str, model_options: tuple[str, ...], as_json: bool) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
     The key is read from stdin when piped, or asked for at a hidden prompt.
-    A key already stored for PROVIDER is replaced. The test passes only when it
-    answers on the model stored for the key.
+    A key already stored for PROVIDER is replaced, with the models named here
+    as its ordered list. The test passes only when it answers on the first
+    model stored for the key. Add models to a stored key later with
+    ``onex models add-model``.
     """
     name = provider.lower()
     handler = _model_handler()
     if name == "ollama":
         if not handler.is_set_up("ollama"):
             raise click.ClickException(_OLLAMA_HOW)
-        if model_option is not None:
+        if model_options:
             raise click.ClickException(
                 f"--model does not apply to Ollama. {_OLLAMA_HOW}"
             )
     else:
+        if len(set(model_options)) != len(model_options):
+            raise click.ClickException("a model is named twice. Nothing was stored.")
+        key = _read_model_key(name)
+        plan = resolve_local_byok_credential_plan(name)
+        for extra in model_options[1:]:
+            _check_chosen_model(name, plan, key, extra)
         store_secret_value(
             f"llm.{name}.api_key",
-            _read_model_key(name),
+            key,
             force=True,
-            model_option=model_option,
+            model_option=model_options[0] if model_options else None,
         )
+        if len(model_options) > 1:
+            _edit_model_list(
+                handler,
+                ModelModelSetupRequest(
+                    operation="add_models",
+                    provider=cast(ModelProvider, name),
+                    models=tuple(model_options[1:]),
+                ),
+            )
     request = ModelModelSetupRequest(operation="test", provider=name)
     (result,) = handler.handle(request).tests
     _show_model_test(result, as_json)
@@ -1325,26 +1360,113 @@ def list_models(as_json: bool) -> None:
             continue
         label = f"{_MODEL_LABELS[row.provider]:<11}"
         last = row.last_test
+        models = f" [models: {', '.join(row.models)}]" if row.models else ""
         if not row.set_up:
             click.echo(f"{label} not set up")
         elif last is None:
-            click.echo(f"{label} set up, not tested yet")
+            click.echo(f"{label} set up, not tested yet{models}")
         elif last.status == "passed":
             click.echo(
-                f"{label} set up, last test passed {last.tested_at} ({last.model})"
+                f"{label} set up, last test passed {last.tested_at} "
+                f"({last.model}){models}"
             )
         else:
             click.echo(
-                f"{label} set up, last test FAILED {last.tested_at}: {last.reason}"
+                f"{label} set up, last test FAILED {last.tested_at}: "
+                f"{last.reason}{models}"
             )
+
+
+def _edit_model_list(
+    handler: HandlerModelSetup, request: ModelModelSetupRequest
+) -> None:
+    """Run one list edit and say the resulting order, or the refusal."""
+    try:
+        result = handler.handle(request)
+    except ModelSetupRefusedError as refusal:
+        raise click.ClickException(f"{refusal}. Nothing was changed.") from None
+    label = _MODEL_LABELS[cast(str, request.provider)]
+    click.echo(f"Your {label} models, first tried first: {', '.join(result.models)}")
+
+
+@models_group.command("add-model")
+@click.argument("provider", type=_model_choice)
+@click.option(
+    "--model",
+    "model_options",
+    multiple=True,
+    required=True,
+    help="A model to add after the ones already chosen; repeat it for several.",
+)
+def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
+    """Add models to PROVIDER's stored key, after the ones already chosen.
+
+    Each model is checked against the provider's list for your key. The key is
+    not asked for again.
+    """
+    name = provider.lower()
+    if name == "ollama":
+        raise click.ClickException(f"Ollama has no key to add models to. {_OLLAMA_HOW}")
+    store = LocalByokCredentialStore()
+    key = asyncio.run(store.get_secret(f"llm.{name}.api_key"))
+    if key is None:
+        raise click.ClickException(
+            f"no {_MODEL_LABELS[name]} key is stored; add one with: "
+            f"onex models add {name}"
+        )
+    plan = resolve_local_byok_credential_plan(name)
+    for chosen in model_options:
+        _check_chosen_model(name, plan, key, chosen)
+    _edit_model_list(
+        _model_handler(),
+        ModelModelSetupRequest(
+            operation="add_models",
+            provider=cast(ModelProvider, name),
+            models=tuple(model_options),
+        ),
+    )
+
+
+@models_group.command("reorder")
+@click.argument("provider", type=_model_choice)
+@click.argument("models", nargs=-1, required=True)
+def reorder_models(provider: str, models: tuple[str, ...]) -> None:
+    """Put PROVIDER's chosen MODELS in this order, first tried first.
+
+    Name exactly the models the key holds, each once. Nothing changes otherwise.
+    """
+    _edit_model_list(
+        _model_handler(),
+        ModelModelSetupRequest(
+            operation="reorder",
+            provider=cast(ModelProvider, provider.lower()),
+            models=models,
+        ),
+    )
 
 
 @models_group.command("remove")
 @click.argument("provider", type=_model_choice)
-def remove_model(provider: str) -> None:
-    """Delete PROVIDER's stored key so delegation no longer uses it."""
+@click.option(
+    "--model",
+    "model_options",
+    multiple=True,
+    help="Remove only this model from the key's list; the key stays.",
+)
+def remove_model(provider: str, model_options: tuple[str, ...]) -> None:
+    """Delete PROVIDER's stored key, or with --model just those models from its list."""
     name = provider.lower()
     handler = _model_handler()
+    if model_options:
+        _edit_model_list(
+            handler,
+            ModelModelSetupRequest(
+                operation="remove_model",
+                provider=cast(ModelProvider, name),
+                models=model_options,
+            ),
+        )
+        return
     if name == "ollama":
         raise click.ClickException(
             f"Ollama's routes are in {handler.overrides_path()}; delete that file "

@@ -29,6 +29,10 @@ class LoopReceiptExistsError(RuntimeError):
     """A loop receipt already exists for this correlation id: a rerun is refused."""
 
 
+class DelegatePinViolationError(RuntimeError):
+    """A turn was answered by a backend or host other than the pinned one (OMN-20514)."""
+
+
 class ResumeRefusedError(RuntimeError):
     """A prior loop cannot safely resume from its receipt."""
 
@@ -110,6 +114,7 @@ class ProtocolDelegatedCodeEditPorts(Protocol):
 
 
 __all__ = [
+    "DelegatePinViolationError",
     "LoopReceiptExistsError",
     "ProtocolDelegatedCodeEditPorts",
     "ResumeRefusedError",

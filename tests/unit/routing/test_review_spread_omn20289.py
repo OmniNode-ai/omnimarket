@@ -69,7 +69,7 @@ _BIFROST_YAML = textwrap.dedent(
       - backend_id: {_STUDIO}
         provider: local
         endpoint_url: "http://198.51.100.30:8130/v1/chat/completions"
-        model_name: gpt-oss-120b
+        model_name: Qwen3.8-27B
         tier: local
         capabilities: [document]
         placement:

@@ -94,7 +94,7 @@ def _bifrost_yaml(placement_extra: str) -> str:
               - backend_id: local-studio-planner
                 provider: local
                 endpoint_url: "{_PEER_URL}"
-                model_name: gpt-oss-120b
+                model_name: Qwen3.8-27B
                 tier: local
                 capabilities: [document]
                 placement:
@@ -219,7 +219,7 @@ def _placed(**placement: object) -> ModelPlacedDelegationBackend:
     }
     return ModelPlacedDelegationBackend(
         backend_id="local-studio-planner",
-        model_name="gpt-oss-120b",
+        model_name="Qwen3.8-27B",
         placement=ModelDelegationBackendPlacement.model_validate(fields),
     )
 

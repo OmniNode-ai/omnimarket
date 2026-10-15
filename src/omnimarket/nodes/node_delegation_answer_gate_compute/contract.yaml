@@ -105,7 +105,7 @@ model_families:
   - family: claude
     match: [claude]
   - family: gpt
-    match: [gpt-, gpt_oss, gpt-oss]
+    match: [gpt-]
   - family: llama
     match: [llama]
   - family: mistral
