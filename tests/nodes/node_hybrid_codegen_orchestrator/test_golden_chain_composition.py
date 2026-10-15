@@ -639,10 +639,12 @@ async def test_contract_lint_pass_still_writes_files(
     assert factory.completed[0].status is EnumCodegenStatus.COMPLETED, (
         factory.completed[0]
     )
-    assert (target_root / "handler.py").exists()
-    assert (target_root / "contract.yaml").exists()
-    assert (target_root / "metadata.yaml").exists()
-    assert (target_root / ".rsd_provenance.json").exists()
+    # OMN-21152: the files land as the canonical node package.
+    pkg = target_root / "omnimarket" / "nodes" / "node_greeter_compute"
+    assert (pkg / "handlers" / "handler_greeter_compute.py").exists()
+    assert (pkg / "contract.yaml").exists()
+    assert (pkg / "metadata.yaml").exists()
+    assert (pkg / ".rsd_provenance.json").exists()
 
     await factory.close()
     await event_bus.close()
