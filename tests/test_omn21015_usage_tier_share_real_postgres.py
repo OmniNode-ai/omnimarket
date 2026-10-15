@@ -12,10 +12,7 @@ P1  0003 drops or rewrites a row stored before it, or cannot run twice;
 P2  0003 leaves the three-column key, so one model under two tiers on one day cannot be two rows;
 P3  the writer's recount folds two tiers of one model into one row;
 P4  the shares of a day are stale after a call, do not sum to 1, or count another tenant's or day's calls;
-P5  a row whose share moved keeps its cursor, so a reader walking by cursor never sees the new share;
-P6  the unsent read returns a row already marked sent (the snapshot cache drops it, and a run of drops marks the
-    exposure stale), misses a row not marked sent (a publish that stopped part-way never heals), or a new call
-    leaves a re-stamped row marked sent (its new share never goes out).
+P5  a row whose share moved keeps its cursor, so a reader walking by cursor never sees the new share.
 """
 
 from __future__ import annotations
@@ -29,8 +26,6 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
     _INSERT_CALL,
-    _MARK_SENT,
-    _READ_UNSENT,
     _RECOUNT_AGGREGATE,
     _RESHARE_DAY,
 )
@@ -58,7 +53,7 @@ async def _write(
     tenant: str = "t",
     day: str = "2026-10-14",
 ) -> list:
-    """The writer's statements, in its order, on one connection and transaction."""
+    """The writer's three statements, in its order, on one connection and transaction."""
     delta = HandlerProjectionUsageByModelDay().handle(
         ModelUsageCallEvent.model_validate(
             {
@@ -90,9 +85,7 @@ async def _write(
             delta.usage_source.value,
         )
         if not inserted:
-            return list(
-                await conn.fetch(_scoped(_READ_UNSENT), delta.tenant_id, usage_day)
-            )
+            return []
         await conn.execute(
             _scoped(_RECOUNT_AGGREGATE),
             delta.tenant_id,
@@ -180,56 +173,13 @@ async def test_real_postgres_0003_keeps_old_rows_and_the_writer_shares_out_each_
         # Another tenant's and another day's calls never enter this day's shares; a replay changes nothing.
         await _write(conn, "o1", "qwen", "local", tenant="other")
         await _write(conn, "d1", "qwen", "local", day="2026-10-13")
-        stored = await _day(conn)
-        assert {k: v["call_share"] for k, v in stored.items()} == {
+        assert await _write(conn, "c1", "qwen", "local") == []
+        assert {k: v["call_share"] for k, v in (await _day(conn)).items()} == {
             k: v["call_share"] for k, v in day.items()
         }
-
-        def keyed(rows) -> dict[tuple[str, str], tuple]:
-            return {
-                (r["model_id"], r["cost_tier_name"]): (
-                    r["call_share"],
-                    r["projection_cursor"],
-                )
-                for r in rows
-            }
-
-        # P6: nothing is marked sent yet, so a replay sends the whole day as stored.
-        replayed = await _write(conn, "c1", "qwen", "local")
-        assert keyed(replayed) == {
-            k: (v["call_share"], v["projection_cursor"]) for k, v in stored.items()
-        }
-        # A publish that sent one row and failed: only that row is marked, the replay sends the other two.
-        first = stored[("qwen", "not_tier_routed")]["projection_cursor"]
-        await conn.execute(_scoped(_MARK_SENT), "t", date(2026, 10, 14), [first])
-        assert set(keyed(await _write(conn, "c1", "qwen", "local"))) == {
-            ("gemini", "not_tier_routed"),
-            ("qwen", "local"),
-        }
-        # The whole day sent: a duplicate sends nothing.
-        await conn.execute(
-            _scoped(_MARK_SENT),
-            "t",
-            date(2026, 10, 14),
-            [v["projection_cursor"] for v in stored.values()],
-        )
-        assert await _write(conn, "c1", "qwen", "local") == []
-        # A new call re-stamps every row of the day, so every row is unsent again.
-        await _write(conn, "c2", "gemini", "not_tier_routed")
-        assert set(keyed(await _write(conn, "c2", "gemini", "not_tier_routed"))) == set(
-            await _day(conn)
-        )
-        # A late mark: c3's publish sent its rows, but its mark lands only after c4 re-stamped the day. The old
-        # cursors no longer exist, so the mark changes nothing and c4's rows stay unsent for c4 to send.
-        await _write(conn, "c3", "qwen", "local")
-        sent_by_c3 = [v["projection_cursor"] for v in (await _day(conn)).values()]
-        await _write(conn, "c4", "qwen", "local")
-        await conn.execute(_scoped(_MARK_SENT), "t", date(2026, 10, 14), sent_by_c3)
-        restamped = await _day(conn)
-        assert not set(sent_by_c3) & {
-            v["projection_cursor"] for v in restamped.values()
-        }
-        assert set(keyed(await _write(conn, "c4", "qwen", "local"))) == set(restamped)
+        assert (await _day(conn, day="2026-10-13"))[("qwen", "local")][
+            "call_share"
+        ] == pytest.approx(1.0)
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()

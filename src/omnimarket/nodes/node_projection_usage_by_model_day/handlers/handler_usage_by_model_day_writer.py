@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -18,7 +17,6 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
     HandlerProjectionUsageByModelDay,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
-    ModelUsageCallDelta,
     ModelUsageCallEvent,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
@@ -26,8 +24,6 @@ from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_isolation import TENANT_GUC
-
-_LOG = logging.getLogger(__name__)
 
 _INSERT_CALL = """
     INSERT INTO public.usage_by_model_day_calls (
@@ -87,31 +83,6 @@ _RESHARE_DAY = """
               agg.input_tokens, agg.output_tokens, agg.cost_usd,
               agg.measured_cost_usd, agg.unmeasured_call_count, agg.call_count,
               agg.call_share, agg.updated_at, agg.projection_cursor
-"""
-
-# The day's rows are sent one by one after commit, and each row sent is marked
-# sent at the cursor it went out with (migration 0003's published_cursor). A
-# publish that stops part-way leaves the rest unmarked; the replay of its call is
-# already stored and sends only those. A row whose cursor a later call re-stamped
-# is unsent again, and that call sends it. Re-sending a row already sent would make
-# the snapshot cache drop it, and a run of drops marks the exposure stale.
-_READ_UNSENT = """
-    SELECT tenant_id, usage_day, model_id, cost_tier_name, input_tokens,
-           output_tokens, cost_usd, measured_cost_usd, unmeasured_call_count,
-           call_count, call_share, updated_at, projection_cursor
-    FROM public.usage_by_model_day
-    WHERE tenant_id = $1 AND usage_day = $2
-      AND published_cursor IS DISTINCT FROM projection_cursor
-    ORDER BY projection_cursor
-"""
-
-# Only a row still at the cursor it was sent with is marked: one a later call
-# re-stamped in between stays unsent for that call to send.
-_MARK_SENT = """
-    UPDATE public.usage_by_model_day
-    SET published_cursor = projection_cursor
-    WHERE tenant_id = $1 AND usage_day = $2
-      AND projection_cursor = ANY($3::bigint[])
 """
 
 
@@ -230,46 +201,23 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                 delta.cost_tier_name,
                 delta.usage_source.value,
             )
-            if inserted:
-                await conn.execute(
-                    _RECOUNT_AGGREGATE,
-                    delta.tenant_id,
-                    usage_day,
-                    delta.model_id,
-                    delta.cost_tier_name,
-                )
+            if not inserted:
+                return None
+            await conn.execute(
+                _RECOUNT_AGGREGATE,
+                delta.tenant_id,
+                usage_day,
+                delta.model_id,
+                delta.cost_tier_name,
+            )
             day = [
                 _wire_row(dict(r))
-                for r in await conn.fetch(
-                    _RESHARE_DAY if inserted else _READ_UNSENT,
-                    delta.tenant_id,
-                    usage_day,
-                )
+                for r in await conn.fetch(_RESHARE_DAY, delta.tenant_id, usage_day)
             ]
-        if self._snapshot_exposure is not None and day:
-            await self._send_day(self._snapshot_exposure, delta, usage_day, day, meta)
-        if not inserted:
-            return None
-        return next(
-            r
-            for r in day
-            if r["model_id"] == delta.model_id
-            and r["cost_tier_name"] == delta.cost_tier_name
-        )
-
-    async def _send_day(
-        self,
-        exposure: ProjectionTableConfig,
-        delta: ModelUsageCallDelta,
-        usage_day: date,
-        day: list[dict[str, Any]],
-        meta: MessageMeta,
-    ) -> None:
-        sent: list[int] = []
-        try:
+        if self._snapshot_exposure is not None:
             for day_row in day:
                 await self.publish_snapshot_delta(
-                    exposure,
+                    self._snapshot_exposure,
                     op="upsert",
                     row=day_row,
                     source_event_id=delta.call_id,
@@ -278,29 +226,12 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                     source_offset=meta.offset,
                     tenant_id=delta.tenant_id,
                 )
-                sent.append(int(day_row["projection_cursor"]))
-        except BaseException:
-            # Mark what did go out, so the replay sends only the rest; the
-            # publish failure is the error that surfaces.
-            if sent:
-                try:
-                    await self._mark_sent(delta.tenant_id, usage_day, sent)
-                except Exception:
-                    _LOG.warning(
-                        "usage_by_model_day: could not mark %d sent row(s) after a "
-                        "failed publish; the replay sends them again",
-                        len(sent),
-                        exc_info=True,
-                    )
-            raise
-        await self._mark_sent(delta.tenant_id, usage_day, sent)
-
-    async def _mark_sent(
-        self, tenant_id: str, usage_day: date, cursors: list[int]
-    ) -> None:
-        async with self.db.pool.acquire() as conn, conn.transaction():
-            await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant_id)
-            await conn.execute(_MARK_SENT, tenant_id, usage_day, cursors)
+        return next(
+            r
+            for r in day
+            if r["model_id"] == delta.model_id
+            and r["cost_tier_name"] == delta.cost_tier_name
+        )
 
 
 __all__ = ["UsageByModelDayProjectionWriter"]
