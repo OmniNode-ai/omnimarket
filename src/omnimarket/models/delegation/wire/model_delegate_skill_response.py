@@ -438,7 +438,22 @@ class ModelDelegateSkillResponse(BaseModel):
     )
     pricing_manifest_version: int = Field(default=0, ge=0)
     prompt_text: str = Field(default="")
-    response: str = Field(default="")
+    response: str = Field(
+        default="",
+        description=(
+            "OMN-21088: the final answer only, on every output mode. No reasoning "
+            "block, no answer header, no leading or trailing blank lines."
+        ),
+    )
+    response_reasoning: str = Field(
+        default="",
+        exclude_if=lambda value: not value,
+        description=(
+            "OMN-21088: reasoning text the provider returned with the answer and "
+            "the response seam removed from it, kept here for the receipt and "
+            "never in ``response``. Absent when there was none."
+        ),
+    )
     quality_gate_passed: bool = Field(default=False)
     quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
     required_quality_bar: float | None = Field(

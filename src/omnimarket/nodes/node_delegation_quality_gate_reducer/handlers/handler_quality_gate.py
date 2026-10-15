@@ -1063,13 +1063,43 @@ def _check_semantic_adequacy(
     #
     # OMN-13967: a request that asked for one word never reaches this rule. Its
     # declared shape replaces this check with ``short_form_adequacy``.
-    if len(words) < 2:
+    #
+    # OMN-21088: a short direct question ("what is 2+2") is answered whole by one
+    # token ("4"). The prompt is the grounding source, so this is the request
+    # declaring its own short shape, not the content guessing one.
+    if len(words) < 2 and not _is_short_direct_question(grounding_source):
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
         )
 
     return None
+
+
+#: OMN-21088: the words a short direct question opens with. ``how`` counts only
+#: with a quantity word after it: "how many" asks for a number, "how does X
+#: work" asks for an explanation.
+_DIRECT_QUESTION_RE = re.compile(
+    r"^(?:what|who|whom|whose|when|where|which|is|are|was|were|do|does|did|"
+    r"can|could|will|would|should|how (?:many|much|old|long|far|big))\b",
+    re.IGNORECASE,
+)
+
+#: A one-line question longer than this is a request for more than one token.
+#: Measured 2026-10-15 on the branch: "If a train leaves at 3pm and travels for
+#: 2 hours, what time does it arrive?" (16 words) was answered "5pm" and refused
+#: at a 12-word bound.
+_DIRECT_QUESTION_MAX_WORDS: int = 30
+
+
+def _is_short_direct_question(prompt: str | None) -> bool:
+    """Whether ``prompt`` is one short line asking a direct question (OMN-21088)."""
+    if not prompt:
+        return False
+    stripped = prompt.strip()
+    if "\n" in stripped or len(stripped.split()) > _DIRECT_QUESTION_MAX_WORDS:
+        return False
+    return bool(_DIRECT_QUESTION_RE.match(stripped)) or stripped.endswith("?")
 
 
 def _check_short_form_adequacy(
