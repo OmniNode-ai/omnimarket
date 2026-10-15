@@ -28,3 +28,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_focused_test_run_effect/test_node_focused_test_run_effect.py -q -k admission_reads_the_load"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19458-deploy-linux-admission-smoke"
+    description: "The new unbound dod-omn19458-deploy-linux-admission-smoke item in contracts/OMN-19458.yaml starts an isolated Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image, installs this checkout using uv run --frozen --no-dev with a temporary virtual environment, calls the product LocalShellFocusedRunSubprocess.admission(), and asserts its one-minute load lies between /proc/loadavg readings taken immediately before and after. ONEX_DTL_DOCKER_BIN=/bin/true isolates the container-count portion without exposing the host Docker socket; this probe covers only the real Linux kernel load read. It fails with the merge-base admission method, which calls sysctl -n vm.loadavg. The existing AC1 test_passes item is preserved. This is runnable by hosted Ubuntu with Docker and registry access; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/admission-venv -e ONEX_DTL_DOCKER_BIN=/bin/true ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'import json; from pathlib import Path; from omnimarket.nodes.node_focused_test_run_effect import LocalShellFocusedRunSubprocess; before = float(Path("/proc/loadavg").read_text().split()[0]); result = LocalShellFocusedRunSubprocess().admission(); after = float(Path("/proc/loadavg").read_text().split()[0]); assert min(before, after) <= result.load_one_minute <= max(before, after), (before, result, after); print(json.dumps({"before": before, "admission": result.model_dump(), "after": after}))'
+        cwd: "${OMNI_HOME}/omnimarket"
