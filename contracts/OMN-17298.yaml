@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17298"
+title: "No projection relation ends the migration tree RLS-enabled with zero policies"
+summary: "The ticket's remediation includes an audit of whether other projection relations share the shape of RLS enabled without any admitting policy. The existing internal-relation tenant-posture gate already replays the node migration tree to each relation's final posture; it now also refuses any relation whose final posture is row-level security enabled with zero policies. The audit over the live tree finds none, and the gate keeps it that way. This slice does not touch the dev-lane runtime reads in the ticket's two gaps."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-rls-enabled-requires-a-policy"
+    statement: "A relation that ends the node migration tree with row-level security enabled and no policy is refused before merge, and the live tree holds none."
+    acceptance:
+      - id: "AC-audit"
+        statement: "AC-audit: no relation in the node migration tree ends with row-level security enabled and zero policies -- falsifier: uv run python scripts/validation/check_internal_relation_tenant_posture.py exits non-zero and names a relation"
+evidence_requirements:
+  - kind: "tests"
+    description: "The live tree passes the gate, the audit sees RLS-enabled relations at all (so a zero is not a parser miss), and a synthetic relation with RLS enabled and no policy is refused."
+    command: "env -u PYTHONPATH uv run pytest tests/test_omn17298_rls_enabled_requires_policy.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17298-audit-gate-tests"
+    description: "The live node migration tree passes the gate; the audit is not vacuous; synthetic RLS-enabled relations with no policy, or whose policy a later migration dropped, are refused, and the same relations with a policy pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17298_rls_enabled_requires_policy.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC-audit"]
+  - id: "dod-omn17298-audit-gate-live-tree"
+    description: "The gate script exits 0 over the live node migration tree."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/validation/check_internal_relation_tenant_posture.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC-audit"]
