@@ -3,16 +3,19 @@
 This is an EFFECT node — it owns the subprocess and filesystem I/O: it writes
 the artifact to a temporary file (when given source text) and shells out to
 ``mypy``. ``mypy`` is already a repo dev tool, so no third-party runtime
-dependency is added. mypy never mutates the checked target (it writes only to a
-scratch cache under the temp dir), so the side effect is read-only.
+dependency is added. mypy never mutates the checked target. Dependency caches
+live in process-owned scratch space; each artifact gets a fresh cache so its
+diagnostics are always recomputed.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 import tempfile
+from functools import cache
 from pathlib import Path
 
 from omnimarket.nodes.node_mypy_check_effect.models.model_mypy_check_request import (
@@ -41,9 +44,15 @@ _MYPY_FLAGS: tuple[str, ...] = (
     "--show-column-numbers",
     "--show-error-codes",
     "--no-color-output",
-    "--no-incremental",
+    "--incremental",
     "--follow-imports=silent",
 )
+
+
+@cache
+def _dependency_cache() -> tempfile.TemporaryDirectory[str]:
+    """Keep dependency caches across calls, cleaned up when the process exits."""
+    return tempfile.TemporaryDirectory(prefix="mypy_dependencies_")
 
 
 def _parse_diagnostics(output: str) -> tuple[ModelMypyDiagnostic, ...]:
@@ -74,16 +83,31 @@ def _run_mypy(
     all (not installed) or exits with a usage/internal error before producing
     diagnostics — never merely because type errors were found (exit code 1).
     """
+    target = Path(os.path.abspath(target))
+    dependency_cache = _dependency_cache()
+    cache_dir.mkdir(parents=True, exist_ok=True)
     args = [
         sys.executable,
         "-m",
         "mypy",
         *_MYPY_FLAGS,
-        f"--cache-dir={cache_dir}",
+        f"--cache-dir={dependency_cache.name}",
+        "--no-sqlite-cache",
     ]
     if ignore_missing_imports:
         args.append("--ignore-missing-imports")
-    args.append(str(target))
+    args.extend(
+        [
+            # Reuse imported modules, never the checked artifact's prior verdict.
+            # A fresh mapping also catches same-size edits with unchanged mtimes.
+            "--cache-map",
+            str(target),
+            str(cache_dir / "artifact.meta.json"),
+            str(cache_dir / "artifact.data.json"),
+            "--",
+            str(target),
+        ]
+    )
     try:
         completed = subprocess.run(
             args,
