@@ -255,6 +255,8 @@ def _writer_boundary() -> tuple[UsageByModelDayProjectionWriter, MagicMock]:
     db.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
     conn.execute = AsyncMock()
     conn.fetch = AsyncMock()
+    # The key-in-force check: True once the tier is in the key (OMN-21161).
+    conn.fetchval = AsyncMock(return_value=True)
     writer._db = db
     writer.publish_snapshot_delta = AsyncMock()
     return writer, conn
@@ -286,6 +288,7 @@ async def test_u9_the_writer_locks_the_tenants_day_recounts_the_tier_and_republi
     writer, conn = _writer_boundary()
     conn.fetch.side_effect = [
         [{"call_id": "w1"}],
+        [],
         [_day_row("qwen", "local", 7), _day_row("gemini", "cheap_cloud", 8)],
     ]
     payload = {
@@ -310,7 +313,8 @@ async def test_u9_the_writer_locks_the_tenants_day_recounts_the_tier_and_republi
     (lock,) = [args for sql, args in statements if "pg_advisory_xact_lock" in sql]
     assert json.loads(str(lock[0])) == ["usage_by_model_day", _TENANT, "2026-10-14"]
     (recount,) = [args for sql, args in statements if "GROUP BY" in sql]
-    assert recount == (_TENANT, date(2026, 10, 14), "qwen", "local")
+    # Every tier of the model's day is recounted, not only the call's.
+    assert recount == (_TENANT, date(2026, 10, 14), "qwen")
     published = [
         (c.kwargs["row"]["model_id"], c.kwargs["row"]["cost_tier_name"])
         for c in writer.publish_snapshot_delta.await_args_list

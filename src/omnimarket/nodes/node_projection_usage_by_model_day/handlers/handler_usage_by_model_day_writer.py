@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -17,6 +18,7 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
     HandlerProjectionUsageByModelDay,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
+    ModelUsageCallDelta,
     ModelUsageCallEvent,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
@@ -34,6 +36,51 @@ _INSERT_CALL = """
     RETURNING call_id
 """
 
+# OMN-21015 (Jonah, 2026-10-15 20:23Z): the writer follows the key in force. Migration
+# 0003 keeps the three-column primary key and adds the four-column unique index the
+# contract migration (OMN-21161) makes the key. True once the tier is in the key.
+_TIER_KEY_IN_FORCE = """
+    SELECT EXISTS (
+        SELECT 1
+        FROM pg_constraint AS c
+        JOIN pg_attribute AS a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+        WHERE c.conrelid = 'public.usage_by_model_day'::regclass
+          AND c.contype = 'p'
+          AND a.attname = 'cost_tier_name'
+    )
+"""
+
+# While the three-column key is the key: one row per model and day under
+# not_tier_routed, recounted from all its calls, as the writer before 0003 did. A
+# four-column target here would meet the three-column key on a second tier and raise
+# a unique violation the runner re-reads forever. Each call row keeps its real tier.
+_RECOUNT_MODEL_DAY_UNDER_OLD_KEY = """
+    INSERT INTO public.usage_by_model_day (
+        tenant_id, usage_day, model_id, input_tokens, output_tokens,
+        cost_usd, measured_cost_usd, unmeasured_call_count, call_count, updated_at
+    )
+    SELECT tenant_id, usage_day, model_id, SUM(input_tokens), SUM(output_tokens),
+           SUM(cost_usd),
+           SUM(cost_usd) FILTER (WHERE usage_source = 'measured'),
+           COUNT(*) FILTER (WHERE usage_source <> 'measured'),
+           COUNT(*), clock_timestamp()
+    FROM public.usage_by_model_day_calls
+    WHERE tenant_id = $1 AND usage_day = $2 AND model_id = $3
+    GROUP BY tenant_id, usage_day, model_id
+    ON CONFLICT (tenant_id, usage_day, model_id) DO UPDATE SET
+        input_tokens = EXCLUDED.input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        cost_usd = EXCLUDED.cost_usd,
+        measured_cost_usd = EXCLUDED.measured_cost_usd,
+        unmeasured_call_count = EXCLUDED.unmeasured_call_count,
+        call_count = EXCLUDED.call_count,
+        updated_at = EXCLUDED.updated_at,
+        projection_cursor = EXCLUDED.projection_cursor
+"""
+
+# Once the tier is in the key: every tier of the model's day, recounted from its
+# calls. All of them, not only the new call's, so the first call after the switch
+# also splits the day the interim row folded together.
 # measured_cost_usd sums the measured calls only, and is NULL (not 0) when the key
 # has none; unmeasured_call_count counts the rest. cost_usd and call_count keep
 # their meaning: every call.
@@ -51,7 +98,6 @@ _RECOUNT_AGGREGATE = """
            COUNT(*), clock_timestamp()
     FROM public.usage_by_model_day_calls
     WHERE tenant_id = $1 AND usage_day = $2 AND model_id = $3
-      AND cost_tier_name = $4
     GROUP BY tenant_id, usage_day, model_id, cost_tier_name
     ON CONFLICT (tenant_id, usage_day, model_id, cost_tier_name) DO UPDATE SET
         input_tokens = EXCLUDED.input_tokens,
@@ -62,6 +108,21 @@ _RECOUNT_AGGREGATE = """
         call_count = EXCLUDED.call_count,
         updated_at = EXCLUDED.updated_at,
         projection_cursor = EXCLUDED.projection_cursor
+"""
+
+# Once the tier is in the key, a row of the model's day whose tier no call stands
+# under is the folded not_tier_routed row from before the switch: remove it, or the
+# day counts those calls twice. 0003 grants the writer DELETE for this.
+_DROP_TIERS_WITHOUT_CALLS = """
+    DELETE FROM public.usage_by_model_day AS agg
+    WHERE agg.tenant_id = $1 AND agg.usage_day = $2 AND agg.model_id = $3
+      AND NOT EXISTS (
+          SELECT 1 FROM public.usage_by_model_day_calls AS calls
+          WHERE calls.tenant_id = agg.tenant_id AND calls.usage_day = agg.usage_day
+            AND calls.model_id = agg.model_id
+            AND calls.cost_tier_name = agg.cost_tier_name
+      )
+    RETURNING agg.tenant_id, agg.usage_day, agg.model_id, agg.cost_tier_name
 """
 
 # OMN-21015: each row's share of its tenant's calls that day. A new call changes
@@ -95,6 +156,58 @@ def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
         else value
         for key, value in row.items()
     }
+
+
+@dataclass(frozen=True)
+class UsageCallWrite:
+    """One stored call's effect: every row of the tenant's day with its share, and the rows the switch removed."""
+
+    rows: list[Any]
+    removed: list[Any]
+
+
+async def write_usage_call(
+    conn: Any, delta: ModelUsageCallDelta, *, schema: str = "public"
+) -> UsageCallWrite | None:
+    """Store one call and recount its model's day on ``conn``, inside the caller's transaction.
+
+    Follows the key in force (migration 0003, OMN-21161): under the three-column key the model's day is one row under
+    not_tier_routed; under the four-column key it is one row per tier. Returns ``None`` when the call was already
+    stored. ``schema`` is for tests on a throwaway schema; the writer always uses ``public``.
+    """
+
+    def sql(statement: str) -> str:
+        return (
+            statement
+            if schema == "public"
+            else statement.replace("public.", f"{schema}.")
+        )
+
+    usage_day = date.fromisoformat(delta.usage_day)
+    inserted = await conn.fetch(
+        sql(_INSERT_CALL),
+        delta.call_id,
+        delta.tenant_id,
+        usage_day,
+        delta.model_id,
+        delta.input_tokens,
+        delta.output_tokens,
+        delta.cost_usd,
+        delta.occurred_at,
+        delta.cost_tier_name,
+        delta.usage_source.value,
+    )
+    if not inserted:
+        return None
+    key = (delta.tenant_id, usage_day, delta.model_id)
+    removed: list[Any] = []
+    if await conn.fetchval(sql(_TIER_KEY_IN_FORCE)):
+        await conn.execute(sql(_RECOUNT_AGGREGATE), *key)
+        removed = list(await conn.fetch(sql(_DROP_TIERS_WITHOUT_CALLS), *key))
+    else:
+        await conn.execute(sql(_RECOUNT_MODEL_DAY_UNDER_OLD_KEY), *key)
+    rows = list(await conn.fetch(sql(_RESHARE_DAY), delta.tenant_id, usage_day))
+    return UsageCallWrite(rows=rows, removed=removed)
 
 
 class UsageByModelDayProjectionWriter(BaseProjectionRunner):
@@ -169,7 +282,6 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
         payload.pop("_db", None)
         # ValidationError must reach the runtime's POISON/DLQ classifier.
         delta = self._derive.handle(ModelUsageCallEvent.model_validate(payload))
-        usage_day = date.fromisoformat(delta.usage_day)
         # execute() acquires a new connection/transaction for each statement.
         # Keep the insert, recount and shares on ONE connection instead. Lock
         # the tenant's day before inserting: every share of the day moves with
@@ -188,33 +300,24 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                     ]
                 ),
             )
-            inserted = await conn.fetch(
-                _INSERT_CALL,
-                delta.call_id,
-                delta.tenant_id,
-                usage_day,
-                delta.model_id,
-                delta.input_tokens,
-                delta.output_tokens,
-                delta.cost_usd,
-                delta.occurred_at,
-                delta.cost_tier_name,
-                delta.usage_source.value,
-            )
-            if not inserted:
+            written = await write_usage_call(conn, delta)
+            if written is None:
                 return None
-            await conn.execute(
-                _RECOUNT_AGGREGATE,
-                delta.tenant_id,
-                usage_day,
-                delta.model_id,
-                delta.cost_tier_name,
-            )
-            day = [
-                _wire_row(dict(r))
-                for r in await conn.fetch(_RESHARE_DAY, delta.tenant_id, usage_day)
-            ]
+            day = [_wire_row(dict(r)) for r in written.rows]
+            removed = [_wire_row(dict(r)) for r in written.removed]
         if self._snapshot_exposure is not None:
+            for removed_key in removed:
+                await self.publish_snapshot_delta(
+                    self._snapshot_exposure,
+                    op="delete",
+                    row=None,
+                    key=removed_key,
+                    source_event_id=delta.call_id,
+                    source_topic=meta.topic,
+                    source_partition=meta.partition,
+                    source_offset=meta.offset,
+                    tenant_id=delta.tenant_id,
+                )
             for day_row in day:
                 await self.publish_snapshot_delta(
                     self._snapshot_exposure,
@@ -226,12 +329,12 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                     source_offset=meta.offset,
                     tenant_id=delta.tenant_id,
                 )
+        # Under the three-column key the model's day is one row under not_tier_routed,
+        # whatever the call's tier; under the tier key it is the call's own tier's row.
+        mine = [r for r in day if r["model_id"] == delta.model_id]
         return next(
-            r
-            for r in day
-            if r["model_id"] == delta.model_id
-            and r["cost_tier_name"] == delta.cost_tier_name
+            (r for r in mine if r["cost_tier_name"] == delta.cost_tier_name), mine[0]
         )
 
 
-__all__ = ["UsageByModelDayProjectionWriter"]
+__all__ = ["UsageByModelDayProjectionWriter", "UsageCallWrite", "write_usage_call"]

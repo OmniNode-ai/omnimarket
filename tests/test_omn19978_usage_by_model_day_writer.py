@@ -69,6 +69,8 @@ def writer_boundary() -> tuple[UsageByModelDayProjectionWriter, MagicMock, Magic
     db.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
     conn.execute = AsyncMock()
     conn.fetch = AsyncMock()
+    # OMN-21015: the key-in-force check; False is the three-column key 0003 keeps.
+    conn.fetchval = AsyncMock(return_value=False)
     writer._db = db
     writer.publish_snapshot_delta = AsyncMock()
     return writer, db, conn
