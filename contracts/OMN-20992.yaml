@@ -20,7 +20,7 @@ requirements:
           AC2: a credential whose revoked_at is set or whose expires_at is in the past is never selected, and when no live credential remains the overlay keeps its row with secret_ref unset so the call fails closed instead of using a house key -- falsifier: uv run pytest tests/unit/routing -k key_pool_skips_expired
       - id: "AC3"
         statement: |-
-          AC3: a tenant with exactly one credential and no expiry resolves byte-identically to today -- falsifier: uv run pytest tests/test_omn17372_byok_routing_overlay_bridge.py
+          AC3: a tenant with exactly one credential and no expiry resolves byte-identically to today -- falsifier: uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -k single_undated_key
 evidence_requirements:
   - kind: "tests"
     description: "The pool selection tests pass at the head; on the base the test module fails to import TENANT_CREDENTIALS_TABLE."
@@ -47,11 +47,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20992-ac3-single-key-unchanged"
-    description: "The existing BYOK bridge and routing reducer suites pass unchanged."
+    description: "A single undated credential is read through the pool path and preserves every overlay field for exact and wildcard bindings, with and without a request selector; the existing BYOK bridge and routing reducer suites also pass unchanged."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn17372_byok_routing_overlay_bridge.py tests/nodes/node_delegation_routing_reducer -q"
+        check_value: "uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py::test_key_pool_single_undated_key_preserves_the_complete_overlay tests/test_omn17372_byok_routing_overlay_bridge.py tests/nodes/node_delegation_routing_reducer -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20992-deploy-probe-resolver"

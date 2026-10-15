@@ -184,6 +184,29 @@ def test_key_pool_keeps_an_undated_key_live() -> None:
     assert _selected(reader, "c") == _ref(1)
 
 
+@pytest.mark.parametrize("selector_key", [None, "corr-first", "corr-retry"])
+@pytest.mark.parametrize("stored_task_type", [BYOK_ALL_TASK_TYPES, _TASK])
+def test_key_pool_single_undated_key_preserves_the_complete_overlay(
+    selector_key: str | None, stored_task_type: str
+) -> None:
+    """AC3: the pool path preserves every field of a single-key binding."""
+    row = _overlay(_ref(1))
+    row.update(task_type=stored_task_type, timeout_ms=12000, max_tokens=4096)
+    reader = _Reader([row], [_cred(_ref(1), expires_at=None)])
+
+    overlay = resolve_tenant_overlay(
+        reader,
+        tenant_id=_TENANT,
+        task_type=_TASK,
+        selector_key=selector_key,
+        now=_NOW,
+    )
+
+    assert overlay is not None
+    assert overlay.model_dump() == {**row, "task_type": _TASK}
+    assert TENANT_CREDENTIALS_TABLE in reader.queried
+
+
 def test_key_pool_without_a_selector_key_keeps_the_overlay_ref_when_live() -> None:
     reader = _pool(_cred(_ref(1)), _cred(_ref(4)), overlay_ref=_ref(4))
     assert _selected(reader, None) == _ref(4)
