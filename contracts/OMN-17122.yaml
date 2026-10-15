@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-17122"
-title: "The delegate-skill node resolves canonical delegation wire models without shims"
-summary: "The delegate-skill request and response shim modules are deleted and the node contract resolves the canonical omnimarket.models.delegation.wire models. AC1 is bound to the node contract tests."
+title: "Delegation wire models, backend identity and model registry drift"
+summary: "The delegate-skill contract resolves canonical wire models, backend UUIDs distinguish shared model ids, and retired model entries are removed from the registry and generated constants. Dashboard vocabulary and core tier-model drift require changes in their owning repositories."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,6 +16,11 @@ requirements:
         statement: "AC2: no module under src/ or tests/ imports the removed delegate-skill shim modules -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_removed_shim_imports_omn17122.py -q in omnimarket"
       - id: "AC3"
         statement: "AC3: platform backend UUIDs hash the backend reference, so two local rungs sharing a model id get distinct selected_backend_id values -- falsifier: uv run pytest tests/unit/delegation/test_backend_identity_omn17122.py -q in omnimarket"
+  - id: "req-retired-model-registry-entries"
+    statement: "The bundled registry and generated routing constants exclude the six retired model ids and their unused endpoint references; packaged tiers leave evaluation model selection to the deployment overlay."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the registry loader rejects claude-sonnet-4-6, claude-opus-4-6, deepseek-r1-14b, deepseek-r1-32b, qwen3.6-35b and qwen3-next-80b; generated constants match the registry without retired endpoint references, and packaged tiers have no evaluation model -- falsifier: uv run pytest tests/unit/test_generated_llm_routing_constants.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The node contract tests pass at the head."
@@ -49,3 +54,27 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_backend_identity_omn17122.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn17122-dr22-retired-models"
+    description: "DR-22: the bundled registry loader rejects retired model ids, generated constants match the registry, and packaged tiers leave evaluation model selection to the deployment overlay. This is catalog evidence, not a live deployment claim."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_generated_llm_routing_constants.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn17122-deploy-probe-retired-model-constants"
+    description: "Hosted deployment artifact readback: fetch the published generated routing constants at the checked-out commit and require nonempty model and endpoint enums without retired entries. The command fails on unavailable content, invalid Python, missing enums or stale entries. It reads published source, not a running inference service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/routing/generated_llm_routing_constants.py" | python3 -c '\''import ast, sys
+          tree = ast.parse(sys.stdin.read())
+          enums = {node.name: {ast.literal_eval(item.value) for item in node.body if isinstance(item, ast.Assign)} for node in tree.body if isinstance(node, ast.ClassDef)}
+          models = enums["EnumLogicalModelKey"]
+          endpoints = enums["EnumLlmEndpointRef"]
+          assert models and endpoints
+          assert models.isdisjoint({"claude-sonnet-4-6", "claude-opus-4-6", "deepseek-r1-14b", "deepseek-r1-32b", "qwen3.6-35b", "qwen3-next-80b"})
+          assert endpoints.isdisjoint({"ANTHROPIC_DELEGATION_URL", "LLM_CODER_FAST_URL", "LLM_DEEPSEEK_R1_URL", "LLM_QWEN3_NEXT_URL"})
+          print("Published routing constants exclude retired models and endpoints")'\'''
+        cwd: "${OMNI_HOME}/omnimarket"

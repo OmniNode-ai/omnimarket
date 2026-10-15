@@ -88,8 +88,12 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # longer listed here: the set holds only terminal keys still awaiting their own
 # declared field.
 #
+# OMN-19437 AC1, consumer half: the terminal will carry the trace and span ids of
+# the command that produced it. This release decodes and drops them; the field
+# declarations and the handler's copy follow once a release carrying this is out.
+#
 # Response-source provenance is declared after its consumer-first release.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:

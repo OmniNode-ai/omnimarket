@@ -1,0 +1,160 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_answer_gate_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure acceptance gate for a delegated answer (OMN-20489). A text class's answer
+  is accepted only when the class's contract checks pass AND an independent judge,
+  from a different model family than the producer, accepts its content. A code
+  class's answer is accepted only when its contract checks pass AND the tests the
+  task names ran against it and passed. A class with neither shape keeps its
+  contract verdict. A rejection recommends escalation the way a contract failure
+  does. The judge backend comes from the routing contract (a backend declaring
+  the judge_adequacy capability), never from code; the judge reads the source
+  and the answer and does not count sentences or words, which the contract
+  checks own. The result records the contract verdict and the judge or test
+  verdict side by side.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_answer_gate
+      handler:
+        name: HandlerDelegationAnswerGate
+        module: omnimarket.nodes.node_delegation_answer_gate_compute.handlers.handler_delegation_answer_gate
+
+handler:
+  module: omnimarket.nodes.node_delegation_answer_gate_compute.handlers.handler_delegation_answer_gate
+  class: HandlerDelegationAnswerGate
+  input_model: omnimarket.models.delegation.wire.model_answer_gate_request.ModelAnswerGateRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles: [main]
+
+inputs:
+  correlation_id:
+    type: uuid
+    required: true
+    description: Delegation correlation id.
+  task_type:
+    type: str
+    required: true
+    description: Task class the answer was produced for.
+  gate_kind:
+    type: str
+    required: true
+    description: text, code or contract_only, resolved upstream from the task-class contract.
+  producer_model_id:
+    type: str
+    required: true
+    description: Concrete model id that produced the answer.
+  contract_gate:
+    type: ModelQualityGateResult
+    required: true
+    description: The task class's contract-check verdict for the answer.
+  judge:
+    type: ModelIndependentJudgeVerdict
+    required: false
+    description: The independent judge's verdict; required for a text class.
+  named_test_run:
+    type: ModelNamedTestRun
+    required: false
+    description: The named tests run against the answer; required for a code class.
+
+outputs:
+  accepted:
+    type: bool
+  contract_passed:
+    type: bool
+  judge:
+    type: ModelIndependentJudgeVerdict
+  judge_independent:
+    type: bool
+  tests_passed:
+    type: bool
+  rejection_reasons:
+    type: list
+  fallback_recommended:
+    type: bool
+
+# Which task classes take which gate. A class whose complexity contract declares
+# execution_required is a code class; a class whose verification is listed here
+# is a text class; any other class keeps its contract verdict.
+gate_kinds:
+  text_verifications: [grounding]
+
+# Model families, matched as lower-case substrings of the concrete model id, in
+# order. A judge is independent only when both the producer's and the judge's
+# family are known and differ.
+model_families:
+  - family: qwen
+    match: [qwen]
+  - family: glm
+    match: [glm]
+  - family: gemini
+    match: [gemini, gemma]
+  - family: nemotron
+    match: [nemotron]
+  - family: claude
+    match: [claude]
+  - family: gpt
+    match: [gpt-, gpt_oss, gpt-oss]
+  - family: llama
+    match: [llama]
+  - family: mistral
+    match: [mistral, codestral]
+  - family: deepseek
+    match: [deepseek]
+  - family: cohere
+    match: [cohere, north-mini]
+
+# The routing-contract capability a judge backend declares.
+judge_capability: judge_adequacy
+
+# The judge prompt. It reads the source and the answer and judges content only:
+# sentence and word counts and format belong to the contract checks, and a
+# judge that counted sentences rejected correct answers (OMN-20489 calibration).
+judge_prompt:
+  system: >-
+    You review an answer another model wrote from a source text. Judge its
+    content only. Accept the answer when every statement in it is supported by
+    the source, keeps the source's attribution, scope and order of events, and
+    the answer addresses what the instruction asks. Reject it when it states
+    something the source does not say, attributes a fact to the wrong subject,
+    widens or narrows a claim, or leaves out what the instruction asks for.
+    Do not count sentences or words, and do not judge length, formatting or
+    style: other checks own those. Reply with one JSON object and nothing else:
+    {"accept": true or false, "reason": "<one sentence naming the deciding statement>"}
+  user: |-
+    INSTRUCTION:
+    {instruction}
+
+    SOURCE:
+    {source}
+
+    ANSWER:
+    {answer}
+
+terminal_event: onex.evt.omnimarket.delegation-answer-gated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-answer-gate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-answer-gated.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-answer-gate-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-answer-gated.v1

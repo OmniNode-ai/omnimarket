@@ -7,9 +7,10 @@ receipt named no backend, no endpoint, no model, no key source and no attempt,
 although ``stage=inference`` is reached only after routing chose a backend and
 the provider call started. The cancel path built its terminal from nothing.
 These tests drive the customer route as production wires it: the handler, the
-local dispatch port and the effect in its own child process, with only the
-provider faked. The first model answers 429, the call is re-aimed and the next
-one never answers, and the budget cancels the run.
+local dispatch port and the effect in its own child process. The provider is
+faked and budget expiry is synchronized to the blocked call. The first model
+answers 429, the call is re-aimed and the next one never answers, and the budget
+cancels the run.
 """
 
 from __future__ import annotations
@@ -17,7 +18,9 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import time
+from collections.abc import Awaitable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -74,13 +77,14 @@ GEMMA = "google/gemma-4-31b-it:free"
 NEMOTRON = "nvidia/nemotron-3-super-120b-a12b:free"
 THROTTLE = f"{GEMMA} is temporarily rate-limited upstream"
 BUDGET_SECONDS = 12
+STARTUP_GUARD_SECONDS = 2 * port_mod._EFFECT_CHILD_BOOT_CEILING_SECONDS + 30
 
 
 @pytest.fixture(autouse=True)
-def short_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+def short_budget(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # Exercise a fresh interpreter even on Linux. Child doubles must survive
     # the same spawn boundary production uses on macOS, without inheriting
-    # parent monkeypatches. Leave time for both retry children to import.
+    # parent monkeypatches. Interpreter boot is not the behavior under test.
     monkeypatch.setattr(
         port_mod,
         "_resolve_effect_process_context",
@@ -92,6 +96,60 @@ def short_budget(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda _task_type: SimpleNamespace(
             task_class_timeout_ceiling_seconds=BUDGET_SECONDS,
             terminal_delivery_margin_seconds=1,
+        ),
+    )
+
+    async def expire_after_provider_started(
+        awaitable: Awaitable[Any], *, timeout: float
+    ) -> Any:
+        # Keep the handler's requested budget assertion, but deliver its expiry
+        # only after the provider double has entered the call which must be
+        # preserved. A fixed wall-clock deadline races both spawn imports on a
+        # loaded runner and correctly cancels at effect_boot instead.
+        assert timeout == BUDGET_SECONDS + 1
+        dispatch_task = asyncio.ensure_future(awaitable)
+        progress = current_dispatch_progress.get()
+
+        def call_is_ready() -> bool:
+            marker = tmp_path / "provider-in-flight"
+            if not marker.exists() or progress is None or progress.stage != "inference":
+                return False
+            observed_model = marker.read_text()
+            # The effect's marker may beat its queue feeder. For an internally
+            # re-aimed call, wait until its started observation reaches the parent
+            # before expiring the budget. The retry double emits no observations.
+            return observed_model == "ready" or bool(
+                progress.in_flight_calls
+                and progress.in_flight_calls[-1].phase == "started"
+                and progress.in_flight_calls[-1].model_id == observed_model
+            )
+
+        async def wait_for_call() -> None:
+            while not call_is_ready():
+                if dispatch_task.done():
+                    await dispatch_task
+                    raise AssertionError("dispatch ended before the blocked call")
+                await asyncio.sleep(0.01)
+
+        try:
+            await asyncio.wait_for(wait_for_call(), timeout=STARTUP_GUARD_SECONDS)
+            # The real wait_for cancels and joins the dispatch, including the
+            # actual effect child, then raises TimeoutError to the real handler.
+            return await asyncio.wait_for(dispatch_task, timeout=0)
+        finally:
+            if not dispatch_task.done():
+                dispatch_task.cancel()
+                await asyncio.gather(dispatch_task, return_exceptions=True)
+
+    # Scope the scheduling seam to this handler module. Other asyncio waiters,
+    # child supervision and the handler's timeout response remain real.
+    monkeypatch.setattr(
+        handler_delegate_skill,
+        "asyncio",
+        SimpleNamespace(
+            wait_for=expire_after_provider_started,
+            CancelledError=asyncio.CancelledError,
+            current_task=asyncio.current_task,
         ),
     )
 
@@ -144,17 +202,20 @@ def _throttled(endpoint_url: str) -> transport.ModelTransportResponse:
 
 
 def _throttle_then_hang_post(
-    *, endpoint_url: str, payload: dict[str, Any], **_: Any
+    *, endpoint_url: str, payload: dict[str, Any], in_flight_marker: Path, **_: Any
 ) -> transport.ModelTransportResponse:
     if payload["model"] == GEMMA:
         return _throttled(endpoint_url)
-    time.sleep(60)
+    in_flight_marker.write_text(NEMOTRON)
+    time.sleep(STARTUP_GUARD_SECONDS + 30)
     raise AssertionError("the budget must end this call")
 
 
 @dataclass
 class _ReaimThenHangEffect:
     """Install the provider double inside the real effect's spawned child."""
+
+    in_flight_marker: Path
 
     def __call__(self, request: Any) -> ModelLlmDelegationCallResult:
         with pytest.MonkeyPatch.context() as patch:
@@ -173,7 +234,13 @@ class _ReaimThenHangEffect:
                 "get_models_json",
                 FakeModels({"data": [{"id": GEMMA}, {"id": NEMOTRON}]}),
             )
-            patch.setattr(transport, "post_chat_completion", _throttle_then_hang_post)
+            patch.setattr(
+                transport,
+                "post_chat_completion",
+                partial(
+                    _throttle_then_hang_post, in_flight_marker=self.in_flight_marker
+                ),
+            )
             # The child does not see the parent's patched store path, so it states
             # what the registered credential records (OMN-21078): a catalogue
             # pick, the only model the effect re-aims.
@@ -188,6 +255,7 @@ class _ReaimThenHangEffect:
 @dataclass
 class _RetryThenHangEffect:
     first_call_marker: Path
+    in_flight_marker: Path
 
     def __call__(self, request: Any) -> ModelLlmDelegationCallResult:
         if not self.first_call_marker.exists():
@@ -202,7 +270,8 @@ class _RetryThenHangEffect:
                 secret_source=EnumSecretSource.LOCAL_STORE,
                 secret_ref=request.secret_ref,
             )
-        time.sleep(60)
+        self.in_flight_marker.write_text("ready")
+        time.sleep(STARTUP_GUARD_SECONDS + 30)
         raise AssertionError("the budget must end this call")
 
 
@@ -218,8 +287,10 @@ def _request() -> ModelDelegateSkillRequest:
 async def _cancelled_terminal(port: port_mod.LocalDelegationDispatchPort) -> Any:
     request = _request()
     terminal = await asyncio.wait_for(
-        HandlerDelegateSkill(dispatch_port=port).handle(request), timeout=30
+        HandlerDelegateSkill(dispatch_port=port).handle(request),
+        timeout=STARTUP_GUARD_SECONDS + 5,
     )
+    assert terminal is not None
     assert terminal.correlation_id == request.correlation_id
     assert current_dispatch_progress.get() is None
     return terminal
@@ -248,7 +319,7 @@ async def test_a_call_re_aimed_inside_the_effect_keeps_its_429_and_the_call_in_f
     """The 429 and the re-aimed model live in the effect's child process."""
     customer_ref, db_path = _customer_route(monkeypatch, tmp_path)
     port = port_mod.LocalDelegationDispatchPort(
-        effect_handler=_ReaimThenHangEffect(),
+        effect_handler=_ReaimThenHangEffect(tmp_path / "provider-in-flight"),
         evidence_db_path=db_path,
         effect_process_boundary=True,
     )
@@ -277,7 +348,9 @@ async def test_a_retry_on_the_customer_route_keeps_the_earlier_rung(
     first_call_marker = tmp_path / "first-call-made"
 
     port = port_mod.LocalDelegationDispatchPort(
-        effect_handler=_RetryThenHangEffect(first_call_marker),
+        effect_handler=_RetryThenHangEffect(
+            first_call_marker, tmp_path / "provider-in-flight"
+        ),
         evidence_db_path=db_path,
         effect_process_boundary=True,
     )

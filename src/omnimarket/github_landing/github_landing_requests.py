@@ -125,6 +125,14 @@ def rerun_failed_jobs_request(repository: str, run_id: int) -> ModelGithubHttpRe
     )
 
 
+def cancel_run_request(repository: str, run_id: int) -> ModelGithubHttpRequest:
+    """POST cancel for one workflow run (202 accepted, 409 when it already finished)."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=f"{_repo_path(repository)}/actions/runs/{run_id}/cancel",
+    )
+
+
 def workflow_run_request(repository: str, run_id: int) -> ModelGithubHttpRequest:
     """GET one workflow run (its ``run_attempt``)."""
     return ModelGithubHttpRequest(
@@ -176,6 +184,22 @@ def workflow_runs_request(
         }
     )
     return ModelGithubHttpRequest(method="GET", path=f"{base}?{query}")
+
+
+MERGE_QUEUE_ENTRIES_QUERY = (
+    "query($owner: String!, $name: String!, $branch: String!) {"
+    " repository(owner: $owner, name: $name) { mergeQueue(branch: $branch) {"
+    " entries(first: 100) { totalCount nodes { headCommit { oid }"
+    " pullRequest { number } } } } } }"
+)
+
+
+def merge_queue_entries_request(repository: str, branch: str) -> ModelGithubHttpRequest:
+    """GraphQL read of the entries of a base branch's merge queue, with their merge-group commits."""
+    owner, name = split_repository(repository)
+    return _graphql(
+        MERGE_QUEUE_ENTRIES_QUERY, {"owner": owner, "name": name, "branch": branch}
+    )
 
 
 def job_log_request(repository: str, job_id: int) -> ModelGithubHttpRequest:
@@ -511,12 +535,14 @@ __all__: list[str] = [
     "LIST_PAGE_SIZE",
     "MARK_READY_MUTATION",
     "MERGE_AT_HEAD_MUTATION",
+    "MERGE_QUEUE_ENTRIES_QUERY",
     "GithubLandingRequestError",
     "MergeMethod",
     "artifact_archive_request",
     "artifact_request",
     "branch_request",
     "branch_rules_request",
+    "cancel_run_request",
     "compare_request",
     "convert_to_draft_request",
     "create_commit_request",
@@ -536,6 +562,7 @@ __all__: list[str] = [
     "landing_policy_request",
     "mark_ready_request",
     "merge_at_head_request",
+    "merge_queue_entries_request",
     "next_page_request",
     "open_pulls_for_head_request",
     "pull_request_request",

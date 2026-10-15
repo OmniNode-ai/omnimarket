@@ -17,6 +17,8 @@ Each acceptance criterion of OMN-19888 has its falsifier here, selected by
   and a failure that postdates the vendor commit are all left alone.
 * AC5 ``workflow`` -- the workflow is scheduled, has no pull_request trigger,
   scopes its writes to its one job and is not a required context.
+* OMN-18010 ``release_staleness`` -- a newer published tag re-runs a stale dev
+  measurement and CI Summary once per release per head; other reds stay red.
 """
 
 from __future__ import annotations
@@ -35,11 +37,14 @@ sys.path.insert(0, str(REPO_ROOT))
 from scripts.ci.pr_stale_red_heal import (  # noqa: E402
     CI_SUMMARY_CHECK,
     MAX_HEAL_RUN_ATTEMPT,
+    MAX_RERUN_PRS_PER_PASS,
     MAX_UPDATES_PER_PASS,
     RELEASE_IDENTITY_CHECK,
+    RELEASE_STALENESS_CHECK,
     VENDOR_PARITY_CHECK,
     CiSummarySnapshot,
     DevReleaseState,
+    EnumReleaseStalenessOutcome,
     EnumReleaseWindowOutcome,
     EnumVendorParityOutcome,
     EnumVendorState,
@@ -47,16 +52,19 @@ from scripts.ci.pr_stale_red_heal import (  # noqa: E402
     GhCli,
     MigrationVendorState,
     OpenPr,
+    ReleaseStalenessInput,
     ReleaseWindowInput,
     VendorParityInput,
     _build_parser,
     collect_decisions,
+    decide_release_staleness,
     decide_release_window,
     decide_vendor_parity,
     latest_published_version,
     main,
     newest_check_run,
     parse_release_identity_failure,
+    parse_release_staleness_failure,
     pyproject_version,
     vendor_migrations_named,
     vendored_dest_path,
@@ -74,6 +82,13 @@ LIVE_RIG_LOG = (
     "version 0.4.248 is NOT ahead of the latest published version 0.4.248 "
     "(OMN-16344 release-identity gate).\n"
 )
+#: omnimarket#3938's job 116266458148, including the positive controls, verbatim.
+LIVE_RELEASE_STALENESS_LOG = """\
+2026-10-15T05:37:31.6080710Z release-staleness: STALE base=v0.0.1 unreleased=1 unreleased_packaged=1 oldest=2026-10-12T05:37:31Z age_hours=72.0 limit=24
+2026-10-15T05:37:31.6340669Z release-staleness: FRESH base=v0.0.1 unreleased=1 unreleased_packaged=0 oldest=- age_hours=0.0 limit=24
+2026-10-15T05:37:31.8326516Z release-staleness: STALE base=v0.4.313 unreleased=53 unreleased_packaged=30 oldest=2026-10-14T05:08:49Z age_hours=24.5 limit=24
+2026-10-15T05:37:31.8378510Z ##[error]Process completed with exit code 1.
+"""
 SRC = "src/omnimarket/nodes/node_projection_session_content/migrations/0001_create_session_content.sql"
 DEST = "docker/migrations/forward/nodes/node_projection_session_content/0001_create_session_content.sql"
 #: omnimarket#2905's parity annotation (check-run 108620501988), verbatim head.
@@ -147,6 +162,17 @@ def _parity(**overrides: Any) -> VendorParityInput:
     }
     base.update(overrides)
     return VendorParityInput(**base)
+
+
+def _release_staleness(**overrides: Any) -> ReleaseStalenessInput:
+    base: dict[str, Any] = {
+        "pr": _pr(),
+        "gate": _red_gate(),
+        "failed_base": (0, 4, 313),
+        "latest_published": (0, 4, 314),
+    }
+    base.update(overrides)
+    return ReleaseStalenessInput(**base)
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +424,7 @@ class StubGh:
         self.updates: list[tuple[int, str]] = []
         self.run_reruns: list[int] = []
         self.job_reruns: list[int] = []
+        self.failed_reruns: list[int] = []
 
     # reads
     def open_pull_requests(self, *, repo: str) -> tuple[OpenPr, ...]:
@@ -445,6 +472,9 @@ class StubGh:
 
     def rerun_job(self, *, repo: str, job_id: int) -> None:
         self.job_reruns.append(job_id)
+
+    def rerun_failed(self, *, repo: str, run_id: int) -> None:
+        self.failed_reruns.append(run_id)
 
 
 def _stub_release_window_pr(gh: StubGh, number: int = 2905, head: str = HEAD) -> None:
@@ -777,3 +807,367 @@ def test_vendor_parity_landing_time_is_the_merge_not_the_queued_commit_date() ->
 def test_release_window_update_refuses_without_an_app_token() -> None:
     with pytest.raises(RuntimeError, match="GH_UPDATE_TOKEN"):
         GhCli().update_branch(repo=MARKET, pr_number=1, expected_head_sha=HEAD)
+
+
+# ---------------------------------------------------------------------------
+# OMN-18010: release staleness
+# ---------------------------------------------------------------------------
+
+
+def test_release_staleness_parses_the_last_stale_base_after_positive_controls() -> None:
+    assert parse_release_staleness_failure(LIVE_RELEASE_STALENESS_LOG) == (0, 4, 313)
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        "release-staleness: ERROR base=- ...",
+        "release-staleness: FRESH base=v0.4.314 unreleased_packaged=0",
+        "",
+    ],
+)
+def test_release_staleness_refuses_to_parse_error_or_fresh(log: str) -> None:
+    assert parse_release_staleness_failure(log) is None
+
+
+def test_release_staleness_reruns_failed_jobs_together() -> None:
+    decision = decide_release_staleness(_release_staleness())
+    assert decision.outcome is EnumReleaseStalenessOutcome.RERUN_REQUIRED
+    assert decision.act
+    assert decision.failed_run_ids == (36319512751,)
+    assert decision.job_ids == ()
+    assert "PR #2905" in decision.detail
+    assert HEAD[:12] in decision.detail
+    assert "v0.4.313" in decision.detail
+    assert "v0.4.314" in decision.detail
+
+
+@pytest.mark.parametrize(
+    "overrides", [{"other_red_jobs": 2}, {"gate": _red_gate(run_id=None)}]
+)
+def test_release_staleness_reruns_only_gate_when_summary_cannot_clear(
+    overrides: dict[str, Any],
+) -> None:
+    decision = decide_release_staleness(_release_staleness(**overrides))
+    assert decision.outcome is EnumReleaseStalenessOutcome.RERUN_REQUIRED
+    assert decision.act
+    assert decision.failed_run_ids == ()
+    assert decision.job_ids == (108620502879,)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "outcome"),
+    [
+        ({"gate": None}, EnumReleaseStalenessOutcome.GATE_NOT_RED),
+        (
+            {"gate": _red_gate(conclusion="success")},
+            EnumReleaseStalenessOutcome.GATE_NOT_RED,
+        ),
+        (
+            {"gate": _red_gate(status="in_progress", conclusion="")},
+            EnumReleaseStalenessOutcome.GATE_NOT_RED,
+        ),
+        ({"pr": _pr(is_draft=True)}, EnumReleaseStalenessOutcome.DRAFT),
+        (
+            {"superseded_by_update": True},
+            EnumReleaseStalenessOutcome.SUPERSEDED_BY_UPDATE,
+        ),
+        ({"failed_base": None}, EnumReleaseStalenessOutcome.FAILURE_UNPARSED),
+        ({"latest_published": None}, EnumReleaseStalenessOutcome.TAGS_UNRESOLVED),
+        (
+            {"latest_published": (0, 4, 313)},
+            EnumReleaseStalenessOutcome.NO_RELEASE_SINCE,
+        ),
+        (
+            {"latest_published": (0, 4, 312)},
+            EnumReleaseStalenessOutcome.NO_RELEASE_SINCE,
+        ),
+        (
+            {"run_attempt": MAX_HEAL_RUN_ATTEMPT},
+            EnumReleaseStalenessOutcome.ATTEMPT_CEILING,
+        ),
+    ],
+)
+def test_release_staleness_refuses(
+    overrides: dict[str, Any], outcome: EnumReleaseStalenessOutcome
+) -> None:
+    decision = decide_release_staleness(_release_staleness(**overrides))
+    assert decision.outcome is outcome
+    assert not decision.act
+    assert decision.failed_run_ids == ()
+    assert decision.job_ids == ()
+
+
+def test_release_staleness_refuses_in_the_required_order() -> None:
+    item = _release_staleness(
+        gate=None,
+        pr=_pr(is_draft=True),
+        superseded_by_update=True,
+        failed_base=None,
+        latest_published=None,
+        run_attempt=MAX_HEAL_RUN_ATTEMPT,
+    )
+    assert (
+        decide_release_staleness(item).outcome
+        is EnumReleaseStalenessOutcome.GATE_NOT_RED
+    )
+    item = replace(item, gate=_red_gate())
+    assert decide_release_staleness(item).outcome is EnumReleaseStalenessOutcome.DRAFT
+    item = replace(item, pr=_pr())
+    assert (
+        decide_release_staleness(item).outcome
+        is EnumReleaseStalenessOutcome.SUPERSEDED_BY_UPDATE
+    )
+    item = replace(item, superseded_by_update=False)
+    assert (
+        decide_release_staleness(item).outcome
+        is EnumReleaseStalenessOutcome.FAILURE_UNPARSED
+    )
+    item = replace(item, failed_base=(0, 4, 313))
+    assert (
+        decide_release_staleness(item).outcome
+        is EnumReleaseStalenessOutcome.TAGS_UNRESOLVED
+    )
+    item = replace(item, latest_published=(0, 4, 313))
+    assert (
+        decide_release_staleness(item).outcome
+        is EnumReleaseStalenessOutcome.NO_RELEASE_SINCE
+    )
+    item = replace(item, latest_published=(0, 4, 314))
+    assert (
+        decide_release_staleness(item).outcome
+        is EnumReleaseStalenessOutcome.ATTEMPT_CEILING
+    )
+
+
+def _stub_staleness_pr(gh: StubGh, *, number: int = 3938, head: str = HEAD) -> None:
+    gh.prs[number] = _pr(number=number, head_sha=head)
+    gate_id, summary_id, run_id = (
+        116266458148 + number,
+        116266458149 + number,
+        9000 + number,
+    )
+    gh.runs_by_head[head] = [
+        _check_run(
+            gate_id, RELEASE_STALENESS_CHECK, "failure", run_id, "2026-10-15T05:37:31Z"
+        ),
+        _check_run(
+            summary_id, CI_SUMMARY_CHECK, "failure", run_id, "2026-10-15T05:38:00Z"
+        ),
+    ]
+    gh.logs[gate_id] = LIVE_RELEASE_STALENESS_LOG
+    gh.jobs[gate_id] = {"run_attempt": 1}
+    gh.run_jobs_by_run[run_id] = [
+        {"name": RELEASE_STALENESS_CHECK, "conclusion": "failure"},
+        {"name": CI_SUMMARY_CHECK, "conclusion": "failure"},
+    ]
+    gh.tags = ["v0.4.99", "v0.4.313", "v0.4.314"]
+
+
+def test_release_staleness_heals_once_per_release_per_head() -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.failed_reruns == [9000 + 3938]
+    assert gh.run_reruns == []
+    assert gh.job_reruns == []
+    # Pass 2: the re-run failed using the newest release, so this is a real red.
+    new_gate_id = 116266500000
+    gh.runs_by_head[HEAD][0] = _check_run(
+        new_gate_id,
+        RELEASE_STALENESS_CHECK,
+        "failure",
+        9000 + 3938,
+        "2026-10-15T06:30:00Z",
+    )
+    gh.logs[new_gate_id] = LIVE_RELEASE_STALENESS_LOG.replace(
+        "base=v0.4.313", "base=v0.4.314"
+    )
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.failed_reruns == [9000 + 3938]
+    assert gh.job_reruns == []
+
+
+def test_release_staleness_does_not_rerun_without_a_new_release() -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+    gh.tags = ["v0.4.313"]
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.failed_reruns == []
+    assert gh.job_reruns == []
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "timed_out"])
+def test_release_staleness_leaves_summary_when_another_job_is_red(
+    conclusion: str,
+) -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+    gh.run_jobs_by_run[9000 + 3938].append(
+        {"name": "Tests (Split 3/20)", "conclusion": conclusion}
+    )
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.job_reruns == [116266458148 + 3938]
+    assert gh.failed_reruns == []
+
+
+def test_release_staleness_selector_runs_only_this_heal(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+    _stub_release_window_pr(gh, number=2905, head="b" * 40)
+    _stub_vendor_pr(gh)
+    decisions = collect_decisions(
+        gh, repo=MARKET, release_window=False, vendor_parity=False
+    )
+    assert decisions.release_window == ()
+    assert decisions.vendor_parity == ()
+    assert len(decisions.release_staleness) == 3
+    assert main(["--repo", MARKET, "--heal", "release-staleness"], gh=gh) == 0
+    assert gh.failed_reruns == [9000 + 3938]
+    assert gh.updates == []
+    assert gh.run_reruns == []
+    assert gh.job_reruns == []
+    output = capsys.readouterr().out
+    assert "release-staleness rerun_required:" in output
+    assert "considered 3 open PR(s)" in output
+    assert "release-window " not in output
+    assert "vendor-parity " not in output
+    assert (
+        collect_decisions(gh, repo=MARKET, release_staleness=False).release_staleness
+        == ()
+    )
+
+
+def test_release_staleness_dry_run_writes_nothing() -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+    assert main(["--repo", MARKET, "--dry-run"], gh=gh) == 0
+    assert gh.failed_reruns == []
+    assert gh.job_reruns == []
+    assert gh.run_reruns == []
+    assert gh.updates == []
+
+
+def test_release_staleness_is_superseded_by_the_same_pr_branch_update() -> None:
+    class NoStalenessReads(StubGh):
+        def job_log(self, *, repo: str, job_id: int) -> str:
+            assert job_id == 500 + 2905
+            return super().job_log(repo=repo, job_id=job_id)
+
+    gh = NoStalenessReads()
+    _stub_staleness_pr(gh, number=2905)
+    gh.tags = ["v0.4.252"]
+    gh.runs_by_head[HEAD].append(
+        _check_run(
+            500 + 2905, RELEASE_IDENTITY_CHECK, "failure", 1, "2026-09-27T12:35:59Z"
+        )
+    )
+    gh.logs[500 + 2905] = LIVE_RIG_LOG
+    decisions = collect_decisions(gh, repo=MARKET)
+    assert decisions.release_window[0].act
+    assert (
+        decisions.release_staleness[0].outcome
+        is EnumReleaseStalenessOutcome.SUPERSEDED_BY_UPDATE
+    )
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.updates == [(2905, HEAD)]
+    assert gh.failed_reruns == []
+
+
+@pytest.mark.parametrize(
+    ("broken_read", "outcome"),
+    [
+        ("job_log", EnumReleaseStalenessOutcome.FAILURE_UNPARSED),
+        ("tag_names", EnumReleaseStalenessOutcome.TAGS_UNRESOLVED),
+        ("job", EnumReleaseStalenessOutcome.ATTEMPT_CEILING),
+        ("run_jobs", EnumReleaseStalenessOutcome.RERUN_REQUIRED),
+    ],
+)
+def test_release_staleness_handles_unreadable_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    broken_read: str,
+    outcome: EnumReleaseStalenessOutcome,
+) -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+
+    def broken(**kwargs: object) -> Any:
+        raise RuntimeError("unreadable")
+
+    monkeypatch.setattr(gh, broken_read, broken)
+    decisions = collect_decisions(gh, repo=MARKET)
+    assert decisions.release_staleness[0].outcome is outcome
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.failed_reruns == []
+    assert gh.job_reruns == ([116266458148 + 3938] if broken_read == "run_jobs" else [])
+
+
+def test_release_staleness_reads_tags_once_per_pass_and_defaults_nonint_attempt() -> (
+    None
+):
+    class CountTags(StubGh):
+        tag_reads = 0
+
+        def tag_names(self, *, repo: str) -> list[str]:
+            self.tag_reads += 1
+            return super().tag_names(repo=repo)
+
+    gh = CountTags()
+    _stub_staleness_pr(gh)
+    _stub_staleness_pr(gh, number=3940, head="d" * 40)
+    # The release-window heal also needs tags, and shares the same snapshot.
+    _stub_release_window_pr(gh, head="e" * 40)
+    gh.jobs[116266458148 + 3938] = {"run_attempt": "5"}
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert gh.tag_reads == 1
+    assert gh.failed_reruns == [9000 + 3938, 9000 + 3940]
+
+
+def test_release_staleness_shares_rerun_cap_with_vendor_parity() -> None:
+    gh = StubGh()
+    _stub_staleness_pr(gh)
+    for n in range(MAX_RERUN_PRS_PER_PASS):
+        _stub_vendor_pr(gh, number=4000 + n, head=f"{n:040d}")
+    assert main(["--repo", MARKET], gh=gh) == 0
+    assert len(gh.run_reruns) == MAX_RERUN_PRS_PER_PASS
+    assert gh.failed_reruns == []
+
+
+@pytest.mark.parametrize("other_reds", [False, True])
+def test_release_staleness_all_writes_failing_exits_red(other_reds: bool) -> None:
+    class Refusing(StubGh):
+        def rerun_failed(self, *, repo: str, run_id: int) -> None:
+            raise RuntimeError("403")
+
+        def rerun_job(self, *, repo: str, job_id: int) -> None:
+            raise RuntimeError("403")
+
+    gh = Refusing()
+    _stub_staleness_pr(gh)
+    if other_reds:
+        gh.run_jobs_by_run[9000 + 3938].append(
+            {"name": "Tests (Split 3/20)", "conclusion": "failure"}
+        )
+    assert main(["--repo", MARKET], gh=gh) == 1
+
+
+def test_release_staleness_cli_reruns_failed_jobs_only() -> None:
+    writes: list[list[str]] = []
+
+    class Recording(GhCli):
+        def _write(self, args: list[str], *, token: str | None = None) -> None:
+            writes.append(args)
+
+    Recording().rerun_failed(repo=MARKET, run_id=123)
+    assert writes == [["run", "rerun", "123", "--failed", "--repo", MARKET]]
+
+
+def test_release_staleness_workflow_selector_includes_third_heal() -> None:
+    assert _on(_workflow())["workflow_dispatch"]["inputs"]["heal"]["options"] == [
+        "all",
+        "release-window",
+        "vendor-parity",
+        "release-staleness",
+    ]

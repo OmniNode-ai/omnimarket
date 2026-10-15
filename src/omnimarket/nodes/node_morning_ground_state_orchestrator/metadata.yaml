@@ -26,6 +26,7 @@ tags:
 - operator
 - morning
 - overlay
+- lab-work
 pack: operator_tooling
 display_name: Morning Ground State Orchestrator
 node_role: orchestrator

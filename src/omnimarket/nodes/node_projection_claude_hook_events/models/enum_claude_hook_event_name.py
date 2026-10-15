@@ -51,6 +51,11 @@ class EnumClaudeHookEventName(StrEnum):
     FILE_CHANGED = "FileChanged"
     DIRECTORY_ADDED = "DirectoryAdded"
     MESSAGE_DISPLAY = "MessageDisplay"
+    #: OMN-18946: the two events the omniclaude plugin DERIVES. No harness hook
+    #: fires for them: a guard that refused a call states the refusal, and the
+    #: transcript a Stop names states the token use.
+    GUARD_REFUSAL = "GuardRefusal"
+    ASSISTANT_USAGE = "AssistantUsage"
 
 
 #: The hook types that close one tool call. ``tool_call_count`` on an agent

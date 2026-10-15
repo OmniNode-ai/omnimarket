@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Clear two omnimarket reds whose cause has already gone away (OMN-19888).
+"""Clear three omnimarket reds whose cause has already gone away (OMN-19888).
 
 Why this module exists
 ----------------------
@@ -36,9 +36,16 @@ merged at 16:01Z, omnimarket#3014 stayed red until a lane re-ran it by hand.
 ``CI Summary`` asserts the gate as an external context (``ci_summary_gate.py``
 ``EXPECTED_EXTERNAL_CONTEXTS``), so its own job has to be re-run as well.
 
+**Release staleness.** ``Release Staleness (OMN-18010)`` measures dev and tags
+live at run time, without reading the PR head. On 2026-10-15, v0.4.313 was the
+newest tag when dev's oldest unreleased packaged commit crossed 24h at 05:08Z,
+and every armed PR went red. The nightly cut published v0.4.314 at 06:19Z, but
+the PR copies and ``CI Summary`` stayed red because nothing re-runs them.
+Re-running the failed jobs after a newer tag exists clears the stale verdict.
+
 What this does
 --------------
-Two pure decision functions, one per heal, over inputs a :class:`GhPort` reads:
+Three pure decision functions, one per heal, over inputs a :class:`GhPort` reads:
 
 * :func:`decide_release_window` returns ``update_required`` for an open,
   non-draft, non-conflicted PR based on ``dev`` whose newest ``Release Identity
@@ -54,6 +61,11 @@ Two pure decision functions, one per heal, over inputs a :class:`GhPort` reads:
   that failed after the vendor landed read the vendored bytes and failed anyway:
   that is a real red, and it is left alone. That precondition is also what makes
   the heal once per head: the re-run's own failure, if any, postdates the vendor.
+* :func:`decide_release_staleness` returns ``rerun_required`` when the newest
+  published tag is strictly newer than the failed measurement's base. It
+  re-runs the run's failed jobs (the gate and ``CI Summary``) when there are no
+  other reds, otherwise the gate alone. A re-run's own failure names the new
+  tag as its base, making this once per release per head.
 
 Both refusals are enumerated one outcome per branch, as in
 ``occ_companion_merge_heal.py`` (OMN-18812): a heal that says "nothing to do"
@@ -99,6 +111,7 @@ DEV_BRANCH: Final[str] = "dev"
 
 RELEASE_IDENTITY_CHECK: Final[str] = "Release Identity Gate"
 VENDOR_PARITY_CHECK: Final[str] = "node-migration-vendor-parity-gate"
+RELEASE_STALENESS_CHECK: Final[str] = "Release Staleness (OMN-18010)"
 CI_SUMMARY_CHECK: Final[str] = "CI Summary"
 
 #: Per-pass bounds (see "Why not bulk_pr_throttle.py" above). A branch update
@@ -119,6 +132,11 @@ _OPEN_PR_LIMIT: Final[int] = 2000
 RELEASE_IDENTITY_FAIL_RE: Final[re.Pattern[str]] = re.compile(
     r"FAIL: packaged source changed but pyproject version (\d+(?:\.\d+)*) is NOT "
     r"ahead of the latest published version (\d+(?:\.\d+)*)"
+)
+
+#: Earlier STALE lines can be positive controls; the last match is the measurement.
+RELEASE_STALENESS_FAIL_RE: Final[re.Pattern[str]] = re.compile(
+    r"release-staleness: STALE base=v(\d+(?:\.\d+)*) "
 )
 
 #: The vendor parity gate's two per-file refusals, as annotations. Both begin
@@ -167,6 +185,19 @@ class EnumVendorParityOutcome(StrEnum):
     NOT_VENDORED = "not_vendored"
     VENDORED_COPY_DIFFERS = "vendored_copy_differs"
     FAILED_AFTER_VENDOR = "failed_after_vendor"
+    ATTEMPT_CEILING = "attempt_ceiling"
+
+
+class EnumReleaseStalenessOutcome(StrEnum):
+    """Why the release-staleness heal did or did not re-run a gate."""
+
+    RERUN_REQUIRED = "rerun_required"
+    GATE_NOT_RED = "gate_not_red"
+    DRAFT = "draft"
+    SUPERSEDED_BY_UPDATE = "superseded_by_update"
+    FAILURE_UNPARSED = "failure_unparsed"
+    TAGS_UNRESOLVED = "tags_unresolved"
+    NO_RELEASE_SINCE = "no_release_since"
     ATTEMPT_CEILING = "attempt_ceiling"
 
 
@@ -267,6 +298,18 @@ class VendorParityInput:
 
 
 @dataclass(frozen=True)
+class ReleaseStalenessInput:
+    pr: OpenPr
+    gate: GateSnapshot | None
+    failed_base: tuple[int, ...] | None
+    latest_published: tuple[int, ...] | None
+    run_attempt: int = 1
+    #: Reds other than this gate and CI Summary; an unreadable run counts as 1.
+    other_red_jobs: int = 0
+    superseded_by_update: bool = False
+
+
+@dataclass(frozen=True)
 class ReleaseWindowDecision:
     outcome: EnumReleaseWindowOutcome
     pr_number: int
@@ -291,6 +334,21 @@ class VendorParityDecision:
     @property
     def act(self) -> bool:
         return self.outcome is EnumVendorParityOutcome.RERUN_REQUIRED
+
+
+@dataclass(frozen=True)
+class ReleaseStalenessDecision:
+    outcome: EnumReleaseStalenessOutcome
+    pr_number: int
+    detail: str
+    #: Runs whose failed jobs (the gate and CI Summary) are re-run together.
+    failed_run_ids: tuple[int, ...] = ()
+    #: The gate alone when other reds block CI Summary.
+    job_ids: tuple[int, ...] = ()
+
+    @property
+    def act(self) -> bool:
+        return self.outcome is EnumReleaseStalenessOutcome.RERUN_REQUIRED
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +385,12 @@ def parse_release_identity_failure(
     if ours is None or published is None:
         return None
     return ours, published
+
+
+def parse_release_staleness_failure(log: str) -> tuple[int, ...] | None:
+    """The LAST STALE base in a log, after any positive controls, or ``None``."""
+    matches = list(RELEASE_STALENESS_FAIL_RE.finditer(log))
+    return parse_version(matches[-1].group(1)) if matches else None
 
 
 def latest_published_version(tag_names: list[str]) -> tuple[int, ...] | None:
@@ -601,6 +665,76 @@ def decide_vendor_parity(item: VendorParityInput) -> VendorParityDecision:
     )
 
 
+def decide_release_staleness(item: ReleaseStalenessInput) -> ReleaseStalenessDecision:
+    """Decide whether a newer release has cleared one PR's stale dev verdict."""
+    pr = item.pr
+    where = f"PR #{pr.number} (head {pr.head_sha[:12]})"
+
+    def refuse(
+        outcome: EnumReleaseStalenessOutcome, why: str
+    ) -> ReleaseStalenessDecision:
+        return ReleaseStalenessDecision(
+            outcome=outcome, pr_number=pr.number, detail=f"{where}: {why}"
+        )
+
+    gate = item.gate
+    if gate is None or not gate.red:
+        state = "absent" if gate is None else gate.conclusion or "pending"
+        return refuse(
+            EnumReleaseStalenessOutcome.GATE_NOT_RED,
+            f"{RELEASE_STALENESS_CHECK} is {state} on this head",
+        )
+    if pr.is_draft:
+        return refuse(EnumReleaseStalenessOutcome.DRAFT, "draft; not re-running")
+    if item.superseded_by_update:
+        return refuse(
+            EnumReleaseStalenessOutcome.SUPERSEDED_BY_UPDATE,
+            "this pass updates the branch, and the new head's gate reads dev "
+            "and tags fresh",
+        )
+    if item.failed_base is None:
+        return refuse(
+            EnumReleaseStalenessOutcome.FAILURE_UNPARSED,
+            f"{RELEASE_STALENESS_CHECK} failed but its log carries no STALE base",
+        )
+    if item.latest_published is None:
+        return refuse(
+            EnumReleaseStalenessOutcome.TAGS_UNRESOLVED,
+            f"failed at base v{_fmt(item.failed_base)}; the newest published tag "
+            "could not be read",
+        )
+    versions = (
+        f"failed at base v{_fmt(item.failed_base)}; newest published tag is "
+        f"v{_fmt(item.latest_published)}"
+    )
+    if item.latest_published <= item.failed_base:
+        return refuse(
+            EnumReleaseStalenessOutcome.NO_RELEASE_SINCE,
+            f"{versions}; no release since the red, so it is still a real red",
+        )
+    if item.run_attempt >= MAX_HEAL_RUN_ATTEMPT:
+        return refuse(
+            EnumReleaseStalenessOutcome.ATTEMPT_CEILING,
+            f"{versions}; already at the {MAX_HEAL_RUN_ATTEMPT}-attempt ceiling; "
+            "refusing to re-run",
+        )
+    failed_run_ids: tuple[int, ...] = ()
+    job_ids: tuple[int, ...] = ()
+    if item.other_red_jobs == 0 and gate.run_id is not None:
+        failed_run_ids = (gate.run_id,)
+        action = f"re-running failed jobs of run {gate.run_id} (gate and CI Summary)"
+    else:
+        job_ids = (gate.check_run_id,)
+        action = f"re-running gate job {gate.check_run_id}; CI Summary left alone"
+    return ReleaseStalenessDecision(
+        outcome=EnumReleaseStalenessOutcome.RERUN_REQUIRED,
+        pr_number=pr.number,
+        detail=f"{where}: {versions}; {action}",
+        failed_run_ids=failed_run_ids,
+        job_ids=job_ids,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GitHub port
 # ---------------------------------------------------------------------------
@@ -645,6 +779,8 @@ class GhPort(Protocol):
     ) -> None: ...
 
     def rerun_run(self, *, repo: str, run_id: int) -> None: ...
+
+    def rerun_failed(self, *, repo: str, run_id: int) -> None: ...
 
     def rerun_job(self, *, repo: str, job_id: int) -> None: ...
 
@@ -871,6 +1007,9 @@ class GhCli:
     def rerun_run(self, *, repo: str, run_id: int) -> None:
         self._write(["run", "rerun", str(run_id), "--repo", repo])
 
+    def rerun_failed(self, *, repo: str, run_id: int) -> None:
+        self._write(["run", "rerun", str(run_id), "--failed", "--repo", repo])
+
     def rerun_job(self, *, repo: str, job_id: int) -> None:
         self._write(["run", "rerun", "--job", str(job_id), "--repo", repo])
 
@@ -880,11 +1019,13 @@ class GhCli:
 # ---------------------------------------------------------------------------
 
 
-def read_dev_release_state(gh: GhPort, *, repo: str) -> DevReleaseState | None:
+def read_dev_release_state(
+    gh: GhPort, *, repo: str, tag_names: list[str] | None = None
+) -> DevReleaseState | None:
     """Dev's version and the newest published tag; ``None`` when either is unreadable."""
     try:
         body = gh.file_bytes(repo=repo, path="pyproject.toml", ref=DEV_BRANCH)
-        tags = gh.tag_names(repo=repo)
+        tags = gh.tag_names(repo=repo) if tag_names is None else tag_names
     except RuntimeError:
         return None
     if body is None:
@@ -954,6 +1095,7 @@ def read_ci_summary(
 class PassDecisions:
     release_window: tuple[ReleaseWindowDecision, ...]
     vendor_parity: tuple[VendorParityDecision, ...]
+    release_staleness: tuple[ReleaseStalenessDecision, ...] = ()
 
 
 def collect_decisions(
@@ -964,12 +1106,17 @@ def collect_decisions(
     only_pr: int | None = None,
     release_window: bool = True,
     vendor_parity: bool = True,
+    release_staleness: bool = True,
 ) -> PassDecisions:
     """One decision per heal per open PR considered. Reads only."""
     dev_state: DevReleaseState | None = None
     dev_read = False
     windows: list[ReleaseWindowDecision] = []
     parities: list[VendorParityDecision] = []
+    stalenesses: list[ReleaseStalenessDecision] = []
+    latest: tuple[int, ...] | None = None
+    tags: list[str] = []
+    tags_read = False
 
     for pr in gh.open_pull_requests(repo=repo):
         if only_pr is not None and pr.number != only_pr:
@@ -987,7 +1134,14 @@ def collect_decisions(
                     log = ""
                 failed = parse_release_identity_failure(log)
                 if failed is not None and not dev_read:
-                    dev_state = read_dev_release_state(gh, repo=repo)
+                    if not tags_read:
+                        try:
+                            tags = gh.tag_names(repo=repo)
+                        except RuntimeError:
+                            tags = []
+                        latest = latest_published_version(tags)
+                        tags_read = True
+                    dev_state = read_dev_release_state(gh, repo=repo, tag_names=tags)
                     dev_read = True
             decision = decide_release_window(
                 ReleaseWindowInput(
@@ -996,6 +1150,59 @@ def collect_decisions(
             )
             windows.append(decision)
             updating = decision.act
+
+        if release_staleness:
+            gate = newest_check_run(runs, RELEASE_STALENESS_CHECK)
+            failed_base: tuple[int, ...] | None = None
+            attempt = 1
+            other_red = 1
+            if gate is not None and gate.red and not pr.is_draft and not updating:
+                try:
+                    log = gh.job_log(repo=repo, job_id=gate.check_run_id)
+                except RuntimeError:
+                    log = ""
+                failed_base = parse_release_staleness_failure(log)
+                if failed_base is not None:
+                    if not tags_read:
+                        try:
+                            tags = gh.tag_names(repo=repo)
+                        except RuntimeError:
+                            tags = []
+                        latest = latest_published_version(tags)
+                        tags_read = True
+                    try:
+                        raw_attempt = gh.job(repo=repo, job_id=gate.check_run_id).get(
+                            "run_attempt", 1
+                        )
+                    except RuntimeError:
+                        raw_attempt = MAX_HEAL_RUN_ATTEMPT
+                    attempt = raw_attempt if isinstance(raw_attempt, int) else 1
+                    if gate.run_id is not None:
+                        try:
+                            jobs = gh.run_jobs(repo=repo, run_id=gate.run_id)
+                        except RuntimeError:
+                            other_red = 1
+                        else:
+                            other_red = sum(
+                                1
+                                for job in jobs
+                                if job.get("name")
+                                not in (RELEASE_STALENESS_CHECK, CI_SUMMARY_CHECK)
+                                and job.get("conclusion") in _RED_JOB_CONCLUSIONS
+                            )
+            stalenesses.append(
+                decide_release_staleness(
+                    ReleaseStalenessInput(
+                        pr=pr,
+                        gate=gate,
+                        failed_base=failed_base,
+                        latest_published=latest,
+                        run_attempt=attempt,
+                        other_red_jobs=other_red,
+                        superseded_by_update=updating,
+                    )
+                )
+            )
 
         if vendor_parity:
             gate = newest_check_run(runs, VENDOR_PARITY_CHECK)
@@ -1043,7 +1250,11 @@ def collect_decisions(
                 )
             )
 
-    return PassDecisions(release_window=tuple(windows), vendor_parity=tuple(parities))
+    return PassDecisions(
+        release_window=tuple(windows),
+        vendor_parity=tuple(parities),
+        release_staleness=tuple(stalenesses),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1068,7 +1279,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--heal",
-        choices=("all", "release-window", "vendor-parity"),
+        choices=("all", "release-window", "vendor-parity", "release-staleness"),
         default="all",
         help="which heal to run",
     )
@@ -1110,6 +1321,7 @@ def main(argv: list[str] | None = None, *, gh: GhPort | None = None) -> int:
             only_pr=only_pr,
             release_window=args.heal in ("all", "release-window"),
             vendor_parity=args.heal in ("all", "vendor-parity"),
+            release_staleness=args.heal in ("all", "release-staleness"),
         )
     except RuntimeError as exc:
         print(f"::error::could not resolve heal state: {exc}")
@@ -1171,7 +1383,38 @@ def main(argv: list[str] | None = None, *, gh: GhPort | None = None) -> int:
                 failures.append(f"job {job_id}: {exc}")
                 print(f"::warning::could not re-run job {job_id}: {exc}")
 
-    considered = max(len(decisions.release_window), len(decisions.vendor_parity))
+    for staleness in decisions.release_staleness:
+        print(f"release-staleness {staleness.outcome.value}: {staleness.detail}")
+        if not staleness.act or args.dry_run:
+            continue
+        if rerun_prs >= MAX_RERUN_PRS_PER_PASS:
+            print(f"  deferred to the next pass ({MAX_RERUN_PRS_PER_PASS}-PR cap)")
+            continue
+        rerun_prs += 1
+        for run_id in staleness.failed_run_ids:
+            attempted += 1
+            try:
+                client.rerun_failed(repo=args.repo, run_id=run_id)
+                reruns += 1
+                print(f"  re-ran failed jobs of run {run_id}")
+            except RuntimeError as exc:
+                failures.append(f"run {run_id}: {exc}")
+                print(f"::warning::could not re-run failed jobs of run {run_id}: {exc}")
+        for job_id in staleness.job_ids:
+            attempted += 1
+            try:
+                client.rerun_job(repo=args.repo, job_id=job_id)
+                reruns += 1
+                print(f"  re-ran job {job_id}")
+            except RuntimeError as exc:
+                failures.append(f"job {job_id}: {exc}")
+                print(f"::warning::could not re-run job {job_id}: {exc}")
+
+    considered = max(
+        len(decisions.release_window),
+        len(decisions.vendor_parity),
+        len(decisions.release_staleness),
+    )
     print(
         f"considered {considered} open PR(s); updated {updates} branch(es); "
         f"issued {reruns} re-run(s){' (dry run)' if args.dry_run else ''}"
