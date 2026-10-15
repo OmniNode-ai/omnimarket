@@ -73,6 +73,13 @@ reference_namespaces:
   captured:
     folder: /captured
     key_template: "CAPTURED_{name}"
+  # OMN-20994: a tenant's provider key is key <ref> in the folder the lane
+  # resolver reads tenant references from (OMN-16944): secret://onex/tenant/<ref>
+  # is <ref> in /tenant-inference-credentials. A caller holds the reference,
+  # never the folder.
+  tenant:
+    folder: /tenant-inference-credentials
+    key_template: "{name}"
 
 terminal_event: onex.evt.omnimarket.secret-store-completed.v1
 published_events:
@@ -105,3 +112,4 @@ metadata:
     - "secret-store"
   related_tickets:
     - "OMN-20944"
+    - "OMN-20994"
