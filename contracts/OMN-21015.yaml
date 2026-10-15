@@ -42,3 +42,9 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn21015_tier_models_real_postgres.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn21015-tier-models-deploy-probe"
+    description: "Deploy probe. GitHub serves the local store at the checked-out commit with the store step that re-creates the model-routing view with each tier's models (omn21015_model_routing_tier_models); the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/sqlite_database.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'omn21015_model_routing_tier_models'"
