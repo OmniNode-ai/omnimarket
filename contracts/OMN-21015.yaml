@@ -25,13 +25,85 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: dod-omn21015-ac3-transactional-run-savings
+  - id: dod-omn21015-ac3-real-postgres-writer
     description: >-
-      Backend half only. The saving and typed measurement labels match the stored inputs, numeric binding stays exact, writes remain invisible until commit and commit refusal publishes nothing. SQLite and real Postgres cover the storage paths; page acceptance belongs to omnidash.
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres, the deployed writer: the saving and its three labels persist nullable beside the stored inputs, and the republished row carries them.
     source: manual
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py tests/test_omn21015_delegation_decimal_binding_real_postgres.py tests/projection/test_omn21015_transactional_run_write.py tests/projection/test_omn21015_review_real_boundaries.py tests/projection/test_omn21015_run_savings_served.py -q -p no:randomly
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py::test_deployed_writer_persists_and_republishes_canonical_run_savings -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-real-postgres-migration
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres: migration 0059 runs twice and never prices a row stored before it.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py::test_migration_is_repeatable_and_never_prices_an_old_row -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-real-postgres-two-writers
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres: two writers of one run keep the saving paired with the inputs it was computed from.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py::test_two_writers_keep_the_saving_paired_with_concurrent_inputs -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-decimal-binding
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres: money binds as exact numeric, never through a float.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_delegation_decimal_binding_real_postgres.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-transactional-write
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. The async, sync and local write paths derive the figure from the row the upsert returns, in one transaction, under the six race schedules.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_transactional_run_write.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-commit-boundaries
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Writes stay invisible to a second connection until commit, and a refused commit publishes nothing.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_review_real_boundaries.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-served-per-run
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Served through the local store: each stored, served and republished run has its own figure and basis.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_run_savings_served.py::test_each_stored_served_and_republished_run_has_its_own_figure_and_basis -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-served-typed-states
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Served: an unresolved baseline, an unrecorded time and an unknown spend each serve a typed state with a null figure, never 0.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_run_savings_served.py::test_unresolved_baseline_serves_null_instead_of_the_legacy_saving tests/projection/test_omn21015_run_savings_served.py::test_an_unrecorded_time_has_a_typed_unknown_state tests/projection/test_omn21015_run_savings_served.py::test_a_stored_unknown_spend_is_not_priced_as_a_free_call -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-served-scope
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Served: a sparse redelivery keeps the figure paired with its inputs, another tenant's saving never enters, and a run and the headline share one named baseline.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_run_savings_served.py::test_a_sparse_redelivery_keeps_the_figure_paired_with_the_preserved_inputs tests/projection/test_omn21015_run_savings_served.py::test_tenant_scoping_does_not_serve_another_tenants_saving tests/projection/test_omn21015_run_savings_served.py::test_run_and_headline_share_the_named_baseline_selection -q -p no:randomly
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: [AC3]
   - id: dod-omn21015-ac3-market-deploy-probe
