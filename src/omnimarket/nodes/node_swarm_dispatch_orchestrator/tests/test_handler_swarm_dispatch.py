@@ -617,3 +617,35 @@ async def test_runtime_resolved_handler_publishes_initial_health_command() -> No
     from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
     ModelEventEnvelope.model_validate(envelope)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_flush_accepts_non_uuid_correlation_id() -> None:
+    """A free-form request correlation id must not break envelope publication."""
+    import json
+    import uuid
+    from unittest.mock import AsyncMock
+
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+    bus = MagicMock(spec=ProtocolEventBusPublisher)
+    bus.publish = AsyncMock(spec=ProtocolEventBusPublisher.publish)
+    handler = HandlerSwarmDispatchOrchestrator(event_bus=bus)
+    await handler.handle_async(
+        ModelSwarmDispatchRequest(
+            task="Report swarm endpoint availability",
+            run_id="run-non-uuid",
+            correlation_id="corr-free-form",
+        )
+    )
+    bus.publish.assert_awaited_once()
+    envelope = json.loads(bus.publish.call_args.kwargs["value"])
+    assert envelope["payload"]["correlation_id"] == "corr-free-form"
+    assert envelope["correlation_id"] == str(
+        uuid.uuid5(uuid.NAMESPACE_URL, "corr-free-form")
+    )
+    ModelEventEnvelope.model_validate(envelope)

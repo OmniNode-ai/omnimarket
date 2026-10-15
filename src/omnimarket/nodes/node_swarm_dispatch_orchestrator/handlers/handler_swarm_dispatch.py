@@ -827,9 +827,15 @@ class HandlerSwarmDispatchOrchestrator:
             event_type = f"{parts[2]}.{parts[3]}" if len(parts) >= 5 else topic
             # Correlation/run id from payload for tracing
             corr_id = payload.get("correlation_id") or str(_uuid.uuid4())
+            # Request correlation ids are free-form strings; the envelope needs a
+            # UUID, so a non-UUID id maps to a stable uuid5 instead of raising.
+            try:
+                envelope_corr = _uuid.UUID(str(corr_id))
+            except ValueError:
+                envelope_corr = _uuid.uuid5(_uuid.NAMESPACE_URL, str(corr_id))
             envelope = ModelEventEnvelope[dict[str, Any]](
                 payload=payload,
-                correlation_id=_uuid.UUID(str(corr_id)),
+                correlation_id=envelope_corr,
                 event_type=event_type,
                 source_tool="node_swarm_dispatch_orchestrator",
                 envelope_timestamp=datetime.now(UTC),
