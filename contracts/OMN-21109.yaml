@@ -89,11 +89,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_contracts.py -q -p no:randomly --no-cov"
   - id: "dod-omn21109-deploy-container-render"
-    description: "Hosted deploy probe. The hosted runner installs this checkout with uv run --frozen --no-dev, renders a two-chunk pack through the product handler and asserts the stable prefix holds the legend and the source-identified stable block, the per-build candidate id appears in the trailer only, and the status is ok. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, renders a two-chunk pack through the product handler and asserts the stable prefix holds the legend and the source-identified stable block, the per-build candidate id appears in the trailer only, and the status is ok. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |-
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
           uv run --frozen --no-dev python -c '
           from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
           from omnibase_core.enums.enum_context_pack_provenance import EnumContextPackProvenance as P
