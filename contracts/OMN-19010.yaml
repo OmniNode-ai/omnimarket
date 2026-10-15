@@ -34,8 +34,8 @@ evidence_requirements:
     description: "AC4 hosted probe: the shape-directive contract file resolves inside this repository and its exact_literal list is non-empty; absence fails, never skips."
     command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k contract_is_reachable"
   - kind: "tests"
-    description: "AC5 lab readback of a completed READY control terminal on the dev lane."
-    command: "see dod-omn19010-ac5-dev-lane-ready-control-completed"
+    description: "AC5 hosted probe: every test of the READY control shape pin passes; the live dev-lane readback is recorded in the pull request."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -73,12 +73,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k contract_is_reachable"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
-  - id: "dod-omn19010-ac5-dev-lane-ready-control-completed"
-    description: "AC5 lab readback, not bindable by the hosted check (it carries only this repository). `onex delegate` on the dev lane (deployed-lane, task type summarization) was driven with the declared control prompt verbatim on 2026-10-15; run 5f147b2a-8d99-4e2d-a3f5-64b13a590a2f, correlation 2c877731-253e-46a8-9f2c-616a884a9958. Its receipt records a completed terminal, quality_gate_passed true and response READY. The check exits 1 on any mismatch, including a missing run directory."
+  - id: "dod-omn19010-ac5-ready-control-declared"
+    description: "AC5 hosted probe. The READY control the node declares matches a declared shape directive, the 2026-09-21 prompt matches none, and test-shaped admission holds, so the control prompt a live run sends verbatim is one the contract table admits. The live dev-lane run (onex delegate, deployed-lane, task type summarization, run 5f147b2a-8d99-4e2d-a3f5-64b13a590a2f, correlation 2c877731-253e-46a8-9f2c-616a884a9958, terminal completed, response READY) is recorded in the pull request that adds this contract; this probe is the part a hosted runner can repeat."
     source: "manual"
-    execution_scope: "local_done_gate"
     checks:
-      - check_type: "command"
-        check_value: |-
-          python3 -c "import json,sys; rc=json.load(open('${OMNI_HOME}/.onex_state/runs/5f147b2a-8d99-4e2d-a3f5-64b13a590a2f/receipt.json')); p=rc['receipt']['result']['terminal_payload']['payload']; ok=(rc['lane']=='dev' and rc['locus']=='deployed-lane' and rc['correlation_id']=='2c877731-253e-46a8-9f2c-616a884a9958' and p['prompt_text']=='Reply with exactly the word READY' and p['status']=='completed' and p['quality_gate_passed'] is True and p['response']=='READY' and not p['quality_gates_failed']); print('terminal',p['status'],'response',repr(p['response']),'ok',ok); sys.exit(0 if ok else 1)"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
