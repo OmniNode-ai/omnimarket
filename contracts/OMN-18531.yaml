@@ -164,7 +164,10 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: uv run pre-commit run canonical-file-shape --from-ref origin/dev --to-ref HEAD
+    check_value: uv run python -m omnibase_core.validators.canonical_file_shape --base origin/dev --head HEAD
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: git diff --quiet origin/dev...HEAD -- .onex_ratchets/canonical_file_shape_baseline.txt
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC9
