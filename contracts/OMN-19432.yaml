@@ -20,6 +20,13 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: the node's golden chain replays prompt in to stated prompt out with the same bytes and publishes its one terminal event -- falsifier: env -u PYTHONPATH uv run pytest tests/test_golden_chain_node_facts_first_prompt_compute.py -q
+  - id: "req-no-gpt-oss-in-routing-config"
+    statement: |-
+      No routing config in the package names the retired gpt-oss model as a backend model, alias, family match or allowlist entry.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: no YAML under src/omnimarket carries a key or value naming gpt-oss in any spelling, and the detector finds every spelling in keys and values but not in comments -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/routing/test_no_gpt_oss_in_routing_config_omn19432.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The facts-first tests pass at the head and fail at the merge base, where the node does not exist."
@@ -53,3 +60,24 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_node_facts_first_prompt_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-no-gpt-oss-in-routing-config-ac4"
+    description: "The routing-config check proves no package YAML names gpt-oss and that its detector finds every spelling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_no_gpt_oss_in_routing_config_omn19432.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19432-deploy-answer-gate-families"
+    description: "Hosted deployment artifact readback: fetch the answer-gate runtime contract at the checked-out commit and require the GPT family to match only gpt-, without the retired gpt_oss or gpt-oss entries. Missing content, invalid YAML, a different node or the stale family list fails the command. This reads published source, not a running inference service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegation_answer_gate_compute/contract.yaml" | python3 -c '\''import sys, yaml
+          contract = yaml.safe_load(sys.stdin.read())
+          assert contract["name"] == "node_delegation_answer_gate_compute"
+          families = {entry["family"]: entry["match"] for entry in contract["model_families"]}
+          assert families["gpt"] == ["gpt-"], families["gpt"]
+          print("Published answer-gate GPT family excludes retired model entries")'\'''
+        cwd: "${OMNI_HOME}/omnimarket"

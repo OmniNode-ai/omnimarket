@@ -419,6 +419,22 @@ jobs:
       # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
       - name: Validate no silent env fallbacks
         run: uv run python scripts/validation/validate_no_env_fallbacks.py
+      # OMN-20201 (M47): a contract.yaml changed by the PR carries no model id,
+      # model key, model-env default or endpoint literal. Contracts the PR does
+      # not touch are not scanned, so the findings that predate the gate stay
+      # visible in a full scan without blocking unrelated PRs.
+      # SYNC with pre-commit hook 'contract-overlay-boundary'.
+      - name: Contract overlay boundary gate (changed contracts)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          uv run python scripts/validation/validate_contract_overlay_boundary.py --changed-since "$REF"
       # SYNC: OMN-10926 — delegation env read scanner in enforce mode (Wave 2)
       # Fails CI if any delegation/LLM/bifrost module adds a new os.environ/os.getenv read.
       - name: Delegation env read scanner (enforce)

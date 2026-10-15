@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeContextPackRenderCompute (OMN-21109, plan task TA.7)
+
+name: node_context_pack_render_compute
+version: "1.0.0"
+contract_name: node_context_pack_render_compute
+node_name: node_context_pack_render_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure render of a ModelContextPack into an ordered list of role/text messages: a fixed legend, the stable factors, the volatile factors, the model-written factors, then the identity trailer. Per-build values appear in the trailer only; stable blocks keep their immutable source identifiers. Deterministic; no I/O.
+
+input_model:
+  name: ModelContextPackRenderRequest
+  module: omnimarket.models.context_pack_render
+
+output_model:
+  name: ModelContextPackRenderResult
+  module: omnimarket.models.context_pack_render
+
+handler:
+  module: omnimarket.nodes.node_context_pack_render_compute.handlers.handler_context_pack_render
+  class: HandlerContextPackRender
+  input_model: omnimarket.models.context_pack_render.ModelContextPackRenderRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextPackRender
+        module: omnimarket.nodes.node_context_pack_render_compute.handlers.handler_context_pack_render
+      event_model:
+        name: ModelContextPackRenderRequest
+        module: omnimarket.models.context_pack_render
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.pack.render
+    description: Render a context pack into stable-first role/text messages
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-pack-render-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-pack-rendered.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-pack-render-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-pack-rendered.v1
+
+terminal_event: onex.evt.omnimarket.context-pack-rendered.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21109
+  maturity: alpha
+  tags:
+    - context-pack
+    - render

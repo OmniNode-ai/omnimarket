@@ -191,13 +191,16 @@ class TestSeamMatch:
         # The file-write command targets tier-4's OWN effect, so it legitimately
         # carries pipeline state — assert the file set is assembled, not a seam.
         topic, model = _emit_for(
-            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y"))
+            ModelCodegenSerializeOutcome(
+                state=_state(source="SRC", contract_yaml="Y"), lint_passed=True
+            )
         )
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(model, BaseModel)
         by_path = {f.relative_path: f.content for f in model.files}  # type: ignore[attr-defined]
-        assert by_path["handler.py"] == "SRC"
-        assert by_path["contract.yaml"] == "Y"
+        base = "omnimarket/nodes/node_greeter_compute"
+        assert by_path[f"{base}/handlers/handler_greeter_compute.py"] == "SRC"
+        assert f"{base}/contract.yaml" in by_path
 
 
 @pytest.mark.unit
