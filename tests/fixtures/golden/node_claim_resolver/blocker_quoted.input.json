@@ -1,0 +1,1 @@
+{"claims": [{"evidence": ["gh pr view 12 --json state"], "expected": null, "kind": "blocker_on_X", "ref": "blocker"}], "repo_hint": null, "repo_root": null}

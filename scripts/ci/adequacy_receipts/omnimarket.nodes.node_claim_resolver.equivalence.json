@@ -1,0 +1,44 @@
+{
+  "declaration": {
+    "base_ref": "46939427e7acd170723cc91b278e732e557a2221",
+    "canonical_entrypoint": "handle",
+    "canonical_handler_module": "omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver",
+    "canonical_handler_symbol": "HandlerClaimResolver",
+    "input_model": "omnimarket.nodes.node_claim_resolver.models.model_claim_resolution.ModelClaimResolutionRequest",
+    "legacy_entrypoint": "verify",
+    "legacy_handler_module": "omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver",
+    "legacy_handler_symbol": "HandlerClaimResolver",
+    "replay_inputs": [
+      "tests/fixtures/golden/node_claim_resolver/blocker_missing.input.json",
+      "tests/fixtures/golden/node_claim_resolver/blocker_quoted.input.json",
+      "tests/fixtures/golden/node_claim_resolver/empty.input.json",
+      "tests/fixtures/golden/node_claim_resolver/linear_conflicting.input.json",
+      "tests/fixtures/golden/node_claim_resolver/linear_matching.input.json",
+      "tests/fixtures/golden/node_claim_resolver/linear_missing_evidence.input.json",
+      "tests/fixtures/golden/node_claim_resolver/linear_missing_expected.input.json",
+      "tests/fixtures/golden/node_claim_resolver/missing_pr_context.input.json",
+      "tests/fixtures/golden/node_claim_resolver/mixed.input.json",
+      "tests/fixtures/golden/node_claim_resolver/thread_missing.input.json",
+      "tests/fixtures/golden/node_claim_resolver/thread_resolved.input.json",
+      "tests/fixtures/golden/node_claim_resolver/thread_unresolved.input.json"
+    ],
+    "volatile_mask": []
+  },
+  "node_id": "omnimarket.nodes.node_claim_resolver",
+  "receipt_schema": "equivalence_replay.v2",
+  "selected_input_hashes": [
+    "sha256:25048f8b2ba618ddf5be7421adca03ada94c5ca124df9c45af9c93ef6a27e7e7",
+    "sha256:1c82aff96483ca847afffb45050fe3efa348a6949d2d42781ef84b27276c95b8",
+    "sha256:b23835fc648b28dd639f63e73b65d18ef0115a9ea997a6cda22850ef9ff5aa7a",
+    "sha256:a9643e02e1b743855c9bfd6c4f881fa89fc187c1b5ce993b94c533eca76480db",
+    "sha256:90087786462890da7e47411d9cb7d0c9b97720ad7aad2305135e47377af2fe34",
+    "sha256:02df21b534d8e44df7864495567d99af36c890cedead937aaeead052c700b360",
+    "sha256:81af88e5b7e01958a20c571b031ddecd6322d2191a75bbabf7ba384f276378af",
+    "sha256:e3c3234591c6de6e2cce92d4db2fe624ec876a5f1a02d56290e90a9808574971",
+    "sha256:5751f8b4f4dea601d299601d0e74dc88a928d2acd8ab709c076b8e54fc93a767",
+    "sha256:1a0d7ff71bc6e5bbddfca447373e9e0dde5e145571e3ddaf2a0bf5e262fecb4e",
+    "sha256:522e4eb012c5ec78d3cb0001eb4569ff06529b85391468d9b45296159783dc0f",
+    "sha256:aef79318868dc8d67ffefe58c58f2fc7672cd35d2ee7928f31e6de5ed2d53d4e"
+  ],
+  "status": "pass"
+}
