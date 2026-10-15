@@ -21,12 +21,12 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
-from omnimarket.models.scm import EnumScmNode
-from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
     ModelGithubGatewayRequest,
 )
+from omnimarket.models.scm import EnumScmNode
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
     resolve_github_token,
 )

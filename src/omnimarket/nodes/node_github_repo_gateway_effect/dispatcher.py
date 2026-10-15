@@ -10,7 +10,7 @@ to calling that read function directly.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     GithubGatewayResult,
     ModelGithubGatewayRequest,

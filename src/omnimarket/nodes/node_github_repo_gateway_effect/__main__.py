@@ -24,11 +24,11 @@ import argparse
 import json
 import sys
 
-from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
     resolve_github_token,
 )

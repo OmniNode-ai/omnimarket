@@ -42,7 +42,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     MAX_TEXT_CHARS,
     EnumArtifactFetchRefusal,
     ModelArtifactContent,

@@ -80,6 +80,15 @@ from omnimarket.handlers.scm.handler_gateway_read_client import (
     GatewayReadError,
     HandlerGatewayReadClient,
 )
+
+# OMN-21146: the gateway node's contract-declared request and result models.
+from omnimarket.models.model_github_gateway_io import (
+    MAX_LIST_LIMIT,
+    EnumGithubGatewayOperation,
+    ModelCommitCheckRunsResult,
+    ModelGithubGatewayRequest,
+    ModelMergedPrResult,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     DodEvidenceLocalSource,
     canonical_clone,
@@ -105,15 +114,6 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     REPO_EVIDENCE_CHECK_NAME,
     DurableEvidenceGate,
-)
-
-# OMN-21146: the gateway node's contract-declared request and result models.
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
-    MAX_LIST_LIMIT,
-    EnumGithubGatewayOperation,
-    ModelCommitCheckRunsResult,
-    ModelGithubGatewayRequest,
-    ModelMergedPrResult,
 )
 
 logger = logging.getLogger(__name__)

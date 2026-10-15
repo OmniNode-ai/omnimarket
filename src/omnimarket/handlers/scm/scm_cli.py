@@ -78,6 +78,10 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_watcher_state_path,
 )
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
@@ -86,10 +90,6 @@ from omnimarket.models.scm import (
     ModelScmLocalReadRequest,
     ModelScmLocalVerb,
     ModelScmVerb,
-)
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
-    EnumGithubGatewayOperation,
-    ModelGithubGatewayRequest,
 )
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
