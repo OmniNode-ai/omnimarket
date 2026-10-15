@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21150"
+title: "The RSD code generator rejects generated code that imports modules that do not exist"
+summary: >-
+  The hybrid codegen factory's mypy leg inherited the consumer request model's
+  ignore_missing_imports=True default, so generated source that imported a module
+  which does not exist passed the type-check and was written to disk, failing only
+  at runtime with an ImportError. The factory's mypy seam now carries the policy
+  explicitly (ignore_missing_imports=False), overriding the consumer default for
+  the pipeline, so a phantom import fails the run as rejected_typecheck before any
+  file is written.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reject-missing-import"
+    statement: "Generated source importing a module that does not exist ends the codegen run in rejection and writes no file."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a pipeline run whose generated source imports a module that does not
+          exist ends with status rejected_typecheck or rejected_validation and writes
+          no file under the target root -- falsifier: the real-handler golden-chain
+          test pins the LLM response to source importing omnimarket.does_not_exist
+          and asserts the terminal event is rejected_typecheck with the serialize leg
+          never reached and no file written
+evidence_requirements:
+  - kind: "tests"
+    description: "The golden-chain pipeline test over the real validator, mypy and file-writer legs, the seam-match lock that the emitted mypy seam carries ignore_missing_imports=False, and the mypy effect unit test that a not-ignored missing import is flagged."
+    command: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21150-ac1-pipeline-rejects-missing-import"
+    description: "AC1: the real-handler golden chain drives a run whose generated source imports omnimarket.does_not_exist to a terminal rejected_typecheck with zero files written. Fails at the merge base, where the run completes and writes handler.py, contract.yaml, metadata.yaml and .rsd_provenance.json."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_missing_import_rejected_by_real_mypy -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21150-regressions"
+    description: "The orchestrator, validator and mypy-effect suites still pass, including the seam-match lock that the emitted mypy seam carries ignore_missing_imports=False and the effect unit test that a missing import is flagged when not ignored."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
