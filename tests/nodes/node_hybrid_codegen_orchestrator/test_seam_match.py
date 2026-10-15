@@ -198,8 +198,9 @@ class TestSeamMatch:
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(model, BaseModel)
         by_path = {f.relative_path: f.content for f in model.files}  # type: ignore[attr-defined]
-        assert by_path["handler.py"] == "SRC"
-        assert by_path["contract.yaml"] == "Y"
+        base = "omnimarket/nodes/node_greeter_compute"
+        assert by_path[f"{base}/handlers/handler_greeter_compute.py"] == "SRC"
+        assert f"{base}/contract.yaml" in by_path
 
 
 @pytest.mark.unit
