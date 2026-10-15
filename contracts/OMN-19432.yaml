@@ -20,6 +20,13 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: the node's golden chain replays prompt in to stated prompt out with the same bytes and publishes its one terminal event -- falsifier: env -u PYTHONPATH uv run pytest tests/test_golden_chain_node_facts_first_prompt_compute.py -q
+  - id: "req-no-gpt-oss-in-routing-config"
+    statement: |-
+      No routing config in the package names the retired gpt-oss model as a backend model, alias, family match or allowlist entry.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: no YAML under src/omnimarket carries a key or value naming gpt-oss in any spelling, and the detector finds every spelling in keys and values but not in comments -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/routing/test_no_gpt_oss_in_routing_config_omn19432.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The facts-first tests pass at the head and fail at the merge base, where the node does not exist."
@@ -53,3 +60,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_node_facts_first_prompt_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-no-gpt-oss-in-routing-config-ac4"
+    description: "The routing-config check proves no package YAML names gpt-oss and that its detector finds every spelling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_no_gpt_oss_in_routing_config_omn19432.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
