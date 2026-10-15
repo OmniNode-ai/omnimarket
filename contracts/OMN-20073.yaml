@@ -154,3 +154,10 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_evidence_context_conclusions_omn20073.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-evidence-context-deploy-source"
+    description: "Hosted source probe at the evaluated commit: the published queue shim selects GitHub Actions and accepts only completed success. The command refuses the pre-change shim; AC9's bound tests exercise its shell behavior."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/.github/workflows/merge-group-pr-scoped-contexts.yml" | python3 -c '\''import sys; shim = sys.stdin.read().split("  ctx-repo-evidence-dod-verify:", 1)[1]; assert "select(.app.id == 15368)" in shim; assert "completed:success) ;;" in shim; assert "completed:neutral" not in shim and "completed:skipped" not in shim'\'''
