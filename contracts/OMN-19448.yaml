@@ -92,3 +92,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19448-pr3924-merged-cause-control"
+    description: "AC3 evidence for the lab readback: the gate-decided cause tests pass with merged fix 3bbef4dee3f15cef026c6e89292403685009f8da and fail when its product change is reverted at the merge base. The original lab readback and the pre-dispatch refusal it records remain unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_gate_decided_cause_derived_omn19448.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
