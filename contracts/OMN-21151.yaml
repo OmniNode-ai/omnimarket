@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21151"
+title: "The generator stops when the generated contract fails its lint"
+summary: >-
+  ModelCodegenSerializeOutcome carried only the pipeline state, so the orchestrator's
+  serialize phase wrote files whatever the contract lint said. The outcome now carries
+  the lint verdict (lint_passed plus the gate's messages), the outcome reducer joins it
+  from the real ModelContractDocument the serialize node publishes, and a failed lint
+  ends the run with the new terminal status rejected_contract_lint before any file is
+  written.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-stop-on-lint-failure"
+    statement: "A generated contract that failed its lint ends the codegen run in rejection and writes no file; a lint-passing contract still writes its files."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a pipeline run whose serialize verdict carries a failed lint ends with
+          status rejected_contract_lint, carries the lint gate's messages as the run's
+          issues, and writes no file under the target root, while the same pipeline with
+          a lint-passing verdict still writes its files -- falsifier: the golden-chain
+          test drives the factory with the serialize leg's published verdict pinned to a
+          real ModelContractDocument with lint_status FAIL and asserts rejected_contract_
+          lint with no files, and its companion drives the identical path with lint PASS
+          and asserts every generated file landed
+evidence_requirements:
+  - kind: "tests"
+    description: "The golden-chain pipeline pair (failing lint writes nothing, passing lint still writes), the phase-routing rejection branch, and the reducer join carrying the lint verdict."
+    command: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_outcome_reducer -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21151-ac1-lint-failure-writes-no-file"
+    description: "AC1: the real-handler golden chain with the serialize verdict pinned to a lint-failing ModelContractDocument ends rejected_contract_lint with the gate's message as the run issue and no file under the target root, and the companion lint-passing run writes handler.py, contract.yaml, metadata.yaml and .rsd_provenance.json. Both fail at the merge base, where the outcome model has no lint field and no rejected_contract_lint status exists."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_contract_lint_failure_writes_no_file tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_contract_lint_pass_still_writes_files -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21151-regressions"
+    description: "The orchestrator, outcome-reducer, validator and mypy-effect suites still pass with the lint verdict carried end to end."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_outcome_reducer tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"

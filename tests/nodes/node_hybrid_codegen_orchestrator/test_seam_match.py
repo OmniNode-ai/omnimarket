@@ -191,7 +191,9 @@ class TestSeamMatch:
         # The file-write command targets tier-4's OWN effect, so it legitimately
         # carries pipeline state — assert the file set is assembled, not a seam.
         topic, model = _emit_for(
-            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y"))
+            ModelCodegenSerializeOutcome(
+                state=_state(source="SRC", contract_yaml="Y"), lint_passed=True
+            )
         )
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(model, BaseModel)

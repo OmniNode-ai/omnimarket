@@ -155,7 +155,8 @@ class TestPhaseRoutingEquivalence:
     def test_serialize_outcome_emits_file_write_with_files(self) -> None:
         topic, payload = _handle(
             ModelCodegenSerializeOutcome(
-                state=_state(source="handler-src", contract_yaml="name: x\n")
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                lint_passed=True,
             )
         )
         assert topic.endswith("codegen-file-write.v1")
@@ -165,6 +166,22 @@ class TestPhaseRoutingEquivalence:
         assert by_path["contract.yaml"] == "name: x\n"
         assert "metadata.yaml" in by_path
         assert ".rsd_provenance.json" in by_path
+
+    def test_serialize_lint_failure_emits_rejected_contract_lint(self) -> None:
+        # OMN-21151: a contract that failed its lint never reaches the file
+        # writer — the run ends rejected_contract_lint carrying the gate's
+        # messages instead of writing an unlintable contract to disk.
+        topic, payload = _handle(
+            ModelCodegenSerializeOutcome(
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                lint_passed=False,
+                lint_messages=("missing required top-level key: metadata",),
+            )
+        )
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.REJECTED_CONTRACT_LINT
+        assert payload.issues == ("missing required top-level key: metadata",)
 
     def test_files_written_emits_completed_terminal(self) -> None:
         topic, payload = _handle(
@@ -266,7 +283,9 @@ class TestProvenanceStampSeam:
 
     def test_provenance_stamp_is_a_generated_file(self) -> None:
         state = _state(source="handler-src", contract_yaml="name: x\n")
-        _, payload = _handle(ModelCodegenSerializeOutcome(state=state))
+        _, payload = _handle(
+            ModelCodegenSerializeOutcome(state=state, lint_passed=True)
+        )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
         assert ".rsd_provenance.json" in by_path
@@ -278,7 +297,9 @@ class TestProvenanceStampSeam:
             source_text="class Handler: ...",
             contract_yaml="name: node_greeter_compute\n",
         )
-        _, payload = _handle(ModelCodegenSerializeOutcome(state=state))
+        _, payload = _handle(
+            ModelCodegenSerializeOutcome(state=state, lint_passed=True)
+        )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
         stamp = json.loads(by_path[".rsd_provenance.json"])
