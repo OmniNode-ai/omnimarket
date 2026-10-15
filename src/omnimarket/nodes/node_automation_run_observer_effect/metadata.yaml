@@ -23,6 +23,7 @@ capabilities:
 dependencies:
 - omnibase_core>=0.39.0
 - "omnibase-infra>=0.38.3,<0.39.0"
+- "confluent-kafka>=2.12.0,<3.0.0"
 license: MIT
 tags:
 - effect
