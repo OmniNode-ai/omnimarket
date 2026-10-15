@@ -73,9 +73,12 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn-18531-ta4-ac1
-  description: The typed events carry the prompt-link fields after parse_ledger_row and after a JSON round trip.
+  description: The typed events carry the prompt-link fields after parse_ledger_row and after a JSON round trip, with the adapter node contracts resolving their handlers and entry points.
   source: manual
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_contracts.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q
     cwd: ${OMNI_HOME}/omnimarket
@@ -160,9 +163,12 @@ dod_evidence:
   binds_ac:
   - AC7
 - id: dod-omn-18531-t03-ac9
-  description: The canonical-file-shape pre-commit hook passes over the PR's diff with .onex_ratchets/canonical_file_shape_baseline.txt unchanged.
+  description: The three adapter nodes resolve their declared handlers, topics and entry points; the canonical-file-shape validator passes over the PR's diff with .onex_ratchets/canonical_file_shape_baseline.txt unchanged.
   source: manual
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_contracts.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: uv run python -m omnibase_core.validators.canonical_file_shape --base origin/dev --head HEAD
     cwd: ${OMNI_HOME}/omnimarket
@@ -228,3 +234,12 @@ dod_evidence:
       check_value: |-
         docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import HandlerCompactionSavings, compaction_source_from_post_compact; s = compaction_source_from_post_compact({"event_id": "e-1", "hook_event_name": "PostCompact", "emitted_at": "2026-10-15T04:01:16+00:00", "lineage": {"session_id": "s-1"}, "payload": {"hook_event_name": "PostCompact", "trigger": "manual", "context_tokens": 100000, "model": "claude-sonnet-5-5", "compact_summary_ref": {"length": 0}}}); r = HandlerCompactionSavings().handle(s); assert r.row is not None and r.row["task_type"] == "context_compaction", r; assert str(r.row["savings_usd"]) == "0.200000", r.row; print(r.tokens_saved, r.row["savings_usd"])'
       cwd: "${OMNI_HOME}/omnimarket"
+
+- id: dod-omn-18531-t03-deploy-container-adapter
+  description: Hosted deploy probe. A disposable Linux container installs this checkout without development dependencies and reads back the adapter console entry and all three handler classes from the installed package. The command fails on a package without the adapter, renderer or installer; hosted Ubuntu with Docker and public registry access can run it.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-adapter-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli import main; from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import HandlerClaudeCodeHookAdapter; from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import HandlerClaudeCodeBindingRender; from omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install import HandlerClaudeCodeBindingInstall; assert callable(main); assert all(callable(cls.handle) for cls in (HandlerClaudeCodeHookAdapter, HandlerClaudeCodeBindingRender, HandlerClaudeCodeBindingInstall)); print("adapter console and three handlers resolved")'
+    cwd: ${OMNI_HOME}/omnimarket
