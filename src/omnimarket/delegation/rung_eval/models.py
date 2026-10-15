@@ -8,7 +8,14 @@ import re
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class EnumRungEvalStatus(StrEnum):
@@ -23,9 +30,25 @@ class ModelRungSpec(BaseModel):
 
     rung_id: str
     kind: str
-    base_url_env: str
-    model_env: str
+    base_url_env: str | None = None
+    model_env: str | None = None
     api_key_env: str | None = None
+    # A rung reached through ``onex delegate`` pinned to a backend, running as a
+    # tenant that holds the provider key by reference (OMN-20974). It declares
+    # no endpoint, model or key of its own.
+    backend_id_env: str | None = None
+    tenant_env: str | None = None
+
+    @model_validator(mode="after")
+    def _one_way_to_reach_the_rung(self) -> ModelRungSpec:
+        if self.backend_id_env is not None:
+            if self.tenant_env is None:
+                raise ValueError(f"{self.rung_id}: a pinned rung names its tenant")
+            if self.api_key_env is not None:
+                raise ValueError(f"{self.rung_id}: a pinned rung holds no key")
+        elif self.base_url_env is None or self.model_env is None:
+            raise ValueError(f"{self.rung_id}: names no endpoint and no backend pin")
+        return self
 
 
 class ModelTransportResult(BaseModel):
@@ -34,6 +57,8 @@ class ModelTransportResult(BaseModel):
     text: str
     model_id: str
     latency_ms: int
+    tenant_id: str | None = None
+    credential_ref: str | None = None
 
 
 class ModelRungEvalCase(BaseModel):
@@ -72,6 +97,10 @@ class ModelRungEvalRow(BaseModel):
     latency_ms: int | None = None
     model_id: str | None = None
     detail: str
+    # The tenant that answered and the reference its key was read by, for a rung
+    # run as a tenant. A reference, never a value (OMN-20974).
+    tenant_id: str | None = None
+    credential_ref: str | None = None
 
 
 class ModelGrade(BaseModel):
