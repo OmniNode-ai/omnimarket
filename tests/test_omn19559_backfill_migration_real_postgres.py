@@ -247,6 +247,33 @@ async def test_backfill_is_idempotent() -> None:
         )
 
 
+# AC3's own read: the dev-lane count, as the dev-lane readback runs it.
+_AC3_CONTRADICTORY = (
+    "SELECT count(*) FROM delegation_events "
+    "WHERE terminal_ok IS FALSE AND operational_outcome = 'completed'"
+)
+_AC3_CONTROL = "SELECT count(*) FROM delegation_events WHERE terminal_ok IS FALSE"
+
+
+async def test_after_backfill_the_contradictory_count_is_zero() -> None:
+    """AC3's count on rows that all carry a cause: 0 after, with a live control."""
+    async with _migrated_schema() as (conn, schema):
+        await _seed(conn)
+        # Rows with no cause stay completed by design; AC3's count is over
+        # rows the projection marks failed, so drop them from this copy.
+        await conn.execute(
+            "DELETE FROM delegation_events "
+            "WHERE btrim(coalesce(terminal_failure_cause, '')) = ''"
+        )
+        assert await conn.fetchval(_AC3_CONTRADICTORY) == len(_CAUSES) + 2
+        control = await conn.fetchval(_AC3_CONTROL)
+
+        await _apply(conn, _BACKFILL, schema)
+
+        assert await conn.fetchval(_AC3_CONTRADICTORY) == 0
+        assert await conn.fetchval(_AC3_CONTROL) == control > 0
+
+
 async def test_rollback_restores_prior_values_and_drops_the_audit() -> None:
     async with _migrated_schema() as (conn, schema):
         await _seed(conn)
