@@ -1250,6 +1250,10 @@ class HandlerDelegateSkill:
         command message the OMN-18887 claim keys on, so two commands sharing a
         correlation yield terminals that differ in it. No bound delivery (a
         direct call) leaves it absent rather than substituting another id.
+
+        OMN-19437: the same place copies the command's ``trace_id`` and
+        ``span_id``, so every terminal path answers with the ids of the command
+        it answers. A command that carried none leaves them absent.
         """
         terminal = await self._dispatch_and_build_untagged_terminal(request)
         delivery = current_dispatch_envelope()
@@ -1259,6 +1263,8 @@ class HandlerDelegateSkill:
                 ("ticket_id", _request_ticket_id(request)),
                 ("caller_lane", _request_caller_lane(request)),
                 ("session_id", _request_session_id(request)),
+                ("trace_id", request.trace_id),
+                ("span_id", request.span_id),
                 ("command_id", None if delivery is None else delivery.envelope_id),
             )
             if value is not None

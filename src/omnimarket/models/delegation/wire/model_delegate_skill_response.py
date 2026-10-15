@@ -95,12 +95,11 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # longer listed here: the set holds only terminal keys still awaiting their own
 # declared field.
 #
-# OMN-19437 AC1, consumer half: the terminal will carry the trace and span ids of
-# the command that produced it. This release decodes and drops them; the field
-# declarations and the handler's copy follow once a release carrying this is out.
+# OMN-19437 AC1 declared ``trace_id`` and ``span_id`` as real terminal fields
+# below, so they are no longer listed here either.
 #
 # Response-source provenance is declared after its consumer-first release.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -696,6 +695,26 @@ class ModelDelegateSkillResponse(BaseModel):
             "Id of the delivering command message the terminal answers. A served "
             "replay keeps the id of the command it replays. Absent means the "
             "terminal was not produced for a bus delivery."
+        ),
+    )
+
+    # OMN-19437 AC1: the trace and span ids of the command that produced the
+    # terminal, copied by the handler from the command. Absent means the command
+    # carried none; an id is never minted here.
+    trace_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Trace id of the command the terminal answers. Absent means the "
+            "command carried none."
+        ),
+    )
+    span_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Span id of the command the terminal answers. Absent means the "
+            "command carried none."
         ),
     )
 
