@@ -43,6 +43,17 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_contract_lint_failure_writes_no_file tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_contract_lint_pass_still_writes_files -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn21151-deploy-lint-rejection"
+    description: "Hosted deploy probe: read both runtime handlers from GitHub at the evaluated commit and require the orchestrator's failed-lint guard and the reducer's lint-verdict join. Each probe fails on the parent revision, where its line is absent. This checks published source at the evaluated revision; the golden-chain pair above exercises rejection and file writes on the lab runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py" | grep -F "if not outcome.lint_passed:"'
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_codegen_outcome_reducer/handlers/handler_codegen_outcome_reducer.py" | grep -F "lint_passed=request.lint_status is EnumLintStatus.PASS,"'
+    binds_ac: ["AC1"]
   - id: "dod-omn21151-regressions"
     description: "The orchestrator, outcome-reducer, validator and mypy-effect suites still pass with the lint verdict carried end to end."
     source: "manual"
