@@ -4,10 +4,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Any, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    PrivateAttr,
+    model_validator,
+)
 
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
@@ -80,9 +89,36 @@ class ModelAnswerGateRequest(BaseModel):
     contract_gate: ModelQualityGateResult
     judge: ModelIndependentJudgeVerdict | None = None
     named_test_run: ModelNamedTestRun | None = None
-    #: OMN-17427: whether the request named tests. With none named and no run,
-    #: a code answer is UNTESTED rather than refused as INSUFFICIENT.
-    named_tests_requested: bool = False
+    # OMN-17427: whether the request named tests. With none named and no run,
+    # a code answer is UNTESTED rather than refused as INSUFFICIENT.
+    # Consumer first: v0.4.314 forbids the named_tests_requested wire key, so
+    # the value is decoded and retained for in-process callers, never emitted
+    # until a consumer carrying this decoder is released.
+    _named_tests_requested: bool = PrivateAttr(default=False)
+
+    @property
+    def named_tests_requested(self) -> bool:
+        """Whether the request named tests; not a wire field yet."""
+        return self._named_tests_requested
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _retain_named_tests_requested_without_emitting_it(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        if not isinstance(data, Mapping) or "named_tests_requested" not in data:
+            return handler(data)
+        requested = data["named_tests_requested"]
+        if not isinstance(requested, bool):
+            raise ValueError("named_tests_requested must be a bool")
+        return handler(
+            {k: v for k, v in data.items() if k != "named_tests_requested"}
+        ).retain_named_tests_requested(requested)
+
+    def retain_named_tests_requested(self, requested: bool) -> Self:
+        """Attach the in-process flag without changing the frozen wire fields."""
+        self._named_tests_requested = requested
+        return self
 
 
 __all__ = [

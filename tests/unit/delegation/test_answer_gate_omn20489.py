@@ -528,7 +528,7 @@ def test_code_answer_whose_named_tests_fail_is_rejected_and_escalates(
 
 
 def test_code_answer_with_named_tests_but_no_run_is_refused() -> None:
-    request = _code_request(None).model_copy(update={"named_tests_requested": True})
+    request = _code_request(None).retain_named_tests_requested(True)
     result = _GATE.handle(request)
     assert result.accepted is False
     assert result.tests_passed is False

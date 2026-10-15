@@ -3854,8 +3854,7 @@ class LocalDelegationDispatchPort:
                 contract_gate=gate_result,
                 judge=judge,
                 named_test_run=named_test_run,
-                named_tests_requested=named_tests_requested,
-            )
+            ).retain_named_tests_requested(named_tests_requested)
         )
         logger.info(
             "LocalDelegationDispatch: answer gate kind=%s accepted=%s judge=%s "

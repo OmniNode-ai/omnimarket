@@ -72,7 +72,7 @@ def _write_file(sandbox: Path, relative: str, content: str) -> None:
         handle = os.open(
             name,
             os.O_WRONLY | os.O_CREAT | os.O_TRUNC | nofollow,
-            0o644,
+            0o600,
             dir_fd=directory,
         )
     finally:

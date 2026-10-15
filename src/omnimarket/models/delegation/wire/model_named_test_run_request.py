@@ -16,9 +16,17 @@ import json
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Self
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    PrivateAttr,
+    TypeAdapter,
+    model_validator,
+)
 
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 
@@ -59,6 +67,11 @@ class ModelNamedTestFile(BaseModel):
         return self
 
 
+_TEST_FILES_ADAPTER: TypeAdapter[tuple[ModelNamedTestFile, ...]] = TypeAdapter(
+    tuple[ModelNamedTestFile, ...]
+)
+
+
 class ModelNamedTestSpec(BaseModel):
     """The tests a delegation names, the workspace they run in, and the answer file.
 
@@ -73,11 +86,6 @@ class ModelNamedTestSpec(BaseModel):
         min_length=1,
         description="Absolute path of the workspace to copy.",
     )
-    test_files: tuple[ModelNamedTestFile, ...] = Field(
-        default=(),
-        max_length=MAX_NAMED_TEST_FILES,
-        description="Test files the request carries, written into the sandbox.",
-    )
     answer_path: str = Field(
         ...,
         min_length=1,
@@ -90,10 +98,43 @@ class ModelNamedTestSpec(BaseModel):
         description="Workspace-relative pytest node ids, run one at a time.",
     )
 
+    # Test files the request carries, written into the sandbox (OMN-17427).
+    # Consumer first: v0.4.314 forbids the test_files wire key, so the files
+    # are decoded and retained for in-process callers, never emitted until a
+    # consumer carrying this decoder is released.
+    _test_files: tuple[ModelNamedTestFile, ...] = PrivateAttr(default=())
+
+    @property
+    def test_files(self) -> tuple[ModelNamedTestFile, ...]:
+        """The test files the request carries; not a wire field yet."""
+        return self._test_files
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _retain_test_files_without_emitting_them(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        if not isinstance(data, Mapping):
+            return handler(data)
+        test_files = _TEST_FILES_ADAPTER.validate_python(data.get("test_files", ()))
+        if len(test_files) > MAX_NAMED_TEST_FILES:
+            raise ValueError(
+                f"at most {MAX_NAMED_TEST_FILES} test files, got {len(test_files)}"
+            )
+        spec = handler({k: v for k, v in data.items() if k != "test_files"})
+        if spec.workspace_root is None and not test_files:
+            raise ValueError("named tests need a workspace_root or test_files")
+        if any(f.path == spec.answer_path for f in test_files):
+            raise ValueError("a test file cannot be written over answer_path")
+        return spec.retain_test_files(test_files)
+
+    def retain_test_files(self, test_files: tuple[ModelNamedTestFile, ...]) -> Self:
+        """Attach in-process test files without changing the frozen wire fields."""
+        self._test_files = test_files
+        return self
+
     @model_validator(mode="after")
     def _validate_paths(self) -> Self:
-        if self.workspace_root is None and not self.test_files:
-            raise ValueError("named tests need a workspace_root or test_files")
         if (
             self.workspace_root is not None
             and not PurePosixPath(self.workspace_root).is_absolute()
@@ -101,8 +142,6 @@ class ModelNamedTestSpec(BaseModel):
             raise ValueError("workspace_root must be an absolute path")
         if not _inside_workspace(self.answer_path):
             raise ValueError("answer_path must stay inside the workspace")
-        if any(f.path == self.answer_path for f in self.test_files):
-            raise ValueError("a test file cannot be written over answer_path")
         for test_id in self.test_ids:
             path = PurePosixPath(test_id.split("::", 1)[0])
             if not test_id.strip() or test_id.startswith("-"):
@@ -141,11 +180,13 @@ class ModelNamedTestSpec(BaseModel):
                 f"({NAMED_TESTS_WORKSPACE_METADATA_KEY} or the request's working "
                 f"directory) nor {NAMED_TESTS_FILES_METADATA_KEY} is set"
             )
-        return cls(
-            workspace_root=workspace or None,
-            test_files=test_files,
-            answer_path=answer_path,
-            test_ids=tuple(raw_tests),
+        return cls.model_validate(
+            {
+                "workspace_root": workspace or None,
+                "test_files": test_files,
+                "answer_path": answer_path,
+                "test_ids": tuple(raw_tests),
+            }
         )
 
 
