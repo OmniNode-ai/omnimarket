@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
+import stat
 from importlib import resources
+from pathlib import Path
 
 import pytest
 import yaml
@@ -24,6 +26,9 @@ from omnimarket.nodes.node_push_validation_effect import (
     EnumFocusedTestRunStatus,
     FocusedTestRunInfraError,
     ModelFocusedTestRunRequest,
+)
+from omnimarket.nodes.node_push_validation_effect.protocols import (
+    ephemeral_container_focused_run_subprocess as subprocess_module,
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.protocol_focused_test_run_client import (
     ModelContainerRunOutcome,
@@ -203,3 +208,43 @@ def test_scripts_find_docker_helpers_beside_the_docker_binary(
     client = LocalShellFocusedRunSubprocess()
     result = client._ssh('printf "%s" "$PATH"')
     assert result.stdout.decode().split(":")[0] == "/opt/dockerish/bin"
+
+
+def _fake_bin(tmp_path: Path, name: str, body: str) -> Path:
+    path = tmp_path / name
+    path.write_text(f"#!/bin/sh\n{body}\n")
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    return path
+
+
+def test_admission_reads_the_load_from_proc_on_a_linux_host(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A Linux lab host has no vm.loadavg sysctl; its one-minute load is the
+    # first field of /proc/loadavg (OMN-19458 AC2: h201 refused every run).
+    docker = _fake_bin(tmp_path, "docker", "exit 0")
+    _fake_bin(
+        tmp_path,
+        "sysctl",
+        "echo 'sysctl: cannot stat /proc/sys/vm/loadavg' >&2; exit 1",
+    )
+    proc = tmp_path / "loadavg"
+    proc.write_text("0.52 0.60 0.55 1/600 1234\n")
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    monkeypatch.setenv("ONEX_DTL_DOCKER_BIN", str(docker))
+    monkeypatch.setattr(subprocess_module, "PROC_LOADAVG", str(proc))
+    admission = LocalShellFocusedRunSubprocess().admission()
+    assert admission.load_one_minute == 0.52
+    assert admission.running_task_containers == 0
+
+
+def test_admission_reads_the_load_from_sysctl_where_proc_has_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    docker = _fake_bin(tmp_path, "docker", "exit 0")
+    _fake_bin(tmp_path, "sysctl", "echo '{ 1.25 1.50 1.75 }'")
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    monkeypatch.setenv("ONEX_DTL_DOCKER_BIN", str(docker))
+    monkeypatch.setattr(subprocess_module, "PROC_LOADAVG", str(tmp_path / "absent"))
+    admission = LocalShellFocusedRunSubprocess().admission()
+    assert admission.load_one_minute == 1.25
