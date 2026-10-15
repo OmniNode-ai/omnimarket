@@ -215,13 +215,18 @@ requirements:
         statement: "AC35: check-direct-model-call and topic-naming-lint run at the pre-push stage, with the direct-model-call --base taken from the merge base with origin/dev, and the ci.yml jobs that back them run on every pull request -- falsifier: uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
       - id: "AC36"
         statement: "AC36: the commit-stage public-repo-hygiene and deployment-config hooks are handed the staged paths, nothing else narrows them, .public-repo-hygiene.yaml still enforces added lines, and each has a whole-tree caller job -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+  - id: "req-morning-phases-lab-work"
+    statement: "The morning ground-state node refuses a phase sent as the unroutable agent_delegation class with a typed error naming the missing capability, and runs each phase as bus lab work instead."
+    acceptance:
+      - id: "AC37"
+        statement: "AC37: the delegation gateway raises MorningPhaseCapabilityPendingError naming agent_orchestration and its tracking before publishing anything, and the default gateway sends every phase as a lab work unit that needs a logged-in agent CLI, at the run's labWork repository and pushed sha, through a full in-memory bus cycle -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q fails at the merge base"
   - id: "req-superseded-run-cancel"
     statement: "A queued or in-progress CI run that a later push or a merge-queue exit left behind is cancelled from the run list and the queue read alone, one event per cancel, and a run on a PR's current head is never cancelled."
     acceptance:
-      - id: "AC37"
-        statement: "AC37: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
       - id: "AC38"
-        statement: "AC38: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
+        statement: "AC38: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
+      - id: "AC39"
+        statement: "AC39: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -314,7 +319,10 @@ evidence_requirements:
     description: "The commit-stage hygiene hooks take the staged paths and keep a whole-tree caller job."
     command: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
   - kind: "tests"
-    description: "AC37 and AC38: the superseded-run cancel node over a recorded GitHub, with negative controls for the current head and for an incomplete queue read."
+    description: "The morning phases refuse unroutable delegation with a typed error and run as bus lab work."
+    command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q"
+  - kind: "tests"
+    description: "AC38 and AC39: the superseded-run cancel node over a recorded GitHub, with negative controls for the current head and for an incomplete queue read."
     command: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
 emergency_bypass:
   enabled: false
@@ -597,6 +605,29 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC36"]
+  - id: "dod-omn17427-ac37-morning-phases-lab-work"
+    description: "The morning phases refuse unroutable delegation with a typed error and run as bus lab work."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]
+  - id: "dod-omn17427-ac37-agent-session-boundary"
+    description: "Morning lab units call the delegation effect's standalone agent handler, keep permission checks, join literal stdin chunks and propagate the agent exit status."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]
+  - id: "dod-omn17427-agent-session-deploy-probe"
+    description: "Deploy probe. GitHub serves the delegation effect's standalone agent handler at the checked-out HEAD with permission checks and standard-library imports. The content probe fails on the dispatch head, which has no handler there, and needs no pool or model on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_agent_session.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert "acceptEdits" in source and "bypassPermissions" not in source; assert all(n.module == "__future__" for n in tree.body if isinstance(n, ast.ImportFrom)); assert {a.name for n in tree.body if isinstance(n, ast.Import) for a in n.names} <= {"subprocess", "sys"}; assert any(isinstance(n, ast.FunctionDef) and n.name == "main" for n in tree.body); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerAgentSession" for n in tree.body); print("agent session deploy probe: PASS")'
   - id: "dod-omn17427-ac37-superseded-run-rule"
     description: "The supersede rule cancels runs behind a later PR head and runs out of the merge queue, and keeps every run on a PR's current head."
     source: "manual"
@@ -604,7 +635,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC37"]
+    binds_ac: ["AC38"]
   - id: "dod-omn17427-ac38-superseded-run-events"
     description: "One cancelled event per cancel; an unreadable run list or an incomplete queue read cancels nothing; a bus failure does not undo a cancel."
     source: "manual"
@@ -612,7 +643,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC38"]
+    binds_ac: ["AC39"]
   - id: "dod-omn17427-ac37-superseded-run-deploy-probe"
     description: "Deploy probe. The handler file GitHub serves at the checked-out commit defines HandlerSupersededRunCancel, the superseded-run cancel node this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
     source: "manual"

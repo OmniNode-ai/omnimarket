@@ -535,13 +535,6 @@ handler_routing:
       description: Recover a failed inner result after its outer runtime restarted.
 
 error_handling:
-  retry_policy:
-    max_retries: 1
-    initial_delay_ms: 1000
-    max_delay_ms: 5000
-    exponential_base: 2
-    retry_on:
-      - RuntimeDispatchTimeoutError
   error_types:
     - name: RuntimeDispatchTimeoutError
       description: Runtime did not respond within timeout

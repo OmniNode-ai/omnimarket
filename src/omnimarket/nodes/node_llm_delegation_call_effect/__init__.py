@@ -12,6 +12,9 @@ boundary, not a cross-node reach-in.
 
 from __future__ import annotations
 
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_agent_session import (
+    HandlerAgentSession,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     HandlerLlmDelegationCall,
     current_call_observer,
@@ -27,6 +30,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 )
 
 __all__ = [
+    "HandlerAgentSession",
     "HandlerLlmDelegationCall",
     "ModelLlmDelegationCallObservation",
     "ModelLlmDelegationCallRequest",
