@@ -15,7 +15,7 @@ import asyncio
 import inspect
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
@@ -42,6 +42,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
@@ -505,6 +506,34 @@ def _as_terminal_failure_cause(
     raise ValueError(msg)
 
 
+def _as_usage_source(value: object) -> EnumUsageSource | None:
+    """A rung's reported usage source, or None when it reported none.
+
+    OMN-20717. An unrecognised value is read as ``unknown`` rather than
+    dropped: the rung did report a source, and it was not a measured one.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return EnumUsageSource(str(value))
+    except ValueError:
+        return EnumUsageSource.UNKNOWN
+
+
+def _cost_measured(attempts: Sequence[ModelDelegateSkillAttemptRecord]) -> bool | None:
+    """Whether the delegation's cost was measured, from its rungs' sources.
+
+    OMN-20717 AC2. True when any rung's cost was measured; False when rungs
+    reported a source and none was measured, so the call was not priced and a
+    zero cost means unknown rather than free; None when no rung reported a
+    source, in which case the cost is taken as given.
+    """
+    sources = [a.usage_source for a in attempts if a.usage_source is not None]
+    if not sources:
+        return None
+    return any(source is EnumUsageSource.MEASURED for source in sources)
+
+
 def _measured_cost_usd(result: dict[str, object]) -> float:
     """Resolve total metered spend from canonical and compatibility shapes.
 
@@ -724,6 +753,7 @@ def _attempt_records(
                         else None
                     ),
                     cost_usd=_as_float(raw.get("cost_usd")),
+                    usage_source=_as_usage_source(raw.get("usage_source")),
                     failure_class=(
                         str(raw["failure_class"])
                         if raw.get("failure_class") is not None
@@ -760,6 +790,7 @@ def _attempt_records(
                     else None
                 ),
                 cost_usd=_as_float(raw.get("cost_usd")),
+                usage_source=_as_usage_source(raw.get("usage_source")),
                 failure_class=(
                     str(raw["failure_class"])
                     if raw.get("failure_class") is not None
@@ -1146,6 +1177,7 @@ def _response_from_result(
             tokens_to_compliance=_as_int(result.get("tokens_to_compliance")),
             compliance_attempts=_as_int(result.get("compliance_attempts")),
             cost_usd=actual_cost_usd,
+            cost_measured=_cost_measured(attempts),
             cost_savings_usd=cost_savings_usd,
             frontier_costs_usd=_frontier_cost_estimates(result),
             premium_counterfactual=_premium_counterfactual(

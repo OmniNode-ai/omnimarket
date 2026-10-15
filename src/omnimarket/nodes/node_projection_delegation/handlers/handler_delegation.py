@@ -66,6 +66,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _stamp_terminal_stop_reason,
     _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
+    _unpriced_cost_as_null,
     compute_generation_proof_fields,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
@@ -549,7 +550,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         written = await self._dynamic_upsert(
             table=self._table_delegation,
             conflict_key=_DELEGATION_ROW_KEY,
-            row=row,
+            row=_unpriced_cost_as_null(row),
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
             returning=tuple(

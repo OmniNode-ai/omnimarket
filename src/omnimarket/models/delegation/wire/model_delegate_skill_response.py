@@ -33,6 +33,7 @@ from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptK
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
@@ -135,6 +136,10 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     quality_gate_passed: bool = Field(...)
     quality_score: float | None = Field(default=None)
     cost_usd: float = Field(default=0.0, ge=0.0)
+    # OMN-20717: whether this rung's cost was measured, estimated or unknown,
+    # as the transport reported it. None when no source reached this record
+    # (a skipped rung, or a producer that does not report one).
+    usage_source: EnumUsageSource | None = Field(default=None)
     # OMN-19436: retain the provider's stop reason on each rung.
     finish_reason: EnumProviderFinishReason | None = Field(
         default=None,
@@ -359,6 +364,16 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     tokens_to_compliance: int = Field(default=0, ge=0)
     compliance_attempts: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0.0)
+    cost_measured: bool | None = Field(
+        default=None,
+        description=(
+            "OMN-20717: whether cost_usd was measured. True when at least one "
+            "attempt's cost was measured, False when attempts reported a usage "
+            "source and none was measured (the call was not priced, so a zero "
+            "cost_usd means unknown, not free). None when no attempt reported a "
+            "source; cost_usd is then taken as given."
+        ),
+    )
     cost_savings_usd: float | None = Field(default=None, ge=0.0)
     frontier_costs_usd: dict[str, float] = Field(default_factory=dict)
     premium_counterfactual: ModelPremiumCounterfactual | None = Field(

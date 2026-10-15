@@ -1900,6 +1900,8 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
+                        # OMN-20717: whether this rung's cost was measured.
+                        "usage_source": transport_result.usage_source.value,
                         "failure_class": (
                             transport_failure_class.value
                             if transport_failure_class is not None
@@ -2220,6 +2222,8 @@ class LocalDelegationDispatchPort:
                     "quality_score": gate_result.quality_score,
                     "error_message": "; ".join(gate_result.failure_reasons),
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-20717: whether this rung's cost was measured.
+                    "usage_source": result.usage_source.value,
                     # OMN-20154: the provider answered; a rung the gate did not
                     # accept is a quality-gate failure, typed as one.
                     "provider_id": _attempt_provider_id(backend.endpoint_ref),

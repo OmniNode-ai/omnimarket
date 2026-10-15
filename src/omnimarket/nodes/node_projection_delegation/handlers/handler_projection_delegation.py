@@ -581,7 +581,7 @@ class HandlerProjectionDelegation:
         written = db.upsert_returning(
             TABLE,
             CONFLICT_KEY,
-            row,
+            _unpriced_cost_as_null(row),
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
             returning=tuple(
@@ -2270,6 +2270,23 @@ def _preserve_terminal_failure(
 
 def _is_blank(value: object) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _unpriced_cost_as_null(row: dict[str, object]) -> dict[str, object]:
+    """Store an unpriced call's cost as NULL, never as 0 (OMN-20717 AC2).
+
+    A call is unpriced when its own measurement says so: cost_measurement_source
+    is ``no_cost_model`` (no tier cost model priced it) and the cost it carries
+    is zero. Every other row is returned unchanged, including a zero with any
+    other source -- a free local model's measured zero stays zero. Applied at
+    the one write to ``delegation_events``, after the preserve step, so a cost
+    already stored as non-zero is never replaced by NULL.
+    """
+    if row.get("cost_measurement_source") == "no_cost_model" and _is_zero(
+        row.get("cost_usd")
+    ):
+        return {**row, "cost_usd": None}
+    return row
 
 
 def _is_zero(value: object) -> bool:

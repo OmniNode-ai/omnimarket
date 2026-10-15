@@ -34,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20717-unpriced-cost-null-on-postgres"
+    description: "AC2 on Postgres (Jonah's ruling, 2026-10-14): with migration 0061 the column takes NULL, an unpriced call written by the real projection runner reads back as NULL on all three write paths (canonical terminal priced by no cost model, a row the verdict creates first, a delegate-skill terminal whose rungs measured no cost), a priced call and a free local call keep their costs, the backfill run by the table's non-superuser owner under FORCE ROW LEVEL SECURITY nulls only no_cost_model zero rows, and the token-usage aggregate sums priced calls only with the unpriced calls counted beside it. The unit test pins how the delegate-skill metrics decide the cost was measured."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20717_unpriced_cost_null_real_postgres.py tests/unit/delegation/test_omn20717_cost_measured_from_rungs.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
