@@ -219,6 +219,17 @@ async def test_real_postgres_0003_keeps_old_rows_and_the_writer_shares_out_each_
         assert set(keyed(await _write(conn, "c2", "gemini", "not_tier_routed"))) == set(
             await _day(conn)
         )
+        # A late mark: c3's publish sent its rows, but its mark lands only after c4 re-stamped the day. The old
+        # cursors no longer exist, so the mark changes nothing and c4's rows stay unsent for c4 to send.
+        await _write(conn, "c3", "qwen", "local")
+        sent_by_c3 = [v["projection_cursor"] for v in (await _day(conn)).values()]
+        await _write(conn, "c4", "qwen", "local")
+        await conn.execute(_scoped(_MARK_SENT), "t", date(2026, 10, 14), sent_by_c3)
+        restamped = await _day(conn)
+        assert not set(sent_by_c3) & {
+            v["projection_cursor"] for v in restamped.values()
+        }
+        assert set(keyed(await _write(conn, "c4", "qwen", "local"))) == set(restamped)
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
