@@ -68,7 +68,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/routing/test_no_gpt_oss_in_routing_config_omn19432.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
-  - id: "dod-omn19432-deploy-probe-answer-gate-model-families"
+  - id: "dod-omn19432-deploy-answer-gate-families"
     description: "Hosted deployment artifact readback: fetch the answer-gate runtime contract at the checked-out commit and require the GPT family to match only gpt-, without the retired gpt_oss or gpt-oss entries. Missing content, invalid YAML, a different node or the stale family list fails the command. This reads published source, not a running inference service."
     source: "manual"
     checks:
