@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19513"
+title: "Hook capture crosses the emit seam raw: no redaction and no hashing for hook.event and content.captured"
+summary: "Operator RULING 2026-10-15T04:24:42Z: captured content goes on the bus raw. The emit registry routes hook.event and content.captured with passthrough instead of redact_capture, and the claude_hook_events projection's wire model accepts a content reference that carries the raw value (field, value, length, content_record_id) and refuses the former digest shape. The projection's table schema is unchanged; storing text columns is a follow-up."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "claude_hook_capture hook.event content reference shape"
+requirements:
+  - id: "req-raw-on-the-bus"
+    statement: "hook.event and content.captured cross the emit seam untransformed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: both event types resolve to the passthrough transform -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_hook_event_capture_omn19513.py -q --no-cov -k untransformed fails against the pre-change registry"
+  - id: "req-projection-reads-raw-refs"
+    statement: "The claude_hook_events projection ingests an event whose content references carry raw values and refuses a digest reference."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a raw-value reference validates and projects one row, and a sha256 reference is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value fails against the pre-change wire model"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
+    command: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py tests/unit/nodes/node_event_emit_effect/ tests/test_golden_chain_projection_claude_hook_events.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19513-ac1-passthrough"
+    description: "AC1: hook.event and content.captured resolve to passthrough."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_hook_event_capture_omn19513.py -q --no-cov -k untransformed"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19513-ac2-raw-refs"
+    description: "AC2: the wire model takes the raw value and refuses the digest shape."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value"
+    binds_ac: ["AC2"]
