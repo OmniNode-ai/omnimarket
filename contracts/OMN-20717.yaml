@@ -42,3 +42,10 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn20717_unpriced_cost_null_real_postgres.py tests/unit/delegation/test_omn20717_cost_measured_from_rungs.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20717-deploy-probe-0061"
+    description: "Deploy probe: the 0061 migration GitHub serves at the checked-out commit backfills under the omn20717_unpriced_backfill helper policy; the file does not exist at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/migrations/0061_delegation_events_cost_usd_nullable.sql?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"DROP POLICY omn20717_unpriced_backfill ON delegation_events\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
