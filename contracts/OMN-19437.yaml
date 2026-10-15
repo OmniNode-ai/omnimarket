@@ -42,3 +42,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19437_terminal_trace_span.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19437-deploy-probe"
+    description: "Deploy probe. The delegate-skill handler at the checked-out commit copies the command's trace_id onto the terminal; the probe reads the file from GitHub at that commit and exits nonzero on a tree without the copy, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF '(\"trace_id\", request.trace_id)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
