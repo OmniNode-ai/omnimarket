@@ -815,26 +815,26 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     # but it is a *local* precondition for that one workflow's own next job,
     # not an independently required context — the actual required gate is
     # "repo-evidence / dod-verify" (L4, asserted).
-    ("auto-merge.yml", "occ-preflight"): (
+    ("auto-merge.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job (blocks this workflow's own "
         "auto-merge job until repo-evidence / dod-verify posts); not "
         "independently required — repo-evidence / dod-verify is the real "
         "gate and IS asserted (L4)."
     ),
-    ("dep-health-gate.yml", "occ-preflight"): (
+    ("dep-health-gate.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job (blocks this workflow's own "
         "dep-health job); not independently required — repo-evidence / "
         "dod-verify is the real gate and IS asserted (L4)."
     ),
-    ("market-skill-baseline.yml", "occ-preflight"): (
+    ("market-skill-baseline.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
-    ("plugin-compat-gate.yml", "occ-preflight"): (
+    ("plugin-compat-gate.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
-    ("validator-runtime-profiles.yml", "occ-preflight"): (
+    ("validator-runtime-profiles.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),

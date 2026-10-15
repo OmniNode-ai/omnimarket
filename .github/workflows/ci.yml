@@ -120,9 +120,11 @@ jobs:
       CROSS_REPO_PAT: ${{ secrets.CROSS_REPO_PAT }}
 
   # OMN-20073: repo-owned evidence admits runner-heavy PR validation.
-  # The legacy job key keeps downstream needs edges intact. OCC companion
-  # and queue gates remain enforced until the OR.2 cutover proof is complete.
-  occ-preflight:
+  # OMN-20074: the job key names the evidence it waits for. It keeps
+  # "preflight" in it because omnibase_core's shape-gate independence guard
+  # (job "Shape-Gate Independence (OMN-20298)" below) finds the preflight job
+  # by that word in its key; a key without it would hide this job from the guard.
+  repo-evidence-preflight:
     name: Repo Evidence Dependency
     runs-on: ubuntu-latest
     permissions:
@@ -230,7 +232,7 @@ jobs:
   # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
     with:
@@ -260,7 +262,7 @@ jobs:
   # required-check skip-vector guard analyse it as a required context (vector 2)
   # for no benefit — its verdict is only ever read by the poller.
   docs-only-marker:
-    needs: [occ-preflight, zone-filter]
+    needs: [repo-evidence-preflight, zone-filter]
     if: always() && needs.zone-filter.outputs.docs_only == 'true'
     name: Docs-Only Marker (OMN-16662)
     runs-on: ubuntu-latest
@@ -280,7 +282,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   lint:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -952,8 +954,8 @@ jobs:
             --commit-range "${BASE_SHA}..${HEAD_SHA}"
 
   typecheck:
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -994,8 +996,8 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -1061,7 +1063,7 @@ jobs:
 
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
-    needs: [occ-preflight, detect-changes]
+    needs: [repo-evidence-preflight, detect-changes]
     runs-on: ubuntu-latest
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
@@ -1544,8 +1546,8 @@ jobs:
   # ============================================================================
   integration-guard:
     name: Integration Silent-Skip Guard (OMN-14172)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     # Same Postgres service block as the Tests job (OMN-14167): a real broker so
     # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
@@ -1690,7 +1692,7 @@ jobs:
           retention-days: 7
 
   topic-naming-lint:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Topic Naming Lint
     runs-on: ubuntu-latest
@@ -1730,7 +1732,7 @@ jobs:
   # # onex-topic-allow annotation). Orphaned constants are drift violations.
   # ============================================================================
   topic-enum-drift:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Topic Enum Drift Check
     runs-on: ubuntu-latest
@@ -1760,7 +1762,7 @@ jobs:
   # --warn-only behaviour of the equivalent omnibase_infra check (OMN-5248).
   # ============================================================================
   topic-drift-check:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Topic Drift Check
     runs-on: ubuntu-latest
@@ -1809,7 +1811,7 @@ jobs:
 
   # OMN-20298: a shape-gate detector runs on every PR, whatever the change-control
   # preflight says. This job has no `needs:` and no `if:`, and it refuses any
-  # detector job that comes back behind occ-preflight or reads its result.
+  # detector job that comes back behind the preflight job or reads its result.
   # The guard lives in omnibase_core (PR 1833) and is pinned by commit; there is
   # no baseline, allowlist or suppression for it. STRICT CI Summary gate
   # (scripts/ci/ci_summary_gate.py STRICT_GATE_JOBS). SYNC with the pre-commit
@@ -2049,7 +2051,7 @@ jobs:
           PY
 
   event-registry-drift:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Event Registry Drift
     runs-on: ubuntu-latest
@@ -2088,7 +2090,7 @@ jobs:
   # PR merges (the PR fixing 96 broken entry points).
   # ============================================================================
   runtime-sweep:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Runtime Sweep
     runs-on: ubuntu-latest
@@ -2121,7 +2123,7 @@ jobs:
   # scope can never be reported clean (the class defect this gate closes).
   # ============================================================================
   compliance-sweep:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Compliance Sweep
     runs-on: ubuntu-latest
@@ -2159,7 +2161,7 @@ jobs:
   # Required via the ci-summary aggregator (Rule 5: enforcement, not detection).
   # ============================================================================
   core-only-install:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Core-Only Install Gate
     runs-on: ubuntu-latest
@@ -2208,7 +2210,7 @@ jobs:
   # (rule 5: enforcement, not detection).
   # ============================================================================
   customer-clean-install:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Customer Clean-Install Delegate Gate
     runs-on: ubuntu-latest
@@ -2245,7 +2247,7 @@ jobs:
   # Required via the ci-summary aggregator.
   # ============================================================================
   sibling-release-compat:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Sibling Release Compatibility Gate (OMN-20381)
     runs-on: ubuntu-latest
@@ -2502,8 +2504,8 @@ jobs:
 
   e2e-workflow-runner:
     name: E2E Workflow Runner (inmemory bus)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -2596,8 +2598,8 @@ jobs:
 
   golden-chains:
     name: Golden Chain Suite (inmemory bus)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2632,8 +2634,8 @@ jobs:
   # ============================================================================
   event-chain-generation:
     name: Generated Event Chains (walker paths)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2664,8 +2666,8 @@ jobs:
 
   sea-e2e-chains:
     name: SEA E2E Acceptance + Error Chains (OMN-12660)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2710,8 +2712,8 @@ jobs:
 
   generated-node-golden-chain:
     name: Generated-Node Golden Chain Gate (OMN-13624)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2770,7 +2772,7 @@ jobs:
   # on nothing else -- CI is the only place it can tell the truth (OMN-14447).
   # ============================================================================
   uv-lock-pin-reachability:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: uv.lock Pin Reachability
     runs-on: ubuntu-latest
@@ -2808,7 +2810,7 @@ jobs:
             --clones-root "${RUNNER_TEMP}/clones"
 
   dep-health:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Dependency Health Gate
     runs-on: ubuntu-latest
@@ -2861,10 +2863,10 @@ jobs:
   # its validate-yaml over that repository's contracts, never this one's. The step
   # body is the same as contract-validation.yml's "Run contract validation".
   contract-compliance:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     name: Contract Compliance Check
     runs-on: ubuntu-latest
-    if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
+    if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
@@ -2935,7 +2937,7 @@ jobs:
   # --strict so any NEW violation fails closed.
   # ============================================================================
   contract-sweep-gate:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Contract Sweep Gate
     runs-on: ubuntu-latest
@@ -2973,7 +2975,7 @@ jobs:
   # across repos rather than forking a second omnimarket-local copy.
   # ============================================================================
   aislop-sweep:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Aislop Sweep (strict, PR diff)
     runs-on: ubuntu-latest
@@ -3044,7 +3046,7 @@ jobs:
   # tests/unit/scripts/ci/test_ci_summary_gate.py::test_draft_gate_still_fails_closed_without_marker.
   # ============================================================================
   coverage-sweep-gate:
-    needs: [occ-preflight, zone-filter, detect-changes, test]
+    needs: [repo-evidence-preflight, zone-filter, detect-changes, test]
     if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft) && needs.zone-filter.outputs.docs_only != 'true'
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
@@ -3109,7 +3111,7 @@ jobs:
   # sync. SYNC with pre-commit hook "workflow-module-refs".
   # ============================================================================
   workflow-module-refs:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Workflow Module Resolution
     runs-on: ubuntu-latest
@@ -3826,7 +3828,7 @@ jobs:
     # #1397 / omnibase_infra #2230 / omniclaude #1870 — omnimarket was the last
     # `needs`-gated ci-summary on the fleet). A `needs`-gated job gets no
     # check-run until its `needs` terminalize, so under self-hosted fleet
-    # saturation the old needs-based CI Summary (needs: [occ-preflight,
+    # saturation the old needs-based CI Summary (needs: [<preflight job>,
     # zone-filter, lint, ...28 upstream jobs]) was ABSENT forever and the PR
     # wedged BLOCKED with no auto-recovery. With NO `needs` this job's check-run
     # instantiates immediately (the required context can never be absent); it

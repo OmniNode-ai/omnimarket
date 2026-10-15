@@ -22,7 +22,7 @@ concurrency:
 
 
 jobs:
-  occ-preflight:
+  repo-evidence-preflight:
     name: Repo Evidence Dependency
     runs-on: ubuntu-latest
     permissions:
@@ -128,7 +128,7 @@ jobs:
           echo "::error::Timed out waiting for repo-evidence / dod-verify on ${HEAD_SHA}."
           exit 1
   dep-health:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     name: dep-health / scan
     runs-on: ubuntu-latest
     steps:

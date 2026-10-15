@@ -90,7 +90,7 @@ gates:
     workflow: ci.yml
     job_path: ["contract-compliance"]
     skip_semantics: neutral_ok
-    rationale: "KNOWN FINDING (OMN-14857 guard fan-out build): job 'contract-compliance' in ci.yml has a job-level `if:` that explicitly re-checks needs.occ-preflight.result inside the condition (vector-2), same shape as omniclaude's 'Architecture Handshake'/'Cross-Repo Boundary Parity' findings (OMN-14856). skip_semantics: neutral_ok pending triage in OMN-14861."
+    rationale: "KNOWN FINDING (OMN-14857 guard fan-out build): job 'contract-compliance' in ci.yml has a job-level `if:` that explicitly re-checks needs.repo-evidence-preflight.result inside the condition (vector-2), same shape as omniclaude's 'Architecture Handshake'/'Cross-Repo Boundary Parity' findings (OMN-14856). skip_semantics: neutral_ok pending triage in OMN-14861."
 
   - name: "lint"
     mode: REQUIRED
