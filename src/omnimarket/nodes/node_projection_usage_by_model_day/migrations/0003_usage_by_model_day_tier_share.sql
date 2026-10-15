@@ -11,11 +11,16 @@
 -- this migration reads call_share NULL, not computed, until its day takes a new
 -- call, as migration 0002 leaves measured_cost_usd: a backfill here would run
 -- under the table's forced row security and update nothing for this role.
+-- published_cursor is the projection_cursor the writer last confirmed it sent for
+-- the row; a replayed call sends only rows where the two differ. It is not served.
+-- A row stored before this migration reads NULL, so a replay of an older call
+-- sends that row once more.
 -- Re-runnable: each step checks what it changes.
 
 ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed';
 ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed';
 ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS call_share DOUBLE PRECISION CHECK (call_share >= 0 AND call_share <= 1);
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS published_cursor BIGINT;
 
 DO $$
 BEGIN

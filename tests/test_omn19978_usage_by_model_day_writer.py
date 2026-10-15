@@ -111,8 +111,13 @@ async def test_publishes_database_row_only_after_transaction_commit(
 
     writer.publish_snapshot_delta.side_effect = published
     assert await writer.project_event(writer.topics[0], _payload(), _meta(writer))
-    db.pool.acquire.assert_called_once()
-    conn.transaction.assert_called_once()
+    # One transaction writes the call, recount and shares; after the publish a second (OMN-21015) marks the sent
+    # row at the cursor it went out with. A connection per statement would show more than two.
+    assert db.pool.acquire.call_count == 2
+    assert conn.transaction.call_count == 2
+    mark = conn.execute.await_args_list[-1].args
+    assert "SET published_cursor = projection_cursor" in " ".join(str(mark[0]).split())
+    assert list(mark[3]) == [42]
     conn.execute.assert_any_await(
         "SELECT set_config($1, $2, true)", TENANT_GUC, "tenant-1"
     )
@@ -156,11 +161,11 @@ def test_the_recount_sums_only_measured_cost_and_counts_the_rest() -> None:
     assert "unmeasured_call_count = EXCLUDED.unmeasured_call_count" in sql
 
 
-async def test_duplicate_skips_recount_and_resends_only_stored_rows(
+async def test_duplicate_skips_recount_and_sends_only_unsent_rows(
     writer_boundary,
 ) -> None:
-    # OMN-21015: a duplicate is not recounted, but the day's stored rows are sent again, so a publish that
-    # stopped part-way heals on the replay. Here the store holds no row for the day, so nothing is sent.
+    # OMN-21015: a duplicate is not recounted; it sends only the day's rows not yet marked sent, so a publish that
+    # stopped part-way heals on the replay. Here every row was sent, so nothing is sent again.
     writer, _, conn = writer_boundary
     conn.fetch.return_value = []
     assert await writer.project_event(writer.topics[0], _payload(), _meta(writer))
@@ -168,7 +173,7 @@ async def test_duplicate_skips_recount_and_resends_only_stored_rows(
     assert len(reads) == 2
     assert reads[0].startswith("INSERT INTO public.usage_by_model_day_calls")
     assert reads[1].startswith("SELECT")
-    assert "UPDATE" not in reads[1]
+    assert "published_cursor IS DISTINCT FROM projection_cursor" in reads[1]
     assert not [c for c in conn.execute.await_args_list if "GROUP BY" in str(c.args[0])]
     writer.publish_snapshot_delta.assert_not_awaited()
 
