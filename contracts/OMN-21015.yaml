@@ -19,7 +19,7 @@ evidence_requirements:
     description: "Served through the real local dashboard app over a SQLite store: two models in one tier are two entries; model shares on the tier's denominator sum to the tier's share; a group with no cost serves null with its unmeasured count; a measured zero is zero; another tenant never enters; the existing tier keys are unchanged. Before the store step 5 of the 6 fail."
     command: "uv run pytest tests/projection/test_omn21015_tier_models_served.py -q -p no:randomly"
   - kind: "tests"
-    description: "Migration 0060 applied with every node_projection_delegation migration on real Postgres: the same entries, shares and costs; the column cost_usd refuses NULL there, so the unmeasured count reads 0 (pinned); another tenant never enters; existing keys and security_invoker unchanged. Without 0060, 5 of the 7 fail."
+    description: "Migration 0060 applied with every node_projection_delegation migration on real Postgres: the same entries, shares and costs; with cost_usd made nullable in the test's own schema, as OMN-20717's 0061 does, a group with no cost serves null with its unmeasured count and a mixed group sums only its measured cost; another tenant never enters; existing keys and security_invoker unchanged. Without 0060, 5 of the 7 fail."
     command: "uv run pytest tests/test_omn21015_tier_models_real_postgres.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
@@ -35,7 +35,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21015-tier-models-real-postgres"
-    description: "Migration 0060 applied with every node_projection_delegation migration to a scratch schema on real Postgres: the same model entries, shares and summed costs per tier; the view keeps security_invoker; another tenant never enters; and cost_usd refuses NULL on Postgres, so an unpriced run cannot be told from a measured zero there (pinned, so making the column nullable is noticed)."
+    description: "Migration 0060 applied with every node_projection_delegation migration to a scratch schema on real Postgres: the same model entries, shares and summed costs per tier; the view keeps security_invoker; another tenant never enters; and with cost_usd made nullable in the test's own schema, as OMN-20717's 0061 does, a run with no cost is counted as unmeasured, never summed as 0."
     source: "manual"
     checks:
       - check_type: "test_passes"
