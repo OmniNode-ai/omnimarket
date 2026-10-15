@@ -118,3 +118,6 @@ class ModelMissingNight(BaseModel):
     rung_id: str
     task_class: str
     case_id: str
+    # "no row" when the cell is absent; "unresolved: <detail>" when the only row
+    # is a placeholder for a rung that was never called.
+    reason: str = "no row"

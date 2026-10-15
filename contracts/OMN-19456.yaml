@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19456"
+title: "A nightly per-rung eval runs each case pinned to each configured rung and writes one verdict row per rung and task class"
+summary: "The nightly rung eval's missing-night report now names a rung that was never called. A night whose only rows for a rung are `unresolved` placeholders (its endpoint or backend environment unset) reads as a gap with the row's detail, so planner-200 or cloud-openrouter without a configured environment can no longer read as a complete night. A rung that was called and failed (`error`) stays a row. Not in this change: the host-local environment for planner-200 on the lab host that runs the timer, and a live night whose table holds a called row for every configured rung; both are host configuration and need a night to pass."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-per-rung-rows"
+    statement: "Each case is pinned to each configured rung and one row per rung, task class and night is written, including for a rung that cannot be reached."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a scheduled runner pins each case to each configured rung (the two local lab rungs, the planner and the cloud rungs) and writes one row per rung, task class and night to a table -- falsifier: a night with no row for a configured rung"
+  - id: "req-admission-fixtures"
+    statement: "The second local rung's admission fixtures are committed in omnimarket and load as the nightly's cases."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the second local rung's admission fixtures are committed and run each night -- falsifier: a grep of omnimarket dev for the fixture set returns nothing"
+  - id: "req-missing-night-report"
+    statement: "A gap in the nightly window is reported, and a rung that was never called is a gap."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: a missing night is reported the next morning -- falsifier: a pytest over the missing-night detector with a planted gap asserting it is reported"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1, AC2 and AC3 in one focused test file."
+    command: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19456-ac1-row-per-rung"
+    description: "AC1: every configured rung and case gets a row, a rung reached through a backend pin is a rung, and an unreachable rung records unresolved or error rather than no row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py -k 'every_rung_and_case_gets_a_row or rungs_config_names_every_configured_rung or unresolved_rung_is_reported' -q -p no:randomly --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19456-ac2-admission-fixtures"
+    description: "AC2: the two admission fixtures are committed under the rung_eval package and load as the nightly's cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py -k admission_fixtures_are_committed -q -p no:randomly --no-cov"
+      - check_type: "command"
+        check_value: "git grep -l -e pr_classification_37 -e m4_ticket_grouping_29 HEAD -- src/omnimarket/delegation/rung_eval/fixtures"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19456-ac3-missing-night-report"
+    description: "AC3: the detector reports a planted gap, a placeholder-only rung and an absent night, and keeps an error row as a row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py -k 'missing_night or unresolved_rung or error_row or absent_cell or complete_window' -q -p no:randomly --no-cov"
+    binds_ac: ["AC3"]
