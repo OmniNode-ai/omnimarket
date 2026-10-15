@@ -42,13 +42,23 @@ from omnimarket.nodes.node_delegated_test_control_compute import (
     ModelControlGradeRequest,
     grade_control,
 )
-from omnimarket.nodes.node_delegated_test_control_compute.models.model_delegated_test_control import (
-    RunOutcome,
-)
 from omnimarket.nodes.node_pytest_failure_digest_compute import (
     ModelPytestRunReport,
     digest_pytest_run,
 )
+
+# The control grade request's outcome vocabulary, restated here as plain
+# strings on purpose (the owning node's own pattern): a node does not import
+# another node's models, so the cross-node reach-in gate stays clean while the
+# values remain pinned by the control's own tests.
+RunOutcome = Literal[
+    "passed",
+    "failed_call",
+    "failed_collection",
+    "error_setup",
+    "no_tests",
+    "infra_error",
+]
 
 _TIMEOUT_SECONDS = 120
 

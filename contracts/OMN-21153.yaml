@@ -43,7 +43,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The effect unit tests pinning the three control outcomes, and the golden-chain pinned pair (stub mutant rejected with no files, real handler accepted and written)."
-    command: "uv run pytest tests/nodes/node_codegen_handler_test_effect tests/nodes/node_hybrid_codegen_orchestrator -q"
+    command: "uv run pytest tests/nodes/node_codegen_handler_test_effect/test_handler_codegen_handler_test.py tests/nodes/node_hybrid_codegen_orchestrator -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -61,14 +61,14 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_codegen_handler_test_effect -q"
+        check_value: "uv run pytest tests/nodes/node_codegen_handler_test_effect/test_handler_codegen_handler_test.py -q"
     binds_ac: ["AC2"]
   - id: "dod-omn21153-regressions"
     description: "The orchestrator, reducer, file-writer, validator and mypy-effect suites still pass with the new phase wired end to end, including the runtime boot through wire_from_manifest."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_handler_test_effect tests/nodes/node_codegen_outcome_reducer tests/nodes/node_codegen_file_writer_effect tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_handler_test_effect/test_handler_codegen_handler_test.py tests/nodes/node_codegen_outcome_reducer tests/nodes/node_codegen_file_writer_effect tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
   - id: "dod-omn21153-deploy-handler-acceptance"
     description: "Deploy probe: read the orchestrator source at the checked-out commit from GitHub and require both contract-lint rejection and handler-test acceptance before writing. The base lacks the handler-test stage and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
     source: "manual"
