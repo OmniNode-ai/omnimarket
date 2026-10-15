@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """OMN-21015 AC4 on real Postgres: migration 0003 and the writer's tier recount and per-day shares.
 
-The writer's statements have no Python branch, so only a real database proves them. SKIPS without a reachable
-database and uses its own throwaway schema, like the OMN-19978 proof. It connects as whatever role the environment
+The writer's statements have no Python branch, so only a real database proves them. It connects through the
+OMN-19978 proof's _connect_or_skip, which reads the INTEGRATION_POSTGRES_* DSN, SKIPS without a reachable database,
+and uses its own throwaway schema. It connects as whatever role the environment
 gives; as a superuser that role bypasses row security, so this proves the SQL, not the writer role's view of it.
 
 Failure modes:
@@ -11,7 +12,9 @@ P1  0003 drops or rewrites a row stored before it, or cannot run twice;
 P2  0003 leaves the three-column key, so one model under two tiers on one day cannot be two rows;
 P3  the writer's recount folds two tiers of one model into one row;
 P4  the shares of a day are stale after a call, do not sum to 1, or count another tenant's or day's calls;
-P5  a row whose share moved keeps its cursor, so a reader walking by cursor never sees the new share.
+P5  a row whose share moved keeps its cursor, so a reader walking by cursor never sees the new share;
+P6  a replayed call returns nothing to send, or rows other than the day's stored ones, so a publish that stopped
+    part-way never heals (the writer re-sends what this read returns).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
     _INSERT_CALL,
+    _READ_DAY,
     _RECOUNT_AGGREGATE,
     _RESHARE_DAY,
 )
@@ -52,7 +56,7 @@ async def _write(
     tenant: str = "t",
     day: str = "2026-10-14",
 ) -> list:
-    """The writer's three statements, in its order, on one connection and transaction."""
+    """The writer's statements, in its order, on one connection and transaction."""
     delta = HandlerProjectionUsageByModelDay().handle(
         ModelUsageCallEvent.model_validate(
             {
@@ -84,7 +88,9 @@ async def _write(
             delta.usage_source.value,
         )
         if not inserted:
-            return []
+            return list(
+                await conn.fetch(_scoped(_READ_DAY), delta.tenant_id, usage_day)
+            )
         await conn.execute(
             _scoped(_RECOUNT_AGGREGATE),
             delta.tenant_id,
@@ -169,13 +175,23 @@ async def test_real_postgres_0003_keeps_old_rows_and_the_writer_shares_out_each_
         assert min(v["projection_cursor"] for v in day.values()) > old_max
         assert {(r["model_id"], r["cost_tier_name"]) for r in returned} == set(day)
 
-        # Another tenant's and another day's calls never enter this day's shares; a replay changes nothing.
+        # Another tenant's and another day's calls never enter this day's shares; a replay changes nothing
+        # and returns the day's rows exactly as stored (P6).
         await _write(conn, "o1", "qwen", "local", tenant="other")
         await _write(conn, "d1", "qwen", "local", day="2026-10-13")
-        assert await _write(conn, "c1", "qwen", "local") == []
-        assert {k: v["call_share"] for k, v in (await _day(conn)).items()} == {
+        replayed = await _write(conn, "c1", "qwen", "local")
+        stored = await _day(conn)
+        assert {k: v["call_share"] for k, v in stored.items()} == {
             k: v["call_share"] for k, v in day.items()
         }
+        assert {
+            (r["model_id"], r["cost_tier_name"]): (
+                r["call_share"],
+                r["projection_cursor"],
+            )
+            for r in replayed
+        } == {k: (v["call_share"], v["projection_cursor"]) for k, v in stored.items()}
+        assert len(replayed) == len(stored)
         assert (await _day(conn, day="2026-10-13"))[("qwen", "local")][
             "call_share"
         ] == pytest.approx(1.0)

@@ -156,11 +156,20 @@ def test_the_recount_sums_only_measured_cost_and_counts_the_rest() -> None:
     assert "unmeasured_call_count = EXCLUDED.unmeasured_call_count" in sql
 
 
-async def test_duplicate_skips_recount_and_snapshot(writer_boundary) -> None:
+async def test_duplicate_skips_recount_and_resends_only_stored_rows(
+    writer_boundary,
+) -> None:
+    # OMN-21015: a duplicate is not recounted, but the day's stored rows are sent again, so a publish that
+    # stopped part-way heals on the replay. Here the store holds no row for the day, so nothing is sent.
     writer, _, conn = writer_boundary
     conn.fetch.return_value = []
     assert await writer.project_event(writer.topics[0], _payload(), _meta(writer))
-    conn.fetch.assert_awaited_once()
+    reads = [" ".join(str(c.args[0]).split()) for c in conn.fetch.await_args_list]
+    assert len(reads) == 2
+    assert reads[0].startswith("INSERT INTO public.usage_by_model_day_calls")
+    assert reads[1].startswith("SELECT")
+    assert "UPDATE" not in reads[1]
+    assert not [c for c in conn.execute.await_args_list if "GROUP BY" in str(c.args[0])]
     writer.publish_snapshot_delta.assert_not_awaited()
 
 

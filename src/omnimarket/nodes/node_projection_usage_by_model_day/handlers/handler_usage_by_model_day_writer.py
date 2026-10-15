@@ -85,6 +85,18 @@ _RESHARE_DAY = """
               agg.call_share, agg.updated_at, agg.projection_cursor
 """
 
+# A replayed call is already stored, but the publish after its commit may have
+# stopped part-way, leaving readers with shares from two counts. Its replay sends
+# the day's rows again exactly as stored, so readers converge on one count.
+_READ_DAY = """
+    SELECT tenant_id, usage_day, model_id, cost_tier_name, input_tokens,
+           output_tokens, cost_usd, measured_cost_usd, unmeasured_call_count,
+           call_count, call_share, updated_at, projection_cursor
+    FROM public.usage_by_model_day
+    WHERE tenant_id = $1 AND usage_day = $2
+    ORDER BY projection_cursor
+"""
+
 
 def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -201,18 +213,21 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                 delta.cost_tier_name,
                 delta.usage_source.value,
             )
-            if not inserted:
-                return None
-            await conn.execute(
-                _RECOUNT_AGGREGATE,
-                delta.tenant_id,
-                usage_day,
-                delta.model_id,
-                delta.cost_tier_name,
-            )
+            if inserted:
+                await conn.execute(
+                    _RECOUNT_AGGREGATE,
+                    delta.tenant_id,
+                    usage_day,
+                    delta.model_id,
+                    delta.cost_tier_name,
+                )
             day = [
                 _wire_row(dict(r))
-                for r in await conn.fetch(_RESHARE_DAY, delta.tenant_id, usage_day)
+                for r in await conn.fetch(
+                    _RESHARE_DAY if inserted else _READ_DAY,
+                    delta.tenant_id,
+                    usage_day,
+                )
             ]
         if self._snapshot_exposure is not None:
             for day_row in day:
@@ -226,6 +241,8 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
                     source_offset=meta.offset,
                     tenant_id=delta.tenant_id,
                 )
+        if not inserted:
+            return None
         return next(
             r
             for r in day

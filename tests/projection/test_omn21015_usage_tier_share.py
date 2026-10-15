@@ -316,3 +316,50 @@ async def test_u9_the_writer_locks_the_tenants_day_recounts_the_tier_and_republi
         for c in writer.publish_snapshot_delta.await_args_list
     ]
     assert published == [("qwen", "local"), ("gemini", "cheap_cloud")]
+
+
+async def test_u10_a_replay_republishes_the_day_after_a_publish_that_stopped_part_way() -> (
+    None
+):
+    """U10: the day's rows are published one by one after commit. If the broker fails part-way, readers hold
+    shares from two different counts; the replay of the same call finds it stored and must send the day's
+    rows again, unchanged, instead of returning with nothing published."""
+    writer, conn = _writer_boundary()
+    day = [_day_row("qwen", "local", 7), _day_row("gemini", "cheap_cloud", 8)]
+    payload = {
+        "call_id": "w1",
+        "model_id": "qwen",
+        "tenant_id": _TENANT,
+        "cost_tier_name": "local",
+        "created_at": "2026-10-14T05:00:00Z",
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cost_usd": 0.0,
+    }
+    meta = MessageMeta(topic=writer.topics[0], partition=0, offset=1, fallback_id="f")
+    conn.fetch.side_effect = [[{"call_id": "w1"}], day]
+    writer.publish_snapshot_delta = AsyncMock(
+        side_effect=[None, RuntimeError("broker")]
+    )
+    with pytest.raises(RuntimeError, match="broker"):
+        await writer.project_event(writer.topics[0], payload, meta)
+
+    conn.execute.reset_mock()
+    conn.fetch.reset_mock()
+    conn.fetch.side_effect = [[], day]
+    writer.publish_snapshot_delta = AsyncMock()
+    await writer.project_event(writer.topics[0], payload, meta)
+
+    published = [
+        (c.kwargs["row"]["model_id"], c.kwargs["row"]["projection_cursor"])
+        for c in writer.publish_snapshot_delta.await_args_list
+    ]
+    assert published == [("qwen", 7), ("gemini", 8)]
+    # The replay changes nothing stored: no recount, and the second read is a plain read of the day.
+    statements = [
+        " ".join(str(c.args[0]).split()) for c in conn.execute.await_args_list
+    ]
+    assert not [sql for sql in statements if "GROUP BY" in sql]
+    reads = [" ".join(str(c.args[0]).split()) for c in conn.fetch.await_args_list]
+    assert reads[1].startswith("SELECT")
+    assert "UPDATE" not in reads[1]
