@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-closeout-zero-flip-alert"
+    statement: "The DoD closeout sweep's completion decision returns a zero-flip alert event when it has flipped nothing for N consecutive runs while tickets are deferred, N declared in its contract."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: node_dod_closeout_sweep_compute completion returns a typed zero-flip alert, carried on its terminal event, once the zero-flip streak reaches the contract-declared zero_flip_threshold_runs while tickets are deferred, and none otherwise -- falsifier: tests/test_omn21146_zero_flip_alert.py fails, or a threshold literal remains in the node's Python"
   - id: "req-gateway-answers-both-reads"
     statement: "The GitHub gateway node answers a check-runs-at-commit request and a merged-PR-by-number request with typed results."
     acceptance:
@@ -18,6 +23,11 @@ requirements:
         statement: "AC2: node_dod_verify issues no gh subprocess for PR facts or check-runs -- falsifier: a test that installs a gh stub which fails on any call sees it called during a verify of a ticket whose PRs are outside the watcher window"
       - id: "AC3"
         statement: "AC3: on a lab host with the gh shim, dod_verify for OMN-19401 (PRs merged 2026-10-08 and 2026-10-10) reaches a verdict other than REPO_CONTRACT_UNRESOLVED -- falsifier: the lab run's receipt reads REPO_CONTRACT_UNRESOLVED or error_github_api"
+  - id: "req-repo-evidence-caller-merged-fix-repin"
+    statement: "omnimarket's Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable whose Binds-Merged-Fix control does not revert contract files as product paths, so a pull request that binds an already-merged fix whose contract the base has since amended gets a verdict instead of a control that cannot run."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at 4d16322dae9d62f96089b93421a768fb8dd8c8fe (omnibase_core#1986) and keeps its job id and inputs -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q fails at the merge base, where the caller pins 4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the gateway's read tests for commit_check_runs and merged_pr, and the onex scm verbs that publish them."
@@ -25,11 +35,21 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2 and AC3: a verify of a ticket whose PRs merged outside the watcher window, with a gh on PATH that fails on any call."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_reads_through_gateway.py tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC4: the caller's reusable pin and inputs."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21146-zero-flip-alert"
+    description: "node_dod_closeout_sweep_compute completion returns a typed zero-flip alert, carried on its terminal event, once the zero-flip streak reaches the contract-declared zero_flip_threshold_runs input while tickets are deferred; no threshold literal remains in the node's Python."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21146_zero_flip_alert.py tests/test_closeout_completion.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC5"]
   - id: "dod-omn21146-ac1-gateway-operations"
     description: "AC1: the gateway reads a commit's check runs (paged, filtered by name) and one PR's merge facts, and the commit-check-runs and pr-merged verbs publish them on the gateway's command topic and return the terminal result."
     source: "manual"
@@ -65,3 +85,10 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'from omnimarket.models.model_github_gateway_io import (' > /dev/null
+  - id: "dod-omn21146-ac4-caller-repin"
+    description: "AC4: the Repo Evidence Gate caller pins the omnibase_core receipt-gate at omnibase_core#1986 and no longer at the omnibase_core#1932 pin whose merged-fix control reverts contract files."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC4"]

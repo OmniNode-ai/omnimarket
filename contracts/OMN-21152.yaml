@@ -52,6 +52,9 @@ dod_evidence:
     description: "Hosted deploy probe: read the runtime orchestrator handler from GitHub at the evaluated commit and require the canonical package writer it introduces. The probe fails on the parent revision, where the symbol is absent. This checks published source at the evaluated revision; the runtime-boot test above exercises the generated package through the real contract loader and provenance gate."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py::test_start_command_reaches_completed_with_files_on_disk -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py" | grep -F "GENERATED_PACKAGE_ROOT"'

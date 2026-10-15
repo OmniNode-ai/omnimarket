@@ -17,11 +17,11 @@ from dataclasses import dataclass
 
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
     EnumCloserHealth,
+    ModelDodCloseoutZeroFlipAlert,
     ModelRunSummary,
 )
 
 LANE = "dod-closeout-sweep"
-THRESHOLD = 3
 
 # The ledger row grammar the closer's history is written in.
 _ROW = re.compile(
@@ -138,10 +138,15 @@ def top_reason(summary: ModelRunSummary) -> str:
 
 
 def completion_rows(
-    receipts: Sequence[Receipt], summary: ModelRunSummary, stamp: str, report: str
+    receipts: Sequence[Receipt],
+    summary: ModelRunSummary,
+    stamp: str,
+    report: str,
+    *,
+    threshold: int,
 ) -> tuple[list[str], int, str]:
-    """This run's rows, streak and reason: the third (and every later) zero adds an alarm
-    FRICTION row before the TERMINAL that names it."""
+    """This run's rows, streak and reason: at the contract's threshold and every later
+    zero, add an alarm FRICTION row before the TERMINAL that names it."""
     run = summary.run_key
     flipped = len(summary.flipped)
     # A force replay replaces this run's receipt; it cannot extend its own streak.
@@ -151,7 +156,7 @@ def completion_rows(
     health = f"zero_flip_streak={length} | top_deferral_reason={reason}"
     rows: list[str] = []
     friction = "none"
-    if length >= THRESHOLD:
+    if length >= threshold:
         friction = f"{stamp} lane={LANE}"
         rows.append(
             f"{stamp} | FRICTION | {common} | existing=OMN-20655 | "
@@ -169,9 +174,9 @@ def completion_rows(
 
 
 def ground_state(
-    receipts: Sequence[Receipt],
+    receipts: Sequence[Receipt], *, threshold: int
 ) -> tuple[EnumCloserHealth, str, int | None, str | None]:
-    """The morning report's row for the closer: RED from the third zero-flip run on."""
+    """The morning report's row: RED from the contract's threshold of zero-flip runs on."""
     if not receipts:
         return (
             EnumCloserHealth.UNKNOWN,
@@ -181,7 +186,7 @@ def ground_state(
         )
     length = streak(receipts)
     latest = receipts[-1]
-    verdict = EnumCloserHealth.RED if length >= THRESHOLD else EnumCloserHealth.GREEN
+    verdict = EnumCloserHealth.RED if length >= threshold else EnumCloserHealth.GREEN
     reason = cell(latest.reason)
     return (
         verdict,
@@ -189,4 +194,26 @@ def ground_state(
         f"top deferral reason={reason}; last run={latest.run} |",
         length,
         reason,
+    )
+
+
+def zero_flip_alert(
+    summary: ModelRunSummary,
+    length: int,
+    reason: str,
+    stamp: str,
+    *,
+    threshold: int,
+) -> ModelDodCloseoutZeroFlipAlert | None:
+    """OMN-21146: alert at the contract's threshold while tickets remain deferred."""
+    if length < threshold or summary.deferred_count == 0:
+        return None
+    return ModelDodCloseoutZeroFlipAlert(
+        lane=LANE,
+        run_key=summary.run_key,
+        zero_flip_streak=length,
+        threshold_runs=threshold,
+        deferred_count=summary.deferred_count,
+        top_deferral_reason=reason,
+        observed_at=stamp,
     )
