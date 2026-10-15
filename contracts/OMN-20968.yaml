@@ -3,7 +3,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20968"
-title: "judged-acceptance verdicts carry origin (live or eval) and the fold never pools them"
+title: "tiered delegation eval: judged-acceptance origin, and a pure compute that builds the section 6.1 comparison records"
 summary: >-
   ModelDelegationAcceptanceJudgedEvent gains a required closed origin (live or eval) and an
   eval_run_id that is required when origin is eval and refused when origin is live. event_id is
@@ -13,7 +13,12 @@ summary: >-
   pool, and an eval cell carries its eval_run_id. The event schema never maps a payload with no
   origin to live; the replay request alone maps a committed pre-amendment run to live, explicitly,
   by its origin default, and replaying an eval run names origin eval and its eval_run_id. No
-  routing, overlay or rendered delegation contract changes.
+  routing, overlay or rendered delegation contract changes. A pure compute node,
+  node_delegation_tier_comparison_compute, builds the plan's section 6.1 comparison records from
+  the judged items of every arm of one eval run: accepted of n with a Wilson interval under each
+  judge, the pre-registered pass rule per judge, the class baseline, the paired gap with a seeded
+  bootstrap interval, latency, tokens, cost and the quality-adjusted saving with its range for
+  local arms. It publishes on a new terminal topic and changes no routing.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -34,6 +39,15 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: for the same tenant, task type, kind, tier, model and rubric version, live verdicts and eval verdicts fold into separate cells, two eval runs fold into separate cells, and an eval cell carries its eval_run_id"
+  - id: "req-comparison-record"
+    statement: "The comparison records of an eval run carry exactly the plan's section 6.1 fields, computed from the judged arms."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: a record carries exactly the section 6.1 field list with numbers, booleans, ids and enumerated names only, and counts, Wilson intervals, judge agreement and kappa are computed from the items of each arm"
+      - id: "AC5"
+        statement: "AC5: an arm passes a class only at the pre-registered accept rate and Wilson floor under both judges and at its pre-registered n, the baseline is the cheapest Claude tier up to the mapped one that passes, and the paired gap interval is reproducible from its seed"
+      - id: "AC6"
+        statement: "AC6: the saving per task is p_L times c_F over p_F minus c_L with its range from the Wilson bounds, local arms alone carry one, and a class with no pre-registered n, a repeated arm, a repeated item or an empty arm refuses the whole run"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: origin and eval_run_id on the event schema."
@@ -44,6 +58,15 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3: the fold keeps live and eval cells apart."
     command: "uv run pytest tests/nodes/node_projection_delegation_judged_acceptance/test_judged_acceptance_fold.py -q -n 0 -k origin"
+  - kind: "tests"
+    description: "AC4: the record fields and the per-arm statistics."
+    command: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py -q -n 0 -k \"section_6_1 or free_text or numbers_booleans or accept_counts or judge_agreement or single_label\""
+  - kind: "tests"
+    description: "AC5: the pass rule, the baseline and the paired gap."
+    command: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py -q -n 0 -k \"pass_rule or baseline or paired_gap or bootstrap or underpowered\""
+  - kind: "tests"
+    description: "AC6: the saving formula and the whole-run refusals."
+    command: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py tests/nodes/node_delegation_tier_comparison_compute/test_registration.py -q -n 0 -k \"saving or refuses or registered or order\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -76,4 +99,32 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_acceptance_judged_replay_compute/handlers/handler_delegation_acceptance_judged_replay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^ +(origin=request\\.origin|eval_run_id=request\\.eval_run_id),$' | grep -qx 2"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20968-ac4-comparison-record"
+    description: "AC4: the record fields equal the section 6.1 list and the statistics follow from the items."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py -q -n 0 -k \"section_6_1 or free_text or numbers_booleans or accept_counts or judge_agreement or single_label\""
+    binds_ac: ["AC4"]
+  - id: "dod-omn20968-ac5-pass-rule-baseline-gap"
+    description: "AC5: the pass rule, the baseline tier and the seeded paired gap."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py -q -n 0 -k \"pass_rule or baseline or paired_gap or bootstrap or underpowered\""
+    binds_ac: ["AC5"]
+  - id: "dod-omn20968-ac6-saving-and-refusals"
+    description: "AC6: the saving formula, local arms alone carry a saving, and the run is refused whole."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py tests/nodes/node_delegation_tier_comparison_compute/test_registration.py -q -n 0 -k \"saving or refuses or registered or order\""
+    binds_ac: ["AC6"]
+  - id: "dod-omn20968-deploy-tier-comparison-topic"
+    description: "Deploy probe: at the commit the check runs against, the tier comparison contract declares its command and terminal topics, read from the repository over the GitHub content API, so the check goes red on any commit whose contract drops either."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "c=$(gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_tier_comparison_compute/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d) && echo \"$c\" | grep -qE '^ +command_topic: onex\\.cmd\\.omnimarket\\.delegation-tier-comparison-requested\\.v1$' && echo \"$c\" | grep -qE '^ +- onex\\.evt\\.omnimarket\\.delegation-tier-comparison-measured\\.v1$'"
         cwd: "${OMNI_HOME}/omnimarket"
