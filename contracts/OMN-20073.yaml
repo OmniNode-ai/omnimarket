@@ -33,6 +33,11 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: no merge queue is active on omnimarket dev, so no queued pull request exists to be admitted around its hold, repo-evidence / dod-verify is required there by an active ruleset and the caller does not run on merge_group, and every auto-merge arming step is gated on the hold check -- falsifier: uv run pytest tests/ci/test_ruleset_readback_omn20073.py -q -k queue_not_admitted
+  - id: "req-evidence-context-actions-success-only"
+    statement: "Only GitHub Actions' success satisfies the required repo-evidence context, on a pull request and on a queue commit alike."
+    acceptance:
+      - id: "AC9"
+        statement: "The merge-queue shim reports repo-evidence / dod-verify only from a GitHub Actions success on the queued pull request head, so a neutral or skipped verdict, or a run of the same name from any other App, never satisfies the required context; the caller and the shim are the only producers of the context, no workflow grants a check-run or status write, and the caller never runs the reusable in shadow mode -- falsifier: uv run pytest tests/ci/test_evidence_context_conclusions_omn20073.py -q"
 # Linear AC4 (the rollback drill restores the pre-cutover context set) is deliberately
 # not declared, so it is unbound. A drill reads back the context set after a protection
 # change, and no workflow consumes a protection payload, so a fixture test would prove
@@ -66,6 +71,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Every arming step of auto-merge.yml carries the hold condition."
     command: "uv run pytest tests/ci/test_auto_merge_hold_omn18179.py -q -k every_arming_step_is_gated_on_the_hold_check"
+  - kind: "tests"
+    description: "Only a GitHub Actions success on the queued head satisfies the evidence context; no third producer and no check write grant."
+    command: "uv run pytest tests/ci/test_evidence_context_conclusions_omn20073.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -138,3 +146,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_auto_merge_hold_omn18179.py -q -k every_arming_step_is_gated_on_the_hold_check"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-evidence-context-actions-success-only"
+    description: "The merge-queue shim passes the evidence context only on a GitHub Actions success, and nothing else in the repository produces or can write it; the test fails at the merge base, whose shim accepts neutral and skipped verdicts and reads every App's runs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_evidence_context_conclusions_omn20073.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
