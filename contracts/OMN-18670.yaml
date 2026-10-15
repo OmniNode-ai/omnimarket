@@ -93,5 +93,3 @@ dod_evidence:
     check_value: |-
       docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/inference-intent-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/delegation/test_omn18670_inference_intent_refusal_names_source.py -q -p no:cacheprovider --basetemp=/tmp/inference-intent-tests --refuse-skips
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC1
