@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-closeout-zero-flip-alert"
+    statement: "The DoD closeout sweep's completion decision returns a zero-flip alert event when it has flipped nothing for N consecutive runs while tickets are deferred, N declared in its contract."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: node_dod_closeout_sweep_compute completion returns a typed zero-flip alert, carried on its terminal event, once the zero-flip streak reaches the contract-declared zero_flip_threshold_runs while tickets are deferred, and none otherwise -- falsifier: tests/test_omn21146_zero_flip_alert.py fails, or a threshold literal remains in the node's Python"
   - id: "req-gateway-answers-both-reads"
     statement: "The GitHub gateway node answers a check-runs-at-commit request and a merged-PR-by-number request with typed results."
     acceptance:
@@ -30,6 +35,13 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21146-zero-flip-alert"
+    description: "node_dod_closeout_sweep_compute completion returns a typed zero-flip alert, carried on its terminal event, once the zero-flip streak reaches the contract-declared zero_flip_threshold_runs input while tickets are deferred; no threshold literal remains in the node's Python."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21146_zero_flip_alert.py tests/test_closeout_completion.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC5"]
   - id: "dod-omn21146-ac1-gateway-operations"
     description: "AC1: the gateway reads a commit's check runs (paged, filtered by name) and one PR's merge facts, and the commit-check-runs and pr-merged verbs publish them on the gateway's command topic and return the terminal result."
     source: "manual"
