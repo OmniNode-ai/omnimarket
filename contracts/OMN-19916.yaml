@@ -6,21 +6,20 @@ summary: "Decision D2 (RULING 2026-10-02T01:10:19Z), as re-scoped on the ticket 
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "onex dashboard start line (URL now carries ?token=)"
-  - "node_local_dashboard_serve_effect HTTP surface (401/403 refusals)"
+  - "public_api"
 requirements:
   - id: "req-d2-token-boundary"
     statement: "Every request to the local dashboard carries this start's token from a loopback host and the page's own origin, or is refused."
     acceptance:
-      - id: "D2-AC1"
+      - id: "AC1"
         statement: "D2-AC1: a loopback request carrying the current token (query, bearer or the traded cookie) is served 200 -- falsifier: any of the three channels refused"
-      - id: "D2-AC2"
+      - id: "AC2"
         statement: "D2-AC2: a token minted by an earlier start is refused 401 on every channel, and each start mints a different token -- falsifier: a stale token served or two starts sharing a token"
-      - id: "D2-AC3"
+      - id: "AC3"
         statement: "D2-AC3: a request with no token is refused 401, the pages included -- falsifier: any route answering 200 without a token"
-      - id: "D2-AC4"
+      - id: "AC4"
         statement: "D2-AC4: a non-loopback dashboard.bind is refused at start -- falsifier: 0.0.0.0 or a LAN address accepted"
-      - id: "D2-AC5"
+      - id: "AC5"
         statement: "D2-AC5: a foreign Host is refused 403 even with the token, and a foreign Origin with the token is refused 403 -- falsifier: either read served"
 evidence_requirements:
   - kind: "tests"
@@ -37,35 +36,35 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'current_token or httponly_cookie or pages_own_origin'"
-    binds_ac: ["D2-AC1"]
+    binds_ac: ["AC1"]
   - id: "dod-omn19916-d2-ac2-stale-token"
     description: "D2-AC2: a stale token is refused and every start mints a new one."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'earlier_starts_token or each_start_mints'"
-    binds_ac: ["D2-AC2"]
+    binds_ac: ["AC2"]
   - id: "dod-omn19916-d2-ac3-no-token"
     description: "D2-AC3: no token is refused, pages included."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'no_token_is_refused'"
-    binds_ac: ["D2-AC3"]
+    binds_ac: ["AC3"]
   - id: "dod-omn19916-d2-ac4-non-loopback-bind"
     description: "D2-AC4: a non-loopback bind is refused at start."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'non_loopback_bind'"
-    binds_ac: ["D2-AC4"]
+    binds_ac: ["AC4"]
   - id: "dod-omn19916-d2-ac5-host-and-origin"
     description: "D2-AC5: DNS-rebinding Host and foreign Origin are refused."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'rebinding_host or cross_origin_read'"
-    binds_ac: ["D2-AC5"]
+    binds_ac: ["AC5"]
   - id: "dod-omn19916-deploy-token-guard"
     description: "Hosted deploy probe: read the serve handler from GitHub at the evaluated commit and require the guard to be wired on the production path. Fails on the merge-base handler, which has no require_local_access. This checks published source at the evaluated revision, not a release."
     source: "manual"
