@@ -53,3 +53,11 @@ dod_evidence:
           SET default_transaction_read_only = on;
           SELECT count(*) FROM delegation_events WHERE correlation_id = '4a58bbb3-7963-4259-bae5-64274b2df78f' AND tokens_input = 298 AND tokens_output = 59 AND ticket_id = 'OMN-16831' AND caller_lane = 'rem-16831' AND terminal_ok IS TRUE AND tenant_id IS NOT NULL;
           SQL
+  - id: "dod-omn16831-ac4-terminal-row-readback"
+    description: "AC4 hosted dispatch/readback probe. Success and quality-refused terminals without a tenant fail the callback and store no row. With a registered tenant, each stores exactly one row matching its token counts, ticket, caller lane, outcome, failure cause, score and tenant, and publishes the projection terminal. Complements the separate AC3 lab readback without binding it to an unread criterion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
