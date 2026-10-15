@@ -35,6 +35,7 @@ from omnibase_infra.runtime.dispatch_envelope_context import (
 from pydantic import ValidationError
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.deliverable_extraction import final_answer_text
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -1067,6 +1068,31 @@ def _response_from_result(
     else:
         cost_savings_usd = 0.0
     manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
+    final_answer, response_reasoning = final_answer_text(str(result.get("content", "")))
+    if (
+        response_reasoning
+        and deciding_attempt is not None
+        and response_reasoning not in deciding_attempt.reasoning_preamble
+    ):
+        # Keep the removed text on the existing wire evidence of the rung
+        # that supplied it; older consumers cannot decode a new terminal key.
+        updated_attempt = deciding_attempt.model_copy(
+            update={
+                "reasoning_preamble": "\n\n".join(
+                    part
+                    for part in (
+                        deciding_attempt.reasoning_preamble,
+                        response_reasoning,
+                    )
+                    if part
+                )
+            }
+        )
+        attempts = [
+            updated_attempt if attempt is deciding_attempt else attempt
+            for attempt in attempts
+        ]
+        deciding_attempt = updated_attempt
     return ModelDelegateSkillResponse(
         status=status_value,
         finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
@@ -1114,7 +1140,9 @@ def _response_from_result(
             else manifest_version
         ),
         prompt_text=request.prompt,
-        response=str(result.get("content", "")),
+        # OMN-21088: the caller receives the final answer only. Reasoning the
+        # provider returned with it is kept locally and in the attempt evidence.
+        response=final_answer,
         quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
@@ -1164,7 +1192,7 @@ def _response_from_result(
         # which is the only party that knows when it picked the record up.
         queue_wait_ms=queue_wait_ms,
         execution_duration_ms=execution_duration_ms,
-    )
+    ).retain_response_reasoning(response_reasoning)
 
 
 class HandlerDelegateSkill:

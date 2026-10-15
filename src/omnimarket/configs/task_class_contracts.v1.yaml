@@ -358,6 +358,24 @@ quality_rules:
       Attribute its claims to named sources: say where each one comes from
       (for example 'according to the PostgreSQL documentation') and end with
       a References line naming them.
+    # OMN-21088: the rule judges reasoning prose the PROMPT asked for. Measured
+    # 2026-10-14 (omnimarket 0.4.313, "what is 2+2" on qwen/qwen3.8-27b via
+    # OpenRouter): this directive made the model answer a one-token question
+    # with about 990 bytes of sourced reasoning and a References list, which the caller received
+    # as the answer. A prompt matching none of these patterns is waived: the
+    # directive is not stated to the model and the gate does not veto on it.
+    # A prompt that asks for it keeps the rule, as before.
+    waived_unless_prompt_matches:
+      - '\bcit(?:e|es|ed|ing|ations?)\b'
+      - '\bsources?\b'
+      - '\breferences?\b'
+      - '\battribut\w*'
+      - '\baccording to\b'
+      - '\bbibliograph\w*'
+      - '\bevidence\b'
+      - '\bresearch\b'
+      - '\binvestigat\w*'
+      - '\bsurvey\b'
     rationale: >-
       OMN-13354: an unattributed research answer fails. Attribution is the
       thing that makes a research answer checkable, so its absence is a floor
@@ -407,6 +425,36 @@ quality_rules:
     model_directive: >-
       Give the reasoning behind each point, saying why it holds (because ...,
       therefore ...) and what risk or tradeoff it carries.
+    # OMN-21088: the rule judges reasoning prose the PROMPT asked for. Measured
+    # 2026-10-14 (omnimarket 0.4.313, "what is 2+2" on qwen/qwen3.8-27b via
+    # OpenRouter): this directive made the model answer a one-token question
+    # with about 990 bytes of because/therefore/tradeoff prose, which the caller received
+    # as the answer. A prompt matching none of these patterns is waived: the
+    # directive is not stated to the model and the gate does not veto on it.
+    # A prompt that asks for it keeps the rule, as before.
+    waived_unless_prompt_matches:
+      - '\bwhy\b'
+      - '\btrade-?offs?\b'
+      - '\bpros and cons\b'
+      - '\brisks?\b'
+      - '\bjustif\w*'
+      - '\breason(?:s|ing)?\b'
+      - '\bexplain\w*'
+      - '\bcompar\w*'
+      - '\bversus\b'
+      - '\bvs\.?\s'
+      - '\bweigh\w*'
+      - '\bargu\w*'
+      - '\bevaluat\w*'
+      - '\bassess\w*'
+      - '\banaly[sz]\w*'
+      - '\bshould (?:i|we)\b'
+      - '\bdecid\w*'
+      - '\bdecision\b'
+      - '\brecommend\w*'
+      - '\bhow (?!many\b|much\b|old\b|long\b|far\b|big\b)\w+'
+      - '\bresearch\b'
+      - '\binvestigat\w*'
     rationale: >-
       OMN-14220: the reject-only filter that keeps a bad planning or review
       output from terminalising as adequate.
@@ -456,6 +504,25 @@ quality_rules:
       - "\\b(?:answer|reply|respond|output)(?: with)? only\\b"
       - "\\banswer one word then\\b"
       - "\\bone (?:short |plain )?sentence\\b"
+    # OMN-21088: the rule judges reasoning prose the PROMPT asked for. Measured
+    # 2026-10-14 (omnimarket 0.4.313, "what is 2+2" on qwen/qwen3.8-27b via
+    # OpenRouter): this directive made the model answer a one-token question
+    # with about 990 bytes of numbered reasoning steps, which the caller received
+    # as the answer. A prompt matching none of these patterns is waived: the
+    # directive is not stated to the model and the gate does not veto on it.
+    # A prompt that asks for it keeps the rule, as before.
+    waived_unless_prompt_matches:
+      - '\bstep[- ]by[- ]step\b'
+      - '\bsteps?\b'
+      - '\bshow (?:your |the )?(?:work|working|reasoning|derivation)\b'
+      - '\bwalk (?:me |us )?through\b'
+      - '\b(?:reason|think) through\b'
+      - '\bderiv\w*'
+      - '\bprove\b'
+      - '\bproof\b'
+      - '\bhow (?:do|does|did|would|can|could|to)\b'
+      - '\bexplain\w*'
+      - '\bwhy\b'
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   structured_output:
     enforcement: blocking

@@ -19,7 +19,15 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 from omnimarket.delegation.deciding_cause import (
     is_gate_refusal,
@@ -442,7 +450,43 @@ class ModelDelegateSkillResponse(BaseModel):
     )
     pricing_manifest_version: int = Field(default=0, ge=0)
     prompt_text: str = Field(default="")
-    response: str = Field(default="")
+    response: str = Field(
+        default="",
+        description=(
+            "OMN-21088: the final answer only, on every output mode. No reasoning "
+            "block, no answer header, no leading or trailing blank lines."
+        ),
+    )
+    # Consumer first: v0.4.313 forbids the response_reasoning wire key.
+    # Retain it for in-process callers while accepting a future producer's
+    # key, without emitting it until a consumer carrying this decoder releases.
+    # Durable reasoning continues to use attempts[].reasoning_preamble.
+    _response_reasoning: str = PrivateAttr(default="")
+
+    @property
+    def response_reasoning(self) -> str:
+        """Removed reasoning for in-process callers; not a new wire field."""
+        return self._response_reasoning
+
+    def retain_response_reasoning(self, reasoning: str) -> Self:
+        """Attach in-process evidence without changing the frozen wire fields."""
+        self._response_reasoning = reasoning
+        return self
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def retain_response_reasoning_without_emitting_it(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        if not isinstance(data, Mapping) or "response_reasoning" not in data:
+            return handler(data)
+        reasoning = data["response_reasoning"]
+        if not isinstance(reasoning, str):
+            raise ValueError("response_reasoning must be a string")
+        return handler(
+            {key: value for key, value in data.items() if key != "response_reasoning"}
+        ).retain_response_reasoning(reasoning)
+
     quality_gate_passed: bool = Field(default=False)
     quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
     required_quality_bar: float | None = Field(

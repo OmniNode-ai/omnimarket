@@ -54,6 +54,18 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 600000
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics: []
+  publish_topics:
+    - "onex.evt.github.pr-merged.v1"
+published_events:
+  - topic: "onex.evt.github.pr-merged.v1"
+    event_type: "MirrorPrMerged"
+    description: "A squash merge found on the default branch by a sync of the git mirror (OMN-19834), source mirror, with the shared UUIDv5 event_id of (repo, pr_number, merge sha); a PR already published by another producer is skipped."
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.git-query-mirror-requested.v1"
   terminal_events:

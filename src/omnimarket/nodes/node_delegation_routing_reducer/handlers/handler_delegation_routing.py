@@ -187,10 +187,13 @@ _SYSTEM_PROMPTS: dict[str, str] = {
     # OMN-18349: this prompt asked for code-line citations after OMN-13354
     # replaced `cites_specific_lines` with `cites_sources` on the research
     # class, so it asked for the one citation form the gate no longer grades.
+    # OMN-21088: it then asked every research prompt to "be thorough and
+    # attribute your claims", and "what is 2+2" came back as about 990 bytes of
+    # sourced reasoning. Sources are asked for by the `cites_sources` directive,
+    # and only when the prompt asks for them.
     "research": (
-        "You are a code research assistant. Analyze the provided code and answer "
-        "questions about its behavior, architecture, and design decisions. "
-        "Be thorough and attribute your claims to their sources."
+        "You are a research assistant. Answer the question directly, at the "
+        "length the question needs."
     ),
     "code_generation": (
         "You are a code generation assistant. Implement the requested functionality "
@@ -204,9 +207,10 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are a refactoring assistant. Improve the structure, readability, and "
         "maintainability of the provided code without changing its behavior."
     ),
+    # OMN-21088: the answer, not the working. Numbered steps are asked for by
+    # the `step_by_step_explanation` directive, and only when the prompt asks.
     "reasoning": (
-        "You are a reasoning assistant. Think through the problem step by step "
-        "and provide a well-structured analysis."
+        "You are a reasoning assistant. Work the problem out and give the conclusion."
     ),
     "planning": (
         "You are a planning assistant. Break down the requested work into clear, "

@@ -153,16 +153,28 @@ def test_marker_rules_are_stated_for_the_reasoning_classes(task_type: str) -> No
 
 @pytest.mark.unit
 def test_complex_reasoning_user_turn_asks_for_the_step_by_step_explanation() -> None:
-    intent = _first_inference_intent(
-        task_type="complex_reasoning", prompt=_SHEEP_PROMPT
-    )
+    # OMN-21088: the step directive is stated only when the prompt asks for the
+    # working, so this prompt asks for it.
+    prompt = f"{_SHEEP_PROMPT} Show your working step by step."
+    intent = _first_inference_intent(task_type="complex_reasoning", prompt=prompt)
 
     assert _directive("step_by_step_explanation") in intent.prompt
     assert _directive("methodical_analysis") in intent.prompt
     # The caller's question stays ahead of the requirements, unchanged.
-    assert intent.prompt.index(_SHEEP_PROMPT) < intent.prompt.index(
+    assert intent.prompt.index(prompt) < intent.prompt.index(
         _directive("step_by_step_explanation")
     )
+
+
+@pytest.mark.unit
+def test_a_prompt_that_does_not_ask_for_steps_is_not_told_to_number_them() -> None:
+    """OMN-21088: "the number and a one-sentence reason" asks for no steps."""
+    intent = _first_inference_intent(
+        task_type="complex_reasoning", prompt=_SHEEP_PROMPT
+    )
+
+    assert _directive("step_by_step_explanation") not in intent.prompt
+    assert _directive("methodical_analysis") in intent.prompt
 
 
 @pytest.mark.unit
