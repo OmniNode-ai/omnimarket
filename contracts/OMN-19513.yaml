@@ -6,7 +6,7 @@ summary: "Operator RULING 2026-10-15T04:24:42Z: captured content goes on the bus
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "claude_hook_capture hook.event content reference shape"
+  - "events"
 requirements:
   - id: "req-raw-on-the-bus"
     statement: "hook.event and content.captured cross the emit seam untransformed."
@@ -40,4 +40,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19513-deploy-probe"
+    description: "PR #3937 on OmniNode-ai/omnimarket: the claude_hook_events wire model at the PR head carries the raw value field."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=6e8f05b2c97cd4204549a4ab54e4d326547df8b9 --jq .content | base64 -d | grep -c '    value: str'"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
