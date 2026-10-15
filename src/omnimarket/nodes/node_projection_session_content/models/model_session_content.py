@@ -18,6 +18,11 @@ class ModelSessionContentRecord(BaseModel):
     session-started record in OMN-19513. The fields this model DOES name are
     typed, so a shape change on one of them is still a refusal.
 
+    ``content_kind`` is a free string on purpose, so a kind a producer adds is
+    stored without a change here: ``prompt``, ``tool_input``, ``tool_response``,
+    ``tool_error``, ``assistant_reply``, ``operator_prompt`` and ``checkpoint``
+    (OMN-18531, the session checkpoint file, chunked like any other content).
+
     ``content`` and ``command`` arrive already scrubbed, or as a
     ``sha256:<hex>`` digest when an always-hashed output class matched. Either
     way this model never sees the unredacted value.
