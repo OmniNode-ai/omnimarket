@@ -265,7 +265,13 @@ class PostgresSyncProjectionAdapter:
                         update, tuple(self._adapt(value) for _, value in bindings)
                     )
                     final = [
-                        dict(zip(derivation.returning, record, strict=True))
+                        dict(
+                            zip(
+                                derivation.returning or derivation.conflict_columns,
+                                record,
+                                strict=True,
+                            )
+                        )
                         for record in cur.fetchall()
                     ]
                     written = HandlerProjectionDerivedWrite.check_final_rows(

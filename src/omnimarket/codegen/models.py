@@ -37,6 +37,7 @@ class EnumCodegenStatus(StrEnum):
     COMPLETED = "completed"
     REJECTED_VALIDATION = "rejected_validation"
     REJECTED_TYPECHECK = "rejected_typecheck"
+    REJECTED_CONTRACT_LINT = "rejected_contract_lint"
 
 
 class ModelCodegenSpec(BaseModel):
@@ -257,11 +258,19 @@ class ModelCodegenTypecheckOutcome(BaseModel):
 
 
 class ModelCodegenSerializeOutcome(BaseModel):
-    """Contract-serialize outcome — state.contract_yaml populated (via reducer)."""
+    """Contract-serialize outcome — state.contract_yaml populated (via reducer).
+
+    OMN-21151: carries the serialize node's lint verdict. A failed lint must
+    end the run (rejected_contract_lint) before any file is written, so the
+    outcome states the verdict explicitly instead of letting the orchestrator
+    guess from the presence of contract_yaml.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     state: ModelCodegenPipelineState
+    lint_passed: bool
+    lint_messages: tuple[str, ...] = ()
 
 
 class ModelFileWriteCommand(BaseModel):

@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21106"
+title: "TA.3 Profile field, profile data, resolver"
+summary: "ModelContextProfile gains conversation_tail_messages (required only when CONVERSATION_TAIL is selected) and the section 4.1 item 5 fields, with validation of factor_precedence, task-class fields and latency_budget_ms; the compaction_orchestrator profile ships as YAML under pack/profiles; node_context_profile_resolver_effect resolves a profile by name and returns PROFILE_NOT_FOUND, INVALID_PROFILE or the profile with its content hash. Tests: tests/pack/test_model_context_profile.py and tests/nodes/node_context_profile_resolver_effect."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-conversation-tail-count"
+    statement: "A profile selecting CONVERSATION_TAIL names how many messages; a profile that does not select it validates without the field, and the context ROI runner's profile is unchanged."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a profile with `CONVERSATION_TAIL` in `required_factors` or `optional_factors` and no `conversation_tail_messages` fails validation; a profile that does not select it validates with the field absent -- falsifier: either outcome reversed.
+      - id: "AC2"
+        statement: |-
+          AC2: `node_context_roi_runner`'s profile (`model_id` plus `factor_precedence=tuple(EnumContextFactor)`, `handler_context_roi_runner.py:275-278`) still validates and its golden output is unchanged -- falsifier: a validation error or a golden diff.
+  - id: "req-resolver"
+    statement: "One resolver returns a profile by name, with a content hash, or a typed failure."
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the resolver returns `PROFILE_NOT_FOUND` for an unknown name and an equal object with an equal `profile_content_hash` for the same name -- falsifier: test.
+  - id: "req-profile-fields"
+    statement: "The profile model carries the section 4.1 item 5 fields and refuses the four listed violations."
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: the profile model carries the section 4.1 item 5 fields, and validation refuses a profile whose `factor_precedence` puts a non-stable factor before a stable one, puts a model-written factor anywhere but last, names a model id in a task-class field, or declares `latency_budget_ms` on a non-additive profile -- falsifier: a fixture profile breaking any of these that validates.
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4: the profile model tests and the resolver tests."
+    command: "uv run pytest tests/pack/test_model_context_profile.py tests/nodes/node_context_profile_resolver_effect/test_handler_context_profile_resolver.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21106-ac1-conversation-tail-count"
+    description: "AC1: a profile selecting CONVERSATION_TAIL without a count fails; one not selecting it validates with the field absent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_model_context_profile.py -q -p no:randomly --no-cov -n 0 -k TestConversationTailMessages"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21106-ac2-roi-runner-unchanged"
+    description: "AC2: the ROI runner's profile validates against the new model and the ROI runner and context pack builder tests pass unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_model_context_profile.py tests/nodes/node_context_roi_runner tests/nodes/node_context_pack_builder_compute -q -p no:randomly --no-cov -n 0"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21106-ac3-resolver"
+    description: "AC3: PROFILE_NOT_FOUND for an unknown name; equal object and equal profile_content_hash for the same name."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_handler_context_profile_resolver.py -q -p no:randomly --no-cov -n 0"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21106-ac4-profile-fields-and-refusals"
+    description: "AC4: the item 5 fields exist and each of the four violations is refused, each with a validating control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_model_context_profile.py -q -p no:randomly --no-cov -n 0 -k 'TestSectionFourOneItemFiveFields or TestFactorPrecedenceConstraints or TestTaskClassFieldsNeverNameAModel or TestLatencyBudget'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21106-deploy-resolver-node"
+    description: "Deploy probe. The resolver handler and the compaction_orchestrator profile data exist in omnimarket at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe reads both from GitHub at that commit and fails at the merge base, where neither exists."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_profile_resolver_effect/handlers/handler_context_profile_resolver.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq PROFILE_NOT_FOUND && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/compaction_orchestrator.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq conversation_tail_messages'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -1280,11 +1280,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # stops a verdict from re-attributing a delegation row a terminal event
         # already recorded.
         row["tenant_id"] = write_tenant
-        await self._dynamic_upsert(
-            table=self._table_delegation,
-            conflict_key="correlation_id",
-            row=row,
-            tenant=write_tenant,
+        await self._write_delegation_row(
+            row,
+            meta,
             # OMN-15583: ``timestamp`` joins ``tenant_id`` as insert-only for
             # the same reason -- the verdict names it so its own INSERT row is
             # valid, and must never re-time a delegation row a terminal event

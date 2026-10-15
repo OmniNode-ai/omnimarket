@@ -59,7 +59,7 @@ from omnimarket.codegen.models import (
     ModelLlmGenerateResult,
     ModelMypyCheckResult,
 )
-from omnimarket.contract_assembly.models import ModelContractDocument
+from omnimarket.contract_assembly.models import EnumLintStatus, ModelContractDocument
 
 # The four real producer wire models this reducer consumes (contract.yaml
 # handler_routing event_model per topic) and the three outcomes it emits.
@@ -157,7 +157,14 @@ class HandlerCodegenOutcomeReducer:
             # The serialize verdict advances the state (contract_yaml now set);
             # retain it so a later observer of the same run sees the latest.
             self._retain(request.correlation_id, state)
-            return ModelCodegenSerializeOutcome(state=state)
+            # OMN-21151: the lint verdict rides the outcome (never dropped on
+            # the join floor) so the orchestrator can stop a failed lint before
+            # the file writer runs.
+            return ModelCodegenSerializeOutcome(
+                state=state,
+                lint_passed=request.lint_status is EnumLintStatus.PASS,
+                lint_messages=request.lint_messages,
+            )
 
         raise TypeError(  # pragma: no cover - guarded by contract event_model wiring
             "HandlerCodegenOutcomeReducer.handle() received unrecognized payload "

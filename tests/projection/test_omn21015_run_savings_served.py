@@ -193,7 +193,24 @@ def test_unresolved_baseline_serves_null_instead_of_the_legacy_saving(
     assert row["modelled_savings_usd"] is None
     assert row["savings_baseline_model"] is None
     assert row["savings_pricing_manifest_version"] is None
-    assert row["savings_measurement"] == "measured"
+    assert row["savings_measurement"] == "baseline_unresolved"
+
+
+@pytest.mark.parametrize("stamp", [None, "not-a-recorded-time"])
+def test_an_unrecorded_time_has_a_typed_unknown_state(stamp: object) -> None:
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_run_savings import (
+        modelled_run_savings_columns,
+    )
+
+    result = modelled_run_savings_columns(
+        {"correlation_id": "unrecorded-time", "timestamp": stamp}
+    )
+    assert result == {
+        "modelled_savings_usd": None,
+        "savings_baseline_model": None,
+        "savings_pricing_manifest_version": None,
+        "savings_measurement": "unknown_timestamp",
+    }
 
 
 @pytest.mark.usefixtures("priced")

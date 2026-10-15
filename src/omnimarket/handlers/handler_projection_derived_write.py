@@ -40,8 +40,12 @@ class HandlerProjectionDerivedWrite:
             if input_columns or derived_columns:
                 raise ValueError("derive is required when derived columns are declared")
             return None
-        for columns in (input_columns, derived_columns, plan.returning):
-            if not columns or len(set(columns)) != len(columns):
+        for columns, required in (
+            (input_columns, True),
+            (derived_columns, True),
+            (plan.returning, False),
+        ):
+            if (required and not columns) or len(set(columns)) != len(columns):
                 raise ValueError(
                     "derived write requires nonempty distinct column lists"
                 )
@@ -125,7 +129,8 @@ class HandlerProjectionDerivedWrite:
         )
         if dialect != "sqlite":
             statement += " RETURNING " + ", ".join(
-                quote(column) for column in request.returning
+                quote(column)
+                for column in (request.returning or request.conflict_columns)
             )
         return statement, parameters
 
@@ -137,4 +142,6 @@ class HandlerProjectionDerivedWrite:
         """Refuse a missing/conflicting derived update instead of publishing it."""
         if len(rows) != 1:
             raise RuntimeError("derived input guard did not update exactly one row")
+        if not request.returning:
+            return []
         return [{column: rows[0].get(column) for column in request.returning}]

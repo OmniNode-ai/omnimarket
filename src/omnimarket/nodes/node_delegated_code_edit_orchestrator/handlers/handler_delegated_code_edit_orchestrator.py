@@ -103,6 +103,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegat
     bound_error,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.protocols.protocol_delegated_code_edit_ports import (
+    DelegatePinViolationError,
     ProtocolDelegatedCodeEditPorts,
     ResumeRefusedError,
     WorkspacePathError,
@@ -687,7 +688,25 @@ class HandlerDelegatedCodeEditOrchestrator:
                 turn,
                 reads_paused=state.read_only_streak >= MAX_READ_ONLY_TURNS,
             )
-            reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
+            try:
+                reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
+            except DelegatePinViolationError as exc:
+                # No further turn is sent once one left the pinned backend.
+                raise _TerminalError(
+                    EnumCodeEditStatus.DELEGATE_FAILED, bound_error(str(exc))
+                ) from exc
+            if not reply.run_id and (reply.ok or reply.raw_text):
+                # Model output the receipt cannot name by its `onex delegate`
+                # run is a model call outside the delegation path (AC2 of
+                # OMN-20287): it is a failed delegate, never applied.
+                reply = ModelTurnReply(
+                    run_id="",
+                    ok=False,
+                    invalid_reason="the model reply carries no onex delegate run id",
+                    tokens_in=reply.tokens_in,
+                    tokens_out=reply.tokens_out,
+                    model=reply.model,
+                )
             state.replies.append(reply)
             record: dict[str, object] = {
                 "turn": turn,

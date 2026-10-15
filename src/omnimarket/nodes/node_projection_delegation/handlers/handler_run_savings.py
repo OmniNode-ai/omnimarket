@@ -50,7 +50,7 @@ def modelled_run_savings_columns(row: Mapping[str, object]) -> dict[str, object]
         "modelled_savings_usd": None,
         "savings_baseline_model": None,
         "savings_pricing_manifest_version": None,
-        "savings_measurement": None,
+        "savings_measurement": "unknown_timestamp",
     }
     stamp = row.get("created_at") or row.get("timestamp")
     occurred_at = stamp if isinstance(stamp, datetime) else normalise_occurred_at(stamp)
@@ -73,6 +73,8 @@ def modelled_run_savings_columns(row: Mapping[str, object]) -> dict[str, object]
     )
     selection = sqlite_metering_summary.resolve_metering_baseline_model()
     baseline = baseline_pricing.resolve_baseline(selection.model)
+    if baseline is None:
+        return {**empty, "savings_measurement": "baseline_unresolved"}
     result = (
         HandlerMeteringSummary()
         .handle(

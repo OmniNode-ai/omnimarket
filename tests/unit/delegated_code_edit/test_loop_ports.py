@@ -944,7 +944,8 @@ def test_failed_receipt_write_still_releases_the_claim(
     with pytest.raises(OSError, match="replace failed"):
         ports.write_loop_receipt(loop_id, {"status": "done"})
     assert not (loop_dir / "loop_claim").exists()
-    assert list(loop_dir.iterdir()) == []
+    # Only the claim's pre-run record (OMN-20514) remains: no temporary file.
+    assert [entry.name for entry in loop_dir.iterdir()] == ["pre_run.json"]
 
 
 def test_resume_claim_archives_each_prior_receipt(tmp_path: Path) -> None:
