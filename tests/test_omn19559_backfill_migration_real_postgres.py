@@ -15,6 +15,7 @@ set on real Postgres, never a mock. The harness SKIPS without
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -141,6 +142,36 @@ async def _apply(conn: asyncpg.Connection, path: Path, schema: str) -> None:
     await conn.execute(_in_schema(path.read_text(encoding="utf-8"), schema))
 
 
+async def _apply_counting_rewrites(
+    conn: asyncpg.Connection, path: Path, schema: str
+) -> int:
+    """Apply the file and return the row count its own NOTICE reports rewritten."""
+    notices: list[str] = []
+
+    def _listen(_conn: object, message: asyncpg.exceptions.PostgresLogMessage) -> None:
+        notices.append(message.message)
+
+    conn.add_log_listener(_listen)
+    try:
+        await _apply(conn, path, schema)
+        await asyncio.sleep(0)
+    finally:
+        conn.remove_log_listener(_listen)
+    counts = [int(m.split()[2]) for m in notices if m.startswith("OMN-20276: rewrote ")]
+    assert len(counts) == 1, notices
+    return counts[0]
+
+
+async def _row_versions(conn: asyncpg.Connection) -> list[tuple[object, ...]]:
+    return [
+        tuple(r)
+        for r in await conn.fetch(
+            "SELECT correlation_id, xmin::text FROM delegation_events "
+            "ORDER BY correlation_id"
+        )
+    ]
+
+
 async def _snapshot(conn: asyncpg.Connection) -> list[tuple[object, ...]]:
     return [tuple(r) for r in await conn.fetch(_SNAPSHOT)]
 
@@ -197,12 +228,18 @@ async def test_backfill_maps_each_cause_like_the_projection() -> None:
 async def test_backfill_is_idempotent() -> None:
     async with _migrated_schema() as (conn, schema):
         await _seed(conn)
-        await _apply(conn, _BACKFILL, schema)
+        first = await _apply_counting_rewrites(conn, _BACKFILL, schema)
+        assert first == len(_CAUSES) + 2
+        assert await _contradictory(conn) == 0
         once = await _snapshot(conn)
+        versions_once = await _row_versions(conn)
         audit_once = await conn.fetch(f"SELECT * FROM {schema}.{_AUDIT} ORDER BY 1")
 
-        await _apply(conn, _BACKFILL, schema)
+        # The second run touches 0 rows: it reports none rewritten and no row
+        # gets a new version, not merely the same values written again.
+        assert await _apply_counting_rewrites(conn, _BACKFILL, schema) == 0
 
+        assert await _row_versions(conn) == versions_once
         assert await _snapshot(conn) == once
         assert (
             await conn.fetch(f"SELECT * FROM {schema}.{_AUDIT} ORDER BY 1")
