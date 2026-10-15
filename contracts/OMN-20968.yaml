@@ -128,3 +128,10 @@ dod_evidence:
       - check_type: "command"
         check_value: "c=$(gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_tier_comparison_compute/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d) && echo \"$c\" | grep -qE '^ +command_topic: onex\\.cmd\\.omnimarket\\.delegation-tier-comparison-requested\\.v1$' && echo \"$c\" | grep -qE '^ +- onex\\.evt\\.omnimarket\\.delegation-tier-comparison-measured\\.v1$'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20968-ac4-runtime-record-schema"
+    description: "AC4: the local runtime terminal preserves all 39 record fields, including required nulls, and parses as ModelComparisonResult."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_tier_comparison_compute/test_registration.py -q -k runtime_terminal"
+    binds_ac: ["AC4"]

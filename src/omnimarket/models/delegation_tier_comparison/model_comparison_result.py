@@ -6,7 +6,13 @@ from __future__ import annotations
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    FieldSerializationInfo,
+    field_serializer,
+    model_validator,
+)
 
 from omnimarket.models.delegation_tier_comparison.model_comparison_issue import (
     ModelComparisonIssue,
@@ -27,6 +33,15 @@ class ModelComparisonResult(BaseModel):
     records: tuple[ModelComparisonRecord, ...] = ()
     underpowered: tuple[ModelComparisonUnderpowered, ...] = ()
     issues: tuple[ModelComparisonIssue, ...] = ()
+
+    @field_serializer("records")
+    def _serialize_records(
+        self,
+        records: tuple[ModelComparisonRecord, ...],
+        info: FieldSerializationInfo,
+    ) -> list[dict[str, object]]:
+        """Keep the fixed record schema even when transport omits optional nulls."""
+        return [record.model_dump(mode=info.mode) for record in records]
 
     @model_validator(mode="after")
     def _records_xor_issues(self) -> Self:
