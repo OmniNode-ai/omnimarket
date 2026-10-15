@@ -1,6 +1,6 @@
 name: node_delegation_rubric_check_compute
 version: 1.2.0
-description: Pure computable correctness rubric, delegation receipt route and reasoning answer checks
+description: Pure computable correctness rubric, delegation receipt route, reasoning answer and documentation answer checks
 omnibase_core_compat: '>=0.40.0,<1.0.0'
 entry_points:
   onex.nodes:
@@ -21,6 +21,7 @@ tags:
 - rubric
 - route-check
 - answer-check
+- doc-check
 - deterministic
 pack: core
 display_name: Delegation Rubric Check

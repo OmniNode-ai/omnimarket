@@ -43,19 +43,31 @@ nor a checkout. :mod:`omnimarket.nodes.node_local_dashboard_serve_effect.bundle`
 owns the fetch and the verification; this module only mounts the result, and
 only after the API routes, so a page can never shadow ``/projections``.
 
-Loopback auth with a per-start token is T2.1 (OMN-19916), not this node: the
-bundle is served unauthenticated on loopback exactly as the projection data
-already is, and that ticket closes both at once rather than leaving the port
-half-guarded.
+**Every request needs this start's token** (OMN-19916, plan T2.1, decision D2,
+RULING 2026-10-02T01:10:19Z). A loopback bind alone lets any local process, or
+a DNS-rebinding page in the developer's own browser, read their prompts and
+answers. So each start mints a random token (the request model's
+``access_token``), ``onex dashboard`` prints it once in the start URL, and
+:func:`require_local_access` guards every route, the pages included:
+
+* a ``Host`` that is not a loopback name or address is refused ``403
+  host_not_allowed`` (DNS rebinding), whatever token it carries;
+* an ``Origin`` other than the page's own is refused ``403 origin_not_allowed``;
+* a request carrying neither this start's token (``?token=``, a bearer header,
+  or the cookie) is refused ``401 token_required``. Opening the start URL
+  trades the query token for an HttpOnly, SameSite=Strict cookie, so the
+  page's own reads carry it without the token ever being written into a page.
 """
 
 from __future__ import annotations
 
+import secrets
+import urllib.parse
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Protocol
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
 from omnimarket.models.model_projection_read import (
@@ -69,6 +81,7 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,
     ModelLocalDashboardServeResult,
+    is_loopback_host,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
@@ -292,6 +305,98 @@ def _register_pages(app: FastAPI, pages: Path) -> None:
         return _index()
 
 
+#: The start URL's query parameter that carries this start's token.
+DASHBOARD_TOKEN_PARAM = "token"
+
+
+def dashboard_cookie_name(port: int) -> str:
+    """The cookie a start URL's token is traded for, one per port.
+
+    Browsers do not separate cookies by port, so two dashboards on one machine
+    would otherwise overwrite each other's token.
+    """
+    return f"onex_dashboard_{port}"
+
+
+def _host_is_loopback(host_header: str | None) -> bool:
+    if not host_header:
+        return False
+    try:
+        host = urllib.parse.urlsplit(f"//{host_header}").hostname
+    except ValueError:
+        return False
+    return host is not None and is_loopback_host(host)
+
+
+def _presented_tokens(request: Request, cookie: str) -> list[str]:
+    presented = [
+        request.query_params.get(DASHBOARD_TOKEN_PARAM),
+        request.cookies.get(cookie),
+    ]
+    scheme, _, credentials = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer":
+        presented.append(credentials.strip())
+    return [p for p in presented if p]
+
+
+def _matches(presented: str, token: bytes) -> bool:
+    return secrets.compare_digest(presented.encode("utf-8"), token)
+
+
+def _forbidden(error: str, detail: str) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"error": error, "detail": detail})
+
+
+def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
+    """Refuse every request that is not this start's, from a loopback page.
+
+    Checked in order: the ``Host`` is a loopback name or address (a
+    DNS-rebinding page names its own host), any ``Origin`` is the page's own,
+    and the request carries ``token`` as the start URL's query, a bearer
+    header or the cookie that query is traded for. A refusal never echoes a
+    presented value.
+    """
+    expected = token.encode("utf-8")
+    cookie = dashboard_cookie_name(port)
+
+    @app.middleware("http")
+    async def local_access(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        host = request.headers.get("host")
+        if not _host_is_loopback(host):
+            return _forbidden(
+                "host_not_allowed",
+                "this dashboard answers only requests addressed to a loopback host",
+            )
+        origin = request.headers.get("origin")
+        if origin is not None and origin != f"http://{host}":
+            return _forbidden(
+                "origin_not_allowed",
+                "this dashboard answers only its own pages",
+            )
+        presented = _presented_tokens(request, cookie)
+        if not any(_matches(p, expected) for p in presented):
+            return JSONResponse(
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+                content={
+                    "error": "token_required",
+                    "detail": (
+                        "open the URL `onex dashboard` printed when it started; "
+                        "it carries this start's token"
+                    ),
+                },
+            )
+        response = await call_next(request)
+        query_token = request.query_params.get(DASHBOARD_TOKEN_PARAM)
+        if query_token and _matches(query_token, expected):
+            response.set_cookie(
+                cookie, token, httponly=True, samesite="strict", path="/"
+            )
+        return response
+
+
 async def _serve_with_uvicorn(app: FastAPI, host: str, port: int) -> None:
     import uvicorn
 
@@ -347,6 +452,9 @@ class HandlerLocalDashboardServe:
             pages=pages,
             row_source=source,
         )
+        require_local_access(
+            app, token=request.access_token.get_secret_value(), port=request.port
+        )
         await self._serve(app, request.host, request.port)
         return ModelLocalDashboardServeResult(
             url=f"http://{request.host}:{request.port}",
@@ -356,9 +464,12 @@ class HandlerLocalDashboardServe:
 
 
 __all__ = [
+    "DASHBOARD_TOKEN_PARAM",
     "DashboardBundleError",
     "HandlerLocalDashboardServe",
     "ProtocolProjectionReadNode",
     "create_dashboard_app",
+    "dashboard_cookie_name",
+    "require_local_access",
     "resolve_local_row_source",
 ]

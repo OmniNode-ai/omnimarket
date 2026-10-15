@@ -16,7 +16,20 @@ the node's private handler module.
 
 from __future__ import annotations
 
+import uuid
+
 from pydantic import BaseModel, ConfigDict, Field
+
+# Namespace of the deterministic pr-merged event id. Every producer that is not
+# the Actions publisher (the webhook fold, the git mirror) derives its id from
+# (repo, pr_number, merge sha) here, so one merge seen by two of them is one
+# projection row.
+PR_MERGED_EVENT_NAMESPACE = uuid.UUID("5b0d6c1e-8f3a-4f5e-9c2d-14375a192490")
+
+
+def pr_merged_event_id(repo: str, pr_number: int, merge_sha: str) -> uuid.UUID:
+    """UUIDv5 of ``<repo>#<pr_number>@<merge_sha>`` in the pr-merged namespace."""
+    return uuid.uuid5(PR_MERGED_EVENT_NAMESPACE, f"{repo}#{pr_number}@{merge_sha}")
 
 
 class ModelPrMergedEvent(BaseModel):
@@ -40,4 +53,4 @@ class ModelPrMergedEvent(BaseModel):
     published_at: str | None = Field(default=None)
 
 
-__all__ = ["ModelPrMergedEvent"]
+__all__ = ["PR_MERGED_EVENT_NAMESPACE", "ModelPrMergedEvent", "pr_merged_event_id"]

@@ -128,15 +128,23 @@ def _startup_reply(monkeypatch: pytest.MonkeyPatch, db_path: Path, pages: Path) 
     monkeypatch.setattr(dashboard, "default_evidence_db_path", lambda: db_path)
     replies: list[Any] = []
 
-    async def capture(app: Any, _host: str, _port: int) -> None:
-        replies.append(TestClient(app).get(f"/projection/{METERING}"))
+    request = ModelLocalDashboardServeRequest(
+        host="127.0.0.1", port=8123, tenant_id=TENANT
+    )
 
-    asyncio.run(
-        dashboard.HandlerLocalDashboardServe(serve=capture, pages=pages).handle(
-            ModelLocalDashboardServeRequest(
-                host="127.0.0.1", port=8123, tenant_id=TENANT
+    async def capture(app: Any, host: str, port: int) -> None:
+        # OMN-19916: read as the developer's browser does, with this start's token.
+        replies.append(
+            TestClient(app, base_url=f"http://{host}:{port}").get(
+                f"/projection/{METERING}",
+                headers={
+                    "Authorization": f"Bearer {request.access_token.get_secret_value()}"
+                },
             )
         )
+
+    asyncio.run(
+        dashboard.HandlerLocalDashboardServe(serve=capture, pages=pages).handle(request)
     )
     [reply] = replies
     return reply

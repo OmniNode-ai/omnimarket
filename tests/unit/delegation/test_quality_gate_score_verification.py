@@ -10,8 +10,8 @@ on those results told them apart from a checked answer. The gate's checks can
 refute an answer (it does not parse, it refuses, it states a number its input
 does not hold); only an EXECUTED check can establish that one is right, and the
 one such check the contract names, ``passes_existing_tests``, reads execution
-evidence supplied to the gate. Code answers require that evidence (OMN-21077);
-an accepted result reads verified when it passed and no checks were skipped.
+evidence supplied to the gate. Code requests naming no tests may be accepted
+UNTESTED (OMN-17427); verification still requires an executed passing check.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import yaml
 
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
-    NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_VERIFYING_CHECKS,
     UNVERIFIED_GATE_FAILED,
     UNVERIFIED_NO_EXECUTED_CHECK,
@@ -148,11 +148,11 @@ def test_the_verifying_set_names_only_checks_the_contract_declares() -> None:
 @pytest.mark.parametrize("task_type", sorted(_ACCEPTED_ANSWERS))
 @pytest.mark.parametrize("with_source", [False, True])
 @pytest.mark.parametrize("with_run", [False, True])
-def test_gate_acceptance_and_verification_require_execution_evidence_for_code(
+def test_code_acceptance_can_be_untested_but_verification_requires_execution(
     task_type: str, with_source: bool, with_run: bool
 ) -> None:
     """Code can be accepted and verified; rubric answers keep their authority."""
-    # OMN-21077: code needs a passing run and can now read verified with no skips.
+    # No tests named permits UNTESTED acceptance; verification needs a passing run.
     answer = _ACCEPTED_ANSWERS[task_type]
     deterministic, heuristic = resolve_task_class_dod_checks(task_type)
     is_code = task_type in ("code_generation", "refactor")
@@ -173,12 +173,19 @@ def test_gate_acceptance_and_verification_require_execution_evidence_for_code(
     )
 
     if is_code and not with_run:
-        assert result.passed is False
-        assert result.fail_category == "fail_deterministic"
-        assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
-        assert result.no_rung_can_satisfy is True
+        assert result.passed is True
+        assert result.fail_category == "pass"
+        assert result.failure_reasons == ()
+        assert result.no_rung_can_satisfy is False
+        assert "passes_existing_tests" in result.skipped_checks
+        evaluation = next(
+            e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+        )
+        assert evaluation.enforcement == "scored"
+        assert evaluation.passed is False
+        assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
         assert result.score_verified is False
-        assert UNVERIFIED_GATE_FAILED in result.score_unverified_because
+        assert UNVERIFIED_GATE_FAILED not in result.score_unverified_because
         assert UNVERIFIED_NO_EXECUTED_CHECK in result.score_unverified_because
     elif is_code:
         assert result.passed is True, result.failure_reasons

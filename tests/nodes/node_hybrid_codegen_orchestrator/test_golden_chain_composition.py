@@ -196,6 +196,24 @@ _TYPE_ERROR_SOURCE = (
     "        return 123\n"
 )
 
+# Passes validation and is type-clean except that it imports a module that does
+# not exist. Before OMN-21150 the mypy leg ran with --ignore-missing-imports
+# (the consumer request model's default), so a phantom import sailed through
+# and the factory wrote files whose imports blow up at runtime. The pipeline
+# must reject generated code that imports modules that do not exist.
+_MISSING_IMPORT_SOURCE = (
+    "import omnimarket.does_not_exist\n"
+    "\n"
+    "\n"
+    "class NodeCompute:\n"
+    "    pass\n"
+    "\n"
+    "\n"
+    "class NodeGreeterCompute(NodeCompute):\n"
+    "    def handle(self, name: str) -> str:\n"
+    '        return f"hello {name}"\n'
+)
+
 
 class _StubInference:
     """Deterministic inference double — duck-typed ``infer``, no ABC, no network.
@@ -444,6 +462,38 @@ async def test_stub_source_rejected_by_real_validator(
     assert factory.validator.calls == 1
     # The type-check leg is never reached; the fake would have run it green.
     assert factory.mypy.calls == 0
+    assert not target_root.exists()
+
+    await factory.close()
+    await event_bus.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_import_rejected_by_real_mypy(
+    event_bus: EventBusInmemory, tmp_path: Path
+) -> None:
+    """Source importing a nonexistent module ends REJECTED_TYPECHECK, no files.
+
+    OMN-21150 RED-then-GREEN: before the fix the mypy leg inherited the consumer
+    request model's ``ignore_missing_imports=True`` default, so mypy swallowed
+    the phantom ``omnimarket.does_not_exist`` import and this run COMPLETED with
+    files on disk whose import fails the moment they are loaded.
+    """
+    await event_bus.start()
+    target_root = tmp_path / "unused"
+    factory = _RealFactory(event_bus, _MISSING_IMPORT_SOURCE)
+    await factory.wire()
+    await factory.drive(_spec("NodeGreeterCompute", target_root))
+
+    assert len(factory.completed) == 1
+    assert factory.completed[0].status is EnumCodegenStatus.REJECTED_TYPECHECK, (
+        factory.completed[0]
+    )
+    # Validation passed (leg ran, no stub) and the REAL mypy leg rejected the
+    # unresolved import; serialize/file-write are never reached.
+    assert factory.validator.calls == 1
+    assert factory.mypy.calls == 1
+    assert factory.serialize.calls == 0
     assert not target_root.exists()
 
     await factory.close()
