@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21152"
+title: "The generator writes a canonical node package"
+summary: >-
+  The codegen factory wrote four flat files (handler.py, contract.yaml, metadata.yaml,
+  .rsd_provenance.json) into the target root. It now writes a canonical node package at
+  <target_root>/omnimarket/nodes/node_<x>/ with __init__.py, contract.yaml, metadata.yaml,
+  handlers/__init__.py, handlers/handler_<x>.py and .rsd_provenance.json (plus the
+  package-root __init__ files that make the tree a drop-in for a checkout's src/ tree).
+  The written contract.yaml layers the canonical envelope -- name, versions, description
+  and a handler_routing entry naming the generated class at its dotted module -- over the
+  lint-passed serialize body, so the runtime's contract loader accepts the package as
+  written and the omnibase_core provenance gate scans it clean.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-canonical-package-output"
+    statement: "A completed codegen run writes the canonical node package layout with a loadable contract whose handler_routing names the generated class."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a pipeline run's output contains node_<x>/__init__.py, contract.yaml,
+          metadata.yaml, handlers/__init__.py, handlers/handler_<x>.py and
+          .rsd_provenance.json under <target>/omnimarket/nodes/, the contract's
+          handler_routing names the generated class at the dotted module, the runtime
+          contract loader loads the package from a temp directory, and the omnibase_core
+          provenance gate exits 0 on the output -- falsifier: the golden-chain and
+          runtime-boot tests assert every file and the routing class, load the generated
+          contract through discover_contracts_from_paths, import the generated handler
+          module from the temp tree in a fresh interpreter, and run
+          rsd_provenance_stamp.py --src-root <tmp> --package omnimarket expecting exit 0
+evidence_requirements:
+  - kind: "tests"
+    description: "The golden-chain pipeline test asserting the full package layout and routing class, and the runtime-boot test that loads the generated package through the contract loader, imports it from the temp tree, and passes the provenance gate."
+    command: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21152-ac1-canonical-package"
+    description: "AC1: the factory writes the six package files plus the package-root __init__ files, the contract handler_routing names the generated class at omnimarket.nodes.node_<x>.handlers.handler_<x>, the generated contract loads through discover_contracts_from_paths with the package name, the handler module imports from the temp tree and answers a call, and the omnibase_core provenance gate exits 0 (checked 1 node, unstamped 0). All fail at the merge base, where the factory writes four flat files with no handler_routing in the contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_real_factory_produces_compliant_node tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py::test_generated_package_loads_through_contract_loader tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py::test_start_command_reaches_completed_with_files_on_disk -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21152-regressions"
+    description: "The orchestrator, outcome-reducer, file-writer, validator and mypy-effect suites still pass with the new layout."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_outcome_reducer tests/nodes/node_codegen_file_writer_effect tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"

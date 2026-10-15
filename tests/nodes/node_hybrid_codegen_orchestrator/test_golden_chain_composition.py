@@ -444,15 +444,31 @@ async def test_real_factory_produces_compliant_node(
     # reducer: 1 seed + 3 verdict joins = 4 invocations.
     assert factory.reducer.calls == 4, factory.reducer.calls
 
-    # A compliant node landed on disk via the real file-writer effect.
+    # A compliant node landed on disk as a CANONICAL node package (OMN-21152):
+    # <target>/omnimarket/nodes/node_<x>/{__init__.py, contract.yaml,
+    # metadata.yaml, handlers/{__init__.py, handler_<x>.py},
+    # .rsd_provenance.json}.
+    pkg_dir = target_root / "omnimarket" / "nodes" / "node_greeter_compute"
     assert (
-        target_root / "handler.py"
-    ).read_text().strip() == _GENERATED_NODE_SOURCE.strip()
-    # The contract.yaml came from the REAL serializer — non-empty and carrying the
-    # serializer's own header (the fabricated double emitted a 2-line stub).
-    contract_text = (target_root / "contract.yaml").read_text()
+        pkg_dir / "handlers" / "handler_greeter_compute.py"
+    ).read_text().strip() == (_GENERATED_NODE_SOURCE.strip())
+    # The contract.yaml carries the REAL serializer's lint-passed body plus the
+    # canonical envelope, and its handler_routing names the generated class
+    # (OMN-21152).
+    contract_text = (pkg_dir / "contract.yaml").read_text()
     assert contract_text.strip(), "real serializer produced empty contract.yaml"
-    assert (target_root / "metadata.yaml").exists()
+    contract = yaml.safe_load(contract_text)
+    assert contract["name"] == "node_greeter_compute"
+    routing = contract["handler_routing"]
+    assert routing["handlers"][0]["handler"]["name"] == "NodeGreeterCompute"
+    assert (
+        routing["handlers"][0]["handler"]["module"]
+        == "omnimarket.nodes.node_greeter_compute.handlers.handler_greeter_compute"
+    )
+    assert (pkg_dir / "metadata.yaml").exists()
+    assert (pkg_dir / "__init__.py").exists()
+    assert (pkg_dir / "handlers" / "__init__.py").exists()
+    assert (pkg_dir / ".rsd_provenance.json").exists()
 
     await factory.close()
     await event_bus.close()
