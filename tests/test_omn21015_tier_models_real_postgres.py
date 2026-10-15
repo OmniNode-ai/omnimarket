@@ -8,9 +8,9 @@ and model, with an unmeasured count beside it. Migration 0060 adds one key, ``mo
 Failure modes, each with a test below:
 F1  two models in one tier serve as one entry (the ticket's falsifier);
 F2  a model's share is not on the tier's denominator, so a tier's model shares do not sum to the tier's share;
-F3  on Postgres an unpriced run cannot be stored as such: delegation_events.cost_usd is NOT NULL DEFAULT 0
-    (migration 0007), so the view's unmeasured count is 0 there and a null cost exists only on the local store.
-    This test pins that limit, so making the column nullable later turns it red and is noticed;
+F3  a run with no cost is summed as 0, so a group with no measured cost serves 0 instead of null, or the unmeasured
+    count stays 0. delegation_events.cost_usd is NOT NULL DEFAULT 0 since migration 0007 until OMN-20717 makes it
+    nullable, so the test drops the constraint in its own schema, as that change does, and stores null costs;
 F4  a measured cost is not summed, or a measured zero reads as unmeasured;
 F5  another tenant's runs enter this tenant's models;
 F6  the keys the page already reads change;
@@ -40,8 +40,8 @@ _TENANT = "11111111-1111-4111-8111-111111111111"
 _OTHER = "22222222-2222-4222-8222-222222222222"
 _VIEW = "projection_delegation_model_routing"
 
-# (tenant, tier, model, cost) per run. Postgres stores no unpriced cost (see F3), so every run carries one.
-_RUNS: list[tuple[str, str, str, str]] = [
+# (tenant, tier, model, cost) per run; None is a run with no cost (F3, stored only with the constraint dropped).
+_RUNS: list[tuple[str, str, str, str | None]] = [
     (_TENANT, "local", "qwen-a", "0"),
     (_TENANT, "local", "qwen-a", "0"),
     (_TENANT, "local", "qwen-a", "0"),
@@ -51,6 +51,12 @@ _RUNS: list[tuple[str, str, str, str]] = [
     (_TENANT, "", "unrouted-model", "0"),
     (_OTHER, "local", "qwen-a", "0"),
     (_OTHER, "local", "qwen-a", "0"),
+]
+_UNPRICED_RUNS: list[tuple[str, str, str, str | None]] = [
+    (_TENANT, "local", "never-priced", None),
+    (_TENANT, "local", "never-priced", None),
+    (_TENANT, "local", "partly-priced", "0.002"),
+    (_TENANT, "local", "partly-priced", None),
 ]
 
 
@@ -71,10 +77,10 @@ def _schema_safe(sql: str) -> str:
     return sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
 
 
-@pytest.fixture(scope="module")
-def routing() -> Iterator[Any]:
+def _routing(
+    runs: list[tuple[str, str, str, str | None]], *, nullable_cost: bool
+) -> Iterator[Any]:
     psycopg2 = pytest.importorskip("psycopg2")
-    pg_errors = pytest.importorskip("psycopg2.errors")
     from psycopg2.extras import RealDictCursor
 
     schema = f"omn21015_tiers_{uuid.uuid4().hex[:12]}"
@@ -101,7 +107,12 @@ def routing() -> Iterator[Any]:
             for path in sorted(_MIGRATIONS.glob("*.sql")):
                 if path.name != _FENCED:
                     cur.execute(_schema_safe(path.read_text(encoding="utf-8")))
-            for tenant, tier, model, cost in _RUNS:
+            if nullable_cost:
+                cur.execute(
+                    "ALTER TABLE delegation_events ALTER COLUMN cost_usd DROP NOT NULL, "
+                    "ALTER COLUMN cost_usd DROP DEFAULT"
+                )
+            for tenant, tier, model, cost in runs:
                 cur.execute(
                     "INSERT INTO delegation_events "
                     "(correlation_id, tenant_id, task_type, delegated_to, model_name, "
@@ -121,20 +132,6 @@ def routing() -> Iterator[Any]:
                     assert len(rows) == 1
                     return {t["cost_tier_name"]: t for t in rows[0]["by_tier"]["tiers"]}
 
-            def null_cost_refused(self) -> bool:
-                with conn.cursor() as cur:
-                    cur.execute(f"SET search_path TO {schema}, public")
-                    try:
-                        cur.execute(
-                            "INSERT INTO delegation_events (correlation_id, tenant_id, task_type, "
-                            "delegated_to, cost_tier_name, cost_usd, quality_gate_passed, timestamp, "
-                            "created_at) VALUES (%s, %s, 'research', 'x', 'local', NULL, TRUE, NOW(), NOW())",
-                            (f"omn21015-null-{uuid.uuid4().hex}", _TENANT),
-                        )
-                    except pg_errors.NotNullViolation:
-                        return True
-                    return False
-
             def invoker(self) -> bool:
                 with conn.cursor() as cur:
                     cur.execute(
@@ -150,6 +147,16 @@ def routing() -> Iterator[Any]:
         with conn.cursor() as cur:
             cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         conn.close()
+
+
+@pytest.fixture(scope="module")
+def routing() -> Iterator[Any]:
+    yield from _routing(_RUNS, nullable_cost=False)
+
+
+@pytest.fixture(scope="module")
+def unpriced_routing() -> Iterator[Any]:
+    yield from _routing(_UNPRICED_RUNS, nullable_cost=True)
 
 
 @pytest.mark.integration
@@ -171,11 +178,14 @@ def test_f2_model_shares_sum_to_the_tier_share(routing: Any) -> None:
 
 
 @pytest.mark.integration
-def test_f3_postgres_stores_no_unpriced_cost_so_none_is_counted(routing: Any) -> None:
-    local = {m["model_name"]: m for m in routing.tiers(_TENANT)["local"]["models"]}
-    assert all(m["unmeasured_cost_count"] == 0 for m in local.values())
-    assert float(local["qwen-b"]["cost_usd"]) == pytest.approx(0.001)
-    assert routing.null_cost_refused() is True
+def test_f3_a_run_with_no_cost_is_unmeasured_not_zero(unpriced_routing: Any) -> None:
+    local = {
+        m["model_name"]: m for m in unpriced_routing.tiers(_TENANT)["local"]["models"]
+    }
+    assert local["never-priced"]["cost_usd"] is None
+    assert local["never-priced"]["unmeasured_cost_count"] == 2
+    assert float(local["partly-priced"]["cost_usd"]) == pytest.approx(0.002)
+    assert local["partly-priced"]["unmeasured_cost_count"] == 1
 
 
 @pytest.mark.integration
