@@ -11,7 +11,9 @@ description: >
   factory by dispatching commands over the bus: spec -> llm-generate (llm
   effect) -> validate (node_generated_code_validator) -> type-check
   (node_mypy_check_effect) -> serialize contract (node_contract_serialize_compute)
-  -> write files (file writer effect) -> completed. It owns phase sequencing only:
+  -> accept through the handler-test control (codegen handler-test effect,
+  OMN-21153) -> write files (file writer effect) -> completed. It owns phase
+  sequencing only:
   it never constructs sibling handlers in-process, never runs an in-process FSM
   loop, and never does I/O. It threads a shared ModelCodegenPipelineState through
   every command because the pure tier-1/tier-3 nodes return only verdicts.
@@ -78,6 +80,15 @@ handler_routing:
       handler:
         name: HandlerHybridCodegenOrchestrator
         module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
+    - topic: onex.evt.omnimarket.codegen-handler-test-completed.v1
+      operation: hybrid_codegen.orchestrate
+      message_category: event
+      event_model:
+        name: ModelCodegenHandlerTestResult
+        module: omnimarket.codegen.models
+      handler:
+        name: HandlerHybridCodegenOrchestrator
+        module: omnimarket.nodes.node_hybrid_codegen_orchestrator.handlers.handler_hybrid_codegen_orchestrator
     - topic: onex.evt.omnimarket.codegen-files-written.v1
       operation: hybrid_codegen.orchestrate
       message_category: event
@@ -101,6 +112,8 @@ published_events:
     topic: onex.cmd.omnimarket.mypy-check-requested.v1
   - event_type: ContractAssemblyRequestSeam
     topic: onex.cmd.omnimarket.contract-serialize-requested.v1
+  - event_type: CodegenHandlerTestCommand
+    topic: onex.cmd.omnimarket.codegen-handler-test-requested.v1
   - event_type: FileWriteCommand
     topic: onex.cmd.omnimarket.codegen-file-write.v1
   - event_type: CodegenCompleted
@@ -123,12 +136,14 @@ event_bus:
     - onex.evt.omnimarket.codegen-validation-outcome.v1
     - onex.evt.omnimarket.codegen-typecheck-outcome.v1
     - onex.evt.omnimarket.codegen-serialize-outcome.v1
+    - onex.evt.omnimarket.codegen-handler-test-completed.v1
     - onex.evt.omnimarket.codegen-files-written.v1
   publish_topics:
     - onex.cmd.omnimarket.codegen-llm-generate.v1
     - onex.cmd.omnimarket.generated-code-validation-requested.v1
     - onex.cmd.omnimarket.mypy-check-requested.v1
     - onex.cmd.omnimarket.contract-serialize-requested.v1
+    - onex.cmd.omnimarket.codegen-handler-test-requested.v1
     - onex.cmd.omnimarket.codegen-file-write.v1
     - onex.evt.omnimarket.hybrid-codegen-completed.v1
 

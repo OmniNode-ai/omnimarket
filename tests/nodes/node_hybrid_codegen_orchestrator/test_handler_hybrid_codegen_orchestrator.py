@@ -29,6 +29,8 @@ from pydantic import BaseModel
 from omnimarket.codegen.models import (
     EnumCodegenStatus,
     ModelCodegenCompleted,
+    ModelCodegenHandlerTestCommand,
+    ModelCodegenHandlerTestResult,
     ModelCodegenPipelineState,
     ModelCodegenSerializeOutcome,
     ModelCodegenSpec,
@@ -152,24 +154,58 @@ class TestPhaseRoutingEquivalence:
         assert isinstance(payload, ModelCodegenCompleted)
         assert payload.status is EnumCodegenStatus.REJECTED_TYPECHECK
 
-    def test_serialize_outcome_emits_file_write_with_files(self) -> None:
+    def test_serialize_outcome_emits_handler_test_command(self) -> None:
+        # OMN-21153: a lint-passed serialize outcome hands the run to the
+        # acceptance control before anything is written.
         topic, payload = _handle(
             ModelCodegenSerializeOutcome(
                 state=_state(source="handler-src", contract_yaml="name: x\n"),
                 lint_passed=True,
             )
         )
+        assert topic.endswith("codegen-handler-test-requested.v1")
+        assert isinstance(payload, ModelCodegenHandlerTestCommand)
+        assert payload.state.source_text == "handler-src"
+
+    def test_handler_test_accepted_emits_file_write_with_files(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenHandlerTestResult(
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                real_outcome="passed",
+                mutant_outcome="failed_call",
+                grade_status="accepted_call",
+                accepted=True,
+            )
+        )
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
         base = "omnimarket/nodes/node_greeter_compute"
-        # OMN-21152: the canonical node package layout, six files.
+        # OMN-21152: the canonical node package layout; OMN-21153 adds the
+        # per-handler test that the acceptance control already ran.
         assert by_path[f"{base}/handlers/handler_greeter_compute.py"] == "handler-src"
         assert f"{base}/contract.yaml" in by_path
         assert f"{base}/metadata.yaml" in by_path
         assert f"{base}/__init__.py" in by_path
         assert f"{base}/handlers/__init__.py" in by_path
+        assert f"{base}/tests/test_handler_greeter_compute.py" in by_path
         assert f"{base}/.rsd_provenance.json" in by_path
+
+    def test_handler_test_rejected_emits_rejected_terminal(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenHandlerTestResult(
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                real_outcome="failed_call",
+                mutant_outcome="no_tests",
+                grade_status="control_did_not_fail",
+                accepted=False,
+                reason="generated test did not pass the handler",
+            )
+        )
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.REJECTED_HANDLER_TEST
+        assert payload.issues == ("generated test did not pass the handler",)
 
     def test_serialize_lint_failure_emits_rejected_contract_lint(self) -> None:
         # OMN-21151: a contract that failed its lint never reaches the file
@@ -238,6 +274,7 @@ class TestDefBCanonShape:
             "ValidatorRequestSeam",
             "MypyRequestSeam",
             "ContractAssemblyRequestSeam",
+            "CodegenHandlerTestCommand",
             "FileWriteCommand",
             "CodegenCompleted",
         }
@@ -258,9 +295,11 @@ class TestContractTopicCoverage:
             "onex.cmd.omnimarket.generated-code-validation-requested.v1",
             "onex.cmd.omnimarket.mypy-check-requested.v1",
             "onex.cmd.omnimarket.contract-serialize-requested.v1",
+            "onex.cmd.omnimarket.codegen-handler-test-requested.v1",
             "onex.cmd.omnimarket.codegen-file-write.v1",
         } <= publish
         assert "onex.cmd.omnimarket.hybrid-codegen-start.v1" in subscribe
+        assert "onex.evt.omnimarket.codegen-handler-test-completed.v1" in subscribe
         assert contract["terminal_event"] == (
             "onex.evt.omnimarket.hybrid-codegen-completed.v1"
         )
@@ -288,7 +327,13 @@ class TestProvenanceStampSeam:
     def test_provenance_stamp_is_a_generated_file(self) -> None:
         state = _state(source="handler-src", contract_yaml="name: x\n")
         _, payload = _handle(
-            ModelCodegenSerializeOutcome(state=state, lint_passed=True)
+            ModelCodegenHandlerTestResult(
+                state=state,
+                real_outcome="passed",
+                mutant_outcome="failed_call",
+                grade_status="accepted_call",
+                accepted=True,
+            )
         )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
@@ -302,7 +347,13 @@ class TestProvenanceStampSeam:
             contract_yaml="name: node_greeter_compute\n",
         )
         _, payload = _handle(
-            ModelCodegenSerializeOutcome(state=state, lint_passed=True)
+            ModelCodegenHandlerTestResult(
+                state=state,
+                real_outcome="passed",
+                mutant_outcome="failed_call",
+                grade_status="accepted_call",
+                accepted=True,
+            )
         )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
@@ -322,6 +373,8 @@ class TestProvenanceStampSeam:
             "metadata.yaml",
             "handlers/__init__.py",
             "handlers/handler_greeter_compute.py",
+            "tests/__init__.py",
+            "tests/test_handler_greeter_compute.py",
         }
 
         # The digest is RECOMPUTED here from the same content written to the
