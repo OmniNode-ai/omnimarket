@@ -50,6 +50,11 @@ _TIER_KEY_IN_FORCE = """
     )
 """
 
+# Taken before the key check. The contract migration's ALTER TABLE needs ACCESS
+# EXCLUSIVE, so it waits for this write to commit, and the key the check reads stays
+# the key until the recount is done; a migration that already committed is seen.
+_HOLD_AGGREGATE_KEY = "LOCK TABLE public.usage_by_model_day IN ROW EXCLUSIVE MODE"
+
 # While the three-column key is the key: one row per model and day under
 # not_tier_routed, recounted from all its calls, as the writer before 0003 did. A
 # four-column target here would meet the three-column key on a second tier and raise
@@ -201,6 +206,7 @@ async def write_usage_call(
         return None
     key = (delta.tenant_id, usage_day, delta.model_id)
     removed: list[Any] = []
+    await conn.execute(sql(_HOLD_AGGREGATE_KEY))
     if await conn.fetchval(sql(_TIER_KEY_IN_FORCE)):
         await conn.execute(sql(_RECOUNT_AGGREGATE), *key)
         removed = list(await conn.fetch(sql(_DROP_TIERS_WITHOUT_CALLS), *key))

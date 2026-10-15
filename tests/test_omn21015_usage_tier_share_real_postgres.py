@@ -7,8 +7,9 @@ Jonah's ruling on OMN-21015 (2026-10-15 20:23Z): expand, then contract, with the
 lanes today still writes. While that key is the key, the new writer folds a model's day into one row under
 not_tier_routed, as today, and never raises; once the contract migration (OMN-21161) makes the four-column index the
 key, it splits by tier. The writer's statements have no Python branch to test without a database, so each case runs
-the writer's own write_usage_call on its own throwaway schema. As a superuser the connection bypasses row security,
-so this proves the SQL, not the writer role's view of it.
+the writer's own write_usage_call on its own throwaway schema. It connects through the INTEGRATION_POSTGRES_* DSN
+(the omn19978 real-Postgres helper) and skips without a reachable server. As a superuser the connection bypasses row
+security, so this proves the SQL, not the writer role's view of it.
 
 Failure modes:
 P1  0003 drops or rewrites a row stored before it, or cannot run twice;
@@ -21,13 +22,16 @@ P3  once the four-column key is the key, the recount folds two tiers of one mode
     interim not_tier_routed row beside the split rows, counting its calls twice;
 P4  the shares of a day are stale after a call, do not sum to 1, or count another tenant's or day's calls;
 P5  a row whose share moved keeps its cursor, so a reader walking by cursor never sees the new share;
-P8  0003 leaves the writer role without DELETE, so removing the folded row after the switch is refused.
+P8  0003 leaves the writer role without DELETE, so removing the folded row after the switch is refused;
+P9  the contract migration commits between the writer's key check and its recount, so the write follows a key
+    no longer in force and raises.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+import asyncpg
 import pytest
 
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
@@ -334,5 +338,72 @@ async def test_real_postgres_0003_grants_the_writer_delete() -> None:
             f"{_SCHEMA}.usage_by_model_day",
         )
     finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+class _ContractAfterKeyCheck:
+    """The writer's connection, except that right after its key check a second connection tries the contract migration."""
+
+    def __init__(self, conn, other) -> None:
+        self._conn, self._other, self.contract = conn, other, None
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    async def fetchval(self, statement, *args):
+        value = await self._conn.fetchval(statement, *args)
+        if "pg_constraint" in statement and self.contract is None:
+            try:
+                await self._other.execute("SET lock_timeout = '300ms'")
+                await self._other.execute(_CONTRACT)
+                self.contract = "committed"
+            except asyncpg.exceptions.LockNotAvailableError:
+                self.contract = "waited"
+        return value
+
+
+@pytest.mark.integration
+async def test_real_postgres_the_contract_migration_waits_for_a_write_that_has_read_the_key() -> (
+    None
+):
+    conn = await _connect_or_skip()
+    other = await _connect_or_skip()
+    try:
+        await _fresh(conn)
+        await _write(conn, "c1", "qwen", "local")
+        delta = HandlerProjectionUsageByModelDay().handle(
+            ModelUsageCallEvent.model_validate(
+                {
+                    "call_id": "c2",
+                    "model_name": "qwen",
+                    "tenant_id": "t",
+                    "cost_tier_name": "cheap_cloud",
+                    "timestamp": "2026-10-14T05:00:00Z",
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "estimated_cost_usd": 0.0,
+                    "usage_source": "measured",
+                }
+            )
+        )
+        racing = _ContractAfterKeyCheck(conn, other)
+        # P9: the write read the old key, so the migration must wait for it rather than change the key under it.
+        async with conn.transaction():
+            written = await write_usage_call(racing, delta, schema=_SCHEMA)
+        assert racing.contract == "waited"
+        assert written is not None
+        assert {k: v["call_count"] for k, v in (await _day(conn)).items()} == {
+            ("qwen", "not_tier_routed"): 2
+        }
+        # Once the write commits the migration goes through, and the next call splits the day.
+        await other.execute(_CONTRACT)
+        await _write(conn, "c3", "qwen", "local")
+        assert {k: v["call_count"] for k, v in (await _day(conn)).items()} == {
+            ("qwen", "local"): 2,
+            ("qwen", "cheap_cloud"): 1,
+        }
+    finally:
+        await other.close()
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
