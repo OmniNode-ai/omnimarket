@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -177,7 +177,13 @@ async def test_postgres_mixed_writers_return_and_publish_the_committed_pair(
                 async_published[-1] if held_path == "async" else sync_published[-1]
             )
             _paired(final_publication)
-            assert final_publication == {key: stored[key] for key in final_publication}
+            assert {
+                key: str(value) if isinstance(value, UUID) else value
+                for key, value in final_publication.items()
+            } == {
+                key: str(stored[key]) if isinstance(stored[key], UUID) else stored[key]
+                for key in final_publication
+            }
 
 
 @pytest.mark.parametrize("held_row", ["sparse", "terminal"])

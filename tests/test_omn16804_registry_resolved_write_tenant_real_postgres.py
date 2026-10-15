@@ -441,7 +441,7 @@ def test_legacy_and_derived_writes_are_visible_on_the_original_connection(
     correlation_id = str(uuid4())
     common: dict[str, object] = {
         "correlation_id": correlation_id,
-        "tenant_id": FRESH_TENANT_UUID,
+        "tenant_id": str(FRESH_TENANT_UUID),
         "task_type": "connection-visibility",
         "timestamp": datetime.fromisoformat("2026-10-14T12:00:00+00:00"),
     }
