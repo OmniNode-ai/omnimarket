@@ -364,8 +364,17 @@ claim_grounding:
   subclause_split: ',\s+|\s+(?:while|whereas|but)\s+'
   # Lane read-outs use explicit report headers. Blockers may be on a later
   # line than the ticket or PR; neighboring reports must remain separate.
+  #
+  # OMN-20489: a commit log and a pull request put the ticket id on the subject
+  # or title line and the state ("completed", "blocked") in the body below it.
+  # Read one line at a time, the body was never in the row of the thing, and 16 of
+  # the 120 calibration answers were refused for paraphrasing it. A `commit <sha>`
+  # line or a `Title:` line therefore opens a record that runs to the next one,
+  # so the whole commit or PR body is the source of its own ticket's claims.
   source_section_start_patterns:
     - '^[ \t]*===[ \t]+\S.*$'
+    - '^commit [0-9a-f]{7,40}\b.*$'
+    - '^Title: .*$'
   excluded_answer_spans:
     - '```.*?(?:```|\Z)'
   # OMN-20492. The first word of a conventional commit subject is an imperative

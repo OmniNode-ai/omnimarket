@@ -1264,8 +1264,9 @@ def test_docs_only_marker_skipped_keeps_tier_strict() -> None:
     assert code == EXIT_FAILURE, report
 
 
-def test_docs_only_marker_pending_keeps_tier_strict() -> None:
-    """A marker still in flight must not relax anything mid-poll."""
+@pytest.mark.parametrize("status", ["queued", "in_progress", "waiting", "pending"])
+def test_docs_only_marker_pending_keeps_tier_pending(status: str) -> None:
+    """A skipped tier gate waits for the marker without turning green."""
 
     jobs = _healthy_jobs()
     jobs = [
@@ -1274,9 +1275,108 @@ def test_docs_only_marker_pending_keeps_tier_strict() -> None:
         else j
         for j in jobs
     ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status=status, conclusion=None))
+    code, report = evaluate(jobs)
+    assert code == EXIT_PENDING, report
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled"])
+def test_docs_only_marker_pending_never_defers_tier_failure(conclusion: str) -> None:
+    """A real tier failure remains terminal while classification is in flight."""
+
+    tier = DOCS_ONLY_SKIPPABLE_GATE_JOBS[0]
+    jobs = [
+        _job(tier, conclusion=conclusion) if j["name"] == tier else j
+        for j in _healthy_jobs()
+    ]
     jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
     code, report = evaluate(jobs)
     assert code == EXIT_FAILURE, report
+
+
+def test_docs_only_marker_pending_never_defers_non_tier_skip() -> None:
+    """Only the conditional tier waits; an unrelated strict skip fails."""
+
+    non_tier = next(
+        g for g in STRICT_GATE_JOBS if g not in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+    )
+    jobs = [
+        _job(str(j["name"]), conclusion="skipped")
+        if j["name"] in (*DOCS_ONLY_SKIPPABLE_GATE_JOBS, non_tier)
+        else j
+        for j in _healthy_jobs()
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert non_tier in report
+
+
+@pytest.mark.parametrize(
+    ("conclusion", "expected"),
+    [
+        ("success", EXIT_SUCCESS),
+        ("skipped", EXIT_FAILURE),
+        ("failure", EXIT_FAILURE),
+        ("cancelled", EXIT_FAILURE),
+    ],
+)
+def test_docs_only_marker_resolves_pending_tier_skip(
+    conclusion: str, expected: int
+) -> None:
+    """The next snapshot admits a skip only after marker success."""
+
+    jobs = [
+        _job(str(j["name"]), conclusion="skipped")
+        if j["name"] in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        else j
+        for j in _healthy_jobs()
+    ]
+    marker = _job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None)
+    jobs.append(marker)
+    code, report = evaluate(jobs)
+    assert code == EXIT_PENDING, report
+    marker.update(status="completed", conclusion=conclusion)
+    code, report = evaluate(jobs)
+    assert code == expected, report
+
+
+def test_docs_only_marker_stuck_in_flight_never_reaches_success() -> None:
+    """A marker that never completes holds PENDING on every poll, never SUCCESS.
+
+    The poller's deadline converts a sustained PENDING to FAILURE, so a stuck
+    marker fails closed instead of admitting the skipped tier.
+    """
+
+    tier = DOCS_ONLY_SKIPPABLE_GATE_JOBS[0]
+    jobs = [
+        _job(tier, conclusion="skipped") if j["name"] == tier else j
+        for j in _healthy_jobs()
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
+    for _ in range(3):
+        code, report = evaluate(jobs)
+        assert code == EXIT_PENDING, report
+        assert tier in report
+
+
+def test_docs_only_marker_pending_yields_to_a_real_failure() -> None:
+    """A proven failure elsewhere is terminal even while a tier skip waits."""
+
+    tier = DOCS_ONLY_SKIPPABLE_GATE_JOBS[0]
+    failing = next(g for g in STRICT_GATE_JOBS if g != tier)
+    jobs = [
+        _job(tier, conclusion="skipped")
+        if j["name"] == tier
+        else _job(failing, conclusion="failure")
+        if j["name"] == failing
+        else j
+        for j in _healthy_jobs()
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert failing in report
 
 
 def test_docs_only_marker_does_not_relax_non_tier_strict_gate() -> None:

@@ -30,6 +30,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
@@ -154,6 +157,14 @@ class NodeLogPersistenceEffect:
                 f"log persistence topic is not routed by contract: {topic!r}"
             )
         event_cls = _SUPPORTED_EVENT_MODELS[_HANDLER_EVENT_MODELS[topic]]
+        if event_cls in (ModelDelegateSkillCompleted, ModelDelegateSkillFailed):
+            # The bus capture boundary adds projection metadata to terminals.
+            # Decode it through the same model as the delegation writer before
+            # applying the topic-specific success/failure verdict validation.
+            projected = ModelDelegateSkillTerminalProjection.from_payload(payload)
+            payload = projected.model_dump(
+                mode="json", include=set(event_cls.model_fields)
+            )
         event = event_cls.model_validate(payload)
         if isinstance(event, (ModelDelegateSkillCompleted, ModelDelegateSkillFailed)):
             terminal = event

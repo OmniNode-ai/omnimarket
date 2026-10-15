@@ -1,7 +1,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20806"
-title: "Automation-liveness watchdog compute: verdicts, failure episodes with window severity, hysteresis, observer-loss folding and the planted self-test"
+title: "Automation-liveness watchdog compute and effect: verdicts, failure episodes with window severity, hysteresis, observer-loss folding and the planted self-test"
 summary: "node_automation_liveness_watchdog_compute is the watchdog's pure half. Given the liveness overlay, one folded fact record per declared process (mapped from the liveness projection's fold rows by a typed adapter), the host observers' heartbeats, the bus facts, the open trigger expectations, the undeclared processes, the carried watchdog state and the evaluation time, it returns one verdict per process, the verdict events for changed verdicts, the alarm episodes opened, raised in severity and cleared, and the state for the next evaluation. A planted contract that evaluates wrong voids the evaluation; a silent host observer folds its host's MISSED verdicts into one HOST_SILENT; the external dead-man is EXTERNAL_DEADMAN_SILENT after two hours with no completed run. The effect half (state store, outbox, delivery, ledger record, external mirror) is a separate node."
 is_seam_ticket: false
 interface_change: false
@@ -20,6 +20,15 @@ requirements:
         statement: "AC4: an observer going silent sends one HOST_SILENT, a host with a live observer and many failing processes keeps per-process verdicts, and flapping inside the hysteresis sends nothing -- falsifier: uv run pytest tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_folding_and_hysteresis.py -q -p no:randomly"
       - id: "AC5"
         statement: "AC5: no completed external dead-man run for 2 hours raises EXTERNAL_DEADMAN_SILENT -- falsifier: uv run pytest tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_external_deadman_silent.py -q -p no:randomly"
+  - id: "req-watchdog-effect"
+    statement: "The watchdog effect commits episodes and carried state in one transaction, delivers each alarm at least once with an episode-id history read before any re-send, treats a missing credential as a delivery failure, and retries then escalates an alarm not delivered by its due time."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: a crash at each boundary (after deciding, after Slack accepted, after the outbox recorded) loses no alarm and costs at most one duplicate, found by the episode-id history read -- falsifier: uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_outbox_crash_boundaries.py -q -p no:randomly"
+      - id: "AC7"
+        statement: "AC7: missing alert-channel credentials are a delivery failure, not a silent return -- falsifier: uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_missing_credentials_fail.py -q -p no:randomly"
+      - id: "AC8"
+        statement: "AC8: a healthy low-severity episode is delivered in its digest without a retry or an escalation, and one undelivered past its due time is retried then escalated -- falsifier: uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_delivery_due_time.py -q -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: each of the 2026-10-09 silent failures, replayed, raises its verdict with a delivery due time inside its deadline."
@@ -36,6 +45,15 @@ evidence_requirements:
   - kind: "tests"
     description: "AC5: no completed external dead-man run for 2 hours raises EXTERNAL_DEADMAN_SILENT."
     command: "uv run pytest tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_external_deadman_silent.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC6: a crash at each boundary loses no alarm and costs at most one duplicate."
+    command: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_outbox_crash_boundaries.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC7: missing alert-channel credentials are a delivery failure, not a silent return."
+    command: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_missing_credentials_fail.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC8: a healthy low-severity episode is delivered in its digest without a retry or an escalation, and one undelivered past its due time is retried then escalated."
+    command: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_delivery_due_time.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -89,10 +107,49 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_compute_contract.py tests/nodes/node_automation_liveness_watchdog_compute/test_watchdog_projection_adapter.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20806-ac6-outbox-crash-boundaries"
+    description: "AC6: a crash at each boundary loses no alarm and costs at most one duplicate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_outbox_crash_boundaries.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20806-ac7-missing-credentials"
+    description: "AC7: missing alert-channel credentials are a delivery failure, not a silent return."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_missing_credentials_fail.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20806-ac8-delivery-due-time"
+    description: "AC8: a healthy low-severity episode is delivered in its digest without a retry or an escalation, and one undelivered past its due time is retried then escalated."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_delivery_due_time.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20806-effect-contract"
+    description: "The effect contract routes its handler and declares every topic the node uses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_watchdog_effect/test_watchdog_effect_contract.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
   - id: "dod-omn20806-deploy-registration"
     description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers node_automation_liveness_watchdog_compute under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_automation_liveness_watchdog_compute = ' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20806-deploy-registration-effect"
+    description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers node_automation_liveness_watchdog_effect under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_automation_liveness_watchdog_effect = ' | grep -qx 1"
         cwd: "${OMNI_HOME}/omnimarket"

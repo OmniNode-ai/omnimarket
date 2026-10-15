@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-20275, unit M6 deliverable 2. One node owns one rendered markdown file on the host
+# that holds it (an exclusive lock beside the file enforces that), so no shared runtime
+# attaches it: the contract declares `runtime_dispatch` as an external trigger and no
+# `handler_routing` or `event_bus` subscription, and `experimental` is the drift gate's marker for an intentionally
+# unattached node. The repair source (the ledger of record read by seq, and its head) is a
+# protocol the host process binds; this slice ships the node, its consumer and the golden
+# chain over the in-memory bus, not that binding.
+name: work_ledger_render_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Renders the work ledger's row events into one markdown file in ledger_seq order. Identity
+  is ledger_seq, the rendered file is the watermark, offsets commit only over rendered seqs,
+  a gap is repaired from the ledger of record or blocks visibly and never skips, and a head
+  probe finds a lost last row. Design and TLC results: the ledger-projection TLA+ model (OMN-20275, deliverable 1).
+input_model: omnimarket.nodes.node_work_ledger_render_effect.models.model_work_ledger_render.ModelWorkLedgerRenderRequest
+output_model: omnimarket.nodes.node_work_ledger_render_effect.models.model_work_ledger_render.ModelWorkLedgerRenderResult
+handler:
+  module: omnimarket.nodes.node_work_ledger_render_effect.handlers.handler_work_ledger_render
+  class: HandlerWorkLedgerRender
+  input_model: omnimarket.nodes.node_work_ledger_render_effect.models.model_work_ledger_render.ModelWorkLedgerRenderRequest
+  output_model: omnimarket.nodes.node_work_ledger_render_effect.models.model_work_ledger_render.ModelWorkLedgerRenderResult
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: true
+# The row topics are subscribed by the host process that owns the file, not by a shared
+# runtime, so they are declared under `subscriptions` and `event_bus` carries only what the
+# node publishes.
+subscriptions:
+  topics:
+    - onex.evt.omnimarket.work-ledger-claim.v1
+    - onex.evt.omnimarket.work-ledger-status.v1
+    - onex.evt.omnimarket.work-ledger-terminal.v1
+    - onex.evt.omnimarket.work-ledger-hold.v1
+    - onex.evt.omnimarket.work-ledger-release.v1
+    - onex.evt.omnimarket.work-ledger-msg.v1
+    - onex.evt.omnimarket.work-ledger-ack.v1
+    - onex.evt.omnimarket.work-ledger-ruling.v1
+    - onex.evt.omnimarket.work-ledger-operator-consent.v1
+    - onex.evt.omnimarket.work-ledger-friction.v1
+    - onex.evt.omnimarket.work-ledger-correction.v1
+    - onex.evt.omnimarket.work-ledger-claim.v2
+    - onex.evt.omnimarket.work-ledger-status.v2
+    - onex.evt.omnimarket.work-ledger-terminal.v2
+    - onex.evt.omnimarket.work-ledger-hold.v2
+    - onex.evt.omnimarket.work-ledger-release.v2
+    - onex.evt.omnimarket.work-ledger-msg.v2
+    - onex.evt.omnimarket.work-ledger-ack.v2
+    - onex.evt.omnimarket.work-ledger-ruling.v2
+    - onex.evt.omnimarket.work-ledger-operator-consent.v2
+    - onex.evt.omnimarket.work-ledger-friction.v2
+    - onex.evt.omnimarket.work-ledger-correction.v2
+event_bus:
+  publish_topics:
+    - onex.evt.omnimarket.work-ledger-markdown-rendered.v1
+    - onex.evt.omnimarket.work-ledger-markdown-blocked.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.work-ledger-markdown-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-markdown-rendered.v1
+  - onex.evt.omnimarket.work-ledger-markdown-blocked.v1
+work_ledger:
+  ledger_id: rolling-work-ledger
+golden_path:
+  - "Row events arrive on any of the row topics, in any order"
+  - "Only seq W+1 is rendered; a gap is repaired from the ledger of record or blocks"
+  - "The lag probe reads the ledger of record's head and finds a lost last row"
+  - "Offsets commit over the rendered prefix; rendered and blocked results are published"
+dod_evidence:
+  - test: tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py::test_out_of_order_rows_lost_tail_and_bad_payloads
+    description: "Out-of-order rows, a lost last row and bad payloads render the right file over the in-memory bus"
+  - test: tests/unit/nodes/node_work_ledger_render_effect/test_partition.py
+    description: "Rows split across topics, delivered out of order, and a broker outage"
+  - test: tests/unit/nodes/node_work_ledger_render_effect/test_lag.py
+    description: "A late event after its repair, the lost last row, a source that cannot supply a row"
+  - test: tests/unit/nodes/node_work_ledger_render_effect/test_crash.py
+    description: "A crash between the write and the commit, and mid-row with a torn tail"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-20275]

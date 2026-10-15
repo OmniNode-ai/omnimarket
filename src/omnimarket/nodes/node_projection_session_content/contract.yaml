@@ -7,7 +7,7 @@ input_model: omnimarket.nodes.node_projection_session_content.models.model_sessi
 description: >
   OMN-19550. Projects full session content -- the complete prompt, tool input,
   tool result and assistant reply, captured by the omniclaude hooks and
-  scrubbed by the capture-redaction contract before publish -- into
+  published raw (OMN-19513, RULING 2026-10-15T04:24:42Z) -- into
   omninode_internal.session_content, one row per content chunk. Operator
   ruling 2026-09-25 (RULING row 2026-09-25T11:23:30Z): full context joins to
   deterministic outcomes (DoD verdicts, test results, receipts) as labelled
@@ -49,8 +49,8 @@ handler_routing:
 terminal_event: onex.evt.omnimarket.projection-session-content-applied.v1
 
 golden_path:
-  - "A hook journals a content.captured record carrying scrubbed full content"
-  - "The emit effect fans it out to onex.cmd.omniintelligence.content-captured.v1 through redact_capture"
+  - "A hook journals a content.captured record carrying full content"
+  - "The emit effect fans it out to onex.cmd.omniintelligence.content-captured.v1 through passthrough"
   - "This projection folds the record to one row and upserts it on its content-addressed event_id"
   - "Emit projection-applied event to onex.evt.omnimarket.projection-session-content-applied.v1"
 

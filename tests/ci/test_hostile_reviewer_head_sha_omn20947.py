@@ -32,8 +32,13 @@ HEAD_SHA_EXPR = "${{ github.event.pull_request.head.sha }}"
 HEAD_SHA_ARG = '--head-sha "$HEAD_SHA"'
 # The first omniintelligence revision whose gate substitutes receipts for a
 # voter lost to a timeout, an unavailable endpoint, or an unavailable
-# served-model read (omniintelligence#1046, #1048, #1050).
-SUBSTITUTE_PIN = "64b950973a5686d33e0b439fb80749d66362d06d"
+# served-model read (omniintelligence#1046, #1048, #1050), then each later pin
+# that descends from it.
+SUBSTITUTE_PINS = [
+    "64b950973a5686d33e0b439fb80749d66362d06d",
+    # omniintelligence#1072: the retry of an unparseable reply gets 8192 tokens.
+    "3fcbf795087a79081c0ceeb676216bf64c5d49ae",
+]
 
 
 def review_step(workflow_text: str) -> dict[str, Any]:
@@ -81,4 +86,5 @@ def test_omniintelligence_is_cloned_at_the_substitute_revision() -> None:
         r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})",
         text,
     )
-    assert pins == [SUBSTITUTE_PIN]
+    assert len(pins) == 1
+    assert pins[0] in SUBSTITUTE_PINS

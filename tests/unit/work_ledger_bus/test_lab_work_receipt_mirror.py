@@ -6,7 +6,7 @@ import asyncio
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -17,7 +17,8 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolBusMessage,
     event_type_for,
 )
-from omnimarket.lab_work.bus import load_lab_work_topics
+from omnimarket.lab_work.bus import ModelLabWorkCommandFailure, load_lab_work_topics
+from omnimarket.nodes.node_lab_work_unit_effect.models import ModelLabWorkUnitReceipt
 from omnimarket.nodes.node_work_ledger_append_effect import (
     HandlerWorkLedgerAppendEffect,
 )
@@ -60,7 +61,10 @@ def _host(bus: EventBusInmemory, ledger: _Ledger) -> WorkLedgerAppendHost:
 
 
 @pytest.mark.parametrize("failed", [False, True])
-def test_lab_work_receipt_redelivery_appends_once(failed: bool) -> None:
+@pytest.mark.parametrize("lane", ["test-lane", "", None])
+def test_lab_work_receipt_redelivery_appends_once(
+    failed: bool, lane: str | None
+) -> None:
     async def scenario() -> None:
         bus = EventBusInmemory(environment="local", group="lab-ledger-test")
         await bus.start()
@@ -77,17 +81,35 @@ def test_lab_work_receipt_redelivery_appends_once(failed: bool) -> None:
         await host.start()
         topics = load_lab_work_topics()
         topic = topics.failure if failed else topics.success
-        payload = {
+        attribution = {
             "work_unit_id": "lw-0123456789abcdef",
             "host": "pool-host",
-            "lane": "test-lane",
             "repo": "OmniNode-ai/omnimarket",
             "commit_sha": "a" * 40,
             "kind": "test",
-            "status": "failed" if failed else "completed",
-            "exit_code": None if failed else 4,
             "duration_seconds": 1.25,
         }
+        if lane is not None:
+            attribution["lane"] = lane
+        terminal = (
+            ModelLabWorkCommandFailure.model_validate(
+                {**attribution, "error_message": "private failure detail"}
+            )
+            if failed
+            else ModelLabWorkUnitReceipt.model_validate(
+                {
+                    **attribution,
+                    "target_host": "pool-host",
+                    "status": "completed",
+                    "exit_code": 4,
+                    "log_path": "/private/unit.log",
+                    "output_tail": "private output tail",
+                }
+            )
+        )
+        payload = terminal.model_dump(mode="json")
+        if lane is None:
+            payload.pop("lane")
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=payload,
             envelope_timestamp=datetime(2026, 10, 9, tzinfo=UTC),
@@ -110,6 +132,33 @@ def test_lab_work_receipt_redelivery_appends_once(failed: bool) -> None:
                 "accepted",
                 "duplicate",
             ]
+            request_id = uuid5(NAMESPACE_URL, "onex:lab-work-unit:lw-0123456789abcdef")
+            assert f" | req={request_id} | " in ledger.rows
+            assert f" | lane={lane or 'lab-work'} | " in ledger.rows
+            assert " | src=lab-work | " in ledger.rows
+            assert "private" not in ledger.rows
+            assert len(ledger.rows.splitlines()) == 1
+            assert all(
+                item["payload"]["request_id"] == str(request_id) for item in seen
+            )
+
+            # Positive control: dedup must not drop a different unit's receipt.
+            second = envelope.model_copy(
+                update={
+                    "envelope_id": uuid4(),
+                    "payload": {**payload, "work_unit_id": "lw-second-unit"},
+                }
+            )
+            await bus.publish(topic, b"second-unit", second.model_dump_json().encode())
+            await host.drain()
+            assert ledger.calls == 2
+            assert len(ledger.rows.splitlines()) == 2
+            assert ledger.rows.count("unit=lw-0123456789abcdef") == 1
+            assert ledger.rows.count("unit=lw-second-unit") == 1
+            assert seen[-1]["payload"]["status"] == "accepted"
+            assert seen[-1]["payload"]["request_id"] == str(
+                uuid5(NAMESPACE_URL, "onex:lab-work-unit:lw-second-unit")
+            )
         finally:
             await host.stop()
             await bus.close()

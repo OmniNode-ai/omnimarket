@@ -42,3 +42,22 @@ dod_evidence:
         check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn16831-ac3-delegation-row-matches-terminal"
+    description: "AC3 lab readback, not bound to the ticket's AC3 line (the hosted check carries only this repository and cannot reach the lab dev lane). A terminal published by `onex delegate` on the lab dev lane (run dca9bc8d-860e-46e0-9d4d-67c9f16e86f9, correlation 4a58bbb3-7963-4259-bae5-64274b2df78f, 2026-10-14T23:40Z) reported 298 input and 59 output tokens in its receipt; the delegation_events projection holds exactly one row with that correlation_id, the same two token counts, the lane and ticket the terminal named, terminal_ok true and a tenant. The check exits 0 only when that count is 1 and exits 1 when either token count is changed."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" 'docker exec -i omnibase-infra-postgres psql -X -q -U postgres -d omnidash_analytics -tA' <<'SQL' | grep -Fx 1
+          SET default_transaction_read_only = on;
+          SELECT count(*) FROM delegation_events WHERE correlation_id = '4a58bbb3-7963-4259-bae5-64274b2df78f' AND tokens_input = 298 AND tokens_output = 59 AND ticket_id = 'OMN-16831' AND caller_lane = 'rem-16831' AND terminal_ok IS TRUE AND tenant_id IS NOT NULL;
+          SQL
+  - id: "dod-omn16831-ac4-terminal-row-readback"
+    description: "AC4 hosted dispatch/readback probe. Success and quality-refused terminals without a tenant fail the callback and store no row. With a registered tenant, each stores exactly one row matching its token counts, ticket, caller lane, outcome, failure cause, score and tenant, and publishes the projection terminal. Complements the separate AC3 lab readback without binding it to an unread criterion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

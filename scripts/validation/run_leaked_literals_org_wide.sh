@@ -51,7 +51,6 @@ ORG_REPOS=(
   omniclaude
   omnimemory
   omniintelligence
-  onex_change_control
   omnidash
   omnicursor
   omnigemini

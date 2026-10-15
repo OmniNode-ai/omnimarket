@@ -8,9 +8,12 @@ summary: >
   run-id idempotence, reports unseen_runs for latest-only evidence, notes a run
   open past its runtime bound as OVERRUN, reports units of ours with no entry
   as UNDECLARED, and journals to disk when the broker is unreachable and
-  flushes in order. The systemd journal, container, consumer-group and probe
-  sources, worker-loop progress and the alert-channel relay are shard 2 and
-  plug into ProtocolRunEvidenceSource.
+  flushes in order. Shard 2 adds worker-loop progress (a state file the worker
+  loop rewrites, so a wedged worker behind a live process and a live advertiser
+  reports no progress) and bus-consumer demand (the outstanding backlog on the
+  dev broker) against completed-handler work. The systemd journal, container
+  and probe sources and the alert-channel relay are still to come and plug into
+  ProtocolRunEvidenceSource.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -34,9 +37,16 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6, cron half: a cron start with no completion inside its runtime bound reports OVERRUN -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_cron_completion_and_consumer_backlog`
+  - id: "req-observer-shard-2"
+    statement: |-
+      The host observer reports a daemon's worker-loop progress and a bus consumer's demand against its completed work, so a wedged worker and a consumer holding a backlog with no completions are reported.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a wedged worker with a live process and a live advertiser reports no progress -- falsifier: `uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_wedged_worker_no_progress`
 evidence_requirements:
   - kind: tests
-    description: "AC1, AC2, AC4, AC5 and the cron half of AC6: the observer's focused tests pass"
+    description: "AC1 to AC6: the observer's focused tests pass"
     command: "uv run pytest tests/test_automation_run_observer_effect.py -q"
 emergency_bypass:
   enabled: false
@@ -90,3 +100,19 @@ dod_evidence:
       - check_type: command
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_run_observer_effect/handlers/handler_automation_run_observer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerAutomationRunObserver:' | grep -qx 1"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-observer-wedged-worker-no-progress
+    description: "A wedged worker with a live process and a live advertiser reports no progress"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_wedged_worker_no_progress"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: dod-observer-consumer-backlog-no-work
+    description: "A consumer holding a fixed backlog with no further production and no completions reports demand with no work (consumer half of AC6)"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_automation_run_observer_effect.py -q -k observer_cron_completion_and_consumer_backlog_consumer"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

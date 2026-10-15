@@ -527,8 +527,17 @@ def main(argv: list[str] | None = None) -> int:
             sources = load_projection_sources_json(args.projection_json, since, until)
         else:
             dsn = os.environ[args.dsn_env]
-            proj_rows, proj_state = asyncio.run(_load_projection_db(dsn, since, until))
-            sources = asyncio.run(_load_projection_sources_db(dsn, since, until))
+            try:
+                proj_rows, proj_state = asyncio.run(
+                    _load_projection_db(dsn, since, until)
+                )
+                sources = asyncio.run(_load_projection_sources_db(dsn, since, until))
+            except Exception as exc:
+                # Driver errors are not all OSError subclasses. Keep this boundary
+                # around database I/O only: exit 1 is reserved for a parity result,
+                # and a failed read must never produce a report or receipt.
+                sys.stderr.write(f"work_ledger_parity: error: database read: {exc!r}\n")
+                return 2
         report = compare(
             file_rows=file_rows,
             projection_rows=proj_rows,

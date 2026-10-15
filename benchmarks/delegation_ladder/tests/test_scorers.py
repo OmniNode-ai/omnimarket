@@ -19,11 +19,14 @@ from benchmarks.delegation_ladder.models import EnumOutcome, ModelTaskBundle
 from benchmarks.delegation_ladder.scorers import (
     extract_code,
     extract_identifiers,
+    git_text,
     grounding_report,
+    parse_search_replace,
     score_diagnosis_location,
     score_exact_match,
     score_grounding_coverage,
     score_grounding_rubric,
+    score_multi_file_edit_and_test,
     score_patch_apply_and_test,
     score_unit_test_execution,
     split_answer,
@@ -324,7 +327,7 @@ def test_r6_reports_a_harness_error_when_the_focused_test_cannot_discriminate() 
 
 def test_every_committed_bundle_parses_and_names_its_fixtures() -> None:
     paths = sorted(BUNDLES.glob("*.json"))
-    assert len(paths) == 28, "seven rungs of four tasks"
+    assert len(paths) >= 28, "seven rungs of four hand-built tasks, plus the mined ones"
     for path in paths:
         bundle = ModelTaskBundle.model_validate(
             json.loads(path.read_text(encoding="utf-8"))
@@ -337,14 +340,17 @@ def test_every_committed_bundle_parses_and_names_its_fixtures() -> None:
             )
 
 
-def test_every_rung_carries_four_tasks() -> None:
-    counts: dict[str, int] = {}
+def test_every_rung_carries_its_four_hand_built_tasks() -> None:
+    """The hand-built tasks (01-04) are the original ladder; mined tasks (05+)
+    were added beside them under OMN-20844, never in place of them."""
+    hand_built: dict[str, int] = {}
     for path in sorted(BUNDLES.glob("*.json")):
         bundle = ModelTaskBundle.model_validate(
             json.loads(path.read_text(encoding="utf-8"))
         )
-        counts[bundle.rung.value] = counts.get(bundle.rung.value, 0) + 1
-    assert counts == {
+        if int(bundle.task_id.rsplit("-", 1)[1]) <= 4:
+            hand_built[bundle.rung.value] = hand_built.get(bundle.rung.value, 0) + 1
+    assert hand_built == {
         "R1": 4,
         "R2": 4,
         "R3": 4,
@@ -528,3 +534,121 @@ def test_every_diagnosis_trace_regenerates_from_its_committed_fixtures() -> None
             f"{proof.name} no longer produces the committed trace's verdict: "
             f"committed {committed_tally.group()!r}, produced {produced_tally.group()!r}"
         )
+
+
+# --------------------------------------------------------------------------
+# A verdict is a function of the response, not of the clock (OMN-20844)
+# --------------------------------------------------------------------------
+
+
+def test_a_verdict_does_not_depend_on_whether_both_sources_were_written_in_one_second() -> (
+    None
+):
+    """The real source and its mutant are written to one directory back to back.
+
+    When they have the same length and are written within one second, Python
+    reuses the bytecode it cached for the first as if it were the second's, so
+    the mutant runs as the real function. Rescoring one saved response then gave
+    different verdicts on different runs of the same host. Eight scorings of the
+    same answer must agree, and agree with the correct verdict.
+    """
+    config: dict[str, object] = {
+        "subject_text": "def add(a, b):\n    return a + b\n",
+        "mutant_text": "def add(a, b):\n    return a - b\n",
+        "timeout_s": 60,
+    }
+    answer = (
+        "```python\nfrom subject import add\n\n\ndef test_add():\n"
+        "    assert add(2, 3) == 5\n```"
+    )
+    outcomes = {
+        score_unit_test_execution(answer, config, FIXTURES).outcome.value
+        for _ in range(8)
+    }
+    assert outcomes == {"pass"}
+
+
+def test_a_patch_is_scored_on_the_patched_source_not_a_cached_copy_of_the_broken_one() -> (
+    None
+):
+    config: dict[str, object] = {
+        "prelude_text": "",
+        "prefix_body_text": "def add(a, b):\n    return a - b\n",
+        "suffix_text": "",
+        "focused_test_text": (
+            "from subject import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
+        ),
+        "timeout_s": 60,
+    }
+    fix = "```python\ndef add(a, b):\n    return a + b\n```"
+    outcomes = {
+        score_patch_apply_and_test(fix, config, FIXTURES).outcome.value
+        for _ in range(8)
+    }
+    assert outcomes == {"pass"}
+
+
+# --------------------------------------------------------------------------
+# The structural hard corpus (OMN-20844)
+# --------------------------------------------------------------------------
+
+HARD_BUNDLES = Path(__file__).resolve().parents[1] / "bundles_hard"
+
+
+def _hard(task_id: str) -> ModelTaskBundle:
+    return ModelTaskBundle.model_validate_json(
+        (HARD_BUNDLES / f"{task_id}.json").read_text(encoding="utf-8")
+    )
+
+
+def test_search_replace_edits_are_read_per_file_in_order() -> None:
+    answer = (
+        "FILE: src/a.py\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n"
+        "**FILE:** `src/b.py`\n<<<<<<< SEARCH\ny = 1\n\nz = 1\n=======\ny = 3\n"
+        ">>>>>>> REPLACE\n"
+    )
+    assert parse_search_replace(answer) == [
+        ("src/a.py", "x = 1", "x = 2"),
+        ("src/b.py", "y = 1\n\nz = 1", "y = 3"),
+    ]
+
+
+def test_every_hard_task_records_its_structural_features() -> None:
+    bundles = sorted(HARD_BUNDLES.glob("*.json"))
+    assert len(bundles) == 20
+    for path in bundles:
+        bundle = ModelTaskBundle.model_validate_json(path.read_text(encoding="utf-8"))
+        features = bundle.scorer_config["features"]
+        assert isinstance(features, dict)
+        assert features["context_chars"] == len(bundle.prompt)
+        assert 1 <= int(features["files_required"]) <= int(features["files_touched"])
+        if bundle.task_type == "review":
+            accepted = bundle.scorer_config["accepted"]
+            assert isinstance(accepted, list)
+            for line in accepted:
+                assert f"### {str(line).removeprefix('FILE: ')}\n" in bundle.prompt
+
+
+def test_the_merged_change_passes_a_hard_task_and_a_no_op_edit_fails_it() -> None:
+    bundle = _hard("H6-04")
+    config = dict(bundle.scorer_config)
+    commit = str(config["repo_commit"])
+    changed = config["changed_files"]
+    assert isinstance(changed, list)
+    assert len(changed) == 1
+    path = str(changed[0])
+    before = git_text("show", f"{commit}^:{path}").rstrip("\n")
+    after = git_text("show", f"{commit}:{path}").rstrip("\n")
+    fix = f"FILE: {path}\n<<<<<<< SEARCH\n{before}\n=======\n{after}\n>>>>>>> REPLACE"
+    first = before.splitlines()[0]
+    no_op = f"FILE: {path}\n<<<<<<< SEARCH\n{first}\n=======\n{first}\n>>>>>>> REPLACE"
+    assert score_multi_file_edit_and_test(fix, config).outcome is EnumOutcome.PASS
+    assert score_multi_file_edit_and_test(no_op, config).outcome is EnumOutcome.FAIL
+
+
+def test_a_hard_edit_to_a_file_not_shown_is_refused_before_any_test_runs() -> None:
+    config = dict(_hard("H6-04").scorer_config)
+    answer = "FILE: src/elsewhere.py\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE"
+    result = score_multi_file_edit_and_test(answer, config)
+    assert result.outcome is EnumOutcome.FAIL
+    assert "not shown" in result.detail

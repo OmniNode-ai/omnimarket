@@ -49,6 +49,17 @@ DELETED_BASELINES: tuple[tuple[str, str], ...] = (
         "a generated triage artifact that its own header says the gate never reads; "
         "keeping it invites treating a classification as an exemption",
     ),
+    # OMN-17038. Its two remaining rows were the node_e2e_orchestrator subscriptions with no route.
+    # The node now routes both through handler_routing to a definition-B handler, so the file
+    # carries nothing and the gate reads the routes from the contracts. Neither the hook nor the CI
+    # job ever passed --baseline; what the file held was an exemption with nothing left to exempt.
+    (
+        "config/validation/subscriber_dispatcher_resolution_baseline.yaml",
+        "the subscriber-dispatcher resolution ratchet: burned from 50 rows to the two "
+        "node_e2e_orchestrator subscriptions, and those are routed. An exemption file "
+        "holding zero live rows is a one-line edit away from re-authorizing the class it "
+        "was created to remove",
+    ),
     # OMN-17888. Its own header set this exit condition -- deleted the moment its single
     # row lands -- and that row (node_redeploy_deploy_effect / HandlerDeployPublishMonitor)
     # has landed: the contract routes by topic with one explicit message_category per
@@ -69,36 +80,15 @@ DELETED_BASELINES: tuple[tuple[str, str], ...] = (
 # The topic literals below are the PIN itself: reading them out of the file they pin would
 # defeat the pin, so they are spelled here deliberately.
 PEER_FENCED_BASELINES: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
-    "config/validation/subscriber_dispatcher_resolution_baseline.yaml": (
-        "OMN-16939 / OMN-17888 (lane dev-lane-fsm-residuals)",
-        (
-            # OMN-17888: the node_redeploy_deploy_effect row is gone. It recorded a
-            # completion-event topic that resolved cleanly yet still dead-lettered,
-            # because the routing entry declared the COMMAND model for an EVENT. That
-            # entry now declares the deploy agent's own completion model and the handler
-            # branches on it, so a pin allowing the row would license re-freezing a
-            # residual that is closed. Asserted directly instead, in
-            # tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py, and
-            # enforced repo-wide by omnimarket.validators.routing_input_model_fit.
-            # OMN-17296 AC2: the four node_redeploy_orchestrator rows are gone. Their
-            # subscriptions were deleted from that contract by omnimarket#2375
-            # (OMN-18026), so a pin allowing them would license re-freezing a row about
-            # a subscription that does not exist. The drop is now asserted directly, in
-            # tests/test_redeploy_orchestrator_dispatch_resolution.py, against the
-            # handler's own parsed branch set.
-            # Not peer-owned: node_e2e_orchestrator needs a handler class extracted from
-            # its standalone consumer.py before either topic can get a route. A node
-            # refactor, not a category or alias fix -- residual on OMN-18013.
-            (
-                "node_e2e_orchestrator",
-                "onex.evt.omnimarket.build-loop-orchestrator-completed.v1",  # onex-topic-allow: pinned baseline row
-            ),
-            (
-                "node_e2e_orchestrator",
-                "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",  # onex-topic-allow: pinned baseline row
-            ),
-        ),
-    ),
+    # OMN-17038: config/validation/subscriber_dispatcher_resolution_baseline.yaml is DELETED
+    # (see DELETED_BASELINES). Its last rows were node_e2e_orchestrator's two subscriptions;
+    # that node now routes both. Earlier burn-downs of the same file: OMN-17888 removed the
+    # node_redeploy_deploy_effect row (asserted directly in
+    # tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py and enforced repo-wide by
+    # omnimarket.validators.routing_input_model_fit); OMN-17296 AC2 removed the four
+    # node_redeploy_orchestrator rows (asserted in
+    # tests/test_redeploy_orchestrator_dispatch_resolution.py against the handler's own parsed
+    # branch set).
     # OMN-17888: config/validation/mixed_category_routing_omnimarket_baseline.yaml is
     # DELETED, which is the exit condition that file wrote for itself -- "deleted the
     # moment that row lands", the row being this lane's node_redeploy_deploy_effect

@@ -1,0 +1,137 @@
+# Reasoning tasks for the delegation ground-truth measurement.
+# Each prompt carries the only facts the answer may use. Each checklist item is
+# a yes-or-no question scored by a model other than the delegated one; an answer
+# is adequate only when every item is met. Several items test a trap: a fact the
+# table deliberately leaves out, or a unit or default that is easy to assume.
+schema_version: 1
+task_class: reasoning
+tasks:
+  - id: reasoning_tile_balance
+    prompt: |
+      Work out the final usable tile inventory for a fictional craft bench. Show a short arithmetic derivation and finish with a line labeled Final usable tiles. Keep the unit as tiles and use the corrected starting count.
+      Facts:
+      - An early tally listed 120 tiles, but a recount superseded it with 126 tiles.
+      - Of the recounted tiles, 9 were cracked and cannot be used.
+      - A delivery added 24 usable tiles after the recount.
+      - A completed border then consumed 38 usable tiles.
+      - There were no other additions, removals, or changes.
+      Use only these facts. Do not use the superseded tally or add waste allowances, package sizes, or inventory movements the facts do not state.
+    checklist:
+      - {id: correct_start, text: "Does the derivation start from the corrected inventory of 126 tiles rather than 120?"}
+      - {id: exclude_cracked, text: "Does the derivation subtract the 9 cracked tiles from the usable inventory?"}
+      - {id: delivery_consumption, text: "Does the derivation add 24 usable tiles and subtract the 38 consumed tiles?"}
+      - {id: final_value, text: "Does the answer end with a line labeled Final usable tiles giving 103 tiles?"}
+      - {id: no_invented_tile_changes, text: "Is the answer free of invented waste allowances, package sizes, and inventory movements?"}
+  - id: reasoning_oven_finish
+    prompt: |
+      Determine when a fictional workshop oven finishes its cycle. Give a short timeline showing each boundary, then a final line labeled Finish time. Treat all clock times as belonging to the same morning on the same clock.
+      Facts:
+      - Preheating starts at 09:10 and lasts 15 minutes.
+      - Loading begins immediately after preheating and takes 5 minutes.
+      - Baking begins immediately after loading and takes 40 minutes.
+      - Cooling begins immediately after baking and takes 20 minutes.
+      - Cooling is part of the cycle; the cycle is not finished when baking stops.
+      - None of the stages overlap or have gaps.
+      Use only these facts. Do not add delays, time zones, or extra stages the facts do not state.
+    checklist:
+      - {id: preheat_load, text: "Does the timeline show preheating ending at 09:25 and loading ending at 09:30?"}
+      - {id: bake_end, text: "Does the timeline show baking ending at 10:10?"}
+      - {id: cooling_included, text: "Does the derivation include the full 20-minute cooling stage after baking?"}
+      - {id: finish_time, text: "Does a final line labeled Finish time give 10:30?"}
+      - {id: no_invented_oven_timing, text: "Is the answer free of invented delays, overlaps, time zones, and extra stages?"}
+  - id: reasoning_club_overlap
+    prompt: |
+      Calculate a fictional club's participation counts from the stated attendance facts. Show a brief set-counting derivation and end with a line labeled Neither activity. Count each member once when finding the number in at least one activity.
+      Facts:
+      - The club has 40 members in total.
+      - Exactly 22 members joined the drawing activity.
+      - Exactly 17 members joined the modeling activity.
+      - Exactly 8 members joined both activities.
+      - These are the only two activities considered, and both activity counts include the members who joined both.
+      Use only these facts. Do not assume the two groups are disjoint or add absences, guests, or a third activity that the facts do not state.
+    checklist:
+      - {id: overlap_subtracted, text: "Does the derivation subtract the shared 8 once from 22 plus 17?"}
+      - {id: union_value, text: "Does the answer find that 31 members joined at least one activity?"}
+      - {id: neither_derivation, text: "Does the answer subtract 31 from the total of 40 to find the remaining members?"}
+      - {id: neither_final, text: "Does the answer end with a line labeled Neither activity giving 9 members?"}
+      - {id: no_invented_membership, text: "Is the answer free of invented absences, guests, third activities, and disjointness assumptions?"}
+  - id: reasoning_crate_fee
+    prompt: |
+      Compute the charge for a fictional crate-holding service. Show the charged-day calculation and the fee arithmetic, then finish with a line labeled Total charge. Use credits as the monetary unit throughout the derivation.
+      Facts:
+      - A crate is held for exactly 7 days.
+      - The first 2 days are free and do not count as charged days.
+      - Each remaining day costs 6 credits.
+      - A single handling fee of 5 credits is added once per crate, not once per day.
+      - There are no other charges or discounts in this calculation.
+      Use only these facts. Do not add taxes, rounding rules, deposits, or a real currency that the facts do not state.
+    checklist:
+      - {id: charged_days, text: "Does the answer calculate 7 minus 2 as 5 charged days?"}
+      - {id: daily_subtotal, text: "Does the answer calculate 5 times 6 as a 30-credit holding subtotal?"}
+      - {id: single_handling_fee, text: "Does the answer add the 5-credit handling fee exactly once?"}
+      - {id: total_charge, text: "Does the answer end with a line labeled Total charge giving 35 credits?"}
+      - {id: no_invented_fees, text: "Is the answer free of invented taxes, rounding rules, deposits, discounts, and real currencies?"}
+  - id: reasoning_water_batches
+    prompt: |
+      Find how much liquid remains after a fictional mixing demonstration. Show the conversion and subtraction explicitly, and finish with a line labeled Remaining volume in milliliters. All volumes in the facts refer to the same liquid supply.
+      Facts:
+      - The supply starts with 3 liters of liquid.
+      - For this calculation, 1 liter equals 1000 milliliters.
+      - Four batches each consume 450 milliliters from the supply.
+      - A final rinse consumes another 200 milliliters from the same supply.
+      - The rinse is not one of the four batches, and nothing is returned to the supply.
+      Use only these facts. Do not add evaporation, spillage, refills, or conversions the facts do not state.
+    checklist:
+      - {id: liter_conversion, text: "Does the answer convert the initial 3 liters into 3000 milliliters?"}
+      - {id: batch_total, text: "Does the answer calculate four batches times 450 milliliters as 1800 milliliters?"}
+      - {id: separate_rinse, text: "Does the derivation subtract the separate 200-milliliter rinse in addition to the batch total?"}
+      - {id: remaining_volume, text: "Does the answer end with a line labeled Remaining volume giving 1000 milliliters?"}
+      - {id: no_invented_liquid_changes, text: "Is the answer free of invented evaporation, spillage, refills, returns, and unsupported conversions?"}
+  - id: reasoning_beacon_rule
+    prompt: |
+      Determine the final indicator state for a fictional beacon controller. Evaluate each condition briefly, then finish with a line labeled Final indicator. Apply only the stated rule; equipment names do not imply extra behavior.
+      Facts:
+      - The indicator is green if and only if the battery is ready and either the local link or relay link is active.
+      - If that condition is false, the indicator is amber.
+      - The battery is ready.
+      - The local link is not active.
+      - The relay link is active.
+      - Local and relay links are alternatives; the rule does not require both links to be active.
+      Use only these facts. Do not add fault priorities, flashing patterns, or controller states the facts do not state.
+    checklist:
+      - {id: battery_ready, text: "Does the answer identify the battery-ready condition as true?"}
+      - {id: link_alternative, text: "Does the answer find the link condition true because the relay is active despite the inactive local link?"}
+      - {id: rule_applied, text: "Does the answer combine battery readiness with the true alternative-link condition to satisfy the green rule?"}
+      - {id: green_final, text: "Does the answer end with a line labeled Final indicator giving green?"}
+      - {id: no_invented_controller_states, text: "Is the answer free of invented fault priorities, flashing patterns, extra states, and a requirement for both links?"}
+  - id: reasoning_digit_arrangement
+    prompt: |
+      Derive the only permitted three-digit code for a fictional display puzzle. Explain the ordering constraints in a few sentences and finish with a line labeled Final code. Treat the digits as symbols arranged from left to right.
+      Facts:
+      - The code uses the digits 2, 5, and 8 exactly once each, with no other digits.
+      - Digit 2 must be somewhere to the left of digit 8.
+      - Digit 5 must be immediately to the right of digit 8.
+      - Left and right refer to the written code, and leading digits are not omitted.
+      Use only these facts. Do not add numerical divisibility rules, reverse the stated adjacency, or introduce puzzle constraints the facts do not state.
+    checklist:
+      - {id: digits_once, text: "Does the answer use exactly the digits 2, 5, and 8 once each in its final code?"}
+      - {id: adjacent_pair, text: "Does the derivation identify 85 as the adjacent ordered pair required by 5 immediately following 8?"}
+      - {id: two_before_pair, text: "Does the derivation place 2 before the pair 85 to satisfy 2 being left of 8?"}
+      - {id: code_value, text: "Does the answer end with a line labeled Final code giving 285?"}
+      - {id: no_invented_code_rules, text: "Is the answer free of invented digits, divisibility rules, and additional puzzle constraints?"}
+  - id: reasoning_retry_budget
+    prompt: |
+      Calculate the longest possible processing time for a fictional test runner under the stated policy. Show the number of attempts and pauses separately, then finish with a line labeled Maximum elapsed time in milliseconds.
+      Facts:
+      - The runner makes one initial attempt and allows exactly 2 retries after failures.
+      - Each attempt can take at most 400 milliseconds.
+      - A 50-millisecond pause occurs between successive attempts, with no pause before the first or after the last.
+      - For the maximum-time case, all three attempts run for their full duration and fail.
+      - There is no other processing overhead in this calculation.
+      Use only these facts. Do not treat retries as total attempts or add backoff, setup time, and extra pauses the facts do not state.
+    checklist:
+      - {id: three_attempts, text: "Does the answer derive 3 total attempts from one initial attempt plus 2 retries?"}
+      - {id: attempt_duration, text: "Does the answer calculate 3 times 400 as 1200 milliseconds spent in attempts?"}
+      - {id: two_pauses, text: "Does the answer count exactly 2 pauses of 50 milliseconds, totaling 100 milliseconds?"}
+      - {id: elapsed_total, text: "Does the answer end with a line labeled Maximum elapsed time giving 1300 milliseconds?"}
+      - {id: no_invented_runner_time, text: "Is the answer free of invented backoff, setup time, overhead, and extra pauses?"}

@@ -1,0 +1,27 @@
+{
+  "task_id": "R2-09",
+  "title": "what landed, from 11 merged changes",
+  "task_type": "document",
+  "provenance": "11 consecutive real merges to omnimarket, from 9ba9547a28af to 8b6f8fff11f9, subject lines and the first line of each description.",
+  "prompt": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n8b6f8ff omnimarket#3549: feat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays\n    * feat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays\nfa9d91b omnimarket#3472: feat(OMN-20287): delegation_events run lineage, consumer half (plan step 1)\n    * feat(OMN-20606): a fallback delegation names the delegation it follows, and the in-process evidence names its caller\n4f34af5 omnimarket#3512: feat(OMN-20696): DoD verdict rows name the contract repository and commit they were evaluated at\n    * feat(OMN-20696): node_dod_verify resolves contract source and location\nf6b1af7 omnimarket#3550: fix(OMN-19153): prevent the retired DoD topic from bypassing drift checks\n    * fix(OMN-19153): remove restored duplicate DoD topic exemptions\n87d2a2d omnimarket#3551: fix(OMN-17427): skip apt when PG16 tools present in CI\n    * fix(OMN-17427): skip apt when PG16 tools present in CI\n053d5e4 omnimarket#3548: fix(OMN-19984): autobind with nothing left to bind reads DECLINED, not ERROR\n    * fix(OMN-19984): autobind with nothing left to bind reads DECLINED, not ERROR\nf61f904 omnimarket#3547: feat(OMN-20708): branch claim check reads the database work ledger on the lab\n    * feat(OMN-20708): Add branch claim check effect node\n149d334 omnimarket#3543: fix(OMN-17427): clear ONEX_TENANT_ID in unit tests\n    * fix(OMN-17427): clear ONEX_TENANT_ID in unit tests\n8cf6da8 omnimarket#3541: fix(OMN-20604): catch EventTopicAuthorizationError in submit CLI\n    * fix(OMN-20604): catch EventTopicAuthorizationError in submit CLI\ne72d9c3 omnimarket#3545: fix(OMN-19032): refuse feature-base auto-merge in existing workflows\n    * fix(OMN-19032): refuse feature-base auto-merge before arming\n9ba9547 omnimarket#3544: chore(OMN-20704): move route job to omnimarket reusable workflow\n    * chore(OMN-20704): move route job to omnimarket reusable workflow\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_coverage",
+  "scorer_config": {
+    "source_text": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n8b6f8ff omnimarket#3549: feat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays\n    * feat(OMN-20712): host lab-fill selection and lab disk hygiene nodes with deployment overlays\nfa9d91b omnimarket#3472: feat(OMN-20287): delegation_events run lineage, consumer half (plan step 1)\n    * feat(OMN-20606): a fallback delegation names the delegation it follows, and the in-process evidence names its caller\n4f34af5 omnimarket#3512: feat(OMN-20696): DoD verdict rows name the contract repository and commit they were evaluated at\n    * feat(OMN-20696): node_dod_verify resolves contract source and location\nf6b1af7 omnimarket#3550: fix(OMN-19153): prevent the retired DoD topic from bypassing drift checks\n    * fix(OMN-19153): remove restored duplicate DoD topic exemptions\n87d2a2d omnimarket#3551: fix(OMN-17427): skip apt when PG16 tools present in CI\n    * fix(OMN-17427): skip apt when PG16 tools present in CI\n053d5e4 omnimarket#3548: fix(OMN-19984): autobind with nothing left to bind reads DECLINED, not ERROR\n    * fix(OMN-19984): autobind with nothing left to bind reads DECLINED, not ERROR\nf61f904 omnimarket#3547: feat(OMN-20708): branch claim check reads the database work ledger on the lab\n    * feat(OMN-20708): Add branch claim check effect node\n149d334 omnimarket#3543: fix(OMN-17427): clear ONEX_TENANT_ID in unit tests\n    * fix(OMN-17427): clear ONEX_TENANT_ID in unit tests\n8cf6da8 omnimarket#3541: fix(OMN-20604): catch EventTopicAuthorizationError in submit CLI\n    * fix(OMN-20604): catch EventTopicAuthorizationError in submit CLI\ne72d9c3 omnimarket#3545: fix(OMN-19032): refuse feature-base auto-merge in existing workflows\n    * fix(OMN-19032): refuse feature-base auto-merge before arming\n9ba9547 omnimarket#3544: chore(OMN-20704): move route job to omnimarket reusable workflow\n    * chore(OMN-20704): move route job to omnimarket reusable workflow\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "required_ids": [
+      "OMN-17427",
+      "OMN-19032",
+      "OMN-19153",
+      "OMN-19984",
+      "OMN-20287",
+      "OMN-20604",
+      "OMN-20606",
+      "OMN-20696",
+      "OMN-20704",
+      "OMN-20708"
+    ],
+    "coverage_threshold": 0.5
+  },
+  "fixture_files": {},
+  "rung": "R2",
+  "dependent_reasoning_steps": 2
+}

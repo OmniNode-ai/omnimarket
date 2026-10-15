@@ -120,6 +120,9 @@ class TestPhaseRoutingEquivalence:
         assert topic.endswith("mypy-check-requested.v1")
         assert isinstance(payload, ModelMypyRequestSeam)
         assert payload.source_text == "code"
+        # OMN-21150: the factory overrides the consumer's ignore_missing_imports
+        # default so a phantom import fails the type-check leg.
+        assert payload.ignore_missing_imports is False
 
     def test_invalid_outcome_emits_rejected_terminal(self) -> None:
         topic, payload = _handle(

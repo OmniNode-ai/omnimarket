@@ -1,0 +1,23 @@
+name: node_superseded_run_cancel_effect
+version: "1.0.0"
+description: "Cancels queued and in-progress CI runs superseded by a later PR head or by a merge-queue exit, decided from the run list and the queue read alone (OMN-17427)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_superseded_run_cancel_effect: "omnimarket.nodes.node_superseded_run_cancel_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["ci", "github", "cancel", "effect", "merge-queue", "OMN-17427"]
+pack: "pr-landing"
+display_name: "Superseded Run Cancel Effect"
+node_role: "effect"

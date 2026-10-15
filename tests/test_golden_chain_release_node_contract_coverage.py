@@ -26,7 +26,6 @@ RELEASE_TOUCHED_NODES = (
     "node_dirty_canonical_sweep",
     "node_dispatch_queue_drainer",
     "node_monitor_alert_responder",
-    "node_e2e_orchestrator",
     "node_evidence_collector_effect",
     "node_evidence_extractor_compute",
     "node_evidence_pipeline_orchestrator",

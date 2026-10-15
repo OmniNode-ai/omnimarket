@@ -11,10 +11,33 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: contracts/OMN-20074.yaml's dod-omnimarket-pr-3775-deploy-probe carries no binds_ac, AC10 stays bound by dod-omnimarket-pr-3775-rejection, and test_every_repo_contract_binds_every_criterion passes -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion fails at the merge base"
+  - id: "req-merge-queue-base-queues-behind-green"
+    statement: "On a base that lands through a GitHub merge queue, the landing decision queues a green behind PR as it is and never update-branches it first; a red behind PR is still updated, and a base with no queue still updates first."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: decide_landing emits merge, not update_branch, for every green behind PR whose facts carry merge_queue=true, waits on a pending one, leaves an armed owned one alone, and still updates a red one or one with no queue -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py -q fails with the handler at the merge base"
+  - id: "req-reviewer-rerun-red-is-real"
+    statement: "A reviewer-pool red at a head that already had its one rerun is the PR's own red: the reviewer-pool rule presents it as a product red with its reviewer checks, never as pending, so the landing decision sends a fix worker or escalates."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: omniclaude#2752's shape (both hostile-review checks failed at head 6b3bf7bcb3 after its one rerun) is presented as a product red with both reviewer checks, the decision dispatches a real_red worker leased on those checks, and with the worker ladder spent it reports escalation_exhausted -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py -q fails at the merge base"
+  - id: "req-budget-cancel-evidence-check-readiness"
+    statement: "The cancellation evidence check waits for the blocked provider call before triggering handler budget expiry, so interpreter boot cannot change the stage it tests."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: both spawned customer-route cancellation scenarios retain their exact inference stage, routing, credential and attempt evidence even when total child startup consumes the original 12-second handler budget -- falsifier: delay spawn startup and run uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q with the test at the merge base"
+  - id: "req-repo-status-check-per-tick"
+    statement: "Operator RULING 2026-10-15T00:42:51Z: the merge-throughput tick decision gives every repository with open non-draft PRs and zero merges in the window one typed status verdict (merging normally, waiting on CI, base branch red, merge queue ejecting, shared red unowned, parked or escalated), deduped per repository while its unit is open, and an unowned shared red or an ejecting merge queue is a MISSING line whose FIX names one cause lane or the controller."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: given repo_status facts, a repository with two open PRs red on the same check and no cause lease is shared_red_unowned with a MISSING repo-status line naming one cause lane, a base_blocked ejection is merge_queue_ejecting, an open unit with the same verdict emits no event, and the verdicts ride the node's result over the in-memory bus -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
+  - kind: "tests"
+    description: "A reviewer red rerun at its head gets a worker or an escalation, never pending."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +54,63 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19998-omn19401-selection-names-test-file"
+    description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-19401.yaml's dod-omn19401-ac1-step-by-step-selection runs pytest over a directory instead of naming the reducer test file that holds its step_by_step tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn19998.py -q -k omn19401"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19998-merge-queue-base-queues-behind-green"
+    description: "The merge-queue scenarios pass at the head; with the handler at the merge base, the three green behind PRs on one merge-queue base each get update_branch instead of merge."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19998-reviewer-rerun-red-is-real"
+    description: "The omniclaude#2752 scenario passes through the reviewer-pool rule and the landing decision at the head and fails at the merge base, where the rerun head is presented as pending."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -q -k reviewer_pool"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19998-reviewer-rerun-red-deploy-probe"
+    description: "Hosted-runner probe reads the reviewer-pool rule at this commit and requires the rerun-head branch that presents a product red; the base lacks it and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_apply_reviewer_pool.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'if p["head_sha"] in rerun.get(p["pr"], set()):'
+  - id: "dod-omn19998-budget-cancel-evidence-readiness"
+    description: "Both real spawned-effect scenarios trigger the handler timeout only after the blocked provider call starts, and retain every existing terminal and attempt assertion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19998-repo-status-check-per-tick"
+    description: "The repo-status scenarios pass at the head and fail at the merge base, whose request model refuses repo_status."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn19998-repo-status-check-deploy-probe"
+    description: "Hosted-runner probe reads the throughput-tick decision handler at this commit and requires the repo-status check; the base lacks it and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def check_repo_status('

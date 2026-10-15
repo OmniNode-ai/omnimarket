@@ -151,15 +151,50 @@ def _pull_request_trigger(workflow_path: Path) -> dict:
     return triggers.get("pull_request") or {}
 
 
+# OMN-17427: hooks whose whole-tree counterpart is a caller workflow job that
+# runs the exported hook's own reusable workflow (pinned by the hook's revision)
+# on every pull request, rather than a job with run: steps.
+WORKFLOW_BACKSTOPS: dict[str, str] = {
+    "public-repo-hygiene": "public-repo-hygiene.yml",
+    "deployment-config": "public-repo-hygiene.yml",
+}
+
+
 def test_every_staged_scoped_hook_has_a_declared_backstop() -> None:
     staged = _staged_scoped_hook_ids()
     assert staged, "expected at least one staged-file-scoped hook"
-    missing = staged - set(BACKSTOPS) - PRE_EXISTING_STAGED_HOOKS
+    missing = (
+        staged - set(BACKSTOPS) - set(WORKFLOW_BACKSTOPS) - PRE_EXISTING_STAGED_HOOKS
+    )
     assert not missing, (
         f"these staged-scoped hooks have no declared whole-tree backstop: {sorted(missing)}"
     )
-    assert set(BACKSTOPS) <= staged, (
+    assert set(BACKSTOPS) | set(WORKFLOW_BACKSTOPS) <= staged, (
         "a BACKSTOPS entry no longer names a staged-scoped hook -- prune it"
+    )
+
+
+@pytest.mark.parametrize("hook_id", WORKFLOW_BACKSTOPS)
+def test_workflow_backstop_runs_the_same_reusable_on_every_pull_request(
+    hook_id: str,
+) -> None:
+    workflow_path = REPO_ROOT / ".github" / "workflows" / WORKFLOW_BACKSTOPS[hook_id]
+    job = _job(workflow_path, "public-repo-hygiene")
+    assert job.get("if") in (None, "always()")
+    assert job.get("continue-on-error") is not True
+    assert "pull_request" in (
+        _load_yaml(workflow_path).get(True) or _load_yaml(workflow_path)["on"]
+    )
+    config = _load_yaml(PRECOMMIT_CONFIG)
+    revs = {
+        repo["rev"].split()[0]
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook.get("id") == hook_id
+    }
+    assert len(revs) == 1
+    assert str(job["uses"]).endswith(f"@{revs.pop()}"), (
+        f"{hook_id} caller and hook are not at one revision"
     )
 
 

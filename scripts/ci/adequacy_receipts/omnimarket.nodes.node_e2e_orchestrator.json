@@ -1,0 +1,18 @@
+{
+  "base_node_files": [
+    "src/omnimarket/nodes/node_e2e_orchestrator/__init__.py",
+    "src/omnimarket/nodes/node_e2e_orchestrator/consumer.py",
+    "src/omnimarket/nodes/node_e2e_orchestrator/contract.yaml",
+    "src/omnimarket/nodes/node_e2e_orchestrator/metadata.yaml"
+  ],
+  "base_ref": "5d6c5e4e4cb3a0563fde9e24fdc864617e0917bd",
+  "contract_tests": [
+    "tests/unit/nodes/node_e2e_orchestrator/test_handler_e2e_orchestrator.py"
+  ],
+  "handler_module": "omnimarket.nodes.node_e2e_orchestrator.handlers.handler_e2e_orchestrator",
+  "handler_module_sha256": "sha256:d6636677162f82e4d6e20fd3d0a6ac5fdd07032008ecab1366e91c2bd8e813c9",
+  "legacy_handler": "none",
+  "node_id": "omnimarket.nodes.node_e2e_orchestrator",
+  "receipt_schema": "adequacy_receipt.no_legacy.v1",
+  "recorded_at": "2026-10-13T08:45:53.193140+00:00"
+}

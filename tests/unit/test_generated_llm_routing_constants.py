@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
+
+import pytest
+import yaml
 
 from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
 from omnimarket.routing.generated_llm_routing_constants import (
@@ -13,6 +17,49 @@ from omnimarket.routing.generated_llm_routing_constants import (
     EnumLlmEndpointRef,
     EnumLogicalModelKey,
 )
+
+_RETIRED_MODELS = (
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
+    "deepseek-r1-14b",
+    "deepseek-r1-32b",
+    "qwen3.6-35b",
+    "qwen3-next-80b",
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("model_id", _RETIRED_MODELS)
+def test_retired_models_are_not_resolvable(model_id: str) -> None:
+    registry = ModelLlmModelRegistryLoader().load()
+    with pytest.raises(KeyError, match="not found in registry"):
+        registry.get_model(model_id)
+    assert model_id not in LOGICAL_MODEL_KEYS
+
+
+@pytest.mark.unit
+def test_retired_endpoint_refs_are_not_generated() -> None:
+    assert set(LLM_ENDPOINT_REFS).isdisjoint(
+        {
+            "ANTHROPIC_DELEGATION_URL",
+            "LLM_CODER_FAST_URL",
+            "LLM_DEEPSEEK_R1_URL",
+            "LLM_QWEN3_NEXT_URL",
+        }
+    )
+
+
+@pytest.mark.unit
+def test_packaged_tiers_leave_evaluation_model_to_overlay() -> None:
+    routing = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[2]
+            / "src/omnimarket/configs/routing_tiers.yaml"
+        ).read_text()
+    )
+    assert routing["tiers"]
+    assert any(tier.get("eval_before_accept") for tier in routing["tiers"])
+    assert all(tier.get("eval_model") is None for tier in routing["tiers"])
 
 
 def test_generated_constants_match_model_registry() -> None:

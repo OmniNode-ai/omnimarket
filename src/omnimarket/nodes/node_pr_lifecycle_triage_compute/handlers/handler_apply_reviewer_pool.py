@@ -4,9 +4,12 @@
 
 Turns every ``reviewer_pool`` red into something the landing decision knows (OMN-20067). Oldest first, while the
 reviewer endpoint has free slots, a head the decision has not rerun is presented as ``runner_saturation``: the
-decision reruns it once and records the head. Every other reviewer-pool red (already rerun at this head, or no
-free slot) is presented as ``pending``: no merge, no worker, and no rerun until a slot frees or the head moves.
-The decision never sees ``reviewer_pool``.
+decision reruns it once and records the head. A head with no free slot is presented as ``pending``: no merge, no
+worker, and no rerun until a slot frees. A head already rerun is past its one rerun, so a reviewer red at it is the
+reviewer's verdict on the code: it is presented as ``product`` with its reviewer checks, and the decision sends a
+fix worker (whose CI context carries the reviewer's blocking findings) or escalates once the worker ladder is spent
+(OMN-19998: omniclaude#2752 sat pending at its head with no worker and no escalation). It needs no slot. The
+decision never sees ``reviewer_pool``.
 """
 
 from __future__ import annotations
@@ -46,7 +49,9 @@ def apply_reviewer_pool(
         (p for p in out if p.get("red_class") == "reviewer_pool"),
         key=lambda p: (p["created_at"], p["pr"]),
     ):
-        if budget > 0 and p["head_sha"] not in rerun.get(p["pr"], set()):
+        if p["head_sha"] in rerun.get(p["pr"], set()):
+            p["red_class"] = "product"
+        elif budget > 0:
             p["red_class"] = "runner_saturation"
             budget -= 1
         else:

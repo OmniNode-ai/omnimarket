@@ -1,28 +1,105 @@
----
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - E2E orchestrator (build loop to PR lifecycle bridge)
+#
+# The loop, all on the bus:
+#   build-loop-orchestrator-completed  -> e2e-ci-read-requested (+ evidence write)
+#   e2e-ci-read-completed, not green   -> e2e-ci-read-requested again (the self-loop, one per poll interval)
+#   e2e-ci-read-completed, all green   -> pr-lifecycle-orchestrator-start (+ evidence write)
+#   pr-lifecycle-orchestrator-completed -> evidence write (merge_completed.json, receipts.json)
+# node_e2e_bridge_effect answers the two e2e command topics; this node only decides.
 name: node_e2e_orchestrator
+contract_name: node_e2e_orchestrator
+node_name: node_e2e_orchestrator
 description: >
-  E2E orchestrator — bridges build-loop completion to merge sweep.
-  Subscribes to build-loop-orchestrator-completed, polls CI until green,
-  then publishes pr-lifecycle-orchestrator-start. On merge completion,
-  writes an evidence bundle to .onex_state/e2e-runs/{correlation_id}/.
-node_type: orchestrator
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+  E2E orchestrator: bridges build-loop completion to the PR lifecycle. On a build-loop completion it
+  asks node_e2e_bridge_effect to read CI for the build's PRs through the typed GitHub gateway, asks
+  again each poll interval until every required check is green or the deadline passes, then publishes
+  pr-lifecycle-orchestrator-start. On lifecycle completion it writes the evidence bundle under
+  .onex_state/e2e-runs/{correlation_id}/. A build event with dry_run true makes the start command
+  non-acting. Definition-B handler: one event in, the commands out, no I/O.
+node_type: ORCHESTRATOR_GENERIC
+contract_version: {major: 2, minor: 0, patch: 0}
+node_version: {major: 2, minor: 0, patch: 0}
+
+# Pure decisions, no I/O: the main runtime hosts it. The loop ends in a PR lifecycle start, which arms
+# and merges unless the build event says dry_run; a build loop's completion is what triggers it, and
+# the change reaches a lane only through the sanctioned delivery (lab first, then promotion).
+runtime_profiles:
+  - main
+
+input_model:
+  name: ModelE2eBuildCompleted
+  module: omnimarket.nodes.node_e2e_orchestrator.models.model_e2e_ingress
+  description: "A build loop completed, with the PRs it opened."
+output_model:
+  name: ModelE2eCiReadRequest
+  module: omnimarket.models.e2e_bridge.model_e2e_bridge
+  description: "The CI read the build's PRs wait on; the start command and evidence writes are the other outputs."
 
 event_bus:
+  version: {major: 1, minor: 0, patch: 0}
   subscribe_topics:
     - onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+    - onex.evt.omnimarket.build-bridge-ci-read-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
   publish_topics:
+    - onex.cmd.omnimarket.build-bridge-ci-read-requested.v1
+    - onex.cmd.omnimarket.build-bridge-evidence-write-requested.v1
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+
+published_events:
+  - event_type: "E2eCiReadRequest"
+    topic: onex.cmd.omnimarket.build-bridge-ci-read-requested.v1
+    description: "Read the required-check state of the build's PRs once, not before not_before; sent again by the self-loop until green or the deadline."
+  - event_type: "E2eEvidenceWriteRequest"
+    topic: onex.cmd.omnimarket.build-bridge-evidence-write-requested.v1
+    description: "Files of the run's evidence bundle."
+  - event_type: "E2ePrLifecycleStart"
+    topic: onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
+    description: "Every PR the build opened is green: start the PR lifecycle (dry_run carried from the build event)."
+
+handler:
+  module: omnimarket.nodes.node_e2e_orchestrator.handlers.handler_e2e_orchestrator
+  class: HandlerE2eOrchestrator
+  input_model: omnimarket.nodes.node_e2e_orchestrator.models.model_e2e_ingress.ModelE2eBuildCompleted
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: e2e.build_completed
+      message_category: event
+      handler:
+        name: HandlerE2eOrchestrator
+        module: omnimarket.nodes.node_e2e_orchestrator.handlers.handler_e2e_orchestrator
+      event_model:
+        name: ModelE2eBuildCompleted
+        module: omnimarket.nodes.node_e2e_orchestrator.models.model_e2e_ingress
+      topic: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+      description: "Record the run and request the first CI read (or start the lifecycle when the build opened no PR)."
+    - operation: e2e.ci_read_completed
+      message_category: event
+      handler:
+        name: HandlerE2eOrchestrator
+        module: omnimarket.nodes.node_e2e_orchestrator.handlers.handler_e2e_orchestrator
+      event_model:
+        name: ModelE2eCiReadCompleted
+        module: omnimarket.models.e2e_bridge.model_e2e_bridge
+      topic: onex.evt.omnimarket.build-bridge-ci-read-completed.v1
+      description: "All green starts the lifecycle, red stops, anything else requests another read until the deadline."
+    - operation: e2e.lifecycle_completed
+      message_category: event
+      handler:
+        name: HandlerE2eOrchestrator
+        module: omnimarket.nodes.node_e2e_orchestrator.handlers.handler_e2e_orchestrator
+      event_model:
+        name: ModelE2ePrLifecycleCompleted
+        module: omnimarket.nodes.node_e2e_orchestrator.models.model_e2e_ingress
+      topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+      description: "Write merge_completed.json and receipts.json."
 
 descriptor:
   node_archetype: orchestrator
-  purity: effectful
-  runtime_profiles:
-    - workers
-
-runtime_dispatch:
-  addressable: false
-  invocation_mode: event_consumer
-  reason: "E2E orchestrator is a long-running Kafka consumer bridge triggered by build-loop and PR-lifecycle events; it does not own a request/response command route."
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000

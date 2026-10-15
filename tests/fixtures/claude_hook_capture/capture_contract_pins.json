@@ -41,6 +41,8 @@
     "agent_transcript_ref",
     "agent_type",
     "background_task_count",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
     "command_args_ref",
     "command_name",
     "command_source",
@@ -63,8 +65,10 @@
     "final",
     "glob_count",
     "goal_id",
+    "guard",
     "hook_event_name",
     "index",
+    "input_tokens",
     "interrupted",
     "is_interrupt",
     "last_assistant_message_ref",
@@ -72,6 +76,7 @@
     "mcp_server",
     "mcp_server_name",
     "memory_type",
+    "message_count",
     "message_id",
     "message_ref",
     "mode",
@@ -80,12 +85,16 @@
     "new_cwd_ref",
     "notification_type",
     "old_cwd_ref",
+    "output_tokens",
     "parent_goal_id",
+    "partial_window",
     "prompt_cache_likely_expired",
     "prompt_length",
     "prompt_ref",
     "reason",
+    "reason_class",
     "reason_ref",
+    "refused_hook_event_name",
     "requested_schema_keys",
     "seconds_since_last_response",
     "session_cron_count",
@@ -108,6 +117,7 @@
     "tool_use_ids",
     "trigger",
     "turn_id",
+    "usage_source_hook",
     "worktree_path_ref"
   ],
   "projection": {
@@ -139,6 +149,13 @@
         "model",
         "host",
         "exit_code",
+        "guard",
+        "refusal_reason",
+        "input_tokens",
+        "output_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "assistant_message_count",
         "ingested_at"
       ],
       "name": "omninode_internal.claude_hook_events"
@@ -169,5 +186,9 @@
       ]
     }
   },
-  "source": "omniclaude src/omniclaude/hooks/contracts/contract_hook_claude_capture.yaml at 22c255f242e0ea04bd17c8328f711d217a5790f4 (omniclaude#2370); goal_id and parent_goal_id keys and columns added for OMN-20031; exit_code key and lane, model, host, exit_code columns added for OMN-17427"
+  "source": "omniclaude src/omniclaude/hooks/contracts/contract_hook_claude_capture.yaml at 22c255f242e0ea04bd17c8328f711d217a5790f4 (omniclaude#2370); goal_id and parent_goal_id keys and columns added for OMN-20031; exit_code key and lane, model, host, exit_code columns added for OMN-17427; guard, refusal_reason, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens and assistant_message_count columns, the GuardRefusal and AssistantUsage derived events and their payload keys added for OMN-18946",
+  "derived_hooks": [
+    "GuardRefusal",
+    "AssistantUsage"
+  ]
 }

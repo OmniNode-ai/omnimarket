@@ -132,9 +132,17 @@ repos:
       # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
       # sanctioned delegation node package named in omnibase_core's policy.yaml.
       # Shrink-only baseline, declared here so the shape ratchet accepts it.
+      # OMN-17427: the gate always scans the whole repository (a new call site can
+      # be a new caller of an old one), ~37s on every commit; the ci.yml
+      # direct-model-call-gate job runs the same scan on every PR. It runs once per
+      # push instead, with growth judged against the merge base (a pre-push tree
+      # equals HEAD, so --base HEAD would judge nothing).
       - id: check-direct-model-call
         require_serial: true
-        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml, --base, HEAD]
+        stages: [pre-push]
+        entry: >-
+          bash -c 'exec "$VIRTUAL_ENV/bin/python" -m omnibase_core.nodes.node_direct_model_call_check_effect.runtime_direct_model_call "$@" --base "$(git merge-base HEAD origin/dev)"' --
+        args: [--repo, omnimarket, --baseline, .onex_ratchets/direct_model_call_baseline.yaml]
 
   # Transport-import + node-purity gates — first purity gate in omnimarket
   # (OMN-13283 / GAP-8a, under OMN-9048). Scoped to COMPUTE and REDUCER node code,
@@ -300,17 +308,31 @@ repos:
   # omniclaude commit, as .github/workflows/public-repo-hygiene.yml, over the
   # lines the commit adds, so the local and CI verdicts cannot diverge. The five
   # classes in `enforce_classes` of .public-repo-hygiene.yaml fail the commit;
-  # the whole-tree residue is reported. The hook declares no `args`, `files` or
-  # `exclude` here: it is meant to run on every commit, over every file type.
+  # the whole-tree residue is reported. The hook runs on every commit that stages
+  # a file, over every file type, with no `files` or `exclude` narrowing.
   # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
   # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
   - repo: https://github.com/OmniNode-ai/omniclaude
     rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae
     hooks:
+      # OMN-17427: .public-repo-hygiene.yaml declares enforce_scope: added-lines, so
+      # the commit verdict is the findings on lines the index adds, and every such
+      # line sits in a staged file. Scanning the whole tracked tree (~33s, and
+      # ~15s for deployment-config) only re-reports the residue, which CI's
+      # public-repo-hygiene job still prints. pre-merge-commit is not installed
+      # here (default_install_hook_types), so the commit stage is the only local run.
       - id: public-repo-hygiene
         require_serial: true
+        args: [--staged]
+        pass_filenames: true
+        always_run: false
+        stages: [pre-commit]
       - id: deployment-config
         require_serial: true
+        args: [--staged]
+        pass_filenames: true
+        always_run: false
+        stages: [pre-commit]
 
   # Essential file formatting
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -441,13 +463,13 @@ repos:
       # LAG can never rise and the group reads Stable / MEMBERS 1 / LAG 0 while 100% of
       # the traffic is lost. Same script the 'Subscriber Dispatcher Resolution' CI job
       # runs, so local and CI enforcement cannot drift. Triggers on contract.yaml (a
-      # routing change needs no .py edit). Ratchet frozen in
-      # config/validation/subscriber_dispatcher_resolution_baseline.yaml (shrink-only).
+      # routing change needs no .py edit). No exemption file exists: the baseline was
+      # burned to zero and deleted, and no-baseline-refreeze keeps it deleted.
       - id: subscriber-dispatcher-resolution
         name: Every subscribe_topic resolves to a registered dispatcher (OMN-16939)
         language: system
         entry: bash scripts/ci/check_subscriber_dispatcher_resolution.sh
-        files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/subscriber_dispatcher_resolution_baseline\.yaml|scripts/ci/check_subscriber_dispatcher_resolution\.sh)$
+        files: ^(src/omnimarket/.*\.(py|yaml)|scripts/ci/check_subscriber_dispatcher_resolution\.sh)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -816,12 +838,15 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-17427: lints every contract and Python file (~23s) on every commit;
+      # the ci.yml topic-naming-lint job runs the same scans with the same baseline
+      # on every PR, so it runs once per push here.
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system
         entry: bash scripts/validation/run_topic_lint.sh
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       - id: routing-tier-backend-bindability
         name: Routing tiers reference only backends a lane can bind
@@ -1306,6 +1331,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17122: catalog retirement, generated constants, and eval references.
+      # SYNC with ci.yml step "Delegation model registry drift gate".
+      - id: delegation-model-registry-drift
+        name: Delegation model registry drift gate
+        language: system
+        entry: uv run pytest tests/unit/test_generated_llm_routing_constants.py -q
+        files: ^(src/omnimarket/(data/model_registry/model_registry_v1\.yaml|routing/generated_llm_routing_constants\.py|configs/routing_tiers\.yaml)|scripts/generate_llm_routing_constants\.py|tests/unit/test_generated_llm_routing_constants\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12691: live-path node changes must ship with golden-chain coverage.
       # SYNC with ci.yml step "Golden-chain coverage gate".
       - id: golden-chain-coverage-gate
@@ -1422,6 +1457,26 @@ repos:
         language: system
         entry: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
         files: ^(src/omnimarket/nodes/node_typed_decision_effect/|tests/unit/nodes/(node_typed_decision_effect/|test_golden_chain_typed_decision_effect\.py$)|src/omnimarket/configs/(task_class_contracts\.v1|bifrost_delegation)\.yaml$|pyproject\.toml$)
+        pass_filenames: false
+        stages: [pre-commit]
+      # OMN-20780: rulings 2026-10-13T18:34:53Z and 2026-10-13T20:50:03Z, a typed
+      # decision may be asked for a private code repository and only the contract's
+      # refused list is refused. Check-only. SYNC with the ci.yml lint step
+      # "Typed decision refuses only the listed repositories".
+      - id: typed-decision-repository-scope
+        name: Typed decision refuses only the listed repositories (OMN-20780)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision.py tests/ci/test_typed_decision_repository_scope_wiring_omn20780.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_typed_decision_effect/|tests/unit/nodes/node_typed_decision_effect/test_handler_typed_decision\.py$|tests/ci/test_typed_decision_repository_scope_wiring_omn20780\.py$|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)
+        pass_filenames: false
+        stages: [pre-commit]
+      # Check-only. SYNC with the ci.yml lint step
+      # "Review gateway refuses only the listed repository (OMN-20780)".
+      - id: review-gateway-privacy
+        name: Review gateway refuses only the listed repository (OMN-20780)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -k privacy tests/ci/test_review_gateway_privacy_wiring_omn20780.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_claude_review_gateway_effect/|tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway\.py$|tests/ci/test_review_gateway_privacy_wiring_omn20780\.py$|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)
         pass_filenames: false
         stages: [pre-commit]
       # OMN-21002: paired with the ci.yml lint-job regression step.
@@ -1573,6 +1628,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20001: an omniclaude release reaches omnimarket as a pin bump PR (ruling
+      # 2026-10-01T21:43:10Z (3)). Check-only. SYNC with the ci.yml lint step
+      # "Omniclaude release notice (OMN-20001)".
+      - id: omniclaude-release-notice
+        name: Omniclaude release notice opens a pin bump PR (OMN-20001)
+        language: system
+        entry: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_omniclaude_pin_bump_compute/.*|tests/ci/test_omniclaude_release_notice_omn20001\.py|\.github/workflows/omniclaude-pin-bump\.yml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20730: the red CI triage model passes its design config, each property
       # fails on a one-knob mutation, the TLC results match the committed model,
       # configs and outputs, and VERDICT.txt approves the model's digest.
@@ -1649,6 +1715,31 @@ repos:
 
       # OMN-18932: the release bar is checked here and in ci.yml.
       # OMN-20282: each hook runs one focused file; both are paired with ci.yml.
+      # OMN-20278: each hook runs one focused file, also run by CI's lint job.
+      - id: lab-work-receipt-mapping
+        name: Lab work receipt STATUS mapping
+        entry: uv run --frozen pytest tests/unit/nodes/node_work_ledger_bus_mirror/test_lab_work_receipt_mapping.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/(model_work_ledger_bus_mirror_request\.py|work_ledger_append/)|nodes/(node_work_ledger_bus_mirror/|node_lab_work_unit_effect/|node_work_ledger_append_effect/)|lab_work/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_bus_mirror/|work_ledger_bus/)|tests/ci/test_lab_work_receipt_gates\.py|contracts/OMN-20278\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      - id: lab-work-receipt-redelivery
+        name: Lab work receipt redelivery
+        entry: uv run --frozen pytest tests/unit/work_ledger_bus/test_lab_work_receipt_mirror.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/(model_work_ledger_bus_mirror_request\.py|work_ledger_append/)|nodes/(node_work_ledger_bus_mirror/|node_lab_work_unit_effect/|node_work_ledger_append_effect/)|lab_work/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_bus_mirror/|work_ledger_bus/)|tests/ci/test_lab_work_receipt_gates\.py|contracts/OMN-20278\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      - id: lab-work-receipt-gates
+        name: Lab work receipt gate wiring
+        entry: uv run --frozen pytest tests/ci/test_lab_work_receipt_gates.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/(model_work_ledger_bus_mirror_request\.py|work_ledger_append/)|nodes/(node_work_ledger_bus_mirror/|node_lab_work_unit_effect/|node_work_ledger_append_effect/)|lab_work/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_bus_mirror/|work_ledger_bus/)|tests/ci/test_lab_work_receipt_gates\.py|contracts/OMN-20278\.yaml|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       - id: work-ledger-principal-auth
         name: Work-ledger signature and operator-only consent
         entry: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
@@ -1665,12 +1756,32 @@ repos:
         files: ^(src/omnimarket/(models/work_ledger_append/|nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|tests/unit/(nodes/node_work_ledger_append_effect/|nodes/node_pr_handoff_ledger_effect/|work_ledger_bus/)|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
         stages: [pre-commit]
 
+      # OMN-20737: paired with the explicit ci.yml regression step.
+      - id: work-ledger-parity-database
+        name: Work-ledger parity database errors and live state reads
+        entry: uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_projection_work_ledger/|tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       - id: output-only-release-acceptance
         name: D1 output-only release acceptance (OMN-18932)
         entry: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
         language: system
         pass_filenames: false
         files: ^(src/omnimarket/delegation/output_only_acceptance\.py|tests/unit/delegation/test_output_only_acceptance_omn18932\.py)$
+        stages: [pre-commit]
+
+      # OMN-20780: RULING 2026-10-14T18:17:30Z, a delegated answer is gated by an independent judge for the text
+      # classes and by its own named tests for the code classes (OMN-20489). CI twin: the "Delegated answers gated
+      # by an independent judge or named tests" step of ci.yml. Check-only.
+      - id: delegation-answer-gate
+        name: Delegated answers gated by an independent judge or named tests (OMN-20489)
+        entry: uv run --frozen pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_delegation_answer_gate_compute/|src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch\.py|src/omnimarket/models/delegation/wire/model_answer_gate_request\.py|src/omnimarket/inference/task_class_authority\.py|tests/unit/delegation/test_answer_gate_omn20489\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
         stages: [pre-commit]
 
       # OMN-15630: routing-completeness invariant. For every task class declared
@@ -1721,6 +1832,14 @@ repos:
         language: system
         entry: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
         files: ^(src/omnimarket/.*\.py|tests/test_omni_home_no_silent_default_omn16856\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: class3-installed-copy-drift
+        name: Class 3 installed-copy drift node regression (OMN-20865)
+        language: system
+        entry: uv run --frozen pytest tests/test_host_reconcile_class3_import_drift.py -q -p no:randomly
+        files: ^(src/omnimarket/models/model_host_reconcile\.py|src/omnimarket/nodes/node_host_reconcile_compute/.*|tests/test_host_reconcile_class3_import_drift\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -2304,6 +2423,24 @@ repos:
         pass_filenames: false
         files: ^(\.pre-commit-config\.yaml|scripts/validation/check_precommit_additional_dependencies\.sh|tests/test_precommit_additional_dependencies_omn19666\.sh|tests/fixtures/omn19666/.*)$
         stages: [pre-commit]
+
+  # OMN-20780: warn on a push to main. `main` is release-synced and never a
+  # feature pull-request target (operator ruling 2026-10-10T16:52:56Z); the hosted
+  # `main-target-guard` check refuses a PR whose base is main. A PR's base is not
+  # known at push time, so the one local signal is the remote ref being pushed
+  # (pre-commit exports it as PRE_COMMIT_REMOTE_BRANCH). It warns and exits 0:
+  # the hosted check is the refusal. Pinned by
+  # tests/ci/test_main_target_guard_prepush_omn20780.py.
+  - repo: local
+    hooks:
+      - id: main-target-guard
+        name: "main-target-guard: warn on a push to main (OMN-20780)"
+        entry: bash -c 'if [ "${PRE_COMMIT_REMOTE_BRANCH:-}" = "refs/heads/main" ]; then echo "WARNING main-target-guard (OMN-20780) - you are pushing to main. main is release-synced and no feature PR may target it; push a branch and open the PR against dev." >&2; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [pre-push]
 
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]

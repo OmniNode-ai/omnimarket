@@ -558,3 +558,271 @@ class TestAC4PublishedSummaryHeadline:
         payload = json.loads(out.read_text(encoding="utf-8"))
         assert payload["duplicate_terminals"]["count"] == 2
         assert payload["duplicate_terminals"]["with_single_command"] == 1
+
+
+class TestAC3CountsPerCommandId:
+    """OMN-19440 AC3: the terminal carries its command's id (OMN-20383).
+
+    Per command id the join reports dropped terminals and second logical
+    outcomes. A served replay of the recorded terminal is a replay and a reused
+    correlation is a reuse; neither is a duplicate.
+    """
+
+    def _read(
+        self,
+        join: types.ModuleType,
+        commands: list[object],
+        terminals: list[object],
+    ) -> object:
+        command_topic, terminal_topics = _declared_topics()
+        window = join.window_for(now_ms=NOW_MS, window_hours=24, grace_ms=GRACE_MS)
+        return join.compute_join(
+            window=window,
+            commands=join.TopicRead(topic=command_topic, records=commands),
+            terminals=[
+                join.TopicRead(topic=terminal_topics[0], records=terminals),
+                join.TopicRead(topic=terminal_topics[1], records=[]),
+            ],
+        )
+
+    def _t0(self, join: types.ModuleType) -> int:
+        window = join.window_for(now_ms=NOW_MS, window_hours=24, grace_ms=GRACE_MS)
+        return window.commands_from_ms + HOUR_MS
+
+    def test_a_served_replay_is_a_replay_not_a_duplicate(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [join.Record(t0, "c-replay", message_id="m-replay")],
+            [
+                join.Record(t0 + 10, "c-replay", command_id="m-replay", outcome="A"),
+                join.Record(t0 + 20, "c-replay", command_id="m-replay", outcome="A"),
+            ],
+        )
+        assert result.replayed_command_ids == ["m-replay"]
+        assert result.second_outcome_command_ids == []
+        assert result.dropped_command_ids == []
+        assert result.reused_correlation_ids == []
+
+    def test_a_reused_correlation_is_a_reuse_not_a_duplicate(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [
+                join.Record(t0, "c-reuse", message_id="m-first"),
+                join.Record(t0 + 1, "c-reuse", message_id="m-second"),
+            ],
+            [
+                join.Record(t0 + 10, "c-reuse", command_id="m-first", outcome="A"),
+                join.Record(t0 + 11, "c-reuse", command_id="m-second", outcome="B"),
+            ],
+        )
+        assert result.reused_correlation_ids == ["c-reuse"]
+        assert result.second_outcome_command_ids == []
+        assert result.replayed_command_ids == []
+        assert result.dropped_command_ids == []
+
+    def test_a_second_outcome_for_one_command_is_one_duplicate(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [join.Record(t0, "c-two", message_id="m-two")],
+            [
+                join.Record(t0 + 10, "c-two", command_id="m-two", outcome="failed"),
+                join.Record(t0 + 20, "c-two", command_id="m-two", outcome="done"),
+            ],
+        )
+        assert result.second_outcome_command_ids == ["m-two"]
+        assert result.replayed_command_ids == []
+        assert result.reused_correlation_ids == []
+
+    def test_planted_replay_reuse_and_second_outcome_together(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [
+                join.Record(t0, "c-replay", message_id="m-replay"),
+                join.Record(t0 + 1, "c-reuse", message_id="m-r1"),
+                join.Record(t0 + 2, "c-reuse", message_id="m-r2"),
+                join.Record(t0 + 3, "c-two", message_id="m-two"),
+            ],
+            [
+                join.Record(t0 + 10, "c-replay", command_id="m-replay", outcome="A"),
+                join.Record(t0 + 11, "c-replay", command_id="m-replay", outcome="A"),
+                join.Record(t0 + 12, "c-reuse", command_id="m-r1", outcome="A"),
+                join.Record(t0 + 13, "c-reuse", command_id="m-r2", outcome="A"),
+                join.Record(t0 + 14, "c-two", command_id="m-two", outcome="x"),
+                join.Record(t0 + 15, "c-two", command_id="m-two", outcome="y"),
+            ],
+        )
+        # The planted replay and the planted reuse add no duplicate; the planted
+        # second outcome adds exactly one.
+        assert result.second_outcome_command_ids == ["m-two"]
+        assert result.replayed_command_ids == ["m-replay"]
+        assert result.reused_correlation_ids == ["c-reuse"]
+
+    def test_a_dropped_command_is_found_inside_a_reused_correlation(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [
+                join.Record(t0, "c-reuse", message_id="m-served"),
+                join.Record(t0 + 1, "c-reuse", message_id="m-lost"),
+            ],
+            [join.Record(t0 + 10, "c-reuse", command_id="m-served", outcome="A")],
+        )
+        # The per-correlation join sees a terminal and calls nothing dropped.
+        assert result.dropped_ids == []
+        assert result.dropped_command_ids == ["m-lost"]
+
+    def test_a_terminal_without_a_command_id_is_not_a_drop_or_a_duplicate(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [join.Record(t0, "c-old", message_id="m-old")],
+            [
+                join.Record(t0 + 10, "c-old", outcome="A"),
+                join.Record(t0 + 11, "c-old", outcome="B"),
+            ],
+        )
+        assert result.dropped_command_ids == []
+        assert result.second_outcome_command_ids == []
+        assert result.unattributed_command_ids == ["m-old"]
+        assert result.terminals_without_command_id == 2
+
+    def test_a_command_with_no_id_is_counted_not_guessed(
+        self, join: types.ModuleType
+    ) -> None:
+        t0 = self._t0(join)
+        result = self._read(
+            join,
+            [join.Record(t0, "c-bare")],
+            [join.Record(t0 + 10, "c-bare", command_id="m-x", outcome="A")],
+        )
+        assert result.commands_without_command_id == 1
+        assert result.dropped_command_ids == []
+
+    def test_planted_per_command_control_is_checked_before_trusting_the_run(
+        self, join: types.ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        window, reads = _day(join)
+        ok = join.measure_with_planted_controls(
+            window=window, commands=reads["commands"], terminals=reads["terminals"]
+        )
+        assert ok.verdict == join.VERDICT_MEASURED
+        assert ok.planted_per_command_detected is True
+        monkeypatch.setattr(join, "classify_by_command", lambda **_: join.PerCommand())
+        blind = join.measure_with_planted_controls(
+            window=window, commands=reads["commands"], terminals=reads["terminals"]
+        )
+        assert blind.verdict == join.VERDICT_INDETERMINATE
+        assert any("per-command" in r for r in blind.indeterminate_reasons)
+
+    def test_unreadable_topic_leaves_the_per_command_figures_null(
+        self, join: types.ModuleType
+    ) -> None:
+        window, reads = _day(join)
+        broken = join.TopicRead(topic=reads["commands"].topic, records=[], error="x")
+        result = join.measure_with_planted_controls(
+            window=window, commands=broken, terminals=reads["terminals"]
+        )
+        assert result.dropped_command_ids is None
+        assert result.second_outcome_command_ids is None
+        assert result.replayed_command_ids is None
+        assert result.reused_correlation_ids is None
+
+
+class TestWireExtraction:
+    def test_command_id_is_the_wire_message_id_header(
+        self, join: types.ModuleType
+    ) -> None:
+        raw = json.dumps({"correlation_id": "c", "envelope_id": "body-id"}).encode()
+        headers = [("message_id", b"header-id")]
+        assert join.extract_message_id(raw, headers) == "header-id"
+
+    def test_command_id_falls_back_to_the_body_envelope_id(
+        self, join: types.ModuleType
+    ) -> None:
+        raw = json.dumps({"correlation_id": "c", "envelope_id": "body-id"}).encode()
+        assert join.extract_message_id(raw, []) == "body-id"
+        assert join.extract_message_id(raw, None) == "body-id"
+        assert join.extract_message_id(b"{}", None) is None
+
+    def test_terminal_command_id_and_outcome(self, join: types.ModuleType) -> None:
+        def terminal(**payload: object) -> bytes:
+            return json.dumps(
+                {"payload": {"correlation_id": "c", "status": "completed", **payload}}
+            ).encode()
+
+        with_id = terminal(command_id="m1")
+        assert join.extract_terminal_command_id(with_id) == "m1"
+        assert join.extract_terminal_command_id(terminal()) is None
+        assert join.terminal_outcome(with_id) == join.terminal_outcome(
+            terminal(command_id="m1")
+        )
+        assert join.terminal_outcome(with_id) != join.terminal_outcome(
+            terminal(command_id="m1", status="failed")
+        )
+        assert join.terminal_outcome(b"not json") is None
+
+
+class TestPerCommandPayload:
+    def test_run_path_publishes_the_per_command_section(
+        self, join: types.ModuleType, tmp_path: Path
+    ) -> None:
+        command_topic, terminal_topics = _declared_topics()
+        t0 = NOW_MS - 20 * HOUR_MS
+        data = {
+            command_topic: [(t0, "pc-1", "m-1", None), (t0 + 1, "pc-2", "m-2", None)],
+            terminal_topics[0]: [
+                (t0 + 10, "pc-1", None, ("m-1", "A")),
+                (t0 + 11, "pc-1", None, ("m-1", "A")),
+            ],
+            terminal_topics[1]: [],
+        }
+
+        async def reader(topic: str, from_ms: int, to_ms: int) -> object:
+            records = []
+            for ts, cid, message_id, terminal in data[topic]:
+                if not from_ms <= ts <= to_ms:
+                    continue
+                records.append(
+                    join.Record(
+                        ts,
+                        cid,
+                        message_id=message_id,
+                        command_id=None if terminal is None else terminal[0],
+                        outcome=None if terminal is None else terminal[1],
+                    )
+                )
+            return join.TopicRead(topic=topic, records=records)
+
+        out = tmp_path / "result.json"
+        code = join.run(
+            reader=reader,
+            contract_path=CONTRACT_PATH,
+            now_ms=NOW_MS,
+            window_hours=24,
+            lane="dev",
+            out_path=out,
+        )
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 0
+        per_command = payload["per_command"]
+        assert per_command["command_ids"] == 2
+        assert per_command["dropped"] == {"count": 1, "ids": ["m-2"]}
+        assert per_command["replays"] == {"count": 1, "ids": ["m-1"]}
+        assert per_command["second_outcomes"] == {"count": 0, "ids": []}
+        assert per_command["reuses"] == {"count": 0, "ids": []}

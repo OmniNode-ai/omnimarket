@@ -76,9 +76,7 @@ WORKFLOW_TRAILER = "Onex-Workflow:"
 RUN_TRAILER = "Onex-Run:"
 
 # (workflow file, job id) pairs whose pushes must carry the App identity.
-IN_SCOPE: tuple[tuple[str, str], ...] = (
-    ("occ-behavior-proof-backfill.yml", "backfill"),
-)
+IN_SCOPE: tuple[tuple[str, str], ...] = (("omniclaude-pin-bump.yml", "bump"),)
 
 # (workflow file, job id) pairs that push a TAG rather than a branch. A tag is a
 # ref, not a commit, so the committer-identity and trailer properties below
@@ -427,7 +425,7 @@ def test_positive_control_the_push_scan_finds_the_known_pushers() -> None:
         "known to push; an empty result means the scan broke, not that the "
         "pushers went away."
     )
-    for known in ("occ-behavior-proof-backfill.yml", "release-cut.yml"):
+    for known in ("omniclaude-pin-bump.yml", "release-cut.yml"):
         assert known in observed, f"{known} pushes but the scan missed it"
 
 

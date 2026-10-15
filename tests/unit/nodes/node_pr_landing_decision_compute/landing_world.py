@@ -92,6 +92,7 @@ class FakePr:
     red_checks: tuple[str, ...] = ()
     cancelled_checks: tuple[str, ...] = ()
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
+    merge_queue: bool = False
     suspensions: set[EnumLandingSuspension] = field(default_factory=set)
     collaborator: bool = False
     runtime: bool = False
@@ -211,6 +212,7 @@ class LandingWorld:
             pr.merge_state = EnumLandingMergeState(raw["merge_state"])
         for s in raw.get("suspensions", []):
             pr.suspensions.add(EnumLandingSuspension(s))
+        pr.merge_queue = bool(raw.get("merge_queue", pr.merge_queue))
         pr.collaborator = bool(raw.get("collaborator", pr.collaborator))
         pr.runtime = bool(raw.get("runtime", pr.runtime))
         pr.process_fix = bool(raw.get("process_fix", pr.process_fix))
@@ -487,6 +489,7 @@ class LandingWorld:
                     red_class=pr.red_class,
                     red_checks=pr.red_checks,
                     merge_state=pr.merge_state,
+                    merge_queue=pr.merge_queue,
                     suspensions=tuple(sorted(pr.suspensions)),
                     gate_reasons=pr.gate_reasons,
                     gate_since=pr.gate_since,

@@ -184,6 +184,13 @@ class _InMemoryHookTables:
             "model",
             "host",
             "exit_code",
+            "guard",
+            "refusal_reason",
+            "input_tokens",
+            "output_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+            "assistant_message_count",
         )
         assert len(params) == len(columns)
         row = dict(zip(columns, params, strict=True))
@@ -351,9 +358,15 @@ def _deliver(
 
 
 def test_the_hook_list_matches_the_capture_contract() -> None:
-    contract_hooks = set(_capture_contract()["coverage_hooks"])
+    contract = _capture_contract()
+    contract_hooks = set(contract["coverage_hooks"])
     assert len(contract_hooks) == 33
-    assert {member.value for member in EnumClaudeHookEventName} == contract_hooks
+    # OMN-18946: the two events a plugin hook derives ride the same topic.
+    derived = set(contract["derived_hooks"])
+    assert derived == {"GuardRefusal", "AssistantUsage"}
+    assert {
+        member.value for member in EnumClaudeHookEventName
+    } == contract_hooks | derived
 
 
 def test_the_payload_allowlist_matches_the_capture_contract() -> None:
@@ -574,6 +587,29 @@ def test_a_known_parent_is_never_downgraded_to_unknown() -> None:
 
 def _pre_tool_use() -> dict[str, Any]:
     return json.loads((FIXTURES / "events" / "PreToolUse.json").read_text("utf-8"))
+
+
+def test_a_content_ref_carries_the_raw_value_and_no_digest() -> None:
+    """OMN-19513: refs carry the harness's raw value; a digest ref is refused."""
+    event = _pre_tool_use()
+    (ref,) = event["content_refs"]
+    assert "sha256" not in ref
+    assert isinstance(ref["value"], str)
+    wire = ModelClaudeHookEventWire.model_validate(event)
+    assert wire.content_refs[0].value == ref["value"]
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), event)
+    assert len(tables.events) == 1
+
+    digest = {**ref, "sha256": "a" * 64}
+    del digest["value"]
+    refused = {
+        **event,
+        "content_refs": [digest],
+        "payload": {**event["payload"], "tool_input_ref": digest},
+    }
+    with pytest.raises(ValidationError):
+        ModelClaudeHookEventWire.model_validate(refused)
 
 
 def test_a_payload_key_the_contract_does_not_declare_is_refused() -> None:

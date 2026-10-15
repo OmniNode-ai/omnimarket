@@ -4,27 +4,28 @@
 
 The start command is published on the contract's declared topic, the contract is
 wired through the runtime's auto-wiring from its path, the handler builds its own
-bus phase gateway, every phase rides the declared delegation request/reply topics,
-and the terminal lands on the declared completed topic. Two stand-ins: the
-delegation consumer, which answers each request with a recorded phase result, and
-the infra request/reply wiring, whose Kafka consumer is replaced by an in-memory
-correlation matcher on the same bus (the real wiring needs a broker).
+lab-work phase gateway, every phase is a lab work unit placed and sent by the
+shared LabWorkCaller on the lab-work contract's topics and served by a real
+LabWorkHost, and the terminal lands on the declared completed topic. Two
+stand-ins: the host's shell runner, which answers each unit with a recorded
+phase result in its output tail, and its capacity probe, which reads a fixed
+idle host instead of this machine.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid5
 
 import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_core.models.contracts.subcontracts import ModelRequestResponseConfig
-from omnibase_core.models.delegation.wire import ModelDelegationRequest
 from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.protocols import ProtocolEventBusLike
@@ -35,8 +36,22 @@ from omnibase_infra.runtime.auto_wiring import (
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.runtime.service_dispatch_result_applier import DispatchResultApplier
+from pydantic import JsonValue
 
+from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+from omnimarket.lab_work.bus import LabWorkHost
+from omnimarket.nodes.node_lab_work_unit_effect.models import (
+    EnumLabWorkUnitStatus,
+    ModelHostCapacityAdvertisement,
+    ModelHostCapacityProbeRequest,
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
+)
+from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers import (
+    handler_morning_phase_lab_work,
+)
 from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_ground_state import (
+    LABELS,
     OVERLAY_ENV,
 )
 from omnimarket.nodes.node_morning_ground_state_orchestrator.models import (
@@ -47,52 +62,78 @@ from omnimarket.nodes.node_morning_ground_state_orchestrator.models import (
 from .helpers import NODE, OVERLAY_FILE, PHASES, request
 
 PACKAGE = f"omnimarket.nodes.{NODE}"
+SCHEMAS = cast(
+    dict[str, dict[str, object]],
+    json.loads(files(PACKAGE).joinpath("models/phase_schemas.json").read_text()),
+)
+PHASE_OF_LABEL = {
+    "ledger-reconcile": "LedgerReconcile",
+    "idempotency-precheck": "Precheck",
+    "decisions-register": "DecisionsRegister",
+    **{label: phase for phase, label in LABELS.items()},
+}
+LAB_WORK = {
+    "repo": "OmniNode-ai/omnimarket",
+    "commit_sha": "28219cf929b32bf51e0a83ac21d89caeed1a27d5",
+    "lane": "morning-ground-state",
+}
 
 
-class InMemoryRequestResponse:
-    """Correlation matching on the in-memory bus, in place of the Kafka consumer."""
+class IdleHost:
+    """The capacity probe of a fixed idle pool host."""
 
-    def __init__(self, event_bus: EventBusInmemory, **_: object) -> None:
-        self.bus = event_bus
-        self.pending: dict[str, asyncio.Future[dict[str, object]]] = {}
-        self.instances: dict[str, str] = {}
-
-    async def wire_request_response(self, config: ModelRequestResponseConfig) -> None:
-        for instance in config.instances:
-            self.instances[instance.name] = instance.request_topic
-            for reply in (
-                instance.reply_topics.completed,
-                instance.reply_topics.failed,
-            ):
-                await self.bus.subscribe(
-                    reply,
-                    group_id=f"rr-{instance.name}-{reply}",
-                    on_message=self._on_reply,
-                )
-
-    async def _on_reply(self, message: ModelEventMessage) -> None:
-        body = json.loads(message.value)
-        pending = self.pending.pop(str(body["correlation_id"]), None)
-        if pending is not None:
-            pending.set_result(body)
-
-    async def send_request(
-        self,
-        instance_name: str,
-        payload: dict[str, object],
-        timeout_seconds: int | None = None,
-    ) -> dict[str, object]:
-        correlation = str(payload["correlation_id"])
-        future: asyncio.Future[dict[str, object]] = (
-            asyncio.get_running_loop().create_future()
+    def handle(
+        self, request: ModelHostCapacityProbeRequest
+    ) -> ModelHostCapacityAdvertisement:
+        return ModelHostCapacityAdvertisement(
+            host_name=request.host_name,
+            cores=16,
+            load1=0.1,
+            mem_available_bytes=64 * 1024**3,
+            tools=request.tools,
+            running_units=request.running_units,
+            max_units=request.max_units,
+            advertised_at=datetime.now(UTC),
+            cadence_seconds=request.cadence_seconds,
         )
-        self.pending[correlation] = future
-        await self.bus.publish(
-            self.instances[instance_name],
-            correlation.encode(),
-            json.dumps(payload).encode(),
+
+
+class RecordedAgent:
+    """The pool host's runner: each unit's output tail is a recorded phase result."""
+
+    def __init__(self, correlation: UUID, bad_phase: str | None) -> None:
+        self.asked: list[str] = []
+        self.bad_phase = bad_phase
+        self.units: list[ModelLabWorkUnitRequest] = []
+        self.label_of = {
+            "mgs-" + uuid5(correlation, label).hex[:24]: label
+            for label in PHASE_OF_LABEL
+        }
+
+    @property
+    def host_name(self) -> str:
+        return "pool-a"
+
+    async def handle(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt:
+        self.units.append(request)
+        label = self.label_of[request.work_unit_id]
+        phase = PHASE_OF_LABEL[label]
+        self.asked.append(phase)
+        result = phase_result(SCHEMAS.get(label))
+        if phase == self.bad_phase and isinstance(result, dict):
+            result["delegation"] = {"delegated": 1, "runs": [], "reason": ""}
+        return ModelLabWorkUnitReceipt(
+            work_unit_id=request.work_unit_id,
+            target_host=request.target_host,
+            host=self.host_name,
+            repo=request.repo,
+            commit_sha=request.commit_sha,
+            lane=request.lane,
+            kind=request.kind,
+            status=EnumLabWorkUnitStatus.COMPLETED,
+            exit_code=0,
+            output_tail="agent session log\n" + json.dumps(result) + "\n",
         )
-        return await asyncio.wait_for(future, timeout=timeout_seconds)
 
 
 def minimal(schema: dict[str, object]) -> object:
@@ -140,33 +181,24 @@ async def drive(
     contract = yaml.safe_load(contract_file.read_text())
     start = contract["event_bus"]["subscribe_topics"][0]
     assert start == START
-    instance = contract["event_bus"]["request_response"]["instances"][0]
     bus = EventBusInmemory(environment="dev", group="morning-cycle")
     await bus.start()
-    asked: list[str] = []
+    command = request(
+        {"publish": False, "force": True, "labWork": cast(JsonValue, LAB_WORK)}
+    )
+    agent = RecordedAgent(command.correlation_id, bad_phase)
+    host = LabWorkHost(cast(ProtocolLabRunBus, bus), agent, IdleHost(), max_units=4)
+    await host.start(advertise=False)
+
+    async def advertise() -> None:
+        while True:
+            await host.advertise_once()
+            await asyncio.sleep(0.05)
+
+    beat = asyncio.create_task(advertise())
     completed: list[ModelMorningGroundStateResult] = []
     failed: list[bytes] = []
     settled = asyncio.Event()
-
-    async def delegation_consumer(message: ModelEventMessage) -> None:
-        envelope = ModelEventEnvelope[ModelDelegationRequest].model_validate_json(
-            message.value
-        )
-        phase = json.loads(envelope.payload.context_pack or "{}").get("phase", "")
-        asked.append(phase)
-        result = phase_result(envelope.payload.response_contract)
-        if phase == bad_phase and isinstance(result, dict):
-            result["delegation"] = {"delegated": 1, "runs": [], "reason": ""}
-        reply = {
-            "correlation_id": str(envelope.correlation_id),
-            "tenant_id": envelope.payload.tenant_id,
-            "content": json.dumps(result),
-        }
-        await bus.publish(
-            instance["reply_topics"]["completed"],
-            str(envelope.correlation_id).encode(),
-            json.dumps(reply).encode(),
-        )
 
     async def on_completed(message: ModelEventMessage) -> None:
         completed.append(
@@ -181,11 +213,6 @@ async def drive(
         settled.set()
 
     stops = [
-        await bus.subscribe(
-            instance["request_topic"],
-            group_id="morning-cycle-delegation",
-            on_message=delegation_consumer,
-        ),
         await bus.subscribe(
             COMPLETED, group_id="morning-cycle-ok", on_message=on_completed
         ),
@@ -217,7 +244,6 @@ async def drive(
         manifest, report, engine, bus, result_appliers_by_contract=appliers
     )
     assert start in attached[manifest.contracts[0].name]
-    command = request({"publish": False, "force": True})
     envelope = ModelEventEnvelope[ModelMorningGroundStateRequest](
         payload=command,
         correlation_id=command.correlation_id,
@@ -228,11 +254,17 @@ async def drive(
     await bus.publish(
         start, str(command.correlation_id).encode(), envelope.model_dump_json().encode()
     )
-    await asyncio.wait_for(settled.wait(), timeout=30)
+    await asyncio.wait_for(settled.wait(), timeout=60)
+    beat.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await beat
+    await host.stop()
     for stop in stops:
         await stop()
     await bus.close()
-    return completed, failed, asked
+    assert all(unit.need_tools == ["claude", "claude-login"] for unit in agent.units)
+    assert all(unit.argv[0] == "python3" for unit in agent.units)
+    return completed, failed, agent.asked
 
 
 @pytest.fixture
@@ -240,8 +272,7 @@ def bus_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(OVERLAY_ENV, str(OVERLAY_FILE))
     monkeypatch.setenv("ONEX_ENVIRONMENT", "dev")
     monkeypatch.setattr(
-        "omnibase_infra.runtime.request_response_wiring.RequestResponseWiring",
-        InMemoryRequestResponse,
+        handler_morning_phase_lab_work, "ADVERTISEMENT_WINDOW_SECONDS", 0.2
     )
 
 
@@ -255,7 +286,7 @@ def test_one_morning_cycle_over_the_bus() -> None:
     assert terminal.phases_run == ["GroundState", "Triage", "Reconcile", "Integrate"]
     assert terminal.expensive_agents_spawned == 4
     assert terminal.unconditional_agents_spawned == 2
-    # Ledger reconcile, decisions register, then the six phases: each a bus round trip.
+    # Ledger reconcile, decisions register, then the six phases: each a lab work unit.
     assert asked[:2] == ["LedgerReconcile", "DecisionsRegister"]
     assert asked[-1] == "Goal"
     assert set(PHASES) <= set(asked)

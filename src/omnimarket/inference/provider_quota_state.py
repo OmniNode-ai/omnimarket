@@ -29,6 +29,11 @@ Fail direction:
   ``disable_until_billing`` block lifts only on a later successful call.
 * Binding resolution fails fast with :class:`ProviderQuotaReadBindingError`
   at resolution time (Rule 8).
+* **A declared quota defers before the provider refuses.** A provider that
+  declares a call limit (``configs/provider_quota_limits.v1.yaml``) is withheld
+  once the window's call count in the projection reaches the limit, until the
+  window ends. The provider's own refusal stays the backstop: the count is
+  folded from observations, so a call still in flight is not in it.
 * **Unknown fails closed.** An unreadable table at read time (or an explicitly
   absent reader) yields UNKNOWN and bars every METERED provider, meaning every
   provider the quota policy declares, and never an undeclared host such as a local model.
@@ -45,11 +50,11 @@ import re
 import sqlite3
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -62,8 +67,15 @@ from omnimarket.events.provider_quota import (
     credential_ref_for,
 )
 from omnimarket.inference.provider_quota_policy import (
+    declared_quota_limit_for,
     load_provider_quota_policy,
     provider_rule_for_endpoint,
+)
+from omnimarket.models.delegation.model_provider_quota_limit import (
+    ModelProviderQuotaLimit,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    EnumQuotaScope,
 )
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
@@ -92,6 +104,9 @@ _RELATION_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
 #: ``disposition`` of the synthetic block an unreadable snapshot returns.
 UNKNOWN_QUOTA_STATE_DISPOSITION = "quota_state_unknown"
+
+#: ``disposition`` of the synthetic block a spent declared quota window returns.
+DECLARED_QUOTA_EXHAUSTED_DISPOSITION = "declared_quota_exhausted"
 
 
 class ProviderQuotaReadBindingError(RuntimeError):
@@ -152,6 +167,26 @@ class ModelProviderQuotaBlock(BaseModel):
         return self.blocked_until
 
 
+class ModelProviderQuotaUsage(BaseModel):
+    """The calls one quota key has made in its current window, as projected."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    credential_ref: str
+    provider_id: str
+    model_scope: str
+    window_seconds: int = Field(ge=1)
+    window_started_at: datetime
+    window_calls: int = Field(ge=0)
+
+    @property
+    def window_ends_at(self) -> datetime:
+        return self.window_started_at + timedelta(seconds=self.window_seconds)
+
+    def open_at(self, instant: datetime) -> bool:
+        return instant < self.window_ends_at
+
+
 class ModelProviderQuotaSnapshot(BaseModel):
     """The active blocks of one tenant, read once, evaluated as of one instant.
 
@@ -166,6 +201,7 @@ class ModelProviderQuotaSnapshot(BaseModel):
     readable: bool
     unreadable_reason: str = ""
     blocks: tuple[ModelProviderQuotaBlock, ...] = ()
+    usage: tuple[ModelProviderQuotaUsage, ...] = ()
 
     @classmethod
     def empty(
@@ -224,8 +260,13 @@ class ModelProviderQuotaSnapshot(BaseModel):
         credential_ref: str,
         model_name: str,
         metered: bool,
+        declared_limit: ModelProviderQuotaLimit | None = None,
     ) -> ModelProviderQuotaBlock | None:
-        """The block that bars this key, or ``None`` when it is routable."""
+        """The block that bars this key, or ``None`` when it is routable.
+
+        ``declared_limit`` is the call limit the provider declares; once the
+        window's call count reaches it the key is barred until the window ends.
+        """
         if not self.readable:
             if not metered:
                 return None
@@ -248,6 +289,52 @@ class ModelProviderQuotaSnapshot(BaseModel):
                 and block.active_at(self.as_of)
             ):
                 return block
+        if declared_limit is not None:
+            return self._spent_window(
+                declared_limit,
+                provider_id=provider_id,
+                credential_ref=credential_ref,
+                model_name=model_name,
+            )
+        return None
+
+    def _spent_window(
+        self,
+        declared_limit: ModelProviderQuotaLimit,
+        *,
+        provider_id: str,
+        credential_ref: str,
+        model_name: str,
+    ) -> ModelProviderQuotaBlock | None:
+        """A block when the declared window's call count has reached its limit."""
+        counted_scope = (
+            PROVIDER_WIDE_MODEL_SCOPE
+            if declared_limit.scope is EnumQuotaScope.PROVIDER
+            else model_name
+        )
+        for row in self.usage:
+            # A count over another window width is not comparable to the limit.
+            if (
+                row.provider_id == provider_id
+                and row.credential_ref == credential_ref
+                and row.model_scope == counted_scope
+                and row.window_seconds == declared_limit.window_seconds
+                and row.open_at(self.as_of)
+                and row.window_calls >= declared_limit.limit
+            ):
+                return ModelProviderQuotaBlock(
+                    credential_ref=credential_ref,
+                    provider_id=provider_id,
+                    model_scope=counted_scope,
+                    disposition=DECLARED_QUOTA_EXHAUSTED_DISPOSITION,
+                    blocked_until=row.window_ends_at,
+                    reason=(
+                        f"{row.window_calls} of {declared_limit.limit} "
+                        f"{declared_limit.unit} used in the "
+                        f"{declared_limit.window_seconds}s window "
+                        f"(declared: {declared_limit.source.strip()})"
+                    ),
+                )
         return None
 
 
@@ -309,6 +396,7 @@ def quota_block_for_backend(
         credential_ref=credential_ref_for(api_key_ref),
         model_name=model_name,
         metered=not domain.startswith("host:"),
+        declared_limit=declared_quota_limit_for(domain),
     )
 
 
@@ -349,19 +437,52 @@ def active_blocks_sql(relation: str = PROVIDER_QUOTA_STATE_RELATION) -> str:
     )
 
 
+def window_usage_sql(relation: str = PROVIDER_QUOTA_STATE_RELATION) -> str:
+    """The read behind declared-quota headroom: a tenant's open call windows.
+
+    psycopg2 named parameters ``tenant_id`` and ``as_of``. A window that ended
+    before ``as_of`` holds no count that still applies, so it is not returned.
+    """
+    if not _RELATION_PATTERN.match(relation):
+        raise ValueError(f"unsafe relation identifier: {relation!r}")
+    return (
+        "SELECT credential_ref, provider_id, model_scope, window_seconds, "
+        "window_started_at, window_calls "
+        f"FROM {relation} "
+        "WHERE tenant_id = %(tenant_id)s::uuid "
+        "AND window_started_at IS NOT NULL "
+        "AND window_started_at + make_interval(secs => window_seconds) "
+        "> %(as_of)s"
+    )
+
+
 class ProtocolProviderQuotaReader(Protocol):
-    """Reads the active quota blocks of one tenant as of one instant."""
+    """Reads the active quota blocks and open call windows of one tenant."""
 
     def read_active_blocks(
         self, *, tenant_id: UUID, as_of: datetime
     ) -> Sequence[ModelProviderQuotaBlock]: ...
 
+    def read_window_usage(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaUsage]: ...
+
 
 class StaticProviderQuotaReader:
     """A reader over a fixed set of blocks (tests, offline replay)."""
 
-    def __init__(self, blocks: Iterable[ModelProviderQuotaBlock] = ()) -> None:
+    def __init__(
+        self,
+        blocks: Iterable[ModelProviderQuotaBlock] = (),
+        usage: Iterable[ModelProviderQuotaUsage] = (),
+    ) -> None:
         self._blocks = tuple(blocks)
+        self._usage = tuple(usage)
+
+    def read_window_usage(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaUsage]:
+        return tuple(u for u in self._usage if u.open_at(as_of))
 
     def read_active_blocks(
         self, *, tenant_id: UUID, as_of: datetime
@@ -394,6 +515,7 @@ class PostgresProviderQuotaReader:
         self._binding_ref = binding_ref
         self._connect_timeout = connect_timeout
         self._sql = active_blocks_sql(relation)
+        self._usage_sql = window_usage_sql(relation)
         self._conn: psycopg2.extensions.connection | None = None
 
     @property
@@ -433,9 +555,9 @@ class PostgresProviderQuotaReader:
             self._conn = conn
         return self._conn
 
-    def read_active_blocks(
-        self, *, tenant_id: UUID, as_of: datetime
-    ) -> Sequence[ModelProviderQuotaBlock]:
+    def _fetch(
+        self, sql: str, *, tenant_id: UUID, as_of: datetime
+    ) -> list[dict[str, Any]]:
         import psycopg2.extras  # type: ignore[import-untyped]
 
         conn = self._get_conn()
@@ -445,7 +567,7 @@ class PostgresProviderQuotaReader:
                 cur.execute(
                     "SELECT set_config(%s, %s, true)", (TENANT_GUC, str(tenant_id))
                 )
-                cur.execute(self._sql, {"tenant_id": str(tenant_id), "as_of": as_of})
+                cur.execute(sql, {"tenant_id": str(tenant_id), "as_of": as_of})
                 rows = [dict(row) for row in cur.fetchall()]
             conn.commit()
         except BaseException:
@@ -453,6 +575,28 @@ class PostgresProviderQuotaReader:
             raise
         finally:
             conn.autocommit = True
+        return rows
+
+    def read_window_usage(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaUsage]:
+        rows = self._fetch(self._usage_sql, tenant_id=tenant_id, as_of=as_of)
+        return tuple(
+            ModelProviderQuotaUsage(
+                credential_ref=str(row["credential_ref"]),
+                provider_id=str(row["provider_id"]),
+                model_scope=str(row["model_scope"]),
+                window_seconds=int(row["window_seconds"]),
+                window_started_at=row["window_started_at"],
+                window_calls=int(row["window_calls"]),
+            )
+            for row in rows
+        )
+
+    def read_active_blocks(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaBlock]:
+        rows = self._fetch(self._sql, tenant_id=tenant_id, as_of=as_of)
         return tuple(
             ModelProviderQuotaBlock(
                 credential_ref=str(row["credential_ref"]),
@@ -491,6 +635,11 @@ class SqliteProviderQuotaReader:
     @property
     def binding_ref(self) -> str:
         return self._binding_ref
+
+    def read_window_usage(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaUsage]:
+        return _sqlite_window_usage(self._db_path, tenant_id, as_of)
 
     def read_active_blocks(
         self, *, tenant_id: UUID, as_of: datetime
@@ -533,6 +682,45 @@ class SqliteProviderQuotaReader:
             for row in rows
         )
         return tuple(b for b in blocks if b.active_at(as_of))
+
+
+def _sqlite_window_usage(
+    db_path: Path, tenant_id: UUID, as_of: datetime
+) -> tuple[ModelProviderQuotaUsage, ...]:
+    if not db_path.exists():
+        return ()
+    conn = sqlite3.connect(  # no-contract-check: local store
+        f"file:{db_path}?mode=ro", uri=True
+    )
+    conn.row_factory = sqlite3.Row
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT credential_ref, provider_id, model_scope, window_seconds, "
+                "window_started_at, window_calls FROM provider_quota_state "
+                "WHERE tenant_id = ? AND window_started_at IS NOT NULL",
+                (str(tenant_id),),
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            # A store that predates the window columns, or holds no table at all,
+            # has recorded no count: nothing to compare with a declared limit.
+            if "no such table" in str(exc) or "no such column" in str(exc):
+                return ()
+            raise
+    finally:
+        conn.close()
+    usage = tuple(
+        ModelProviderQuotaUsage(
+            credential_ref=str(row["credential_ref"]),
+            provider_id=str(row["provider_id"]),
+            model_scope=str(row["model_scope"]),
+            window_seconds=int(row["window_seconds"]),
+            window_started_at=datetime.fromisoformat(row["window_started_at"]),
+            window_calls=int(row["window_calls"]),
+        )
+        for row in rows
+    )
+    return tuple(u for u in usage if u.open_at(as_of))
 
 
 def resolve_provider_quota_reader_for_local_store(
@@ -648,6 +836,7 @@ def read_provider_quota_snapshot(
         )
     try:
         blocks = tuple(reader.read_active_blocks(tenant_id=tenant, as_of=as_of))
+        usage = tuple(reader.read_window_usage(tenant_id=tenant, as_of=as_of))
     except Exception as exc:
         _logger.warning(
             "provider quota projection unreadable for tenant %s; metered "
@@ -661,15 +850,17 @@ def read_provider_quota_snapshot(
             reason=f"{type(exc).__name__}: {exc}",
         )
     return ModelProviderQuotaSnapshot(
-        tenant_id=tenant, as_of=as_of, readable=True, blocks=blocks
+        tenant_id=tenant, as_of=as_of, readable=True, blocks=blocks, usage=usage
     )
 
 
 __all__ = [
+    "DECLARED_QUOTA_EXHAUSTED_DISPOSITION",
     "PROVIDER_QUOTA_STATE_RELATION",
     "UNKNOWN_QUOTA_STATE_DISPOSITION",
     "ModelProviderQuotaBlock",
     "ModelProviderQuotaSnapshot",
+    "ModelProviderQuotaUsage",
     "PostgresProviderQuotaReader",
     "ProtocolProviderQuotaReader",
     "ProviderQuotaReadBindingError",
@@ -684,4 +875,5 @@ __all__ = [
     "resolve_provider_quota_reader",
     "resolve_provider_quota_reader_for_local_store",
     "resolve_quota_tenant",
+    "window_usage_sql",
 ]

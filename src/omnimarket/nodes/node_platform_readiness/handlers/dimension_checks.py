@@ -52,7 +52,6 @@ _GITHUB_REPOS = [
     "OmniNode-ai/omniintelligence",
     "OmniNode-ai/omnidash",
     "OmniNode-ai/omnimarket",
-    "OmniNode-ai/onex_change_control",
 ]
 _GOLDEN_CHAIN_FRESHNESS_THRESHOLD = 4 * 3600  # 4 hours in seconds
 _MIN_RUNTIME_NODES = 40

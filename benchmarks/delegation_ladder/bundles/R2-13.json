@@ -1,0 +1,23 @@
+{
+  "task_id": "R2-13",
+  "title": "what landed, from 8 merged changes",
+  "task_type": "document",
+  "provenance": "8 consecutive real merges to omnimemory, from 205f484790d9 to 70c3ea6496e3, subject lines and the first line of each description.",
+  "prompt": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n70c3ea6 omnimemory#414: docs(OMN-15208): slim CLAUDE.md 8506->3372 bytes; correct false zero-Any invariant, unenforced exemption-tag table, spdx-skip local-hook trap\n    \n4d45ced omnimemory#413: feat(OMN-15014): wire OCC autobind + companion-effect callers into omnimemory\n    * feat(OMN-15014): wire OCC autobind + companion-effect callers into omnimemory\n9f6ca47 omnimemory#411: fix(OMN-14777): auto-merge.yml no longer force-arms on ready_for_review/reopened (F-24)\n    Drops `reopened` and `ready_for_review` from the pull_request trigger,\nf0b12df omnimemory#412: build(deps): bump actions/setup-python from 6 to 7 in the actions group\n    Bumps the actions group with 1 update: [actions/setup-python](https://github.com/actions/setup-python).\nb683f14 omnimemory#410: fix(OMN-14618): delete orphaned node_filesystem_crawler_effect\n    node_filesystem_crawler_effect has been dead code since OMN-8299 (Wave 3,\nf0a562d omnimemory#409: fix(OMN-14350): make the non-canonical ratchet a real CI Summary gate (needs-list)\n    Follow-up (consumer PR merged non-gating). Ratchet job INTO ci.yml + added to the\nf9ebb30 omnimemory#408: feat(OMN-14350): non-canonical ratchet gate (fan-out)\n    * feat(OMN-14350): non-canonical ratchet gate (fan-out)\n205f484 omnimemory#406: chore(deps): refresh omninode sibling locks [bot]\n    \n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_coverage",
+  "scorer_config": {
+    "source_text": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n70c3ea6 omnimemory#414: docs(OMN-15208): slim CLAUDE.md 8506->3372 bytes; correct false zero-Any invariant, unenforced exemption-tag table, spdx-skip local-hook trap\n    \n4d45ced omnimemory#413: feat(OMN-15014): wire OCC autobind + companion-effect callers into omnimemory\n    * feat(OMN-15014): wire OCC autobind + companion-effect callers into omnimemory\n9f6ca47 omnimemory#411: fix(OMN-14777): auto-merge.yml no longer force-arms on ready_for_review/reopened (F-24)\n    Drops `reopened` and `ready_for_review` from the pull_request trigger,\nf0b12df omnimemory#412: build(deps): bump actions/setup-python from 6 to 7 in the actions group\n    Bumps the actions group with 1 update: [actions/setup-python](https://github.com/actions/setup-python).\nb683f14 omnimemory#410: fix(OMN-14618): delete orphaned node_filesystem_crawler_effect\n    node_filesystem_crawler_effect has been dead code since OMN-8299 (Wave 3,\nf0a562d omnimemory#409: fix(OMN-14350): make the non-canonical ratchet a real CI Summary gate (needs-list)\n    Follow-up (consumer PR merged non-gating). Ratchet job INTO ci.yml + added to the\nf9ebb30 omnimemory#408: feat(OMN-14350): non-canonical ratchet gate (fan-out)\n    * feat(OMN-14350): non-canonical ratchet gate (fan-out)\n205f484 omnimemory#406: chore(deps): refresh omninode sibling locks [bot]\n    \n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "required_ids": [
+      "OMN-14350",
+      "OMN-14618",
+      "OMN-14777",
+      "OMN-15014",
+      "OMN-15208",
+      "OMN-8299"
+    ],
+    "coverage_threshold": 0.5
+  },
+  "fixture_files": {},
+  "rung": "R2",
+  "dependent_reasoning_steps": 2
+}

@@ -1348,6 +1348,19 @@ def resolve_task_class_execution_required(task_class: str) -> bool:
     return entry.complexity_contract.execution_required
 
 
+def resolve_task_class_verification(task_class: str) -> str | None:
+    """How ``task_class`` declares its answer is verified, or ``None``.
+
+    OMN-20489: the delegated-answer gate reads it to tell a text class
+    (``grounding``) from a class verified another way. An unknown class, or one
+    with no complexity contract, resolves ``None``.
+    """
+    entry = _delegation_task_class_authority().task_classes.get(task_class)
+    if entry is None or entry.complexity_contract is None:
+        return None
+    return entry.complexity_contract.verification
+
+
 __all__ = [
     "EnumGatewayExposure",
     "EnumPromptShape",
@@ -1383,5 +1396,6 @@ __all__ = [
     "resolve_task_class_execution_required",
     "resolve_task_class_output_contract",
     "resolve_task_class_prompt_shape",
+    "resolve_task_class_verification",
     "withheld_delegation_refusal",
 ]

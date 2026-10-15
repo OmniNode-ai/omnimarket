@@ -112,6 +112,28 @@ class ModelGuardFact(BaseModel):
     drifted: tuple[str, ...]
 
 
+class ModelInstalledRevisionFact(BaseModel):
+    """Caller-read installed and expected code revisions; no filesystem probe."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["installed_revision"] = "installed_revision"
+    surface: Literal["installed-copy"] = "installed-copy"
+    owner: str = ""
+    component_name: str = Field(min_length=1, pattern=r"\S")
+    installed_revision: str = Field(min_length=1, pattern=r"\S")
+    expected_revision: str = Field(min_length=1, pattern=r"\S")
+
+
+class ModelImportDriftVerdict(BaseModel):
+    """Typed class-3 refusal carried on the host-reconcile evaluated event."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    outcome: Literal["IMPORT_DRIFT"] = "IMPORT_DRIFT"
+    component_name: str = Field(min_length=1, pattern=r"\S")
+    installed_revision: str = Field(min_length=1, pattern=r"\S")
+    expected_revision: str = Field(min_length=1, pattern=r"\S")
+
+
 ModelSurfaceFact = Annotated[
     ModelSurfaceMovementFact
     | ModelSurfaceUnhealthyFact
@@ -119,7 +141,8 @@ ModelSurfaceFact = Annotated[
     | ModelSurfaceIndeterminateFact
     | ModelGatePurityFact
     | ModelPathShadowFact
-    | ModelGuardFact,
+    | ModelGuardFact
+    | ModelInstalledRevisionFact,
     Field(discriminator="kind"),
 ]
 
@@ -142,6 +165,9 @@ class ModelSurfaceDecision(BaseModel):
     remedy: str = ""
     owner: str = ""
     detail: str
+    import_drift: ModelImportDriftVerdict | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ModelHostReconcileDecisions(BaseModel):

@@ -1,0 +1,20 @@
+{
+  "task_id": "R1-15",
+  "title": "rewrite a merged change as a two bullets",
+  "task_type": "document",
+  "provenance": "The squash-commit description of a real merged change, omnibase_core 3bbd8efa1664e2625f9a9862b0bf3b56675d7181.",
+  "prompt": "Rewrite this merged change's description as two short bullet points: what changed, and what it affects. Keep the ticket identifier OMN-16927 and the name `ModelEventEnvelope` exactly as written. Add nothing the description does not state. At most 55 words.\n\nCHANGE (omnibase_core#1617):\ndocs(OMN-16927): the v0.47.0 notes called #1611 additive; its extra=\"forbid\" half is breaking\n\nThe v0.47.0 CHANGELOG filed #1611 under Features as:\n\n    an OPTIONAL `tenant` field on `ModelEventEnvelope`\n    (additive; the model stays `extra=\"forbid\"`)\n\nThree things in that line are wrong, and the third is the one that cost a\nfleet re-pin:\n\n1. The field is `tenant_id`, not `tenant`.\n2. \"additive\" describes only half the PR.\n3. \"the model STAYS extra=forbid\" asserts a pre-existing state that never\n   existed. `extra` was UNDECLARED on ModelEventEnvelope in every commit of\n   its history, so Pydantic's \"ignore\" default applied. #1611 INTRODUCED\n   extra=\"forbid\". That wording is precisely what made the release read as\n   safe to cut and to cascade.\n\nThe tenant_id half is additive and stays under Features, now correctly\nnamed and cross-referenced. The extra=\"forbid\" half moves to Breaking\nChanges with the declared-field list, the `source=` -> `source_tool=`\nmigration, and the measured blast radius.\n\nNo code change: the model is correct as shipped. extra=\"forbid\" is\nmandatory on every model in this repo (validators/pydantic_extra_forbid),\nand silently discarding a producer's attribution is the exact failure class\nthe PR was opened to close. Only the notes were wrong.\n\nEvidence-Ticket: OMN-16927\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Rewrite this merged change's description as two short bullet points: what changed, and what it affects. Keep the ticket identifier OMN-16927 and the name `ModelEventEnvelope` exactly as written. Add nothing the description does not state. At most 55 words.\n\nCHANGE (omnibase_core#1617):\ndocs(OMN-16927): the v0.47.0 notes called #1611 additive; its extra=\"forbid\" half is breaking\n\nThe v0.47.0 CHANGELOG filed #1611 under Features as:\n\n    an OPTIONAL `tenant` field on `ModelEventEnvelope`\n    (additive; the model stays `extra=\"forbid\"`)\n\nThree things in that line are wrong, and the third is the one that cost a\nfleet re-pin:\n\n1. The field is `tenant_id`, not `tenant`.\n2. \"additive\" describes only half the PR.\n3. \"the model STAYS extra=forbid\" asserts a pre-existing state that never\n   existed. `extra` was UNDECLARED on ModelEventEnvelope in every commit of\n   its history, so Pydantic's \"ignore\" default applied. #1611 INTRODUCED\n   extra=\"forbid\". That wording is precisely what made the release read as\n   safe to cut and to cascade.\n\nThe tenant_id half is additive and stays under Features, now correctly\nnamed and cross-referenced. The extra=\"forbid\" half moves to Breaking\nChanges with the declared-field list, the `source=` -> `source_tool=`\nmigration, and the measured blast radius.\n\nNo code change: the model is correct as shipped. extra=\"forbid\" is\nmandatory on every model in this repo (validators/pydantic_extra_forbid),\nand silently discarding a producer's attribution is the exact failure class\nthe PR was opened to close. Only the notes were wrong.\n\nEvidence-Ticket: OMN-16927\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "must_contain": [
+      "OMN-16927",
+      "ModelEventEnvelope"
+    ],
+    "must_not_contain": [],
+    "max_words": 55
+  },
+  "fixture_files": {},
+  "rung": "R1",
+  "dependent_reasoning_steps": 1
+}

@@ -56,6 +56,15 @@ event_bus:
     - "onex.evt.github.check-run.v1"
     - "onex.evt.github.workflow-run.v1"
     - "onex.evt.github.webhook-delivery-refused.v1"
+# The delivery is not produced by any node contract: the onex-api door
+# (POST /v1/github/webhook) publishes it and omnibase_infra's
+# node_bus_forwarder_effect carries it onto the lab bus. omnibase_infra 0.38.72
+# no longer carries its own copy of this node's contract (0.38.71 did), and the
+# contract-topic-graph gate then flags this subscription as orphaned, so the
+# edge is declared here.
+externally_produced_topics:
+  - topic: "onex.cmd.github.webhook-delivery.v1"
+    producer: "the onex-api door (POST /v1/github/webhook), forwarded onto the lab bus by omnibase_infra node_bus_forwarder_effect"
 consumed_events:
   - topic: "onex.cmd.github.webhook-delivery.v1"
     event_type: "GitHubWebhookDelivery"
