@@ -1377,6 +1377,26 @@ def list_models(as_json: bool) -> None:
             )
 
 
+@models_group.command("default-model")
+@click.argument("provider", type=_model_choice)
+def default_model(provider: str) -> None:
+    """Print the model onboarding registers for PROVIDER, from the deployment overlay.
+
+    Onboarding reads it here instead of naming a model itself. Nothing is stored
+    and no key is read. To use another model afterwards, one command:
+
+        onex models add openrouter --model MODEL_ID
+    """
+    request = ModelModelSetupRequest(
+        operation="default_model", provider=cast(ModelProvider, provider.lower())
+    )
+    try:
+        result = _model_handler().handle(request)
+    except ModelSetupRefusedError as refusal:
+        raise click.ClickException(str(refusal)) from None
+    click.echo(result.models[0])
+
+
 def _edit_model_list(
     handler: HandlerModelSetup, request: ModelModelSetupRequest
 ) -> None:

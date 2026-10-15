@@ -441,7 +441,7 @@ jobs:
           # `bash -e {0}` by default -- that -e is already active before this
           # script's own `set -uo pipefail` runs, and `set -uo pipefail` does
           # NOT clear an inherited -e (see the identical warning on the
-          # occ-preflight job in this same repo's workflows). A bare
+          # repo-evidence-preflight job in this same repo's workflows). A bare
           # `OUTPUT=$(cmd); STATUS=$?` is a plain assignment, not part of an
           # if/while/until condition, so under inherited -e bash aborts the
           # WHOLE STEP the instant `cmd` exits non-zero -- `STATUS=$?`,
@@ -743,10 +743,10 @@ jobs:
           RESULT="${{ needs.hostile-review.result }}"
           echo "hostile-review: $RESULT"
 
-          # OMN-15057: the occ-preflight cross-check that used to live here was
-          # dropped along with `needs: occ-preflight` -- OCC eligibility is
-          # already independently enforced as its own required status check
-          # (`occ-preflight / eligibility`), so re-checking it here was
+          # OMN-15057: the preflight cross-check that used to live here was
+          # dropped along with its `needs:` edge -- PR admission is enforced as
+          # its own required status check (`repo-evidence / dod-verify`), so
+          # re-checking it here was
           # redundant AND was the exact skip-then-vacuous-green vector: when
           # the same-file poller job failed, this whole job (and its required
           # context) went `skipped`, which GitHub branch protection treats as

@@ -54,6 +54,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py::test_start_command_reaches_completed_with_files_on_disk -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py" | grep -F "GENERATED_PACKAGE_ROOT"'
