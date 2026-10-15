@@ -143,7 +143,7 @@ def _install_ladder(
     monkeypatch.setattr(
         port_mod,
         "resolve_backend_grounding_budget",
-        lambda backend_id: budgets.get(backend_id),
+        lambda backend_id, _task_type=None: budgets.get(backend_id),
     )
 
 

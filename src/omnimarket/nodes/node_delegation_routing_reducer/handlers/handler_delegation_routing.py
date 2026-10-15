@@ -1996,10 +1996,15 @@ def measure_grounding_input_tokens(text: str) -> int:
     return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
 
 
-def resolve_backend_grounding_budget(backend_id: str) -> int | None:
+def resolve_backend_grounding_budget(
+    backend_id: str, task_type: str | None = None
+) -> int | None:
     """Return the contract-declared input budget for ``backend_id``.
 
-    OMN-18297. ``None`` means the backend declares no budget -- NOT DECLARED,
+    OMN-18297. OMN-20486: a ``task_type`` the backend names in
+    ``max_grounded_input_tokens_by_task_class`` gets that class's value; any
+    other class, and a call with no ``task_type``, gets the backend default.
+    ``None`` means the backend declares no budget -- NOT DECLARED,
     never "unlimited by policy". Reading it here keeps the bifrost contract the
     single authority for per-backend limits, the same way
     :func:`backend_id_for_tier` keeps tier->backend mapping here rather than in
@@ -2019,6 +2024,12 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
     )
     for backend in config.backends:
         if backend.backend_id == backend_id:
+            if task_type is not None:
+                class_budget = backend.max_grounded_input_tokens_by_task_class.get(
+                    task_type
+                )
+                if class_budget is not None:
+                    return class_budget
             return backend.max_grounded_input_tokens
     return None
 
