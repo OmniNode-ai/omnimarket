@@ -16,17 +16,17 @@ requirements:
   statement: The rubric-check node routes delegation_answer_check to an answer-check handler that validates its own
     request model and grades a reasoning response by the appendix A.4 rules, without disturbing the other operations.
   acceptance:
-  - id: S1
-    statement: 'S1: contract.yaml routes operation delegation_answer_check to HandlerDelegationAnswerCheck with
+  - id: AC1
+    statement: 'AC1: contract.yaml routes operation delegation_answer_check to HandlerDelegationAnswerCheck with
       ModelAnswerCheckRequest while delegation_rubric_check and delegation_route_check keep their handlers -- falsifier:
       a contract whose handler_routing lacks the operation, or an operation that resolves to another operation''s
       handler'
-  - id: S2
-    statement: 'S2: the 19 labelled responses of appendix A.4 are ported as tests and the handler returns each one''s
+  - id: AC2
+    statement: 'AC2: the 19 labelled responses of appendix A.4 are ported as tests and the handler returns each one''s
       labelled verdict, the same verdict the appendix checker gives -- falsifier: a test file carrying fewer than 19
       cases, or a case whose verdict differs from its label'
-  - id: S3
-    statement: 'S3: the verdict carries the draw''s run directory and the failure text names what was wrong, and the
+  - id: AC3
+    statement: 'AC3: the verdict carries the draw''s run directory and the failure text names what was wrong, and the
       operation runs on the local bus from a JSON payload -- falsifier: a verdict whose run_directory differs from the
       request, or a local-bus dispatch that does not return a PASS or FAIL payload'
 evidence_requirements:
@@ -47,7 +47,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_answer_check.py -q -p no:randomly --no-cov -n 0 -k "answer_operation_selects or other_operations_keep"
   binds_ac:
-  - S1
+  - AC1
 - id: dod-omn20218-s2-appendix-responses
   description: The 19 labelled appendix A.4 responses each return their labelled verdict.
   source: manual
@@ -55,7 +55,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_answer_check.py -q -p no:randomly --no-cov -n 0 -k "test_appendix_response_cases or nineteen_labelled"
   binds_ac:
-  - S2
+  - AC2
 - id: dod-omn20218-s3-verdict-and-bus
   description: The verdict carries the run directory, failures name the wrong line or count, and the operation runs on
     the local bus from a JSON payload.
@@ -64,7 +64,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_answer_check.py -q -p no:randomly --no-cov -n 0 -k "failures_name or duplicate_ids or runs_on_the_local_bus or pass_reports"
   binds_ac:
-  - S3
+  - AC3
 - id: dod-omn20218-deploy-probe
   description: Deploy smoke on the runtime after the deploy agent rolls this change - load the node contract from the
     running container and assert that delegation_answer_check routes to HandlerDelegationAnswerCheck with
@@ -78,3 +78,13 @@ dod_evidence:
     check_value: |-
       bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "import importlib.resources as r, yaml; c = yaml.safe_load((r.files(\"omnimarket.nodes.node_delegation_rubric_check_compute\") / \"contract.yaml\").read_text()); h = {e[\"operation\"]: e[\"handler\"] for e in c[\"handler_routing\"][\"handlers\"]}; assert h[\"delegation_answer_check\"][\"name\"] == \"HandlerDelegationAnswerCheck\"; assert h[\"delegation_answer_check\"][\"input_model\"].endswith(\"ModelAnswerCheckRequest\"); assert h[\"delegation_route_check\"][\"name\"] == \"HandlerDelegationRouteCheck\"; assert h[\"delegation_rubric_check\"][\"name\"] == \"HandlerDelegationRubricCheck\""'
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn20218-deploy-hosted-runtime
+  description: Hosted-runner runtime smoke dispatches the answer-check operation from a JSON payload on the local bus,
+    reads back a PASS verdict and the draw run directory, and checks the resolved payload model. It fails when the
+    checked-out runtime cannot route or execute this operation. The separate local Done gate probe reads deployed code.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_answer_check.py -q --no-cov -k answer_operation_runs_on_the_local_bus
+    cwd: .
