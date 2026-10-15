@@ -2,33 +2,18 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19267"
 title: "local reasoning and complex_reasoning delegations return an accepted deliverable"
-summary: "The DoD verifier runs the ticket's derived acceptance-criterion falsifier even when the contract declares an item under the same id and retires it with a supersession marker; this is the verifier defect that held OMN-19267's Done gate."
+summary: "Local reasoning and complex_reasoning delegations return a non-empty, accepted deliverable (AC1), and the per-class profile test maps complex_reasoning to a thinking-suppressing profile (AC2). The verifier, receipt-runner and thinking-budget evidence items stay as appended records; their AC4, AC5 and AC6 bindings are retired because the ticket does not carry those criteria."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-derived-falsifier-not-retired-by-id-collision"
-    statement: "A supersedes_dod_evidence marker retires only a declared contract item, never a verifier-derived falsifier item, and a derived falsifier is decided by its own result."
-    acceptance:
-      - id: "AC4"
-        statement: "When a contract declares an item whose id equals a derived falsifier id and a later item supersedes it, the derived falsifier still executes under an id no declared item carries; its pass verifies the criterion, its failure fails the verdict, and a verified declared item of that id cannot stand in for it."
   - id: "req-local-reasoning-delegations-return-accepted-deliverable"
-    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. AC3 is not bound here: its probe reads the omninode_infra fixture, which this repository's hosted check cannot check out."
+    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are the ticket's two live criteria, transcribed from the ticket body; each id is the label a binding item claims through binds_ac. The ticket dropped its profile-pin criterion, and AC4, AC5 and AC6, which this contract once declared, are not criteria of the ticket: their bindings are retired by dod-omn19267-ac2-complex-reasoning-no-think."
     acceptance:
       - id: "AC1"
         statement: "AC1: a reasoning-class delegation on the local tier returns a non-empty deliverable for a reasoning prompt, with no ambiguous_unmarked_deliverable refusal on the accepted attempt -- falsifier: onex delegate --task-type reasoning with a reasoning prompt against the lab endpoint, reading receipt.json output_refusal and result.txt"
       - id: "AC2"
-        statement: "AC2: the per-class profile test maps reasoning and complex_reasoning to a thinking-suppressing profile, and fails red on dev before the change -- falsifier: uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q"
-  - id: "req-one-supersession-per-declared-check"
-    statement: "The product-repo OCC receipt runner files one supersession record per declared check per cohort, so two contract items that declare the same check never mint a byte-identical replacement pair, which OCC receipt hardening rule S1 rejects and no append-only record can repair. This defect poisoned the OMN-19267 batch windows onex_change_control#12821 and #12855 and held the Done gate of this ticket."
-    acceptance:
-      - id: "AC5"
-        statement: "When two items of one ticket's contract declare the same check, the receipt runner executes it once and writes one supersession record; the other item keeps its standing receipt, and when that receipt does not stand the runner records a write refusal and exits non-zero instead of writing a second record -- falsifier: uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q finds two records with the same replacement check_value in one cohort, or a second record written for the shared check, or a zero exit status on the refusal"
-  - id: "req-reasoning-thinking-budget"
-    statement: "The reasoning thinking-on profile bounds the trace with a 2048-token thinking budget in both server spellings, so one local reasoning call fits the effect's per-call ceiling and still returns a non-empty, accepted deliverable."
-    acceptance:
-      - id: "AC6"
-        statement: "AC6: the local-qwen38-reasoning-thinking-on profile carries thinking_token_budget (vLLM) and thinking_budget_tokens (llama.cpp) of 2048, both travel on the request, and a response that spent the whole budget on thinking fails the class gate -- falsifier: uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py -q fails when either budget field is absent from the profile or the request"
+        statement: "AC2: the per-class profile test maps complex_reasoning to a thinking-suppressing profile, and fails red on dev before the change -- falsifier: uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Run the verifier over a contract whose declared item collides with the derived falsifier id and is retired by a marker."
@@ -45,6 +30,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC6: the reasoning thinking-on profile carries the 2048-token thinking budget in both spellings and the request carries it."
     command: "uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py"
+  - kind: "tests"
+    description: "AC2: the per-class profile test maps complex_reasoning to a thinking-suppressing profile."
+    command: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q -k complex_reasoning"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -90,3 +78,30 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn19267-ac2-complex-reasoning-no-think"
+    description: "AC2 hosted probe, complex_reasoning only, as the ticket's reworded criterion states. The per-class profile test cases for complex_reasoning map it to a thinking-suppressing profile. This item also retires the AC4, AC5 and AC6 bindings of three earlier items: the ticket carries only AC1 and AC2, so those labels are not criteria of the ticket."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q -k complex_reasoning"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+    supersedes_ac_binding:
+      - item: "dod-derived-falsifier-id-collision"
+        label: "AC4"
+        reason_kind: "no_longer_applicable"
+        reason: "The ticket carries no AC4; the verifier id-collision evidence is not a criterion of this ticket."
+        retired_by: "omn20886-m4"
+        retired_at: "2026-10-15T12:05:00Z"
+      - item: "dod-receipt-runner-one-supersession-per-check"
+        label: "AC5"
+        reason_kind: "no_longer_applicable"
+        reason: "The ticket carries no AC5; the receipt-runner supersession evidence is not a criterion of this ticket."
+        retired_by: "omn20886-m4"
+        retired_at: "2026-10-15T12:05:00Z"
+      - item: "dod-omn19267-ac6-reasoning-thinking-budget"
+        label: "AC6"
+        reason_kind: "no_longer_applicable"
+        reason: "The ticket carries no AC6; the thinking-budget evidence is not a criterion of this ticket."
+        retired_by: "omn20886-m4"
+        retired_at: "2026-10-15T12:05:00Z"
