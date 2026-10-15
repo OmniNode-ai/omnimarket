@@ -1,14 +1,14 @@
 name: node_delegation_rubric_check_compute
 contract_version:
   major: 1
-  minor: 1
+  minor: 2
   patch: 0
 node_type: compute
 node_version:
   major: 1
-  minor: 1
+  minor: 2
   patch: 0
-description: Pure delegated answer rubric and receipt route checks.
+description: Pure delegated answer rubric, receipt route and reasoning answer checks.
   Records typed correctness and route evidence without gating, I/O, or execution.
 handler_routing:
   routing_strategy: operation_match
@@ -23,6 +23,11 @@ handler_routing:
       name: HandlerDelegationRouteCheck
       module: omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_route_check
       input_model: omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_check_request.ModelRouteCheckRequest
+  - operation: delegation_answer_check
+    handler:
+      name: HandlerDelegationAnswerCheck
+      module: omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_answer_check
+      input_model: omnimarket.nodes.node_delegation_rubric_check_compute.models.model_answer_check_request.ModelAnswerCheckRequest
 descriptor:
   node_archetype: compute
   purity: pure

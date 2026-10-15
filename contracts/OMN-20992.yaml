@@ -1,0 +1,67 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20992"
+title: "Delegation chooses among a tenant's live keys for the routed provider and never routes to a revoked or expired key"
+summary: "Operator rulings 2026-10-11T16:00:52Z and 16:02:35Z: the company pool holds any number of keys per provider, the router chooses among them, and nothing routes to an expired key. The BYOK bridge keeps one overlay row per tenant whose secret_ref is overwritten by every registration, so a tenant with four keys routed to whichever registered last. resolve_tenant_overlay now reads the tenant's catalogued keys for the overlay's provider from tenant_inference_credentials, drops revoked and expired ones, and picks one by a hash of the request correlation id over the refs sorted, so one request is stable and many spread across the pool. With catalogued keys and none live, secret_ref is unset and the row kept, so the call fails closed instead of falling back to a house key. A tenant with no catalogued keys, a row with no provider, or an unreadable catalog keeps the overlay's ref as read, unchanged from before. The routing intent handler passes the correlation id; the reducer stays pure."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn20992-router-chooses-from-the-pool"
+    statement: |-
+      A tenant's delegation runs on one of its live keys for the routed provider, spread across the pool, and never on a revoked or expired key.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: with several live credentials for the overlay's provider in tenant_inference_credentials, the resolved overlay's secret_ref is one of them, chosen deterministically from the request correlation id so load spreads across keys -- falsifier: uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -k key_pool_selection
+      - id: "AC2"
+        statement: |-
+          AC2: a credential whose revoked_at is set or whose expires_at is in the past is never selected, and when no live credential remains the overlay keeps its row with secret_ref unset so the call fails closed instead of using a house key -- falsifier: uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -k key_pool_skips_expired
+      - id: "AC3"
+        statement: |-
+          AC3: a tenant with exactly one credential and no expiry resolves byte-identically to today -- falsifier: uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -k single_undated_key
+evidence_requirements:
+  - kind: "tests"
+    description: "The pool selection tests pass at the head; on the base the test module fails to import TENANT_CREDENTIALS_TABLE."
+    command: "uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py tests/test_omn17372_byok_routing_overlay_bridge.py tests/nodes/node_delegation_routing_reducer -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20992-ac1-pool-selection"
+    description: "Every live key is chosen over many correlation ids; one id is stable; row order does not matter; other providers and tenants are never candidates."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -k key_pool_selection -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20992-ac2-skips-expired"
+    description: "Revoked and expired keys (datetime or ISO text) are never chosen; none live leaves the row with no key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -k key_pool_skips_expired -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20992-ac3-single-key-unchanged"
+    description: "A single undated credential is read through the pool path and preserves every overlay field for exact and wildcard bindings, with and without a request selector; the existing BYOK bridge and routing reducer suites also pass unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py::test_key_pool_single_undated_key_preserves_the_complete_overlay tests/test_omn17372_byok_routing_overlay_bridge.py tests/nodes/node_delegation_routing_reducer -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20992-deploy-probe-resolver"
+    description: "Deploy probe. The resolver at the checked-out commit reads the key catalog; the probe reads it from GitHub at that commit and exits nonzero on a tree without pool selection, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/routing/tenant_overlay_resolver.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '_select_pool_secret_ref'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn20992_key_pool_selection.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
