@@ -35,3 +35,17 @@ def test_deploy_probe_keeps_ac10_bound_to_rejection_tests() -> None:
         == "uv run pytest tests/unit/nodes/node_reject_skip_token_compute/test_reject_skip_token.py -q -p no:randomly"
         for check in rejection["checks"]
     ), "AC10 must retain the rejection test evidence"
+
+
+def test_omn19401_step_by_step_selection_names_its_test_file() -> None:
+    contract = yaml.safe_load(
+        (REPO_ROOT / "contracts" / "OMN-19401.yaml").read_text(encoding="utf-8")
+    )
+    evidence = {item["id"]: item for item in contract["dod_evidence"]}
+    selection = evidence["dod-omn19401-ac1-step-by-step-selection"]
+
+    assert selection["binds_ac"] == ["AC1"]
+    assert [check["check_value"] for check in selection["checks"]] == [
+        "uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/"
+        "test_step_by_step_explanation_causal_markers_omn19401.py -k step_by_step -q"
+    ], "AC1's step_by_step selection must name the reducer test file it runs"

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.delegation.wire.model_answer_gate_request import (
     EnumAnswerGateKind,
+    EnumNamedTestVerdict,
     ModelIndependentJudgeVerdict,
 )
 
@@ -34,6 +35,10 @@ class ModelAnswerGateResult(BaseModel):
     tests_passed: bool | None = Field(
         default=None,
         description="Whether the named tests ran and passed; None when no test run applies.",
+    )
+    tests_verdict: EnumNamedTestVerdict | None = Field(
+        default=None,
+        description="A code answer's named-test verdict (OMN-17427); None for other kinds.",
     )
     rejection_reasons: tuple[str, ...] = ()
     fallback_recommended: bool = False

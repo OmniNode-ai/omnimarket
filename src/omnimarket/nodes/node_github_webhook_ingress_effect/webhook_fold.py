@@ -44,7 +44,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
-import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Literal
@@ -52,6 +51,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from omnimarket.events.github import pr_merged_event_id
 from omnimarket.models.model_github_pr_state_observation import (
     ModelGitHubPrStateObservation,
 )
@@ -64,7 +64,6 @@ from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
 
 _SIGNATURE_PREFIX = "sha256="
 _TICKET_RE = re.compile(r"\b(OMN-\d+)\b", re.IGNORECASE)
-_MERGED_EVENT_NAMESPACE = uuid.UUID("5b0d6c1e-8f3a-4f5e-9c2d-14375a192490")
 _RUN_ID_RE = re.compile(r"/actions/runs/(\d+)")
 # The conclusions a PR-state watcher counts as red. A cancelled run has no verdict.
 RED_CHECK_CONCLUSIONS = frozenset(
@@ -281,7 +280,7 @@ def _merged(
             break
     return ModelGitHubPrMergedObservation(
         entity_id=f"{repo}#{number}",
-        event_id=uuid.uuid5(_MERGED_EVENT_NAMESPACE, f"{repo}#{number}@{merge_sha}"),
+        event_id=pr_merged_event_id(repo, number, merge_sha),
         repo=repo,
         branch=branch,
         base_ref=base_ref,

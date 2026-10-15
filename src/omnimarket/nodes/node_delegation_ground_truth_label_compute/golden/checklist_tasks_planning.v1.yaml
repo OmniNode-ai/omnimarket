@@ -1,0 +1,149 @@
+# Planning tasks for the delegation ground-truth measurement.
+# Each prompt carries the only facts the answer may use. Each checklist item is
+# a yes-or-no question scored by a model other than the delegated one; an answer
+# is adequate only when every item is met. Several items test a trap: a fact the
+# table deliberately leaves out, or a unit or default that is easy to assume.
+schema_version: 1
+task_class: planning
+tasks:
+  - id: plan_exhibit_unveiling
+    prompt: |
+      Create an ordered setup plan for a fictional miniature exhibit. Use a numbered list with exactly five steps, one named action per step. Respect dependencies even when an action sounds convenient earlier in the process.
+      Facts:
+      - The five permitted actions are position plinth, attach model, aim lamp, inspect shadows, and open curtain.
+      - Position plinth must happen before attach model.
+      - Aim lamp requires the model to be attached.
+      - Inspect shadows requires the lamp to be aimed.
+      - Open curtain must be the final action, after the shadow inspection.
+      - Moving the plinth after attaching the model is forbidden.
+      Use only these facts. Do not add safety checks, equipment, durations, or actions the facts do not state.
+    checklist:
+      - {id: five_named_steps, text: "Does the answer contain exactly five numbered steps with one permitted action in each?"}
+      - {id: plinth_before_model, text: "Does positioning the plinth precede attaching the model?"}
+      - {id: lighting_order, text: "Does attaching the model precede aiming the lamp, which precedes inspecting shadows?"}
+      - {id: curtain_last, text: "Is opening the curtain the final step after inspecting shadows?"}
+      - {id: no_invented_setup, text: "Is the answer free of invented actions, equipment, durations, and any instruction to move the plinth after attaching the model?"}
+  - id: plan_roster_import
+    prompt: |
+      Produce an ordered plan for a fictional roster import using a numbered list. Include each permitted action exactly once. Two independent preparations may appear in either order, but both must finish before the dependent action begins.
+      Facts:
+      - The permitted actions are freeze edits, copy roster, export field map, validate copy, import copy, and reopen edits.
+      - Freeze edits must happen first.
+      - Copy roster and export field map each require frozen edits.
+      - Validate copy requires both the roster copy and the exported field map.
+      - Import copy requires validation to finish.
+      - Reopen edits must happen last, after import.
+      - Deleting the original roster is forbidden.
+      Use only these facts. Do not add actions, software choices, or timings the facts do not state.
+    checklist:
+      - {id: six_numbered_actions, text: "Does the answer contain six numbered steps using each permitted action exactly once?"}
+      - {id: freeze_first, text: "Is freezing edits the first step?"}
+      - {id: preparations_before_validation, text: "Do copying the roster and exporting the field map both occur after freezing edits and before validating the copy?"}
+      - {id: import_then_reopen, text: "Does validation precede import, with reopening edits last after import?"}
+      - {id: no_invented_import_steps, text: "Is the answer free of invented actions, software choices, timings, and deletion of the original roster?"}
+  - id: plan_reservoir_sampling
+    prompt: |
+      Write a numbered sampling plan for a fictional demonstration reservoir. Use exactly five steps, each containing one of the named actions. Include the required waiting duration in the appropriate step and preserve its unit.
+      Facts:
+      - The permitted actions are close inlet, wait for settling, fill sample vial, label vial, and reopen inlet.
+      - Close inlet must be first.
+      - Wait for settling must follow closing the inlet and last 90 seconds.
+      - Fill sample vial requires the settling wait to finish.
+      - Label vial follows filling it.
+      - Reopen inlet must be last, after labeling.
+      - Draining the reservoir is forbidden.
+      Use only these facts. Do not add treatment, equipment, waiting periods, or other actions the facts do not state.
+    checklist:
+      - {id: five_steps, text: "Does the answer contain exactly five numbered steps using the five permitted actions once each?"}
+      - {id: close_then_wait, text: "Does closing the inlet come first, followed by a settling wait of 90 seconds?"}
+      - {id: sample_then_label, text: "Does filling the sample vial follow the completed wait and precede labeling the vial?"}
+      - {id: reopen_last, text: "Is reopening the inlet the last step after labeling?"}
+      - {id: no_invented_sampling, text: "Is the answer free of invented treatment, equipment, extra waits, and reservoir draining?"}
+  - id: plan_costume_pack
+    prompt: |
+      Make an ordered packing plan for a fictional stage costume. Return a numbered list of exactly six steps, with each permitted action appearing once. Show the dependency between the two preparations and the later packing action.
+      Facts:
+      - The actions are inspect costume, record measurements, fold costume, line case, place costume in case, and seal case.
+      - Inspect costume comes first and must precede recording measurements.
+      - Record measurements must precede folding the costume.
+      - Line case may happen any time after inspection.
+      - Place costume in case requires both folding and lining to be complete.
+      - Seal case must happen last.
+      - Washing the costume is forbidden.
+      Use only these facts. Do not add materials, cleaning, shipping, or timing details the facts do not state.
+    checklist:
+      - {id: six_steps_once, text: "Does the answer contain six numbered steps using each permitted action exactly once?"}
+      - {id: inspection_measurement_fold, text: "Does inspection come first, followed by recording measurements before folding?"}
+      - {id: packing_dependencies, text: "Does lining occur after inspection, and does placing the costume in the case occur after both folding and lining?"}
+      - {id: seal_last, text: "Is sealing the case the last step?"}
+      - {id: no_invented_costume_steps, text: "Is the answer free of invented materials, cleaning, shipping, timing details, and washing?"}
+  - id: plan_puzzle_launch
+    prompt: |
+      Build an ordered launch plan for a fictional puzzle newsletter. Use a numbered list of exactly five steps and preserve the approval condition. The plan should contain only the named actions and a brief explanation of the approval gate.
+      Facts:
+      - The actions are lock puzzle text, generate answer sheet, request editor approval, schedule newsletter, and archive source.
+      - Lock puzzle text must be first.
+      - Generate answer sheet requires locked text.
+      - Request editor approval requires the generated answer sheet.
+      - Schedule newsletter is allowed only after editor approval is received.
+      - Archive source must happen last, after scheduling.
+      - Sending the newsletter immediately is forbidden.
+      Use only these facts. Do not assume approval has already been granted or add launch dates and distribution actions the facts do not state.
+    checklist:
+      - {id: five_steps_once, text: "Does the answer use five numbered steps containing each named action exactly once?"}
+      - {id: text_sheet_approval, text: "Does locking text come first, followed by generating the answer sheet and then requesting editor approval?"}
+      - {id: approval_gate, text: "Does the answer explicitly require received editor approval before scheduling the newsletter?"}
+      - {id: archive_last, text: "Is archiving the source last, after scheduling?"}
+      - {id: no_invented_launch_details, text: "Is the answer free of invented approval outcomes, launch dates, extra distribution actions, and immediate sending?"}
+  - id: plan_counter_calibration
+    prompt: |
+      Write an ordered calibration plan for a fictional tabletop counter. Use exactly five numbered steps, preserving the stated order and the special meaning of the final display value. Include that meaning in the last step.
+      Facts:
+      - The permitted actions are enter service mode, clear stored count, load reference set, run calibration, and return to display mode.
+      - Enter service mode must happen before clearing the stored count.
+      - Load reference set requires the count to have been cleared.
+      - Run calibration requires the loaded reference set.
+      - Return to display mode must be last; a displayed zero then means calibration complete, not an empty reference set.
+      - Power cycling is forbidden.
+      Use only these facts. Do not add reference quantities, automatic retries, or other actions the facts do not state.
+    checklist:
+      - {id: five_numbered_steps, text: "Does the answer contain five numbered steps using each permitted action once?"}
+      - {id: service_clear_load, text: "Does entering service mode precede clearing the count, which precedes loading the reference set?"}
+      - {id: load_before_calibrate, text: "Does running calibration follow loading the reference set?"}
+      - {id: display_zero_meaning, text: "Is returning to display mode last, with zero explicitly meaning calibration complete rather than an empty reference set?"}
+      - {id: no_invented_calibration, text: "Is the answer free of invented quantities, retries, extra actions, and power cycling?"}
+  - id: plan_story_workshop
+    prompt: |
+      Arrange a fictional story workshop into a numbered plan with exactly six steps. Use every named activity once. Activities that have no relative ordering constraint may appear in either order, while all prerequisites must be respected.
+      Facts:
+      - The activities are introduce theme, read sample, explain feedback rules, draft scene, exchange feedback, and close session.
+      - Introduce theme must be first.
+      - Read sample and explain feedback rules both follow the introduction.
+      - Draft scene requires the sample to have been read and the feedback rules explained.
+      - Exchange feedback requires drafted scenes.
+      - Close session must be last after feedback.
+      - Voting for a winning scene is forbidden.
+      Use only these facts. Do not add breaks, durations, awards, or other activities the facts do not state.
+    checklist:
+      - {id: six_activities_once, text: "Does the answer contain six numbered steps with each named activity exactly once?"}
+      - {id: introduction_first, text: "Is introducing the theme first?"}
+      - {id: both_before_draft, text: "Do reading the sample and explaining feedback rules both follow the introduction and precede drafting?"}
+      - {id: feedback_then_close, text: "Does exchanging feedback follow drafting, with closing the session last after feedback?"}
+      - {id: no_invented_workshop, text: "Is the answer free of invented breaks, durations, awards, activities, and voting for a winner?"}
+  - id: plan_mosaic_install
+    prompt: |
+      Produce an ordered installation plan for a fictional mosaic panel. Return exactly five numbered steps, each using one named action. Keep the waiting unit explicit and make the final action match the stated dependency.
+      Facts:
+      - The permitted actions are mark alignment, apply adhesive, seat panel, wait for cure, and remove supports.
+      - Mark alignment must happen first and precede applying adhesive.
+      - Seat panel requires adhesive to have been applied.
+      - Wait for cure follows seating the panel and lasts 12 hours, not 12 minutes.
+      - Remove supports must be last, after the full cure wait.
+      - Repositioning the panel during curing is forbidden.
+      Use only these facts. Do not add tools, adhesive types, finishing work, or actions the facts do not state.
+    checklist:
+      - {id: five_install_steps, text: "Does the answer contain five numbered steps using each permitted action once?"}
+      - {id: alignment_adhesive_panel, text: "Does marking alignment come first, followed by applying adhesive and then seating the panel?"}
+      - {id: cure_hours, text: "Does the cure wait follow seating and last 12 hours?"}
+      - {id: supports_last, text: "Is removing supports last and conditional on completion of the full cure wait?"}
+      - {id: no_invented_installation, text: "Is the answer free of invented tools, adhesive types, finishing actions, and repositioning during curing?"}

@@ -1914,6 +1914,8 @@ task_classes:
     # rather than route them to a neighbouring class.
     gateway_exposure: internal
     # OMN-17427: operator RULING 2026-10-02T19:33:51Z, lane orchestrator-2a21.
+    # The first-ordered rung below left the lab Studio on 2026-10-08, when its
+    # server swapped models; the record is kept as dated evidence, not as setup.
     # Order: gpt-oss-120b (local, lab), then GLM glm-5.3 through Claude Code;
     # if neither is adequate, code_review is not delegated and stays with Claude.
     # Each rung measured on the same 28-prompt set before adoption: 14 held-out
@@ -1935,8 +1937,8 @@ task_classes:
       tracking: "OMN-17427 RULING 2026-10-02T19:33:51Z"
       reason: >-
         No delegation rung reached the 21-of-28 adequacy bar on the held-out
-        code_review set (Qwen3.8-27B 0/28, gpt-oss-120b 0/28, glm-5.3 via
-        Claude Code 13/28). Therefore code_review is not delegated and stays
+        code_review set (Qwen3.8-27B 0/28, glm-5.3 via Claude Code
+        13/28). Therefore code_review is not delegated and stays
         with the calling Claude session.
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:

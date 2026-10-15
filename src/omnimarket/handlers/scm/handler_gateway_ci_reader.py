@@ -14,13 +14,13 @@ from typing import Protocol
 from uuid import UUID
 
 from omnimarket.models.e2e_bridge import ModelE2ePrCiReading
-from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
-    HandlerGithubRepoGatewayEffect,
-)
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelCiChecksResult,
     ModelGithubGatewayRequest,
+)
+from omnimarket.nodes.node_github_repo_gateway_effect.handlers.handler_github_repo_gateway import (
+    HandlerGithubRepoGatewayEffect,
 )
 
 

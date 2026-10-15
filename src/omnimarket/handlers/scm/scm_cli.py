@@ -78,6 +78,10 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_watcher_state_path,
 )
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
@@ -86,10 +90,6 @@ from omnimarket.models.scm import (
     ModelScmLocalReadRequest,
     ModelScmLocalVerb,
     ModelScmVerb,
-)
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
-    EnumGithubGatewayOperation,
-    ModelGithubGatewayRequest,
 )
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
@@ -272,6 +272,7 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
         "pr_status",
         "ci_checks",
         "merge_commit_sha",
+        "merged_pr",
         "review_gate",
         "ticket_ref",
     }
@@ -290,7 +291,12 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--branch", default=None, help="run-list, branch-protection, pr-heads."
     )
     @click.option(
-        "--head-sha", default=None, help="run-list: runs of this head; pr-heads."
+        "--head-sha",
+        default=None,
+        help="run-list: runs of this head; pr-heads; commit-check-runs.",
+    )
+    @click.option(
+        "--check-name", default=None, help="commit-check-runs: runs of this name."
     )
     @click.option("--workflow", default=None, help="run-list: a workflow file or id.")
     @click.option("--event", default=None, help="run-list: the triggering event.")

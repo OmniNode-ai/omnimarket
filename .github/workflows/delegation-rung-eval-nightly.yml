@@ -56,9 +56,11 @@ jobs:
       RUNG_EVAL_LAB_202_MODEL: ${{ vars.RUNG_EVAL_LAB_202_MODEL }}
       RUNG_EVAL_PLANNER_200_BASE_URL: ${{ vars.RUNG_EVAL_PLANNER_200_BASE_URL }}
       RUNG_EVAL_PLANNER_200_MODEL: ${{ vars.RUNG_EVAL_PLANNER_200_MODEL }}
-      RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL }}
-      RUNG_EVAL_CLOUD_OPENROUTER_MODEL: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_MODEL }}
-      RUNG_EVAL_CLOUD_OPENROUTER_API_KEY: ${{ secrets.RUNG_EVAL_CLOUD_OPENROUTER_API_KEY }}
+      # The cloud rung holds no provider key (OMN-20974): it runs as the dogfood
+      # tenant through a pinned `onex delegate`, and the effect boundary reads the
+      # tenant's registered key by reference.
+      RUNG_EVAL_CLOUD_OPENROUTER_BACKEND_ID: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_BACKEND_ID }}
+      RUNG_EVAL_DOGFOOD_TENANT_ID: ${{ vars.RUNG_EVAL_DOGFOOD_TENANT_ID }}
       WINDOW_DAYS: ${{ github.event.inputs.window_days || '7' }}
     steps:
       - name: Checkout

@@ -31,6 +31,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.events.github import pr_merged_event_id
 from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror import (
     MAX_DIFF_CHARS,
     PR_SCOPED_OPERATIONS,
@@ -49,9 +51,17 @@ from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror
     ModelGitCommit,
     ModelGitQueryRequest,
     ModelGitQueryResult,
+    ModelMirrorPrMerged,
 )
 
 WATERMARK_FILE = "onex_query_watermark.json"
+PUBLISHED_MERGES_FILE = "onex_published_merges.json"
+# The watermark keys that carry the merge scan: the default branch and the sha
+# the last scan reached. A sync that does not scan leaves them untouched.
+SCAN_KEYS = ("merge_scan_base", "merge_scan_sha")
+# GitHub names a squash commit "<PR title> (#<number>)".
+_SQUASH_SUBJECT_RE = re.compile(r"\(#(\d+)\)\s*$")
+_TICKET_RE = re.compile(r"\b(OMN-\d+)\b", re.IGNORECASE)
 HEADS_REFSPEC = "+refs/heads/*:refs/heads/*"
 PULLS_REFSPEC = "+refs/pull/*/head:refs/pull/*/head"
 FETCH_TIMEOUT_S = 600
@@ -78,6 +88,9 @@ REGISTRY_REPOS: tuple[str, ...] = (
 )
 
 GhRunner = Callable[[list[str]], tuple[int, str, str]]
+# True when an event for (repo, pr_number) was already published by another
+# producer (the Actions publisher, the webhook fold). No GitHub call.
+PublishedMerges = Callable[[str, int], bool]
 
 
 def resolve_mirror_root() -> Path:
@@ -164,8 +177,10 @@ class GitQueryMirror:
         gh_runner: GhRunner = default_gh_runner,
         reference_clone_for: Callable[[str], Path | None] = canonical_clone_for,
         clock: Callable[[], float] = time.time,
+        published_merges: PublishedMerges | None = None,
     ) -> None:
         self.root = root
+        self.published_merges = published_merges
         self.remote_url_for = remote_url_for
         self.gh_runner = gh_runner
         self.reference_clone_for = reference_clone_for
@@ -247,9 +262,15 @@ class GitQueryMirror:
         shutil.rmtree(tmp, ignore_errors=True)
         return None
 
-    def sync(self, repo: str) -> ModelGitQueryResult:
-        """Create the mirror if needed, then fetch every head and PR ref (fetch only)."""
+    def sync(self, repo: str, detect_merges: bool = True) -> ModelGitQueryResult:
+        """Create the mirror if needed, then fetch every head and PR ref (fetch only).
+
+        With ``detect_merges`` the result's ``merged_prs`` lists the squash merges
+        that landed on the default branch since the previous detecting sync; the
+        caller owns publishing them, because the scan watermark has moved on.
+        """
         mirror = self.mirror_path(repo)
+        merged: list[ModelMirrorPrMerged] | None = None
         try:
             with self._lock(mirror):
                 if not (mirror / "HEAD").exists():
@@ -258,6 +279,7 @@ class GitQueryMirror:
                         return self._result_err(
                             EnumGitQueryOperation.SYNC, repo, None, mirror, err
                         )
+                heads_before = self._head_shas(mirror)
                 code, _, err = _git(
                     mirror,
                     "fetch",
@@ -288,7 +310,13 @@ class GitQueryMirror:
                     )
                 pulls = self._count(mirror, "refs/pull")
                 heads = self._count(mirror, "refs/heads")
+                scan = {k: prior[k] for k in SCAN_KEYS if k in prior}
+                if detect_merges:
+                    merged, scan = self._scan_merges(
+                        repo, mirror, prior, heads_before, now
+                    )
                 wm = {
+                    **scan,
                     "repo": repo,
                     "ok": True,
                     "fetched_at": _iso(now),
@@ -311,6 +339,153 @@ class GitQueryMirror:
             mirror_path=str(mirror),
             pull_refs=pulls,
             head_refs=heads,
+            merged_prs=merged,
+        )
+
+    # -- merge detection -------------------------------------------------------
+
+    def _head_shas(self, mirror: Path) -> dict[str, str]:
+        code, out, _ = _git(
+            mirror,
+            "for-each-ref",
+            "--format=%(objectname) %(refname:short)",
+            "refs/heads",
+        )
+        if code != 0:
+            return {}
+        shas: dict[str, str] = {}
+        for line in out.splitlines():
+            sha, _, name = line.partition(" ")
+            if name:
+                shas[name] = sha
+        return shas
+
+    def _published_merge_numbers(self, mirror: Path) -> set[int]:
+        try:
+            data = json.loads((mirror / PUBLISHED_MERGES_FILE).read_text())
+        except (OSError, ValueError):
+            return set()
+        prs = data.get("prs") if isinstance(data, dict) else None
+        return (
+            {n for n in prs if isinstance(n, int)} if isinstance(prs, list) else set()
+        )
+
+    def is_merge_published(self, repo: str, pr_number: int) -> bool:
+        """True when the injected lookup or this mirror's own ledger holds the PR."""
+        if self.published_merges is not None and self.published_merges(repo, pr_number):
+            return True
+        return pr_number in self._published_merge_numbers(self.mirror_path(repo))
+
+    def _scan_merges(
+        self,
+        repo: str,
+        mirror: Path,
+        prior: dict[str, object],
+        heads_before: dict[str, str],
+        now: float,
+    ) -> tuple[list[ModelMirrorPrMerged] | None, dict[str, object]]:
+        """Squash merges on the default branch since the last scan, and the new scan keys.
+
+        The first scan only records where the branch stands: it publishes no
+        history. A base branch that was rewritten (the last scanned sha is no
+        longer an ancestor) is re-baselined the same way. A failed git read
+        keeps the previous scan keys so the next sync retries the same range.
+        """
+        carried = {k: prior[k] for k in SCAN_KEYS if k in prior}
+        base = self._default_branch(mirror)
+        code, new_sha, _ = _git(
+            mirror, "rev-parse", "--verify", "--quiet", f"refs/heads/{base}"
+        )
+        if code != 0:
+            return None, carried
+        new_sha = new_sha.strip()
+        fresh: dict[str, object] = {"merge_scan_base": base, "merge_scan_sha": new_sha}
+        prev = prior.get("merge_scan_sha")
+        if prior.get("merge_scan_base") != base or not isinstance(prev, str):
+            return [], fresh
+        if prev == new_sha:
+            return [], fresh
+        if _git(mirror, "merge-base", "--is-ancestor", prev, new_sha)[0] != 0:
+            return [], fresh
+        code, out, _ = _git(
+            mirror,
+            "log",
+            "--first-parent",
+            "--reverse",
+            "--format=%H%x1f%s%x1f%cI",
+            f"{prev}..{new_sha}",
+        )
+        if code != 0:
+            return None, carried
+        heads_after = self._head_shas(mirror)
+        published = self._published_merge_numbers(mirror)
+        events: list[ModelMirrorPrMerged] = []
+        for line in out.splitlines():
+            sha, subject, merged_at = [*line.split("\x1f"), "", ""][:3]
+            found = _SQUASH_SUBJECT_RE.search(subject)
+            if found is None or not merged_at:
+                continue
+            number = int(found.group(1))
+            if number in published or self.is_merge_published(repo, number):
+                continue
+            events.append(
+                self._merge_event(
+                    repo,
+                    mirror,
+                    base,
+                    number,
+                    sha,
+                    subject,
+                    merged_at,
+                    {**heads_before, **heads_after},
+                    now,
+                )
+            )
+            published.add(number)
+        if events:
+            (mirror / PUBLISHED_MERGES_FILE).write_text(
+                json.dumps({"prs": sorted(published)})
+            )
+        return events, fresh
+
+    def _merge_event(
+        self,
+        repo: str,
+        mirror: Path,
+        base: str,
+        number: int,
+        merge_sha: str,
+        subject: str,
+        merged_at: str,
+        head_shas: dict[str, str],
+        now: float,
+    ) -> ModelMirrorPrMerged:
+        code, head, _ = _git(
+            mirror, "rev-parse", "--verify", "--quiet", f"refs/pull/{number}/head"
+        )
+        head_sha = head.strip() if code == 0 and head.strip() else None
+        names = sorted(
+            n for n, sha in head_shas.items() if sha == head_sha and n != base
+        )
+        branch = names[0] if head_sha and names else f"refs/pull/{number}/head"
+        ticket = ""
+        for text in (branch, subject):
+            ticket_found = _TICKET_RE.search(text)
+            if ticket_found:
+                ticket = ticket_found.group(1).upper()
+                break
+        return ModelMirrorPrMerged(
+            event_id=pr_merged_event_id(repo, number, merge_sha),
+            repo=repo,
+            branch=branch,
+            branch_resolved=bool(head_sha and names),
+            base_ref=base,
+            pr_number=number,
+            ticket=ticket,
+            merge_sha=merge_sha,
+            head_sha=head_sha,
+            merged_at=merged_at,
+            published_at=_iso(now),
         )
 
     def _refresh_pr(self, mirror: Path, pr: int, base: str) -> str | None:
@@ -336,7 +511,7 @@ class GitQueryMirror:
     def query(self, request: ModelGitQueryRequest) -> ModelGitQueryResult:
         op = request.operation
         if op is EnumGitQueryOperation.SYNC:
-            return self.sync(request.repo)
+            return self.sync(request.repo, detect_merges=request.detect_merges)
         mirror = self.mirror_path(request.repo)
         if op is EnumGitQueryOperation.STATUS:
             return self._status(request.repo, mirror)
@@ -348,7 +523,7 @@ class GitQueryMirror:
         problem: str | None = None
         base = request.base or ""
         if not (mirror / "HEAD").exists():
-            built = self.sync(request.repo)
+            built = self.sync(request.repo, detect_merges=False)
             source = EnumGitQuerySource.MIRROR_REFRESHED
             problem = None if built.ok else built.error
         if problem is None:

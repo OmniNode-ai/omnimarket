@@ -66,7 +66,7 @@ _OPENROUTER_MODELS: tuple[ModelOpenRouterModelConfig, ...] = (
     ),
     ModelOpenRouterModelConfig(
         model_id="microsoft/mai-ds-r1:free",
-        display_name="GPT OSS 20B",
+        display_name="MAI DS R1",
         parameter_count="20B",
         context_window=163_840,
         tier=EnumOpenRouterTier.SMALL_FREE,
