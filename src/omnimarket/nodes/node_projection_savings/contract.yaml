@@ -17,7 +17,9 @@ description: >
   Projects savings-estimated events into the savings_estimates table.
   Source topics include omnibase-infra savings estimates and omnimarket
   delegate-skill terminal events that already carry measured token/cost
-  savings metrics.
+  savings metrics, and Claude Code PostCompact hook events, where a compaction
+  the compaction mod answered or shortened is a saving (task_type
+  context_compaction).
 
 handler:
   module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
@@ -32,6 +34,12 @@ handler_routing:
         module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
       handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
       event_model: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings.ModelSavingsEstimatedEvent
+    - operation: compaction_savings
+      handler:
+        name: HandlerCompactionSavings
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings
+      event_model: omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings.ModelCompactionSavingsSource
     - operation: savings_projection_runner
       handler:
         name: SavingsProjectionRunner
@@ -89,6 +97,13 @@ event_bus:
     # task-delegated.v1 superseded architecturally.)
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
+    # OMN-18531: compaction counted as token savings beside delegation. The
+    # runner reads PostCompact off the Claude Code hook-event stream and passes
+    # over every other hook event before any read; a compaction the mod
+    # answered or shortened is upserted with task_type context_compaction
+    # (handlers/handler_compaction_savings.py). A native compaction saves
+    # nothing and writes no row.
+    - onex.evt.omniclaude.hook-event.v1
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
     - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
@@ -102,6 +117,10 @@ event_bus:
   # offending envelope + correlation_id, instead of being logged + dropped silently.
   dlq_topics:
     - onex.dlq.omnimarket.projection-savings-malformed.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omniclaude.hook-event.v1
+    producer: "omniclaude plugins/onex/hooks, through the emit journal and the emit drainer (capture contract contract_hook_claude_capture.yaml, model ModelClaudeHookEvent)"
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-savings-applied.v1
