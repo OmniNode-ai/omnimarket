@@ -80,3 +80,9 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q -p no:randomly --no-cov"
     binds_ac: ["AC4"]
+  - id: "dod-omn21146-verify-on-merge"
+    description: "node_dod_verify subscribes to onex.evt.github.pr-merged.v1: the runtime wiring assigns that topic to HandlerDodVerifyOnMerge and the start command topic to HandlerDodVerify, a merge citing a ticket runs that ticket's verification under the hosted audience, and a merge citing no ticket publishes nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_on_merge.py tests/unit/nodes/node_dod_verify/test_dispatch_envelope_unwrap.py -q -p no:randomly --no-cov"
