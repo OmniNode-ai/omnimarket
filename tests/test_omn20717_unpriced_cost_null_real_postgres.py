@@ -14,7 +14,10 @@ Postgres too. Failure modes this module is written against:
   and silently matches no row;
 - F5 the backfill rewrites a zero it cannot prove was unpriced (a free local
   call, or a row with no pricing source);
-- F6 the migration's restatement of the tenant policy changes it, or loses the
+- F6 the aggregate the dashboards read prices an unpriced call at 0;
+- F7 a tenant none of whose calls was priced reads a total of 0.0 instead of
+  null (a total that defaults to 0 passes every mixed-tenant case);
+- F8 the migration's restatement of the tenant policy changes it, or loses the
   dashboard's read grant.
 
 A priced call and a free local call keep their costs. The database is the
@@ -159,7 +162,7 @@ async def test_the_backfill_nulls_only_unpriced_zero_rows_as_a_non_superuser_own
         await admin_conn.execute(f"SET ROLE {owner}")
         await admin_conn.execute(_MIGRATION.read_text())
         await admin_conn.execute("RESET ROLE")
-        # F6: 0061 restates the tenant policy (omnibase_infra's RULE A needs a
+        # F8: 0061 restates the tenant policy (omnibase_infra's RULE A needs a
         # CREATE POLICY in a file that turns FORCE on); it must come back
         # exactly as it was, with the dashboard's read grant.
         assert [dict(r) for r in await admin_conn.fetch(_POLICIES)] == [
@@ -229,6 +232,37 @@ async def test_the_token_usage_view_sums_priced_calls_and_counts_unpriced_ones()
         assert unpriced["estimated_cost_usd"] is None
         assert unpriced["unpriced_call_count"] == 1
         assert by_model["glm-5.2"]["unpriced_call_count"] == 0
+
+
+@pytest.mark.integration
+async def test_a_tenant_with_only_unpriced_calls_reads_a_null_total() -> None:
+    """F7: a total over no priced call is unknown, so it is null, never 0.0.
+
+    A priced call beside the unpriced one would hide a total that defaults to
+    0 (the mixed tenant above still sums to its priced cost), so this tenant
+    has none.
+    """
+    async with _provisioned_runner() as (_runner, admin_conn, _schema):
+        tenant = uuid4()
+        await admin_conn.execute(
+            "INSERT INTO delegation_events (correlation_id, tenant_id, timestamp,"
+            " task_type, delegated_to, model_name, delegated_by,"
+            " quality_gate_passed, cost_usd, cost_measurement_source)"
+            " VALUES ($1, $2, now(), 'research', 'm', 'omn20717-unpriced-only',"
+            " 'omn20717-test', true, NULL, 'no_cost_model')",
+            str(uuid4()),
+            tenant,
+        )
+        view = await admin_conn.fetchrow(
+            "SELECT total_estimated_cost_usd, unpriced_call_count, by_model"
+            " FROM projection_delegation_token_usage WHERE tenant_id = $1",
+            tenant,
+        )
+        assert view is not None
+        assert view["total_estimated_cost_usd"] is None
+        assert view["unpriced_call_count"] == 1
+        (model,) = json.loads(view["by_model"])
+        assert model["estimated_cost_usd"] is None
 
 
 @pytest.mark.integration
