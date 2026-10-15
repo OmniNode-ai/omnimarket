@@ -179,10 +179,11 @@ class PinnedDelegateTransport:
     def __init__(
         self,
         run: DelegateRun = _run_subprocess,
-        environ: Mapping[str, str] | None = None,
+        *,
+        environ: Mapping[str, str],
     ) -> None:
         self._run = run
-        self._environ = os.environ if environ is None else environ
+        self._environ = environ
 
     def complete(self, rung: ModelRungSpec, prompt: str) -> ModelTransportResult:
         if rung.backend_id_env is None or rung.tenant_env is None:
@@ -265,10 +266,8 @@ def _receipt_result(stdout: str) -> dict[str, object]:
 class RungTransport:
     """Send a rung to the way it is reached: a backend pin, or its own endpoint."""
 
-    def __init__(
-        self, pinned: Transport | None = None, chat: Transport | None = None
-    ) -> None:
-        self._pinned = pinned or PinnedDelegateTransport()
+    def __init__(self, pinned: Transport, chat: Transport | None = None) -> None:
+        self._pinned = pinned
         self._chat = chat or OpenAIChatTransport()
 
     def complete(self, rung: ModelRungSpec, prompt: str) -> ModelTransportResult:
