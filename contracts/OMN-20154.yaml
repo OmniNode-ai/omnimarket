@@ -1,0 +1,32 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20154"
+title: "Provider quota tracking: a provider's declared quota lives in a contract and routing defers a call before the limit"
+summary: "Binds AC3 of the ticket to tests of this change. A provider declares one call limit per window in configs/provider_quota_limits.v1.yaml, the observation of every call counts over that window in the durable provider_quota_state projection, and routing withholds a rung whose window is spent. AC1 (the quota-status skill) and AC2 (gaps G1 to G8) are not bound here: AC1's tests live in the skill's own repository, and AC2 carries a gap with no change or ruling yet (G4, G8)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-routing-defers-before-the-declared-limit"
+    statement: |-
+      A provider declares its quota in a contract, the call count of the declared window is read from the durable projection, and routing withholds a rung whose window is spent. The criterion below is the ticket's third live criterion, transcribed from the ticket body, with its falsifier's pytest target named relative to this repository's root.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a provider's declared quota lives in the routing contract, routing reads the remaining headroom from the durable capacity-event record and defers a call before the limit -- falsifier: a routing test with a provider at zero declared headroom that still selects it fails under pytest, or a 30-delegation unpinned lab run sends a call to a provider whose declared window is exhausted
+evidence_requirements:
+  - kind: "tests"
+    description: "A routing test with a provider at zero declared headroom, a provider with headroom left and a window that has ended, each selecting as the declared limit says; the declared limit is read from the packaged contract and the call count from the projection reader."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_provider_quota_declared_headroom_omn20154.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20154-ac3-routing-defers-at-zero-headroom"
+    description: "AC3 at the ticket's pytest falsifier: with a provider's declared window spent, routing does not select its rung and names it in the blocked set; with headroom left, or once the window has ended, it selects it. The 30-delegation lab run half of the falsifier is a lab observation recorded in the pull request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_provider_quota_declared_headroom_omn20154.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
