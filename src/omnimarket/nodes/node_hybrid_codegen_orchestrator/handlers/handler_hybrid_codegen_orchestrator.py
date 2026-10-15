@@ -40,7 +40,9 @@ Flow (event-driven, no in-process loop):
      invalid -> terminal ``ModelCodegenCompleted`` (REJECTED_VALIDATION).
   4. ``ModelCodegenTypecheckOutcome``: clean -> ``ModelContractAssemblyRequestSeam``;
      errors -> terminal ``ModelCodegenCompleted`` (REJECTED_TYPECHECK).
-  5. ``ModelCodegenSerializeOutcome`` -> emit ``ModelFileWriteCommand``.
+  5. ``ModelCodegenSerializeOutcome``: lint passed -> emit
+     ``ModelFileWriteCommand``; lint failed -> terminal
+     ``ModelCodegenCompleted`` (REJECTED_CONTRACT_LINT) (OMN-21151).
   6. ``ModelFileWriteResult`` -> terminal ``ModelCodegenCompleted`` (COMPLETED).
 """
 
@@ -254,6 +256,14 @@ class HandlerHybridCodegenOrchestrator:
     def _on_serialize_outcome(
         self, outcome: ModelCodegenSerializeOutcome
     ) -> CodegenOrchestratorOutput:
+        if not outcome.lint_passed:
+            # OMN-21151: a contract that failed its lint is never written —
+            # the run ends rejected_contract_lint carrying the gate's messages.
+            return self._completed(
+                outcome.state,
+                EnumCodegenStatus.REJECTED_CONTRACT_LINT,
+                issues=outcome.lint_messages,
+            )
         return ModelFileWriteCommand(
             state=outcome.state,
             target_root=outcome.state.spec.target_root,

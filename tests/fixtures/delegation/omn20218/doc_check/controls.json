@@ -1,0 +1,186 @@
+[
+ {
+  "id": "R0 reference docstring",
+  "old": "",
+  "new": "",
+  "expect": "PASS"
+ },
+ {
+  "id": "R1 default as 5e-1 and a continued line",
+  "old": "Default 0.5. Must be > 0.",
+  "new": "Default 5e-1.\n            Must be > 0.",
+  "expect": "PASS"
+ },
+ {
+  "id": "R2 ranges in other correct words",
+  "old": "Must be >= 1.",
+  "new": "Must be at least 1.",
+  "expect": "PASS"
+ },
+ {
+  "id": "R3 jitter range as an inequality",
+  "old": "Must be in [0, 1).",
+  "new": "Must satisfy 0 <= jitter < 1.",
+  "expect": "PASS"
+ },
+ {
+  "id": "R4 base range as positive",
+  "old": "Default 0.5. Must be > 0.",
+  "new": "Defaults to 0.5. Must be positive.",
+  "expect": "PASS"
+ },
+ {
+  "id": "R5 Returns on two lines",
+  "old": "float: The delay in seconds, min(",
+  "new": "float: The delay in seconds,\n            min(",
+  "expect": "PASS"
+ },
+ {
+  "id": "R6 Raises conditions as inequalities",
+  "old": "If `attempt` is less than 1, if `base` or `cap` is not positive, or if\n            `jitter` is outside [0, 1).",
+  "new": "`attempt` < 1, `base` <= 0 or `cap` <= 0, or `jitter` < 0 or `jitter` >= 1.",
+  "expect": "PASS"
+ },
+ {
+  "id": "R7 jitter range in words",
+  "old": "Must be in [0, 1).",
+  "new": "Must be at least 0.0 and less than 1.0.",
+  "expect": "PASS"
+ },
+ {
+  "id": "R8 attempt range as 1-based",
+  "old": "starting at 1. Required. Must be >= 1.",
+  "new": "1-based. Required.",
+  "expect": "PASS"
+ },
+ {
+  "id": "F1 false default, true value quoted as forbidden",
+  "old": "Default 0.5. Must be > 0.",
+  "new": "Default 99; 0.5 is forbidden. Must be > 0.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F2 required parameter given an invented default",
+  "old": "Required. Must be >= 1.",
+  "new": "Default 1. Must be >= 1.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F3 optional parameter documented as required",
+  "old": "Default 0.5. Must be > 0.",
+  "new": "Required. Must be > 0.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F4 false range, base may be zero",
+  "old": "Default 0.5. Must be > 0.",
+  "new": "Default 0.5. Must be >= 0.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F5 false range, jitter up to and including 1",
+  "old": "Must be in [0, 1).",
+  "new": "Must be in [0, 1].",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F6 false range, attempt starts at 0",
+  "old": "starting at 1. Required. Must be >= 1.",
+  "new": "starting at 0. Required. Must be >= 0.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F7 false return unit",
+  "old": "float: The delay in seconds,",
+  "new": "float: The delay in milliseconds,",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F8 false return type",
+  "old": "float: The delay in seconds,",
+  "new": "int: The delay in seconds,",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F9 jitter documented as random",
+  "old": "The fraction by which the delay is reduced.",
+  "new": "A random fraction by which the delay is reduced.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F10 jitter documented as added",
+  "old": "The fraction by which the delay is reduced.",
+  "new": "The fraction added to the delay.",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F11 ValueError for a network fault",
+  "old": "if `base` or `cap` is not positive,",
+  "new": "if the network connection times out, if `base` or `cap` is not positive,",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F12 a condition left out of Raises",
+  "old": "if `base` or `cap` is not positive, or if\n            `jitter` is outside [0, 1).",
+  "new": "or if `jitter` is outside [0, 1).",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F13 an exception the code never raises",
+  "old": "    Examples:",
+  "new": "        TimeoutError: If the delay is too long.\n\n    Examples:",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F14 a wrong doctest",
+  "old": ">>> retry_delay(3)\n        2.0",
+  "new": ">>> retry_delay(3)\n        4.0",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F15 one doctest only",
+  "old": ">>> retry_delay(3)\n        2.0\n        >>> retry_delay(10)\n        30.0\n        >>> retry_delay(3, jitter=0.5)\n        1.0\n",
+  "new": "",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F16 code changed under a correct docstring",
+  "old": "delay = min(cap,",
+  "new": "delay = max(cap,",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F17 invented identifier in backticks",
+  "old": "starting from `base`",
+  "new": "starting from `max_delay`",
+  "expect": "FAIL"
+ },
+ {
+  "id": "F18 formula omitted",
+  "old": "",
+  "new": "",
+  "expect": "FAIL",
+  "edits": [
+   [
+    "The delay doubles with each attempt, starting from `base`, is capped at `cap`, and is then\n    reduced by the fraction `jitter`: min(cap, base * 2 ** (attempt - 1)) * (1 - jitter).",
+    "The delay grows with each attempt."
+   ],
+   [
+    "float: The delay in seconds, min(cap, base * 2 ** (attempt - 1)) * (1 - jitter).",
+    "float: The delay in seconds."
+   ]
+  ]
+ },
+ {
+  "id": "F19 growth described as linear beside a correct formula",
+  "old": "",
+  "new": "",
+  "expect": "FAIL",
+  "edits": [
+   [
+    "The delay doubles with each attempt, starting from `base`,",
+    "The delay grows linearly with each attempt, starting from `base`,"
+   ]
+  ]
+ }
+]

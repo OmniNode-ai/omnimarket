@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """OMN-17427: the .200 planner's Qwen3.6-35B-A3B gets the vendor's non-thinking request.
 
-The Mac Studio planner rung (backend ``local-studio-planner``) moved from gpt-oss-120b
-to Qwen3.6-35B-A3B, served as ``qwen3.6-35b-a3b``. The model card's non-thinking mode
+The Mac Studio planner rung (backend ``local-studio-planner``) served Qwen3.6-35B-A3B
+as ``qwen3.6-35b-a3b`` from 2026-10-08 and serves Qwen3.8-27B since 2026-10-09. The model card's non-thinking mode
 is ``temperature=0.7, top_p=0.80, top_k=20, min_p=0.0, presence_penalty=1.5`` with
 ``enable_thinking: false``. These tests drive the committed config, with a control on
 the Qwen3.8-27B rungs, which must keep the request they were measured with.

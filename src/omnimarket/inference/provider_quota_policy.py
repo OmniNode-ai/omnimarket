@@ -43,6 +43,10 @@ from omnimarket.inference.provider_surfaces import (
     load_provider_surfaces,
     provider_surface_for_endpoint,
 )
+from omnimarket.models.delegation.model_provider_quota_limit import (
+    ModelProviderQuotaLimit,
+    ModelProviderQuotaLimits,
+)
 
 # OMN-16891: the config SHAPES live with the other bifrost wire DTOs — the
 # bifrost loader validates the whole contract with extra="forbid", so a second
@@ -60,6 +64,7 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 
 _CONTRACT_FILENAME = "bifrost_delegation.yaml"
 _POLICY_KEY = "provider_quota_policy"
+_QUOTA_LIMITS_FILENAME = "provider_quota_limits.v1.yaml"
 
 # z.ai states the reset inline: "Your limit will reset at 2026-08-30 20:32:52".
 _RESET_PATTERN = re.compile(
@@ -206,6 +211,31 @@ def load_provider_quota_policy() -> ModelProviderQuotaPolicy:
 def clear_provider_quota_policy_cache() -> None:
     """Drop the cached policy after a contract change in tests."""
     load_provider_quota_policy.cache_clear()
+    load_provider_quota_limits.cache_clear()
+
+
+def _quota_limits_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "configs" / _QUOTA_LIMITS_FILENAME
+
+
+@lru_cache(maxsize=1)
+def load_provider_quota_limits() -> tuple[ModelProviderQuotaLimit, ...]:
+    """Load the committed provider quota limits (OMN-20154).
+
+    Fails loud like the policy: a malformed declaration is a configuration
+    error, never a reason to treat every provider as unlimited.
+    """
+    path = _quota_limits_path()
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return ModelProviderQuotaLimits.model_validate(raw).limits
+
+
+def declared_quota_limit_for(provider_id: str) -> ModelProviderQuotaLimit | None:
+    """The limit a provider declares, or ``None`` when it declares none."""
+    for entry in load_provider_quota_limits():
+        if entry.provider_id == provider_id:
+            return entry
+    return None
 
 
 def _extract_error_code(body: dict[str, Any] | None) -> str | None:
@@ -477,6 +507,8 @@ __all__: list[str] = [
     "ModelQuotaVerdict",
     "classify_quota_response",
     "clear_provider_quota_policy_cache",
+    "declared_quota_limit_for",
+    "load_provider_quota_limits",
     "load_provider_quota_policy",
     "parse_retry_after",
 ]

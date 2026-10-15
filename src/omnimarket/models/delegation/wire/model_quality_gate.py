@@ -70,6 +70,20 @@ NO_NAMED_TEST_RUN_REASON = (
     "against it"
 )
 
+# OMN-17427: the verdict a code answer gets when its request named NO tests.
+# INSUFFICIENT is kept for a request that named tests no runner ran. A request
+# that named none has nothing any rung could be tested on, so refusing it failed
+# every such code delegation at the local rung whatever its quality and climbed
+# the ladder on correct answers (84 of 125 on the dev lane, 2026-10-15). The
+# answer is decided by its contract checks and recorded as UNTESTED, never as
+# tests passed.
+UNTESTED_VERDICT_PREFIX = "UNTESTED"
+NO_NAMED_TESTS_UNTESTED_REASON = (
+    f"{UNTESTED_VERDICT_PREFIX}: passes_existing_tests: the request named no "
+    "tests, so the code answer was decided by its contract checks alone and "
+    "was not run; name tests to have it graded on them"
+)
+
 # OMN-19529: the checks whose PASS establishes that a response is correct, as
 # distinct from checks that can only refute one. Every other check the gate
 # runs is a pre-filter or a grounding check: it can show an answer is wrong
@@ -405,12 +419,14 @@ class ModelQualityGateResult(BaseModel):
 # are re-exported from this module so every existing importer keeps its path.
 __all__: list[str] = [
     "INSUFFICIENT_EVIDENCE_VERDICT_PREFIX",
+    "NO_NAMED_TESTS_UNTESTED_REASON",
     "NO_NAMED_TEST_RUN_REASON",
     "NO_RUNG_CAN_SATISFY_WIRE_KEY",
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
     "SCORE_VERIFYING_CHECKS",
     "SHAPE_REFUSED_VERDICT_PREFIX",
+    "UNTESTED_VERDICT_PREFIX",
     "UNVERIFIED_GATE_FAILED",
     "UNVERIFIED_NO_EXECUTED_CHECK",
     "UNVERIFIED_SKIPPED_PREFIX",

@@ -1,25 +1,37 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19401"
 title: "Causal prose passes the reasoning quality gate and causal markers cannot authorize a pass alone"
-summary: "Adds regression tests that run the verbatim hash map answer through the reasoning quality gate delta with the base class DoD checks, and that pin the causal-marker rule as reject-only. Tests: tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py."
+summary: "Binds the existing causal prose and causal marker regression tests to AC1, AC2 and AC3. The Binds-Merged-Fix commit trailer identifies the merged implementation for the gate's reverted-fix control. Tests: tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-causal-prose-passes-the-gate"
     statement: |-
-      A step-by-step explanation written as causal prose must pass the reasoning quality gate through the base class DoD checks, and causal markers alone must never authorize a pass.
+      A step-by-step explanation written as causal prose must pass the reasoning quality gate through the base class DoD checks, and causal markers alone must never authorize a pass. The criteria below are the ticket's three live criteria, transcribed from the ticket body; AC1's falsifier names the test directory relative to this repository's root, where the contract's checks run.
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: the verbatim hash map answer passes the reasoning quality gate delta with the base class DoD checks and no failure reasons, and causal markers alone cannot authorize a pass -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q
+          AC1: The `step_by_step_explanation` heuristic accepts causal-connective structure (e.g. "because","therefore","consequently","since","as a result","this means") in addition to the current literal markers, so a multi-clause causal explanation is not vetoed for lacking the word "step" -- falsifier: `uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py -k step_by_step -q`
+      - id: "AC2"
+        statement: |-
+          AC2: A regression test reproduces the hash-map prompt/response pair from correlation_id 174ea493-c4b8-4174-aac4-b158d439b424 and asserts it now passes the heuristic -- falsifier: `uv run pytest tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -k hash_map -q`
+      - id: "AC3"
+        statement: |-
+          AC3: Re-running the exact reproduction prompt through `onex delegate --task-type reasoning --bus kafka --lane dev` post-fix scores quality_gate_passed=true on the first local attempt -- falsifier: manual re-run of the Probe line above still shows a step_by_step_explanation veto
 evidence_requirements:
   - kind: "tests"
-    description: "The causal prose regression tests pass at the head; the two gate-level tests do not exist at the merge base."
+    description: "The causal prose regression tests pass at the head and fail with the merged causal-connective implementation reverted."
     command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
   - kind: "tests"
-    description: "The step_by_step_explanation causal marker tests pass at the head; they do not exist at the merge base."
+    description: "The step_by_step_explanation causal marker tests pass at the head and fail with the merged causal-connective implementation reverted."
     command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py -q"
+  - kind: "tests"
+    description: "AC1: the ticket's step_by_step selection over the quality gate reducer tests passes, run from this repository's root."
+    command: "uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py -k step_by_step -q"
+  - kind: "tests"
+    description: "AC2 and AC3: the hash-map prompt/response pair passes the heuristic and the reasoning quality gate."
+    command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -k hash_map -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,3 +53,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19401-ac1-step-by-step-selection"
+    description: "AC1 at the ticket's falsifier, with its path relative to this repository's root: every step_by_step test in the quality gate reducer causal markers test file passes, including the causal connective cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py -k step_by_step -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19401-ac2-ac3-hash-map-pair"
+    description: "AC2 at the ticket's falsifier: the hash-map prompt/response pair from the reproduction passes the step_by_step_explanation heuristic and the reasoning quality gate with the base class DoD checks. AC3 hosted probe: the same recorded answer of the local model passes the gate the delegation grades it with; the live half of AC3 is a lab re-run of the reproduction prompt through onex delegate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -k hash_map -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]

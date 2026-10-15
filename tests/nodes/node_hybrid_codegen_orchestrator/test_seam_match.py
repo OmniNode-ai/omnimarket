@@ -171,7 +171,11 @@ class TestSeamMatch:
             ModelCodegenValidationOutcome(state=_state(), is_valid=True)
         )
         assert topic.endswith("mypy-check-requested.v1")
-        _assert_seam("mypy-check-requested.v1", model.model_dump())
+        dump = model.model_dump()
+        _assert_seam("mypy-check-requested.v1", dump)
+        # OMN-21150: the seam carries the factory's policy — never ignore a
+        # missing import — overriding the consumer model's True default.
+        assert dump["ignore_missing_imports"] is False
 
     def test_contract_serialize_seam_matches(self) -> None:
         topic, model = _emit_for(
@@ -187,7 +191,9 @@ class TestSeamMatch:
         # The file-write command targets tier-4's OWN effect, so it legitimately
         # carries pipeline state — assert the file set is assembled, not a seam.
         topic, model = _emit_for(
-            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y"))
+            ModelCodegenSerializeOutcome(
+                state=_state(source="SRC", contract_yaml="Y"), lint_passed=True
+            )
         )
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(model, BaseModel)

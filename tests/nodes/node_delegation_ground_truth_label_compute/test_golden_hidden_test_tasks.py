@@ -138,3 +138,40 @@ def test_checklist_dataset_has_ten_document_tasks_with_checklists() -> None:
         assert len(item_ids) >= 4
         assert len(set(item_ids)) == len(item_ids)
         assert all(item["text"].endswith("?") for item in task["checklist"])
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_class"),
+    [
+        ("checklist_tasks_summarization.v1.yaml", "summarization"),
+        ("checklist_tasks_planning.v1.yaml", "planning"),
+        ("checklist_tasks_reasoning.v1.yaml", "reasoning"),
+        ("checklist_tasks_research.v1.yaml", "research"),
+    ],
+)
+def test_checklist_dataset_has_eight_tasks_for_each_class(
+    filename: str, expected_class: str
+) -> None:
+    path = _DATASET_PATH.with_name(filename)
+    with path.open(encoding="utf-8") as handle:
+        dataset = yaml.safe_load(handle)
+    assert set(dataset) == {"schema_version", "task_class", "tasks"}
+    assert dataset["schema_version"] == 1
+    assert dataset["task_class"] == expected_class
+    tasks = dataset["tasks"]
+    assert len(tasks) == 8
+    all_task_ids = []
+    for task_class in ("summarization", "planning", "reasoning", "research"):
+        sibling_path = path.with_name(f"checklist_tasks_{task_class}.v1.yaml")
+        with sibling_path.open(encoding="utf-8") as handle:
+            sibling_dataset = yaml.safe_load(handle)
+        all_task_ids.extend(task["id"] for task in sibling_dataset["tasks"])
+    assert len(set(all_task_ids)) == len(all_task_ids)
+    for task in tasks:
+        assert set(task) == {"id", "prompt", "checklist"}
+        checklist = task["checklist"]
+        assert 4 <= len(checklist) <= 6
+        item_ids = [item["id"] for item in checklist]
+        assert len(set(item_ids)) == len(item_ids)
+        assert all(item["text"].endswith("?") for item in checklist)
+        assert item_ids[-1].startswith(("no_invented", "free_of"))

@@ -36,6 +36,7 @@ from omnimarket.events.provider_quota import (
 from omnimarket.inference.provider_quota_policy import (
     ModelQuotaVerdict,
     classify_quota_response,
+    declared_quota_limit_for,
 )
 from omnimarket.inference.provider_quota_state import (
     endpoint_is_metered,
@@ -182,6 +183,11 @@ def build_quota_observation(
         "correlation_id": correlation_id,
         "source": source,
     }
+    declared = declared_quota_limit_for(provider_id)
+    if declared is not None:
+        # The projection counts calls over the width this event names, so a
+        # provider with a declared limit counts over the window it declares.
+        common["window_seconds"] = declared.window_seconds
     if succeeded:
         return ModelProviderQuotaObserved(
             outcome=EnumProviderQuotaOutcome.CALL_OK, **common
