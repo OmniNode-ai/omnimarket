@@ -119,7 +119,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-deploy-probe-markdown-projection-contract"
+  - id: "dod-omn20275-deploy-probe-projection-contract"
     description: "Deploy probe. The markdown projection node contract GitHub serves at the checked-out commit names the node, the declaration this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
     source: "manual"
     checks:

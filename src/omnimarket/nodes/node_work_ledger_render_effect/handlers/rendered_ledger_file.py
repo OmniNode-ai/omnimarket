@@ -93,7 +93,7 @@ class RenderedLedgerFile:
 
     def _acquire_lock(self) -> None:
         lock_path = self._path.with_name(self._path.name + ".lock")
-        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
