@@ -48,6 +48,14 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_real_factory_produces_compliant_node tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py::test_generated_package_loads_through_contract_loader tests/nodes/node_hybrid_codegen_orchestrator/test_runtime_boot_hybrid_codegen.py::test_start_command_reaches_completed_with_files_on_disk -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn21152-deploy-package-layout"
+    description: "Hosted deploy probe: read the runtime orchestrator handler from GitHub at the evaluated commit and require the canonical package writer it introduces. The probe fails on the parent revision, where the symbol is absent. This checks published source at the evaluated revision; the runtime-boot test above exercises the generated package through the real contract loader and provenance gate."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py" | grep -F "GENERATED_PACKAGE_ROOT"'
+    binds_ac: ["AC1"]
   - id: "dod-omn21152-regressions"
     description: "The orchestrator, outcome-reducer, file-writer, validator and mypy-effect suites still pass with the new layout."
     source: "manual"
