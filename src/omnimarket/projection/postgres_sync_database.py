@@ -30,12 +30,15 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any
 
 from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 
+from omnimarket.handlers.handler_projection_derived_write import (
+    HandlerProjectionDerivedWrite,
+)
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_read_tenant,
@@ -184,6 +187,9 @@ class PostgresSyncProjectionAdapter:
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, object]]:
         """OMN-18159. The sync Postgres write, with the full write contract.
 
@@ -211,6 +217,23 @@ class PostgresSyncProjectionAdapter:
             sql_expression_columns=sql_expression_columns,
             returning=returning,
         )
+        derivation = HandlerProjectionDerivedWrite.prepare(
+            plan,
+            row=row,
+            derive=derive,
+            input_columns=input_columns,
+            derived_columns=derived_columns,
+            insert_only_columns=insert_only_columns,
+        )
+        if derivation is not None:
+            plan = build_upsert_plan(
+                table=table,
+                conflict_key=conflict_key,
+                row=row,
+                insert_only_columns=insert_only_columns,
+                sql_expression_columns=sql_expression_columns,
+                returning=derivation.readback_columns,
+            )
         statement = plan.render(dialect="pyformat")
         params = {col: self._adapt(row[col]) for col in plan.bound_columns}
 
@@ -224,9 +247,32 @@ class PostgresSyncProjectionAdapter:
                 # An empty list is the honest answer: there is no stored row
                 # THIS statement can describe.
                 fetched = cur.fetchall() if cur.description is not None else []
-                return [
+                written = [
                     dict(zip(plan.returning, record, strict=True)) for record in fetched
                 ]
+                if derivation is not None:
+                    if len(written) != 1:
+                        raise RuntimeError(
+                            "derived UPSERT did not return exactly one row"
+                        )
+                    derived = HandlerProjectionDerivedWrite.derived_values(
+                        derivation, written[0]
+                    )
+                    update, bindings = HandlerProjectionDerivedWrite.update_statement(
+                        derivation, written[0], derived, dialect="pyformat"
+                    )
+                    cur.execute(
+                        update, tuple(self._adapt(value) for _, value in bindings)
+                    )
+                    final = [
+                        dict(zip(derivation.returning, record, strict=True))
+                        for record in cur.fetchall()
+                    ]
+                    written = HandlerProjectionDerivedWrite.check_final_rows(
+                        derivation, final
+                    )
+                # The tenant context commits before this return reaches a caller.
+                return written
         finally:
             conn.close()
 

@@ -82,6 +82,11 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
     HandlerDelegationTicketFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_run_savings import (
+    RUN_SAVINGS_DERIVED_COLUMNS,
+    RUN_SAVINGS_INPUT_COLUMNS,
+    modelled_run_savings_columns,
+)
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
@@ -587,6 +592,9 @@ class HandlerProjectionDelegation:
             returning=tuple(
                 dict.fromkeys(c for e in self._row_exposures for c in e.columns)
             ),
+            derive=modelled_run_savings_columns,
+            input_columns=RUN_SAVINGS_INPUT_COLUMNS,
+            derived_columns=RUN_SAVINGS_DERIVED_COLUMNS,
         )
         self._publish_row_snapshot(written)
         self._publish_aggregate_snapshots(db, written)

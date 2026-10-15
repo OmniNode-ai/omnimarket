@@ -37,6 +37,10 @@ from omnibase_core.models.projection.model_upsert_plan import (
     build_upsert_plan,
 )
 
+from omnimarket.handlers.handler_projection_derived_write import (
+    HandlerProjectionDerivedWrite,
+)
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_EVIDENCE_DB_PATH = (
@@ -91,6 +95,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "latency_ms",
     "lineage_kind",
     "model_name",
+    "modelled_savings_usd",
     "override_within_bounds",
     "parent_correlation_id",
     "parent_failure_cause",
@@ -106,6 +111,9 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "required_bar",
     "response_text",
     "routed_model",
+    "savings_baseline_model",
+    "savings_measurement",
+    "savings_pricing_manifest_version",
     "score_source",
     "session_id",
     "task_type",
@@ -979,6 +987,9 @@ class SqliteDatabaseAdapter:
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, object]]:
         """OMN-18159. The local CLI evidence target, with the same write contract.
 
@@ -1003,6 +1014,14 @@ class SqliteDatabaseAdapter:
             sql_expression_columns=sql_expression_columns,
             returning=returning,
         )
+        derivation = HandlerProjectionDerivedWrite.prepare(
+            plan,
+            row=row,
+            derive=derive,
+            input_columns=input_columns,
+            derived_columns=derived_columns,
+            insert_only_columns=insert_only_columns,
+        )
         # OMN-18159. Same split as the in-memory double, for the same reason.
         # CURRENT_USER is an IDENTITY this target cannot evaluate, and a local
         # evidence file that claimed one would be a fabricated attestation --
@@ -1024,7 +1043,13 @@ class SqliteDatabaseAdapter:
 
         conn = self._connect()
         try:
-            self._ensure_columns(conn, table, bound)
+            required = dict(bound)
+            if derivation is not None:
+                required.update(dict.fromkeys(derivation.conflict_columns))
+                required.update(dict.fromkeys(derivation.input_columns))
+                required.update(dict.fromkeys(derivation.derived_columns))
+            # Schema reconciliation finishes before the row transaction begins.
+            self._ensure_columns(conn, table, required)
             # Rendered with the expression columns folded into the bound set,
             # because SQLite must bind them rather than evaluate them, and
             # WITHOUT a RETURNING clause: SQLite's RETURNING needs 3.35+, and
@@ -1038,7 +1063,41 @@ class SqliteDatabaseAdapter:
             ).render(dialect="qmark_named")
             params = {col: self._encode(col, bound[col]) for col in bound}
             conn.execute(statement, params)
+            if derivation is not None:
+                # SQLite's implicit UPSERT transaction holds the write lock
+                # through readback, derivation, guarded update and final read.
+                where = " AND ".join(f'"{key}" = ?' for key in plan.conflict_keys)
+                select = " ".join(("SELECT * FROM", f'"{table}"', "WHERE", where))
+                keys = tuple(self._encode(key, row[key]) for key in plan.conflict_keys)
+                actual = conn.execute(select, keys).fetchone()
+                if actual is None:
+                    raise RuntimeError("derived UPSERT did not return exactly one row")
+                stored_row = dict(actual)
+                derived = HandlerProjectionDerivedWrite.derived_values(
+                    derivation, stored_row
+                )
+                update, bindings = HandlerProjectionDerivedWrite.update_statement(
+                    derivation, stored_row, derived, dialect="sqlite"
+                )
+                changed = conn.execute(
+                    update,
+                    tuple(self._encode(column, value) for column, value in bindings),
+                )
+                if changed.rowcount != 1:
+                    raise RuntimeError(
+                        "derived input guard did not update exactly one row"
+                    )
+                final = conn.execute(select, keys).fetchone()
+                rows = [] if final is None else [dict(final)]
+                result = HandlerProjectionDerivedWrite.check_final_rows(
+                    derivation, rows
+                )
+                conn.commit()
+                return result
             conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

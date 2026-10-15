@@ -209,6 +209,30 @@ class ModelMeteringModelRow(BaseModel):
     )
 
 
+class ModelMeteringRunRow(BaseModel):
+    """One run's modelled saving, classified and priced by the canonical compute."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: str = Field(..., min_length=1)
+    measurement: EnumMeteringMeasurement
+    savings_usd: Decimal | None = None
+    baseline_model: str | None = None
+    pricing_manifest_version: str | None = None
+
+    @model_validator(mode="after")
+    def _priced_run_needs_its_basis(self) -> ModelMeteringRunRow:
+        if self.savings_usd is not None and (
+            self.measurement is not EnumMeteringMeasurement.MEASURED
+            or not self.baseline_model
+            or not self.pricing_manifest_version
+        ):
+            raise ValueError(
+                "a per-run savings figure requires measured usage and its named baseline and manifest"
+            )
+        return self
+
+
 class ModelMeteringReconciliation(BaseModel):
     """The writer's own savings column, quarantined from the headline.
 
@@ -310,6 +334,7 @@ class ModelMeteringSummary(BaseModel):
 
     reconciliation: ModelMeteringReconciliation
     by_model: tuple[ModelMeteringModelRow, ...] = Field(default=())
+    by_run: tuple[ModelMeteringRunRow, ...] = Field(default=())
 
     @model_validator(mode="after")
     def _savings_never_travels_without_its_baseline(self) -> ModelMeteringSummary:

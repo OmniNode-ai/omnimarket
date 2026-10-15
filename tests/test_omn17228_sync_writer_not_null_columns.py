@@ -48,7 +48,7 @@ async twin and the constraint it enforces is identical.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
@@ -109,6 +109,9 @@ class _RecordingAttestedAdapter:
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, object]]:
         self.rows.append(dict(row))
         self.insert_only.append(frozenset(insert_only_columns))
