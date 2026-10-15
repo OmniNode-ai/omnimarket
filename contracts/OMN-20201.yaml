@@ -44,10 +44,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20201-overlay-boundary-hook-serial"
-    description: "The contract-overlay-boundary hook declares require_serial: true, so the pre-commit serial-execution policy test passes; it fails while the hook lacks the key."
+    description: "The contract-overlay-boundary hook declares require_serial: true, so its focused test and the pre-commit serial-execution policy test pass; both fail while the hook lacks the key."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/test_precommit_hooks_require_serial.py -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/unit/test_contract_overlay_boundary_hook_serial.py tests/unit/test_precommit_hooks_require_serial.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
