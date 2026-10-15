@@ -178,6 +178,44 @@ class TestReducerJoin:
         assert isinstance(outcome, ModelCodegenSerializeOutcome)
         assert outcome.state.contract_yaml == "name: x\n"
 
+    def test_serialize_verdict_carries_lint_status(self) -> None:
+        # OMN-21151: the serialize outcome must carry the lint verdict so the
+        # orchestrator can stop before writing files. The reducer joins it from
+        # the real ModelContractDocument the serialize node publishes.
+        reducer = HandlerCodegenOutcomeReducer()
+        reducer.handle(ModelLlmGenerateResult(state=_state("corr-1")))
+        outcome = reducer.handle(
+            ModelContractDocument(
+                contract_yaml="name: x\n",
+                contract_sha256="abc",
+                subcontracts_rendered=(),
+                lint_status=EnumLintStatus.PASS,
+                correlation_id="corr-1",
+            )
+        )
+        assert isinstance(outcome, ModelCodegenSerializeOutcome)
+        assert outcome.lint_passed is True
+        assert outcome.lint_messages == ()
+
+    def test_serialize_verdict_carries_lint_failure(self) -> None:
+        # OMN-21151: a failing lint verdict rides the outcome as lint_passed
+        # False with the gate's messages, never dropped on the join floor.
+        reducer = HandlerCodegenOutcomeReducer()
+        reducer.handle(ModelLlmGenerateResult(state=_state("corr-1")))
+        outcome = reducer.handle(
+            ModelContractDocument(
+                contract_yaml="name: x\n",
+                contract_sha256="abc",
+                subcontracts_rendered=(),
+                lint_status=EnumLintStatus.FAIL,
+                lint_messages=("missing required top-level key: metadata",),
+                correlation_id="corr-1",
+            )
+        )
+        assert isinstance(outcome, ModelCodegenSerializeOutcome)
+        assert outcome.lint_passed is False
+        assert outcome.lint_messages == ("missing required top-level key: metadata",)
+
     def test_two_correlations_do_not_cross(self) -> None:
         reducer = HandlerCodegenOutcomeReducer()
         reducer.handle(ModelLlmGenerateResult(state=_state("corr-A", source="A_SRC")))

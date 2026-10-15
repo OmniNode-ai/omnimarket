@@ -421,10 +421,10 @@ profiles:
       thinking_budget_tokens: 2048
 
   # OMN-17427: the .200 Mac Studio planner rung (backend local-studio-planner,
-  # llama.cpp on :8130) serves Qwen3.6-35B-A3B under the alias
-  # `qwen3.6-35b-a3b` since 2026-10-08, replacing gpt-oss-120b (operator RULING
-  # 2026-10-08T17:38:56Z). The `*qwen*` profiles above already turn thinking
-  # off for every class this rung serves; this profile adds the vendor's
+  # llama.cpp on :8130) served Qwen3.6-35B-A3B under the alias
+  # `qwen3.6-35b-a3b` from 2026-10-08 (operator RULING 2026-10-08T17:38:56Z);
+  # it serves Qwen3.8-27B since 2026-10-09. The `*qwen*` profiles above already
+  # turn thinking off for every class this rung serves; this profile adds the vendor's
   # sampling for that mode, from the model card (huggingface.co/Qwen/
   # Qwen3.6-35B-A3B, "Best Practices", read 2026-10-08): Instruct (or
   # non-thinking) mode `temperature=0.7, top_p=0.80, top_k=20, min_p=0.0,

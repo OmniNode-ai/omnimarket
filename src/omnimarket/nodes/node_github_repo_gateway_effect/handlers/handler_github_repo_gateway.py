@@ -16,11 +16,11 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
-from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
     resolve_github_token_async,
 )

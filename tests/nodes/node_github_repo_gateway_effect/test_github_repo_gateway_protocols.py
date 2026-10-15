@@ -298,7 +298,9 @@ def test_protocol_b_no_read_function_calls_another() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name.startswith("read_")
     }
-    assert len(read_fns) == 14, f"expected 14 read functions, found {sorted(read_fns)}"
+    assert len(read_fns) == len(EnumGithubGatewayOperation), (
+        f"expected one read function per operation, found {sorted(read_fns)}"
+    )
 
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name.startswith("read_"):
