@@ -100,8 +100,18 @@ def test_l11_manifest_receipt_run_ids_are_reproducible() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("locus", "expects_lane_flag"),
+    [
+        (response_contract_conformance_runner.LOCUS_DEPLOYED_LANE, True),
+        (response_contract_conformance_runner.LOCUS_IN_PROCESS, False),
+    ],
+)
 def test_live_runner_asks_the_wrapper_for_the_json_receipt(
-    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+    monkeypatch: pytest.MonkeyPatch,
+    trusted_workspace: Path,
+    locus: str,
+    expects_lane_flag: bool,
 ) -> None:
     """OMN-19385: the wrapper prints the plain answer unless asked for JSON.
 
@@ -117,11 +127,13 @@ def test_live_runner_asks_the_wrapper_for_the_json_receipt(
 
     monkeypatch.setattr(response_contract_conformance_runner.subprocess, "run", record)
 
-    run_live_manifest(_manifest(), timeout_seconds=1)
+    run_live_manifest(_manifest(), timeout_seconds=1, locus=locus)
 
     assert calls, "the live runner never invoked the wrapper"
     for command in calls:
         assert "--json" in command, command
+        assert ("--lane" in command) is expects_lane_flag, command
+        assert command[command.index("--locus") + 1] == locus, command
 
 
 @pytest.mark.unit
