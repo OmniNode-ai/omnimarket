@@ -36,6 +36,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from tests.helpers.tenant_registry import PROJECTION_TENANT_UUID, seed_tenant_registry
 
 RUN = "727c0456-1758-421a-8600-25da6410f2cf"
 SESSION = "630e98d8-b59c-4fe2-8c4d-8cacdd1dd30b"
@@ -53,6 +54,7 @@ def _delegate_skill_payload() -> dict[str, object]:
         "_event_type": "delegate-skill-completed",
         "status": "completed",
         "correlation_id": RUN,
+        "tenant_id": str(PROJECTION_TENANT_UUID),
         "session_id": SESSION,
         "task_type": "summarization",
         "provider": "local",
@@ -77,6 +79,7 @@ def _canonical_payload() -> dict[str, object]:
     return {
         "_event_type": "onex.evt.omnibase-infra.delegation-completed.v1",
         "correlation_id": RUN,
+        "tenant_id": str(PROJECTION_TENANT_UUID),
         "task_type": "summarization",
         "model_used": "Qwen3.8-27B",
         "quality_passed": True,
@@ -139,6 +142,8 @@ class TestDelegationRunAttributionFold:
 @pytest.mark.unit
 def test_sync_writer_keeps_counterfactual_when_canonical_lands_second() -> None:
     db = InmemoryDatabaseAdapter()
+    # OMN-20651: a delegation terminal needs a registry-resolved tenant.
+    seed_tenant_registry(db)
     handler = HandlerProjectionDelegation()
     handler.handle({**_delegate_skill_payload(), "_db": db})
     handler.handle({**_canonical_payload(), "_db": db})

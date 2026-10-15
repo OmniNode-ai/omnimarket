@@ -41,6 +41,16 @@ set, and checks both plants are reported before it trusts the live numbers. The
 plants are then removed from the reported numbers. A join that misses a plant
 reports INDETERMINATE.
 
+PER COMMAND ID (OMN-19440 AC3). The delegate-skill terminal carries the id of
+the command message that produced it (``command_id``, OMN-20383), and a command's
+own id is its wire ``message_id`` header. Per command id the join reports the
+commands that got no terminal, the commands whose terminals disagree (a second
+logical outcome, the only thing counted as a duplicate), a served replay of the
+recorded terminal (same command id, same payload, reported as a replay), and a
+correlation id reused by a second command (reported as a reuse). A terminal
+without a command id, written before the producer stamped it, cannot be placed:
+its commands are listed as unattributed and are neither dropped nor duplicated.
+
 INDETERMINATE, NEVER ZERO. An unreadable topic, a window the topic's retention
 may have cut, or a failed planted control makes the verdict ``indeterminate``,
 and every count and the share are ``null``. Exit code 3 turns the scheduled
@@ -60,6 +70,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import sys
@@ -111,8 +122,18 @@ class DeclaredTopics:
 
 @dataclass(frozen=True)
 class Record:
+    """One wire record.
+
+    ``message_id`` is the record's own wire id (a command's identity).
+    ``command_id`` is the id a terminal states for the command it answers, and
+    ``outcome`` is a fingerprint of the terminal payload.
+    """
+
     timestamp_ms: int
     correlation_id: str | None
+    message_id: str | None = None
+    command_id: str | None = None
+    outcome: str | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +169,15 @@ class JoinResult:
     duplicate_terminals_with_single_command: int | None = None
     planted_dropped_detected: bool | None = None
     planted_duplicate_detected: bool | None = None
+    command_ids: int | None = None
+    commands_without_command_id: int | None = None
+    terminals_without_command_id: int | None = None
+    dropped_command_ids: list[str] | None = None
+    unattributed_command_ids: list[str] | None = None
+    replayed_command_ids: list[str] | None = None
+    reused_correlation_ids: list[str] | None = None
+    second_outcome_command_ids: list[str] | None = None
+    planted_per_command_detected: bool | None = None
 
 
 def load_declared_topics(contract_path: Path = CONTRACT_PATH) -> DeclaredTopics:
@@ -190,6 +220,55 @@ def extract_correlation_id(value: bytes | None) -> str | None:
         if isinstance(payload, dict):
             candidate = payload.get("correlation_id")
     return str(candidate) if candidate else None
+
+
+def _decoded_object(value: bytes | None) -> dict[str, object] | None:
+    if not value:
+        return None
+    try:
+        decoded = json.loads(value)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def extract_message_id(
+    value: bytes | None, headers: list[tuple[str, bytes]] | None
+) -> str | None:
+    """A command's identity: the wire ``message_id`` header, else the body's envelope id."""
+    for key, header_value in headers or []:
+        if key == "message_id" and header_value:
+            return header_value.decode("utf-8", errors="replace")
+    decoded = _decoded_object(value)
+    candidate = decoded.get("envelope_id") if decoded else None
+    return str(candidate) if candidate else None
+
+
+def _terminal_payload(decoded: dict[str, object]) -> dict[str, object]:
+    payload = decoded.get("payload")
+    return payload if isinstance(payload, dict) else decoded
+
+
+def extract_terminal_command_id(value: bytes | None) -> str | None:
+    """The command id a terminal states, or None for one written before OMN-20383."""
+    decoded = _decoded_object(value)
+    if decoded is None:
+        return None
+    candidate = _terminal_payload(decoded).get("command_id")
+    return str(candidate) if candidate else None
+
+
+def terminal_outcome(value: bytes | None) -> str | None:
+    """A fingerprint of the terminal payload, so a replay can be told from a second outcome.
+
+    A served replay republishes the recorded terminal, so its payload is the
+    same; a second logical outcome for one command differs.
+    """
+    decoded = _decoded_object(value)
+    if decoded is None:
+        return None
+    canonical = json.dumps(_terminal_payload(decoded), sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def window_for(*, now_ms: int, window_hours: int, grace_ms: int) -> Window:
@@ -247,6 +326,90 @@ def _read_problems(commands: TopicRead, terminals: list[TopicRead]) -> list[str]
     return reasons
 
 
+@dataclass
+class PerCommand:
+    command_ids: int = 0
+    commands_without_command_id: int = 0
+    terminals_without_command_id: int = 0
+    dropped: list[str] = field(default_factory=list)
+    unattributed: list[str] = field(default_factory=list)
+    replayed: list[str] = field(default_factory=list)
+    reused: list[str] = field(default_factory=list)
+    second_outcomes: list[str] = field(default_factory=list)
+
+
+def classify_by_command(
+    *, window: Window, commands: list[Record], terminals: list[Record]
+) -> PerCommand:
+    """Count dropped terminals and second outcomes per command id. Pure; no I/O."""
+    in_window = [
+        record
+        for record in commands
+        if window.commands_from_ms <= record.timestamp_ms < window.commands_to_ms
+    ]
+    command_correlation: dict[str, str | None] = {}
+    without_id = 0
+    for record in in_window:
+        if record.message_id:
+            command_correlation[record.message_id] = record.correlation_id
+        else:
+            without_id += 1
+
+    by_command: defaultdict[str, list[Record]] = defaultdict(list)
+    unplaced_correlations: set[str] = set()
+    unplaced = 0
+    for record in terminals:
+        if not window.commands_from_ms <= record.timestamp_ms <= window.terminals_to_ms:
+            continue
+        if record.command_id:
+            by_command[record.command_id].append(record)
+        else:
+            unplaced += 1
+            if record.correlation_id:
+                unplaced_correlations.add(record.correlation_id)
+
+    dropped: list[str] = []
+    unattributed: list[str] = []
+    for command_id, correlation in command_correlation.items():
+        if command_id in by_command:
+            continue
+        if correlation in unplaced_correlations:
+            unattributed.append(command_id)
+        else:
+            dropped.append(command_id)
+
+    replayed: list[str] = []
+    second_outcomes: list[str] = []
+    for command_id, records in by_command.items():
+        if len(records) < 2:
+            continue
+        if len({record.outcome for record in records}) > 1:
+            second_outcomes.append(command_id)
+        else:
+            replayed.append(command_id)
+
+    commands_by_correlation: defaultdict[str, set[str]] = defaultdict(set)
+    for command_id, correlation in command_correlation.items():
+        if correlation:
+            commands_by_correlation[correlation].add(command_id)
+    for command_id, records in by_command.items():
+        for record in records:
+            if record.correlation_id:
+                commands_by_correlation[record.correlation_id].add(command_id)
+    reused = [cid for cid, ids in commands_by_correlation.items() if len(ids) > 1]
+
+    return PerCommand(
+        command_ids=len(command_correlation),
+        commands_without_command_id=without_id,
+        terminals_without_command_id=unplaced,
+        dropped=sorted(dropped),
+        unattributed=sorted(unattributed),
+        replayed=sorted(replayed),
+        reused=sorted(reused),
+        second_outcomes=sorted(second_outcomes),
+    )
+
+
 def compute_join(
     *, window: Window, commands: TopicRead, terminals: list[TopicRead]
 ) -> JoinResult:
@@ -274,6 +437,11 @@ def compute_join(
             ):
                 terminal_counts[record.correlation_id] += 1
 
+    per_command = classify_by_command(
+        window=window,
+        commands=commands.records,
+        terminals=[record for read in terminals for record in read.records],
+    )
     ids = sorted(command_counts)
     with_terminal = [cid for cid in ids if terminal_counts.get(cid, 0) > 0]
     duplicates = [cid for cid in ids if terminal_counts.get(cid, 0) > 1]
@@ -294,6 +462,49 @@ def compute_join(
         duplicate_terminals_with_single_command=sum(
             1 for cid in duplicates if command_counts[cid] == 1
         ),
+        command_ids=per_command.command_ids,
+        commands_without_command_id=per_command.commands_without_command_id,
+        terminals_without_command_id=per_command.terminals_without_command_id,
+        dropped_command_ids=per_command.dropped,
+        unattributed_command_ids=per_command.unattributed,
+        replayed_command_ids=per_command.replayed,
+        reused_correlation_ids=per_command.reused,
+        second_outcome_command_ids=per_command.second_outcomes,
+    )
+
+
+def _per_command_plants() -> tuple[Window, list[Record], list[Record]]:
+    """A synthetic day with one of each per-command case, never read from a broker."""
+    window = Window(
+        commands_from_ms=0, commands_to_ms=1_000, terminals_to_ms=2_000, grace_ms=0
+    )
+    commands = [
+        Record(1, "p-drop", message_id="p-m-drop"),
+        Record(2, "p-reuse", message_id="p-m-reuse-1"),
+        Record(3, "p-reuse", message_id="p-m-reuse-2"),
+        Record(4, "p-replay", message_id="p-m-replay"),
+        Record(5, "p-two", message_id="p-m-two"),
+    ]
+    terminals = [
+        Record(10, "p-reuse", command_id="p-m-reuse-1", outcome="a"),
+        Record(11, "p-reuse", command_id="p-m-reuse-2", outcome="a"),
+        Record(12, "p-replay", command_id="p-m-replay", outcome="a"),
+        Record(13, "p-replay", command_id="p-m-replay", outcome="a"),
+        Record(14, "p-two", command_id="p-m-two", outcome="a"),
+        Record(15, "p-two", command_id="p-m-two", outcome="b"),
+    ]
+    return window, commands, terminals
+
+
+def per_command_control_holds() -> bool:
+    """Whether the per-command classification finds each planted case, and no more."""
+    window, commands, terminals = _per_command_plants()
+    found = classify_by_command(window=window, commands=commands, terminals=terminals)
+    return (
+        found.dropped == ["p-m-drop"]
+        and found.replayed == ["p-m-replay"]
+        and found.reused == ["p-reuse"]
+        and found.second_outcomes == ["p-m-two"]
     )
 
 
@@ -322,6 +533,10 @@ def _plant(
     return planted_commands, [planted_first, *rest]
 
 
+def _minus_plants(count: int | None) -> int | None:
+    return None if count is None else count - 2
+
+
 def _without_plants(result: JoinResult) -> JoinResult:
     plants = {PLANTED_DROPPED_ID, PLANTED_DUPLICATE_ID}
     assert result.dropped_ids is not None
@@ -336,6 +551,9 @@ def _without_plants(result: JoinResult) -> JoinResult:
         result,
         verdict=VERDICT_MEASURED if ids else VERDICT_NO_COMMANDS,
         command_records=result.command_records - 2,
+        # The plants carry no wire ids, so they land in the unplaced counts.
+        commands_without_command_id=_minus_plants(result.commands_without_command_id),
+        terminals_without_command_id=_minus_plants(result.terminals_without_command_id),
         correlation_ids=ids,
         correlation_ids_with_terminal=with_terminal,
         terminal_share=(with_terminal / ids) if ids else None,
@@ -379,11 +597,28 @@ def measure_with_planted_controls(
         failed.planted_dropped_detected = dropped_found
         failed.planted_duplicate_detected = duplicate_found
         return failed
-    return _without_plants(result)
+    if not per_command_control_holds():
+        failed = _indeterminate(
+            [
+                "planted per-command control not reported: the per-command "
+                "classification cannot be trusted on this run"
+            ]
+        )
+        failed.planted_dropped_detected = dropped_found
+        failed.planted_duplicate_detected = duplicate_found
+        failed.planted_per_command_detected = False
+        return failed
+    return replace(_without_plants(result), planted_per_command_detected=True)
 
 
 def _iso(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _counted(
+    ids: list[str] | None, listed: Callable[[list[str] | None], list[str] | None]
+) -> dict[str, object]:
+    return {"count": None if ids is None else len(ids), "ids": listed(ids)}
 
 
 def to_payload(
@@ -441,11 +676,35 @@ def to_payload(
             "with_single_command": result.duplicate_terminals_with_single_command,
             "ids": listed(result.duplicate_terminal_ids),
         },
+        "per_command": {
+            "command_ids": result.command_ids,
+            "commands_without_command_id": result.commands_without_command_id,
+            "terminals_without_command_id": result.terminals_without_command_id,
+            "dropped": _counted(result.dropped_command_ids, listed),
+            "second_outcomes": _counted(result.second_outcome_command_ids, listed),
+            "replays": _counted(result.replayed_command_ids, listed),
+            "reuses": _counted(result.reused_correlation_ids, listed),
+            "unattributed": _counted(result.unattributed_command_ids, listed),
+            "planted_control_detected": result.planted_per_command_detected,
+        },
         "planted_controls": {
             "dropped_detected": result.planted_dropped_detected,
             "duplicate_detected": result.planted_duplicate_detected,
         },
     }
+
+
+def _per_command_line(per_command: object) -> str:
+    assert isinstance(per_command, dict)
+    counts = {
+        name: per_command[name]["count"]
+        for name in ("dropped", "second_outcomes", "replays", "reuses")
+    }
+    return (
+        f"- per command id ({per_command['command_ids']} commands): "
+        f"dropped {counts['dropped']}, second outcomes {counts['second_outcomes']}, "
+        f"replays {counts['replays']}, reuses {counts['reuses']}"
+    )
 
 
 def render_summary(payload: dict[str, object]) -> str:
@@ -471,6 +730,7 @@ def render_summary(payload: dict[str, object]) -> str:
         f"- dropped (no terminal): {dropped['count']}",
         f"- duplicate terminals (single command): {duplicates['with_single_command']} "
         f"[correlation ids with more than one terminal: {duplicates['count']}]",
+        _per_command_line(payload["per_command"]),
         f"- planted controls: {payload['planted_controls']}",
     ]
     reasons = payload["indeterminate_reasons"]
@@ -655,6 +915,13 @@ def kafka_reader(
                                 Record(
                                     message.timestamp,
                                     extract_correlation_id(message.value),
+                                    message_id=extract_message_id(
+                                        message.value, message.headers
+                                    ),
+                                    command_id=extract_terminal_command_id(
+                                        message.value
+                                    ),
+                                    outcome=terminal_outcome(message.value),
                                 )
                             )
             return TopicRead(

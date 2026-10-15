@@ -29,3 +29,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn18932-lab-first-step"
+    description: "Lab-first step, run 2026-10-15 on the lab dev lane (bus kafka, lane dev, runtime-effects image built from omnibase_infra revision f32d46c8965d57f23d12127e41c86bddf8a1d9c7 at 2026-10-15T00:02:27Z, omnimarket 0.4.314 at 7126c3994). One bounded document request (task type document, correlation 0401e3e1-1f93-43b1-82be-a0d9e8c9142d) and one bounded scorecard request (task type review, a two-row markdown table, correlation c10087c4-a35a-494c-aaaa-908809ffc843) were sent. The raw provider bytes retained in each receipt (response_contract_evidence.raw_response, source field choices[0].message.content) were judged by evaluate_output_only with the caller bytes (result.txt). Document: accepted true, evidence basis raw_provider_bytes, no refusal, raw 380 characters sha256 ec07bad1a8e93258a445f2fa46db43b04de5674d516173b917d04054a6e87842, caller 369 characters sha256 a360ccdd1c4d990f3d1a3cbab133a0892500860d103f02d03d9bc2c93eab4839. Scorecard: accepted true, evidence basis raw_provider_bytes, no refusal, raw 81 characters sha256 f70511bb9acc88886ee264bc818cff6a95762e51252fe994321f57188f6e9f9b, caller 70 characters sha256 c33e48f155bf146153758bb9854491e1e197c474342e198dfde719f2cd8a92b1. In both, the raw bytes are the declared render start marker line plus the caller bytes, so no extraction was needed. Controls on the same function: a raw response ending in a declared closing phrase is refused as trailing_self_review_in_caller_bytes, a raw response opening with a declared lead-in that the caller bytes cut is refused as extraction_required_leading_text, and a clean response is accepted. The check re-runs the output-only acceptance tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

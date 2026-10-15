@@ -330,7 +330,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # handler_routing: 21 -> 22.
     # node_e2e_orchestrator routes its event topics to a handler now, so it is no
     # longer non-addressable: 22 -> 21.
-    assert summary["skipped"] == 21
+    # OMN-20275's node_work_ledger_render_effect is hosted by the process that
+    # owns its rendered markdown file, not by a runtime, so it is experimental
+    # with no handler_routing: 21 -> 22.
+    assert summary["skipped"] == 22
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
