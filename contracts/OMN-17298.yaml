@@ -30,11 +30,14 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn17298-audit-gate-live-tree"
-    description: "The gate script exits 0 over the live node migration tree."
+    description: "The gate script exits 0 over the live node migration tree and refuses synthetic RLS-enabled relations with zero policies. The refusal regressions fail against the pre-change gate, so a clean live tree alone cannot satisfy this evidence."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run python scripts/validation/check_internal_relation_tenant_posture.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17298_rls_enabled_requires_policy.py -q -k TestTheRefusal"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn17298-audit-deploy-smoke"
