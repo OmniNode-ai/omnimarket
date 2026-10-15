@@ -1,0 +1,45 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21059"
+title: "The models a user picks for each API key become that user's delegation routing order"
+summary: >-
+  First task of the OMN-21059 split (store the ordered list). The local credential
+  store keeps an ordered list of models per provider key in a child table keyed by
+  credential reference and position, migrates a key stored with the single model
+  column into a list of one that keeps its recorded chooser, and reads the list
+  back through resolve_local_byok_credential_models. The single-model reader
+  returns the first entry. The local secret store node request carries the list.
+  Routing by the list, the onex models verbs, the refusal on every provider and the
+  hosted intake are later tasks of the split and are not claimed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ordered-model-list"
+    statement: "A provider key in the local customer config stores the ordered list of models its owner chose, and an older single-model store reads back as that list."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: every BYOK provider key (OpenRouter, OpenAI, Gemini, Anthropic, Ollama) stores an ordered list of user-chosen models in the customer's own config -- falsifier: uv run pytest on a key-registration test per provider that registers two models in order and reads the same ordered list back from the customer config
+evidence_requirements:
+  - kind: "tests"
+    description: "Ordered list round trip per provider, whole-list replacement, migration of a single-model database, cascade on revoke, and the node path."
+    command: "uv run pytest tests/unit/inference/test_omn21059_local_byok_model_list.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21059-ac1-ordered-list"
+    description: "The eighteen model list tests pass: two models per provider read back in the order stored for each of the five providers, a re-registration replaces the whole list, and a database written by the single-model schema reads back as a list of one with its chooser."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_omn21059_local_byok_model_list.py -q -n 0"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21059-deploy-probe"
+    description: "Deploy probe scoped to the hosted runner: the checked-out adapter defines the ordered list reader and the child table. A head without them fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c 'def resolve_local_byok_credential_models' src/omnimarket/inference/local_byok_credential_adapter.py"

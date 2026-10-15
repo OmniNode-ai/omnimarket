@@ -119,6 +119,7 @@ class HandlerLocalSecretStore:
             value,
             plan=request.plan,
             model=request.model,
+            models=request.models or None,
             model_chosen_by=request.model_chosen_by,
             db_path=store.db_path,
         )
@@ -128,9 +129,10 @@ class HandlerLocalSecretStore:
             events.append(
                 ModelCredentialRevokedEvent(tenant_id=tenant_id, api_key_ref=replaced)
             )
+        first_model = request.model or (request.models[0] if request.models else None)
         metadata = {
             key: item
-            for key, item in (("plan", request.plan), ("model", request.model))
+            for key, item in (("plan", request.plan), ("model", first_model))
             if item is not None
         }
         events.append(

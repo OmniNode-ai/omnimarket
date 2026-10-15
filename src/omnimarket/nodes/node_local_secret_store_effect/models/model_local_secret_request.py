@@ -24,6 +24,7 @@ class ModelLocalSecretRequest(BaseModel):
     force: bool = False
     plan: str | None = None
     model: str | None = None
+    models: tuple[str, ...] = ()
     model_chosen_by: Literal["customer", "catalogue"] | None = None
 
 
