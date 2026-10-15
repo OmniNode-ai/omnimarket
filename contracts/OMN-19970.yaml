@@ -131,3 +131,11 @@ dod_evidence:
           print("core schema valid; declared and bound criteria: AC1 AC2 AC3; historical CI Summary checks retained without AC4")
           CHECK
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19970-ac1-broker-path-reseed-same-rows"
+    description: "AC1 over the broker path: two onex seed --bus kafka runs publish the same keyed messages, and projecting both batches leaves one row per fixture run, every row labelled fixture."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dev_seed_effect.py::test_golden_chain_reseed_over_the_broker_path_leaves_the_same_rows -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
