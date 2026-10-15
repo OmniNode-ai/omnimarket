@@ -8,8 +8,10 @@ node_version:
   major: 1
   minor: 2
   patch: 0
-description: Pure delegated answer rubric, receipt route and reasoning answer checks.
-  Records typed correctness and route evidence without gating, I/O, or execution.
+description: Pure delegated answer rubric, receipt route, reasoning answer and documentation
+  answer checks. Records typed correctness and route evidence without gating or I/O.
+  The reasoning check executes nothing; the documentation check parses the answer and
+  never executes it.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -28,6 +30,11 @@ handler_routing:
       name: HandlerDelegationAnswerCheck
       module: omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_answer_check
       input_model: omnimarket.nodes.node_delegation_rubric_check_compute.models.model_answer_check_request.ModelAnswerCheckRequest
+  - operation: delegation_doc_check
+    handler:
+      name: HandlerDelegationDocCheck
+      module: omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_doc_check
+      input_model: omnimarket.nodes.node_delegation_rubric_check_compute.models.model_doc_check_request.ModelDocCheckRequest
 descriptor:
   node_archetype: compute
   purity: pure

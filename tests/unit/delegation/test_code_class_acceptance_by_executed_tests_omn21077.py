@@ -311,7 +311,13 @@ def _local_accepts(task_type: str, result: ModelQualityGateResult) -> bool:
     return port._is_quality_accepted(task_type, result)
 
 
-def _gate(task_type: str, content: str, run: ModelNamedTestRun | None):
+def _gate(
+    task_type: str,
+    content: str,
+    run: ModelNamedTestRun | None,
+    *,
+    named_tests_requested: bool = True,
+):
     deterministic, heuristic = resolve_task_class_dod_checks(task_type, prompt=PROMPT)
     from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
         ModelQualityGateInput,
@@ -326,6 +332,7 @@ def _gate(task_type: str, content: str, run: ModelNamedTestRun | None):
             dod_heuristic=heuristic,
         ),
         named_test_run=run,
+        named_tests_requested=named_tests_requested,
     )
 
 
@@ -509,9 +516,10 @@ def test_a_documentation_answer_still_needs_its_bar(
 def test_bus_path_refuses_untested_code_and_does_not_climb(
     monkeypatch: pytest.MonkeyPatch, answer: str
 ) -> None:
+    """Tests named on the request but no run reached the gate (OMN-17427)."""
     _no_escalation(monkeypatch)
     handler, intent = _bus_workflow(task_type="code_generation", content=answer)
-    gate_result = delta(intent.payload)
+    gate_result = delta(intent.payload, named_tests_requested=True)
     assert gate_result.no_rung_can_satisfy is True
     events = handler.handle_gate_result(gate_result)
     assert not any(isinstance(event, ModelDelegationCompleted) for event in events)
@@ -632,24 +640,37 @@ def test_local_path_accepts_only_code_whose_named_tests_pass(
     assert result["status"] == ("completed" if accepted else "failed")
 
 
+def _refusing_runner(request: ModelNamedTestRunRequest) -> ModelNamedTestRunResult:
+    del request
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.REFUSED, detail="workspace unusable"
+    )
+
+
 def test_local_path_refuses_correct_code_when_no_runner_runs_the_named_tests(
     tmp_path: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Tests named but nothing wired to run them: never accepted untested."""
+    """Tests named but the runner refused them: never accepted untested."""
     _no_escalation(monkeypatch)
     port = LocalDelegationDispatchPort(
         effect_handler=_effect_returning(_fenced(CORRECT)),
         evidence_db_path=tmp_path / "d.sqlite",
         effect_process_boundary=False,
+        named_test_runner=_refusing_runner,
     )
     result = _dispatch(port, task_type="code_generation", named_tests=_spec(workspace))
     assert result["quality_gate_passed"] is False
     assert result["status"] == "failed"
 
 
-def test_local_path_refuses_correct_code_when_no_tests_are_named(
+def test_local_path_decides_code_with_no_tests_named_as_untested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """OMN-17427: no tests named is UNTESTED, decided by the contract checks.
+
+    It used to be refused as INSUFFICIENT, which failed every such code
+    delegation at the local rung whatever its quality.
+    """
     _no_escalation(monkeypatch)
     port = LocalDelegationDispatchPort(
         effect_handler=_effect_returning(_fenced(CORRECT)),
@@ -657,8 +678,8 @@ def test_local_path_refuses_correct_code_when_no_tests_are_named(
         effect_process_boundary=False,
     )
     result = _dispatch(port, task_type="code_generation", named_tests=None)
-    assert result["quality_gate_passed"] is False
-    assert result["status"] == "failed"
+    assert result["quality_gate_passed"] is True
+    assert result["status"] == "completed"
 
 
 # -- naming tests on a request -------------------------------------------------

@@ -527,8 +527,9 @@ def test_code_answer_whose_named_tests_fail_is_rejected_and_escalates(
     assert _TEST_ID in result.rejection_reasons[0]
 
 
-def test_code_answer_with_no_test_run_is_refused() -> None:
-    result = _GATE.handle(_code_request(None))
+def test_code_answer_with_named_tests_but_no_run_is_refused() -> None:
+    request = _code_request(None).retain_named_tests_requested(True)
+    result = _GATE.handle(request)
     assert result.accepted is False
     assert result.tests_passed is False
     assert result.rejection_reasons[0].startswith("INSUFFICIENT")

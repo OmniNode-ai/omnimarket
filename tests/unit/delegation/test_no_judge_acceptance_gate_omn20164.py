@@ -20,7 +20,7 @@ from omnibase_core.models.delegation.wire import (
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.models.delegation.wire.model_quality_gate import (
-    NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
     ModelQualityGateResult,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
@@ -111,17 +111,24 @@ async def test_vetoed_fixtures_refused_deterministic_controls(
 
 
 @pytest.mark.parametrize("path", ["bus", "local"])
-async def test_vetoed_fixtures_refused_known_gap_stub(
+async def test_untested_known_gap_stub_passes_contract_without_judge(
     path: str, tmp_path: Path
 ) -> None:
-    """An untested stub is refused without invoking a judge."""
+    """No tests named: the stub passes contract checks without a test pass."""
     judge = RecordingJudge()
     result = await decide(
         path, "code_generation", "def add(a, b):\n    pass", tmp_path, judge
     )
-    # OMN-21077: no named test run refuses even a mechanically valid stub.
-    assert result.passed is False
-    assert result.fail_category == "fail_deterministic"
-    assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
-    assert result.no_rung_can_satisfy is True
+    assert result.passed is True
+    assert result.fail_category == "pass"
+    assert result.failure_reasons == ()
+    assert result.no_rung_can_satisfy is False
+    assert "passes_existing_tests" in result.skipped_checks
+    evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
+    assert result.score_verified is False
     assert judge.calls == []

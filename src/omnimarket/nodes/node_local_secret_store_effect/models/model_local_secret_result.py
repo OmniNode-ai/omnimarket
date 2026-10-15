@@ -23,11 +23,12 @@ class ModelLocalSecretResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["set", "delete"]
+    operation: Literal["set", "delete", "set_models"]
     secret_ref: str
     provider: str | None = None
     route_ref: str | None = None
     route_withdrawn: bool = False
+    models: tuple[str, ...] = ()
     events: tuple[
         ModelCredentialRevokedEvent | ModelCredentialRegisteredEvent, ...
     ] = ()
