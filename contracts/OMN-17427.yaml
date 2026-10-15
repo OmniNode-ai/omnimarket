@@ -635,6 +635,9 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC38"]
   - id: "dod-omn17427-ac38-superseded-run-events"
     description: "One cancelled event per cancel; an unreadable run list or an incomplete queue read cancels nothing; a bus failure does not undo a cancel."
