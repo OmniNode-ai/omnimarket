@@ -37,10 +37,10 @@ evidence_requirements:
     command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py -q -k not_retried"
   - kind: "tests"
     description: "AC5: every test of the node passes."
-    command: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka'"
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_parity.py -q -m 'not kafka'"
   - kind: "tests"
     description: "AC6: the READY control stays admitted with its contract declared, an item opening with the two words write a and no task type is a refusal row and is never dispatched, and a mixed batch yields the closeout fragment naming receipt count, correlation ids and failure count."
-    command: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka' -k 'refused_items_are_rows or ready_control or mixed_batch'"
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_parity.py -q -m 'not kafka' -k 'refused_items_are_rows or ready_control or mixed_batch'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -55,7 +55,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn18997-ac2-terminal-from-receipt"
-    description: "AC2 hosted probe. The terminal is read from the receipt, including after a kill, and a real subprocess that exits 0 without a receipt is reported as a failure."
+    description: "AC2 hosted probe. The terminal is read from the receipt, including after a kill, real subprocess receipts override both zero and nonzero CLI exits through the local runtime, and an exit 0 without a receipt is reported as a failure."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -83,7 +83,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka'"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_parity.py -q -m 'not kafka'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn18997-ac6-refusal-and-control-rows"
@@ -91,6 +91,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka' -k 'refused_items_are_rows or ready_control or mixed_batch'"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_parity.py -q -m 'not kafka' -k 'refused_items_are_rows or ready_control or mixed_batch'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
