@@ -347,19 +347,26 @@ def test_the_node_serves_the_declared_catalogue_and_reports_what_it_served(
         row_source=SqliteTableRowSource(_store(tmp_path)),
         serve=serve,
     )
-    result = asyncio.run(
-        handler.handle(
-            ModelLocalDashboardServeRequest(
-                host="127.0.0.1", port=7600, tenant_id=_TENANT
-            )
-        )
+    request = ModelLocalDashboardServeRequest(
+        host="127.0.0.1", port=7600, tenant_id=_TENANT
     )
+    result = asyncio.run(handler.handle(request))
     assert result.url == "http://127.0.0.1:7600"
     assert result.exposure_count == 2
     assert result.tenant_id == _TENANT
     [(app, host, port)] = served
     assert (host, port) == ("127.0.0.1", 7600)
-    rows = TestClient(app).get(f"/projection/{_DECISIONS}").json()["rows"]
+    # OMN-19916: read as the developer's browser does, on loopback with this start's token.
+    rows = (
+        TestClient(app, base_url="http://127.0.0.1:7600")
+        .get(
+            f"/projection/{_DECISIONS}",
+            headers={
+                "Authorization": f"Bearer {request.access_token.get_secret_value()}"
+            },
+        )
+        .json()["rows"]
+    )
     assert {row["tenant_id"] for row in rows} == {_TENANT}
 
 
@@ -494,15 +501,18 @@ def test_the_node_serves_rows_from_the_read_binding_alone(
     async def serve(app: FastAPI, host: str, port: int) -> None:
         served.append(app)
 
+    request = ModelLocalDashboardServeRequest(
+        host="127.0.0.1", port=7600, tenant_id=_TENANT
+    )
     asyncio.run(
-        HandlerLocalDashboardServe(topic_map=_topic_map(), serve=serve).handle(
-            ModelLocalDashboardServeRequest(
-                host="127.0.0.1", port=7600, tenant_id=_TENANT
-            )
-        )
+        HandlerLocalDashboardServe(topic_map=_topic_map(), serve=serve).handle(request)
     )
     [app] = served
-    response = TestClient(app).get(f"/projection/{_DECISIONS}")
+    # OMN-19916: read as the developer's browser does, on loopback with this start's token.
+    response = TestClient(app, base_url="http://127.0.0.1:7600").get(
+        f"/projection/{_DECISIONS}",
+        headers={"Authorization": f"Bearer {request.access_token.get_secret_value()}"},
+    )
     assert response.status_code == 200, response.json()
     rows = response.json()["rows"]
     assert len(rows) == 3
