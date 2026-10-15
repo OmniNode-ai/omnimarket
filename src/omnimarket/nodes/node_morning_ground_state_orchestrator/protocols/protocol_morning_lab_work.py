@@ -5,7 +5,7 @@
 from typing import Protocol
 
 from omnimarket.lab_work.placement import ModelPlacement
-from omnimarket.nodes.node_lab_work_unit_effect.models import (
+from omnimarket.models.model_lab_work_unit import (
     ModelHostCapacityAdvertisement,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,

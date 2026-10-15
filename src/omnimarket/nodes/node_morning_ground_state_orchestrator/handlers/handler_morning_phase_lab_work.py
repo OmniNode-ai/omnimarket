@@ -24,7 +24,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 from pydantic import JsonValue
 
 from omnimarket.lab_work.placement import EnumPlacementDecision
-from omnimarket.nodes.node_lab_work_unit_effect.models import (
+from omnimarket.models.model_lab_work_unit import (
     MAX_TIMEOUT_SECONDS,
     EnumLabWorkUnitStatus,
     ModelLabWorkUnitRequest,
