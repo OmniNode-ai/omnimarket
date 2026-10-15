@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21015"
+title: "The local dashboard shows the demo's in-scope figures on Overview, Runs and Usage, and meets four dashboard requirements not yet built"
+summary: >-
+  The omnimarket backend half of AC3. Computes the modelled per-run saving and its baseline, manifest and typed measurement labels from the committed delegation inputs. All three storage paths derive within the write transaction and publish only the final committed row. Infra and migration 0059 must merge and apply before omnimarket. The Runs cell is omnidash's half; AC2 and AC4 land separately.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criterion this change serves, as declared on the OMN-21015 ticket body, read on 2026-10-15. The ticket body is the source and this block is the copy.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: The Runs list shows savings per run against the named baseline (requirement RU-1), and a typed not-measured state for an unmeasured run -- falsifier: a measured fixture row with no savings cell, or an unmeasured row that shows 0
+evidence_requirements:
+  - kind: tests
+    description: >-
+      Backend half only: real Postgres proves persisted nullable savings, exact numeric binding, transaction ordering, cross-connection visibility and refusal to publish a failed commit. SQLite proves the served figure and typed unmeasured states. The race tests prove ordering; the UPSERT row lock prevents the Postgres input guard from firing. These checks do not render the Runs cell.
+    command: uv run pytest tests/test_omn21015_run_savings_real_postgres.py tests/test_omn21015_delegation_decimal_binding_real_postgres.py tests/projection/test_omn21015_transactional_run_write.py tests/projection/test_omn21015_review_real_boundaries.py tests/projection/test_omn21015_run_savings_served.py -q -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21015-ac3-transactional-run-savings
+    description: >-
+      Backend half only. The saving and typed measurement labels match the stored inputs, numeric binding stays exact, writes remain invisible until commit and commit refusal publishes nothing. SQLite and real Postgres cover the storage paths; page acceptance belongs to omnidash.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py tests/test_omn21015_delegation_decimal_binding_real_postgres.py tests/projection/test_omn21015_transactional_run_write.py tests/projection/test_omn21015_review_real_boundaries.py tests/projection/test_omn21015_run_savings_served.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-market-deploy-probe
+    description: >-
+      Deploy probe. GitHub serves the checked-out commit with the run-savings handler's typed baseline_unresolved state. The source read or symbol match fails on a tree without this change, including origin/dev. This proves source identity only, not a running deployment or AC3 acceptance.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/handlers/handler_run_savings.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "baseline_unresolved"'
