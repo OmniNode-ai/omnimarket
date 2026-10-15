@@ -34,6 +34,11 @@ requirements:
         statement: "AC6: given a synthetic policy and usage, node_glm_allowance_compute returns the window and week left, drops every GLM rung near the window cap, the weekly cap, after a provider refusal, for a class the evals did not approve and for code_review under 600 s, and moves GLM ahead of the costlier rungs only while both periods hold the preferred fraction -- falsifier: uv run pytest tests/unit/nodes/node_glm_allowance_compute/test_glm_allowance.py -q in omnimarket"
       - id: "AC7"
         statement: "AC7: node_glm_usage_record_compute turns one harness run into a usage event with its credits (rated, peak or off-peak) and a 429 or a mapped provider code into a refusal event naming the cap and how the run ended, with both topics declared in its contract -- falsifier: uv run pytest tests/unit/nodes/node_glm_usage_record_compute/test_glm_usage_record.py -q in omnimarket"
+  - id: "req-code-edit-turn-names-its-delegate-run"
+    statement: "A model reply the delegated code edit loop receives without an onex delegate run id is a failed delegate run: its actions are never applied to the worktree, its turn is recorded as not ok with the reason, and two in a row end the loop as delegate_failed, so every applied turn in a loop receipt names the onex delegate run that served it."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: a reply with model output and an empty run id writes nothing to the worktree, is recorded as a failed turn naming the missing run id, and two in a row end as delegate_failed -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base, where the lineage columns do not exist."
@@ -41,6 +46,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Execute the GLM allowance and usage record node tests."
     command: "uv run pytest tests/unit/nodes/node_glm_allowance_compute/test_glm_allowance.py tests/unit/nodes/node_glm_usage_record_compute/test_glm_usage_record.py -q"
+  - kind: "tests"
+    description: "Execute the code edit loop run-id tests."
+    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -94,3 +102,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_glm_usage_record_compute/test_glm_usage_record.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
+  - id: "dod-omn20287-ac8-code-edit-turn-run-id"
+    description: "AC8 hosted probe. The run-id tests pass at the head and fail at the merge base, where a reply with no run id is applied to the worktree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
