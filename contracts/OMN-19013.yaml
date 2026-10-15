@@ -1,0 +1,71 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19013"
+title: "Delegation terminal-construction outcome contract"
+summary: "The Market receiver of the terminal-construction outcome pair: the orchestrator's degraded terminal keeps the gate's own quality flag next to the TERMINAL_CONSTRUCTION_FAILED / UNDETERMINED pair, the delegate-skill response model holds the pair's invariants, and the projection row carries the pair with no score. The Core wire contract (omnibase_core#1737) and the Infra receipt delivery (omnibase_infra#3945) are merged and are proven here through the installed Core release and the migration source Infra vendors."
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-terminal-construction-outcome-contract"
+    statement: "The criteria below are the ticket's definition of done, transcribed from its body: Core, Market and Infra receiver invariants; canonical JSON round trips; failed-topic versus quality-gate semantics. Each id is the label an evidence item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: Core receiver invariant -- the installed Core release carries TERMINAL_CONSTRUCTION_FAILED and UNDETERMINED, and a failed terminal may keep quality_passed=true only under that exact pair -- falsifier: uv run pytest tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py -q -k 'installed_core or core_failed_topic'"
+      - id: "AC2"
+        statement: "AC2: Market receiver invariants -- the delegate-skill response model refuses an undetermined verdict without the construction outcome, a construction outcome without the stable reason, and any quality score or evidence on a construction failure -- falsifier: uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py -q -k Consumer"
+      - id: "AC3"
+        statement: "AC3: Infra receiver invariant -- the migration Infra vendors from this repository filters the quality denominators on exactly the pair and keeps security_invoker on every view it replaces -- falsifier: uv run pytest tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py -q -k migration_0045"
+      - id: "AC4"
+        statement: "AC4: canonical JSON round trips -- the degraded terminal and the response model reload equal from their own JSON, keeping the gate flag and a null score -- falsifier: uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py -q -k round_trip"
+      - id: "AC5"
+        statement: "AC5: failed-topic versus quality-gate semantics -- the degraded terminal keeps the gate's decision whether it passed or not, and the projection row persists the pair, that decision and no score -- falsifier: uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/test_omn15905_delegation_projection_writer_seam.py -q -k 'gate_fact or construction_terminal'"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC5: the focused Market tests for the construction outcome pair."
+    command: "uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py tests/test_omn15905_delegation_projection_writer_seam.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19013-ac1-core-receiver"
+    description: "AC1 hosted probe. The installed Core release carries the pair and its failed-terminal validator accepts quality_passed=true only for the construction pair."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py -q -k 'installed_core or core_failed_topic'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19013-ac2-market-receiver"
+    description: "AC2 hosted probe. The response model refuses each contradictory construction-failure shape. Fails at the merge base, whose response model declares neither field of the pair."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py -q -k Consumer"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19013-ac3-infra-vendored-migration"
+    description: "AC3 hosted probe. Migration 0045, the source Infra vendors, filters on the exact pair and re-asserts security_invoker on the three views it replaces. The Infra delivery itself is omnibase_infra#3945, merged; its vendor-parity gate holds the two copies equal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py -q -k migration_0045"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19013-ac4-round-trips"
+    description: "AC4 hosted probe. The degraded terminal and the response model reload equal from their own canonical JSON."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/unit/delegation/test_omn19013_core_floor_terminal_construction.py -q -k round_trip"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19013-ac5-gate-fact-semantics"
+    description: "AC5 hosted probe. The degraded terminal keeps the gate decision either way, and the projection writer persists the pair, that decision and a null score. Fails at the merge base, where the terminal forces quality_passed=false and the writer keeps a stale actual_score."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/test_omn15905_delegation_projection_writer_seam.py -q -k 'gate_fact or construction_terminal'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

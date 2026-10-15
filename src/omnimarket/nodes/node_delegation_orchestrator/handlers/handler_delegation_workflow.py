@@ -1963,12 +1963,14 @@ def _unconstructible_terminal(
     its answer, and a reason naming the validation error and the workflow this
     happened to.
 
-    **This is a degraded record and it says so.** It is emitted as FAILED even
-    when the run had been decided COMPLETED, because a terminal whose evidence
-    fields could not be constructed cannot honestly claim it was graded and
-    passed. The answer itself is not thrown away -- ``content`` is carried --
-    so a caller reading the receipt still has the text, with the reason it
-    arrived stripped of its evidence.
+    **This is a degraded record and it says so.** It is emitted on the FAILED
+    topic even when the run had been decided COMPLETED, and the typed pair
+    ``TERMINAL_CONSTRUCTION_FAILED`` / ``UNDETERMINED`` says the content was
+    never graded by a terminal that survived construction (OMN-19013). The
+    gate's own ``quality_passed`` is kept as it was decided, not rewritten by the
+    delivery failure. The answer itself is not thrown away -- ``content`` is
+    carried -- so a caller reading the receipt still has the text, with the
+    reason it arrived stripped of its evidence.
 
     **It never invents a cause.** ``terminal_failure_cause`` stays ``None``
     rather than borrowing one of the three provider-side enum members, none of
@@ -1995,9 +1997,11 @@ def _unconstructible_terminal(
         model_used=inputs.model_used,
         endpoint_url=inputs.endpoint_url,
         content=inputs.content,
-        # A terminal that could not be built is not a pass, and the FAILED
-        # class refuses any other answer here.
-        quality_passed=False,
+        # OMN-19013: this is the original gate fact. The failed topic states that
+        # delivery failed; it must not rewrite a gate decision already made. Core
+        # admits quality_passed=True on a failed terminal only for the
+        # construction pair below.
+        quality_passed=inputs.quality_passed,
         # OMN-18928 (K1): the one pair Core reserves for this case. The content
         # was never graded by a terminal that survived construction, so the
         # verdict is undetermined and the score, whose evidence fields are what
