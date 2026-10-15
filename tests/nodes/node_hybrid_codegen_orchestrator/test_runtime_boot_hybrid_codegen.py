@@ -244,14 +244,23 @@ async def test_start_command_reaches_completed_with_files_on_disk(
     completed = seen[T_COMPLETED][0]
     assert completed["status"] == "completed", completed
     written = [Path(str(p)) for p in cast("list[object]", completed["written_paths"])]
-    assert {p.name for p in written} == {
-        "handler.py",
-        "contract.yaml",
-        "metadata.yaml",
-        ".rsd_provenance.json",
+    # OMN-21152: the canonical node package layout — six files under
+    # <target>/omnimarket/nodes/node_upper_case_text/ plus the package-root
+    # __init__ files that make the tree a drop-in for a checkout's src/ tree.
+    pkg = target / "omnimarket" / "nodes" / "node_upper_case_text"
+    assert {p.relative_to(target).as_posix() for p in written} == {
+        "omnimarket/__init__.py",
+        "omnimarket/nodes/__init__.py",
+        "omnimarket/nodes/node_upper_case_text/__init__.py",
+        "omnimarket/nodes/node_upper_case_text/contract.yaml",
+        "omnimarket/nodes/node_upper_case_text/metadata.yaml",
+        "omnimarket/nodes/node_upper_case_text/handlers/__init__.py",
+        "omnimarket/nodes/node_upper_case_text/handlers/handler_upper_case_text.py",
+        "omnimarket/nodes/node_upper_case_text/.rsd_provenance.json",
     }
     assert all(p.is_file() and target in p.parents for p in written)
-    assert (target / "handler.py").read_text() == _GOOD_SOURCE
+    handler = pkg / "handlers" / "handler_upper_case_text.py"
+    assert handler.read_text() == _GOOD_SOURCE
 
 
 async def test_every_hop_publishes_exactly_once(
@@ -307,3 +316,91 @@ async def test_typecheck_failed_completes_rejected_and_writes_nothing(
     assert not target.exists() or not any(target.rglob("*"))
     assert seen["onex.cmd.omnimarket.contract-serialize-requested.v1"] == []
     assert seen["onex.cmd.omnimarket.codegen-file-write.v1"] == []
+
+
+async def test_generated_package_loads_through_contract_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-21152: the generated node package is a real loadable contract.
+
+    The output the factory writes to a temp directory is loaded through the
+    runtime's own contract loader (``discover_contracts_from_paths``, the same
+    entry the boot test above uses for the factory's own contracts): the
+    contract parses with the package name, and its ``handler_routing`` names
+    the generated class at its canonical dotted module. The handler module
+    itself is imported from the temp tree in a fresh interpreter (the test
+    process already hosts the real ``omnimarket`` package, so the generated
+    tree can only be imported cleanly in a child). Finally the omnibase_core
+    provenance-stamp gate is run read-only against the generated tree and must
+    exit 0.
+    """
+    import subprocess
+    import sys
+
+    target = tmp_path / "generated"
+    spec = _spec(target, correlation_id=str(uuid4()))
+
+    run = await _drive(monkeypatch, spec, _GOOD_SOURCE)
+    assert run.arrived, "factory run did not complete; loader test has no tree"
+
+    pkg_dir = target / "omnimarket" / "nodes" / "node_upper_case_text"
+    manifest = discover_contracts_from_paths([pkg_dir / "contract.yaml"])
+    assert not manifest.errors, manifest.errors
+    assert len(manifest.contracts) == 1
+    contract = manifest.contracts[0]
+    assert contract.name == "node_upper_case_text"
+    assert contract.node_type == "compute"
+    routing = contract.handler_routing
+    assert routing is not None
+    assert routing.handlers[0].handler.name == "UpperCaseText"
+    assert (
+        routing.handlers[0].handler.module
+        == "omnimarket.nodes.node_upper_case_text.handlers.handler_upper_case_text"
+    )
+
+    # The generated package imports from the temp tree and exposes the class.
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import importlib; m = importlib.import_module(sys.argv[2]); "
+            "assert hasattr(m, 'UpperCaseText'); "
+            "c = m.UpperCaseText(); assert c.handle('hi') == 'HI'",
+            str(target),
+            "omnimarket.nodes.node_upper_case_text.handlers.handler_upper_case_text",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert probe.returncode == 0, probe.stderr
+
+    # The omnibase_core provenance-stamp gate (read-only sibling checkout, the
+    # same ../omnibase_core location CI clones) accepts the generated tree:
+    # the stamp's digests recompute clean.
+    repo_root = Path(__file__).resolve().parents[3]
+    gate = (
+        repo_root.parent
+        / "omnibase_core"
+        / "scripts"
+        / "ci"
+        / "rsd_provenance_stamp.py"
+    )
+    if not gate.is_file():
+        pytest.skip("no sibling omnibase_core checkout for the provenance gate")
+    gate_run = subprocess.run(
+        [
+            sys.executable,
+            str(gate),
+            "--src-root",
+            str(target),
+            "--package",
+            "omnimarket",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert gate_run.returncode == 0, gate_run.stdout + gate_run.stderr
+    assert "checked 1 node(s)" in gate_run.stdout, gate_run.stdout
