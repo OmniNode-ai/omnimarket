@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20993"
+title: "One alert for a tenant's key pool before its keys lapse, naming every key that expires in the window"
+summary: "omnimarket carries node_key_pool_expiry_alert_compute, a pure compute over a tenant's tenant_inference_credentials rows and a clock. It returns exactly one alert listing every live key that expires within the warning window (default 30 days) and none when no key does; revoked and already-expired keys are left out, undated keys are listed once, and the alert text names keys by name and reference only. The alert carries a ready slack-publish payload with an idempotency key stable for one set of expiring keys."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20993-key-pool-expiry-alert"
+    statement: |-
+      A tenant's key pool is reported once, ahead of the date, with every key that is about to lapse named in that one alert.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: given a tenant's credential rows and a clock, the compute handler returns exactly one alert listing every live key that expires within the warning window (default 30 days), and none when no key does -- falsifier: uv run pytest tests/unit/nodes -k key_pool_expiry_alert
+      - id: "AC2"
+        statement: |-
+          AC2: revoked keys and keys already expired are excluded from the list, and a key with no expiry is reported once as undated -- falsifier: uv run pytest tests/unit/nodes -k key_pool_expiry_alert_excludes
+      - id: "AC3"
+        statement: |-
+          AC3: the alert text carries key names and references only, never a value or a fingerprint -- falsifier: uv run pytest tests/unit/nodes -k key_pool_expiry_alert_no_secret
+evidence_requirements:
+  - kind: "tests"
+    description: "The key pool expiry alert tests pass at the head; on the base the node package does not exist and the module fails to import."
+    command: "uv run pytest tests/unit/nodes/node_key_pool_expiry_alert_compute tests/nodes/node_key_pool_expiry_alert_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20993-ac1-one-alert"
+    description: "One alert names every live key expiring inside the window; none when no key does; the window is configurable; the payload is accepted by the real slack publish model."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_key_pool_expiry_alert_compute -q -k key_pool_expiry_alert"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20993-ac2-excludes"
+    description: "Revoked and already-expired keys are excluded, and an undated key is listed once."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_key_pool_expiry_alert_compute -q -k key_pool_expiry_alert_excludes"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20993-ac3-no-secret"
+    description: "A row carrying a fingerprint and a key value yields an alert with neither in its text or serialized result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_key_pool_expiry_alert_compute -q -k key_pool_expiry_alert_no_secret"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20993-deploy-probe-handler"
+    description: "Deploy probe. The handler at the checked-out commit is read from GitHub at that commit and must name the alert handler class, so it fails on a tree without the node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_key_pool_expiry_alert_compute/handlers/handler_key_pool_expiry_alert.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerKeyPoolExpiryAlert'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_key_pool_expiry_alert_compute tests/nodes/node_key_pool_expiry_alert_compute -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3"]

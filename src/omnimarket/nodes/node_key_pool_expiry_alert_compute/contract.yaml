@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_key_pool_expiry_alert_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  One alert for a tenant's provider-key pool before its keys lapse (OMN-20993).
+  Pure compute over a tenant's tenant_inference_credentials rows and a clock:
+  returns exactly one alert naming every live key that expires within the
+  warning window (default 30 days), and none when no key does. Revoked keys and
+  keys already expired are excluded; undated keys are listed once. The alert
+  text carries key names and references only, never a key value or fingerprint.
+  The alert carries a ready onex.cmd.omnimarket.slack-publish.v1 payload; the
+  delivery hop belongs to the slack publish effect, whose idempotency ledger
+  collapses a repeat of the same key set.
+input_model:
+  name: ModelKeyPoolExpiryAlertRequest
+  module: omnimarket.nodes.node_key_pool_expiry_alert_compute.models.model_key_pool_expiry_alert_request
+output_model:
+  name: ModelKeyPoolExpiryAlertResult
+  module: omnimarket.nodes.node_key_pool_expiry_alert_compute.models.model_key_pool_expiry_alert_result
+handler:
+  module: omnimarket.nodes.node_key_pool_expiry_alert_compute.handlers.handler_key_pool_expiry_alert
+  class: HandlerKeyPoolExpiryAlert
+  input_model: omnimarket.nodes.node_key_pool_expiry_alert_compute.models.model_key_pool_expiry_alert_request.ModelKeyPoolExpiryAlertRequest
+  output_model: omnimarket.nodes.node_key_pool_expiry_alert_compute.models.model_key_pool_expiry_alert_result.ModelKeyPoolExpiryAlertResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_key_pool_expiry_alert_compute.handlers.handler_key_pool_expiry_alert:HandlerKeyPoolExpiryAlert
+  handlers:
+    - operation: key_pool_expiry_alert
+      handler:
+        name: HandlerKeyPoolExpiryAlert
+        module: omnimarket.nodes.node_key_pool_expiry_alert_compute.handlers.handler_key_pool_expiry_alert
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  tenant_id: {type: str, required: true}
+  credentials: {type: array, required: true, description: "Every catalog row of the tenant; rows of another tenant refuse the request."}
+  now: {type: datetime, required: true, description: "Timezone-aware evaluation instant."}
+  warning_window_days: {type: int, required: false, default: 30}
+  channel: {type: str, required: true, description: "Slack channel id supplied by the caller from overlay config."}
+  correlation_id: {type: uuid, required: true}
+outputs:
+  tenant_id: {type: str}
+  alert: {type: object, required: false, nullable: true, description: "Null when no live key expires inside the window."}
+terminal_event: onex.evt.omnimarket.key-pool-expiry-alert-evaluated.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.key-pool-expiry-alert-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.key-pool-expiry-alert-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.key-pool-expiry-alert-evaluated.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.key-pool-expiry-alert-evaluated.v1
+metadata:
+  transport_type: inmemory
+  description: Tenant key pool expiry alert compute
+  author: OmniNode Team
+  created: "2026-10-15"
+  related_tickets: [OMN-20993]
