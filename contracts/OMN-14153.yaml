@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-14153"
 title: "Log persistence writes through the contract-resolved runtime database"
-summary: "node_log_persistence_effect takes the runtime-injected db_io payload mapping, materializes canonical structured logs and delegation terminal execution logs into log_entries, and keeps the legacy direct persist API. AC1 is bound to the node's focused tests."
+summary: "node_log_persistence_effect decodes captured bus terminals through the existing delegation projection model before validating their verdicts. node_swarm_dispatch_orchestrator requires runtime event_bus injection and emits canonical envelopes so its commands and terminals reach consumers. Focused tests cover both runtime seams."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,10 +11,21 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: the log persistence handler tests pass at the head, including the runtime database dispatch arm and replay-safe delegation execution logs -- falsifier: uv run pytest tests/unit/nodes/test_node_log_persistence_effect/test_handler_log_persistence_effect.py -q in omnimarket"
+  - id: "req-swarm-runtime-publication"
+    statement: "The runtime handler resolver supplies the swarm dispatch handler with the event bus needed to publish its next command."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: resolving the swarm dispatch handler through ServiceHandlerResolver and dispatching a start request publishes its health-check command with the original run and correlation identities -- falsifier: uv run pytest src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests/test_handler_swarm_dispatch.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The log persistence handler tests pass at the head."
     command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/test_node_log_persistence_effect/test_handler_log_persistence_effect.py -q"
+  - kind: "tests"
+    description: "AC2 hosted probe. Runtime-resolved swarm dispatch publishes its next command."
+    command: "env -u PYTHONPATH uv run pytest src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests/test_handler_swarm_dispatch.py -q"
+  - kind: "tests"
+    description: "AC2 wire probe. Canonical swarm terminal envelopes reach the replay-safe projection."
+    command: "env -u PYTHONPATH uv run pytest tests/test_golden_chain_projection_swarm.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -28,3 +39,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_node_log_persistence_effect/test_handler_log_persistence_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn14153-ac2-swarm-runtime-publication"
+    description: "AC2 hosted probe. The swarm handler tests include runtime dependency resolution."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests/test_handler_swarm_dispatch.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_swarm.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

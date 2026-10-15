@@ -27,7 +27,6 @@ Multi-topic routing (OMN-12003):
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -135,10 +134,13 @@ class HandlerSwarmDispatchOrchestrator:
     def __init__(
         self,
         *,
-        event_bus: ProtocolEventBusPublisher | None = None,
+        event_bus: ProtocolEventBusPublisher | None,
         state_store: ProtocolStateStore | None = None,
         contract_path: Path | None = None,
     ) -> None:
+        # Required so the runtime resolver supplies its bus instead of choosing
+        # zero-argument construction and silently discarding every publication.
+        # Pure transition callers can explicitly pass None.
         contract = _load_contract(contract_path)
         pub: list[str] = contract.get("event_bus", {}).get("publish_topics", [])
         sub: list[str] = contract.get("event_bus", {}).get("subscribe_topics", [])
@@ -813,6 +815,8 @@ class HandlerSwarmDispatchOrchestrator:
         import uuid as _uuid
         from datetime import UTC, datetime
 
+        from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
         if self._event_bus is None:
             return
         for topic, payload in publishes:
@@ -823,15 +827,14 @@ class HandlerSwarmDispatchOrchestrator:
             event_type = f"{parts[2]}.{parts[3]}" if len(parts) >= 5 else topic
             # Correlation/run id from payload for tracing
             corr_id = payload.get("correlation_id") or str(_uuid.uuid4())
-            envelope_dict = {
-                "payload": payload,
-                "correlation_id": corr_id,
-                "event_type": event_type,
-                "source_node": "node_swarm_dispatch_orchestrator",
-                "envelope_timestamp": datetime.now(UTC).isoformat(),
-                "schema_version": "1.0.0",
-            }
-            value = json.dumps(envelope_dict).encode()
+            envelope = ModelEventEnvelope(
+                payload=payload,
+                correlation_id=_uuid.UUID(str(corr_id)),
+                event_type=event_type,
+                source_tool="node_swarm_dispatch_orchestrator",
+                envelope_timestamp=datetime.now(UTC),
+            )
+            value = envelope.model_dump_json().encode()
             logger.info(
                 "[SWARM-DISPATCH] _flush: publishing to topic=%s corr=%s",
                 topic,
