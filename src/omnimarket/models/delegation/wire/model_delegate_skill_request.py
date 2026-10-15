@@ -51,6 +51,11 @@ DECLARED_OUTPUTS_WIRE_KEY = "declared_outputs"
 # ``_tolerate_model_before_it_is_declared``.
 MODEL_WIRE_KEY = "model"
 
+# OMN-19437 AC1, consumer half: the keys the CLI and RuntimeLocal will stamp on a
+# command so its terminal can carry the same ids. Decoded, not declared, by
+# ``_tolerate_trace_context_before_it_is_declared``.
+TRACE_CONTEXT_WIRE_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
+
 
 class ModelDelegateSkillRequest(BaseModel):
     """Typed delegation request from a registered adapter source."""
@@ -374,6 +379,23 @@ class ModelDelegateSkillRequest(BaseModel):
             )
         return {key: item for key, item in data.items() if key != MODEL_WIRE_KEY}
 
+    # OMN-19437, step 1 of 2: decode ``trace_id`` and ``span_id`` before they are
+    # declared, the same tolerate-before-declare order as ``model`` above. The
+    # Wire Compatibility Gate refuses declaring them while the last release
+    # forbids the keys. They are tracing context only, so a release that does
+    # not yet honour them drops them without changing what the command asks.
+    # Step 2 declares the fields once a release carrying this is out.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_trace_context_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or TRACE_CONTEXT_WIRE_KEYS.isdisjoint(data):
+            return data
+        return {
+            key: item
+            for key, item in data.items()
+            if key not in TRACE_CONTEXT_WIRE_KEYS
+        }
+
     @field_validator("published_at")
     @classmethod
     def _require_timezone_aware_published_at(
@@ -445,6 +467,7 @@ __all__: list[str] = [
     "DECLARED_OUTPUTS_WIRE_KEY",
     "MODEL_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
+    "TRACE_CONTEXT_WIRE_KEYS",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
 ]
