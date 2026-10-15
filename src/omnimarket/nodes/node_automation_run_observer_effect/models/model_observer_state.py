@@ -26,6 +26,17 @@ class ModelProcessCursor(BaseModel):
     overrun_reported: list[str] = Field(default_factory=list)
     #: The reason an unreadable read was last reported, until it reads again.
     unreadable_reported: str | None = None
+    #: First poll that read this process's progress (its start when the
+    #: evidence does not say).
+    first_read_at: AwareDatetime | None = None
+    #: The worker loop's counter as last read, and when it last moved.
+    progress_counter: NonNegativeInt | None = None
+    last_progress_at: AwareDatetime | None = None
+    #: The current stall (no progress past max_silence_seconds with demand)
+    #: was already reported; cleared when the counter moves.
+    stall_reported: bool = False
+    #: Declared demand could not be read, and that was already reported.
+    demand_unreadable_reported: bool = False
 
 
 class ModelObserverState(BaseModel):

@@ -118,7 +118,8 @@ def _content_record(content: str, **extra: Any) -> dict[str, Any]:
 
 
 @pytest.mark.unit
-def test_content_captured_routes_through_redact_capture_on_session_id() -> None:
+def test_content_captured_routes_raw_on_session_id() -> None:
+    """OMN-19513 RULING 2026-10-15T04:24:42Z: content crosses untransformed."""
     registry_path = (
         default_contract_path().parents[2]
         / "node_emit_daemon"
@@ -129,11 +130,11 @@ def test_content_captured_routes_through_redact_capture_on_session_id() -> None:
     entry = events[CONTENT_EVENT]
     assert entry["partition_key_field"] == "session_id"
     assert [(r["topic"], r.get("transform")) for r in entry["fan_out"]] == [
-        (CONTENT_TOPIC, "redact_capture")
+        (CONTENT_TOPIC, "passthrough")
     ]
     targets = resolve_event_type(CONTENT_EVENT)
     assert [(t.topic, t.transform_name) for t in targets] == [
-        (CONTENT_TOPIC, "redact_capture")
+        (CONTENT_TOPIC, "passthrough")
     ]
 
 
