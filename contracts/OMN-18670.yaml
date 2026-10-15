@@ -84,3 +84,14 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
+- id: dod-omn-18670-ac1-inference-intent-deploy-smoke
+  description: A disposable container runs the inference-intent handler against a real loopback HTTP server with a stale overlay. The refusal must name the overlay file and model_name key, send no chat request, and point to the explain command when the source is unknown. The probe fails without the inference-intent source attribution and needs only Docker and this checkout on the hosted runner.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: |-
+      docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/inference-intent-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/delegation/test_omn18670_inference_intent_refusal_names_source.py -q -p no:cacheprovider --basetemp=/tmp/inference-intent-tests --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
