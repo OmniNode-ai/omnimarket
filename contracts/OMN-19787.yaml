@@ -129,3 +129,27 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/handlers/handler_ground_truth_label.py?ref=fe339700221568188bea801d332e2014c88c9187 --jq .content | base64 -d | grep -c 'class HandlerGroundTruthLabel'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-golden-checklist-classes-deploy-probe"
+    description: "The four checklist datasets served by GitHub at the evaluated commit declare their task classes. A missing dataset or a different task_class fails the hosted probe; the focused test checks all eight tasks per class."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_summarization.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: summarization")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_planning.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: planning")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_reasoning.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: reasoning")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_research.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: research")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
