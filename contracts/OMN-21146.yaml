@@ -35,7 +35,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect tests/unit/handlers/scm/test_onex_scm_command.py tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/unit/handlers/scm/test_onex_scm_command.py tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -p no:randomly --no-cov"
     binds_ac: ["AC1"]
   - id: "dod-omn21146-ac2-no-gh"
     description: "AC2: with a gh stub on PATH that fails on any call, a verify of a ticket whose PRs merged outside the watcher window never calls it and reads the PRs and check runs from the gateway."
