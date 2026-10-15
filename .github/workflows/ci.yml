@@ -3679,6 +3679,7 @@ jobs:
           tests/unit/cli/test_omn20844_openrouter_model_choice.py
           tests/test_omn20844_chosen_model_never_re_aimed.py
           tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py
+          tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py
           -q -p no:randomly
 
   # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
