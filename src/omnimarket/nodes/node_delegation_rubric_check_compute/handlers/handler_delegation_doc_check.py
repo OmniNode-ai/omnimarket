@@ -20,6 +20,7 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_doc_check
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_doc_check_request import (
     DOC_CHECK_FUNCTION,
     ModelDocCheckRequest,
+    reference_problem,
 )
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_doc_check_verdict import (
     ModelDocCheckVerdict,
@@ -433,9 +434,14 @@ class HandlerDelegationDocCheck:
         function = _function(tree)
         if function is None:
             return [f"the answer does not define {DOC_CHECK_FUNCTION}"]
+        # Re-checked here: the reference is executed below, and a request built
+        # without validation must not reach that exec.
+        problem = reference_problem(request.reference_source)
+        if problem:
+            return [problem]
         reference = ast.parse(request.reference_source)
         reference_function = _function(reference)
-        if reference_function is None:  # unreachable: the request validated it
+        if reference_function is None:  # unreachable: reference_problem checked it
             return ["reference_source does not define the function"]
 
         fails: list[str] = []

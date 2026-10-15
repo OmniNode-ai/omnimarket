@@ -203,6 +203,53 @@ def test_request_rejects_a_bad_reference(overrides):
         ModelDocCheckRequest.model_validate(payload)
 
 
+_UNSAFE_REFERENCES = {
+    "attribute-escape": "def retry_delay(attempt):\n    return ().__class__.__base__.__subclasses__()\n",
+    "import": "def retry_delay(attempt):\n    import os\n    return 0.0\n",
+    "dunder-name": "def retry_delay(attempt):\n    return __builtins__\n",
+    "unlisted-call": "def retry_delay(attempt):\n    return globals()\n",
+    "subscript": "def retry_delay(attempt):\n    return [attempt][0]\n",
+    "loop": "def retry_delay(attempt):\n    while True:\n        pass\n",
+    "nested-function": "def retry_delay(attempt):\n    def inner():\n        return 1\n    return inner()\n",
+    "lambda": "def retry_delay(attempt):\n    return (lambda: 1)()\n",
+    "nested-power": "def retry_delay(attempt):\n    return attempt ** attempt ** attempt\n",
+    "power-of-a-local": "def retry_delay(attempt):\n    big = 2 ** attempt\n    return 2 ** big\n",
+    "annotation-call": "def retry_delay(attempt: print('ran')) -> float:\n    return 0.0\n",
+    "return-annotation-call": "def retry_delay(attempt) -> print('ran'):\n    return 0.0\n",
+    "kwonly-default-call": "def retry_delay(attempt, *, base=print('ran')):\n    return 0.0\n",
+}
+
+
+@pytest.mark.parametrize(
+    "source", list(_UNSAFE_REFERENCES.values()), ids=list(_UNSAFE_REFERENCES)
+)
+def test_request_rejects_a_reference_outside_the_safe_subset(source):
+    payload = {**request().model_dump(), "reference_source": source}
+    with pytest.raises(ValidationError):
+        ModelDocCheckRequest.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "source", list(_UNSAFE_REFERENCES.values()), ids=list(_UNSAFE_REFERENCES)
+)
+def test_handler_never_executes_an_unvalidated_reference(source, capsys):
+    unvalidated = ModelDocCheckRequest.model_construct(
+        operation="delegation_doc_check",
+        answer_text=REFERENCE_ANSWER,
+        reference_source=source,
+        run_directory="/draws/run-123",
+    )
+    result = HandlerDelegationDocCheck().handle(unvalidated)
+    assert result.outcome.value == "FAIL"
+    assert any("reference_source" in entry for entry in result.failures)
+    assert "ran" not in capsys.readouterr().out
+
+
+def test_the_walker_reference_is_inside_the_safe_subset():
+    assert request().reference_source == REFERENCE_SOURCE
+    assert HandlerDelegationDocCheck().handle(request()).outcome.value == "PASS"
+
+
 def test_doc_operation_runs_on_the_local_bus(tmp_path, monkeypatch):
     monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
     req = request()
