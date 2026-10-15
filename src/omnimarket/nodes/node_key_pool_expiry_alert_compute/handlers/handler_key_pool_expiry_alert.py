@@ -10,7 +10,8 @@ revoked and its expiry is unset or still ahead of the clock.
 
 from __future__ import annotations
 
-import hashlib
+import base64
+import json
 from datetime import timedelta
 
 from omnimarket.nodes.node_key_pool_expiry_alert_compute.models import (
@@ -48,8 +49,13 @@ def _render_text(
 
 def _idempotency_key(tenant_id: str, window_days: int, refs: tuple[str, ...]) -> str:
     """Stable for one set of expiring keys; a new member makes a new alert."""
-    digest = hashlib.sha256("\n".join(refs).encode()).hexdigest()[:16]
-    return f"key-pool-expiry|{tenant_id}|{window_days}d|{digest}"
+    # These are public references, not credential values. Encode the complete
+    # identity without hashing; JSON preserves field and reference boundaries.
+    identity = json.dumps(
+        [tenant_id, window_days, sorted(set(refs))], separators=(",", ":")
+    )
+    token = base64.urlsafe_b64encode(identity.encode()).decode("ascii")
+    return f"key-pool-expiry|{token}"
 
 
 class HandlerKeyPoolExpiryAlert:

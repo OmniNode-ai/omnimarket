@@ -248,3 +248,38 @@ def test_key_pool_expiry_alert_no_secret_in_the_text() -> None:
 def test_key_pool_expiry_alert_no_secret_field_exists_on_the_row_model() -> None:
     declared = set(ModelKeyPoolCredentialRow.model_fields)
     assert declared.isdisjoint({"fingerprint", "api_key", "value", "secret", "key"})
+
+
+def test_key_pool_expiry_alert_idempotency_ignores_expiry_order_and_duplicate_refs() -> (
+    None
+):
+    handler = HandlerKeyPoolExpiryAlert()
+    original = handler.handle(
+        _request([_row("ref-a", expires_in_days=3), _row("ref-b", expires_in_days=4)])
+    ).alert
+    reordered = handler.handle(
+        _request(
+            [
+                _row("ref-b", expires_in_days=2),
+                _row("ref-a", expires_in_days=5),
+                _row("ref-a", expires_in_days=5),
+            ]
+        )
+    ).alert
+    assert original is not None
+    assert reordered is not None
+    assert (
+        original.slack_command.idempotency_key
+        == reordered.slack_command.idempotency_key
+    )
+
+
+def test_key_pool_expiry_alert_idempotency_preserves_reference_boundaries() -> None:
+    handler = HandlerKeyPoolExpiryAlert()
+    one = handler.handle(_request([_row("ref-a\nref-b", expires_in_days=3)])).alert
+    two = handler.handle(
+        _request([_row("ref-a", expires_in_days=3), _row("ref-b", expires_in_days=3)])
+    ).alert
+    assert one is not None
+    assert two is not None
+    assert one.slack_command.idempotency_key != two.slack_command.idempotency_key
