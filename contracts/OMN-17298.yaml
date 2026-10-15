@@ -10,8 +10,8 @@ requirements:
   - id: "req-rls-enabled-requires-a-policy"
     statement: "A relation that ends the node migration tree with row-level security enabled and no policy is refused before merge, and the live tree holds none."
     acceptance:
-      - id: "AC-audit"
-        statement: "AC-audit: no relation in the node migration tree ends with row-level security enabled and zero policies -- falsifier: uv run python scripts/validation/check_internal_relation_tenant_posture.py exits non-zero and names a relation"
+      - id: "AC1"
+        statement: "AC1: no relation in the node migration tree ends with row-level security enabled and zero policies -- falsifier: uv run python scripts/validation/check_internal_relation_tenant_posture.py exits non-zero and names a relation"
 evidence_requirements:
   - kind: "tests"
     description: "The live tree passes the gate, the audit sees RLS-enabled relations at all (so a zero is not a parser miss), and a synthetic relation with RLS enabled and no policy is refused."
@@ -28,7 +28,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn17298_rls_enabled_requires_policy.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-audit"]
+    binds_ac: ["AC1"]
   - id: "dod-omn17298-audit-gate-live-tree"
     description: "The gate script exits 0 over the live node migration tree."
     source: "manual"
@@ -36,4 +36,12 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run python scripts/validation/check_internal_relation_tenant_posture.py"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC-audit"]
+    binds_ac: ["AC1"]
+  - id: "dod-omn17298-audit-deploy-smoke"
+    description: "A disposable container runs the audit regressions from the checked-out source. The probe refuses a synthetic relation with RLS enabled and zero policies, accepts it with a policy, and checks the repository migration tree. The hosted runner needs Docker and the checkout; removing the refusal makes the tests fail."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/audit-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/test_omn17298_rls_enabled_requires_policy.py -q -p no:cacheprovider --basetemp=/tmp/audit-tests
+        cwd: "${OMNI_HOME}/omnimarket"
