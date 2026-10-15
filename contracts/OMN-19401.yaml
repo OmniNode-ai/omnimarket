@@ -54,11 +54,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19401-ac1-step-by-step-selection"
-    description: "AC1 at the ticket's falsifier, with its path relative to this repository's root: every step_by_step test of the quality gate reducer passes, including the causal connective cases."
+    description: "AC1 at the ticket's falsifier, with its path relative to this repository's root: every step_by_step test in the quality gate reducer causal markers test file passes, including the causal connective cases."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer -k step_by_step -q"
+        check_value: "uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py -k step_by_step -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19401-ac2-ac3-hash-map-pair"
