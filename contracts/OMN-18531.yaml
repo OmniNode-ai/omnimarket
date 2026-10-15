@@ -4,7 +4,7 @@ title: 'Claude Code mod: the adapter node, its generated binding, the render com
 summary: 'Plan task T0.3 of the context and delegation adapter plan, built in omnimarket: node_claude_code_hook_adapter_effect (contract with client_bindings.claude_code, generic handler, console entry
   onex-claude-code-hook), node_claude_code_binding_render_compute (deterministic render of the mod module) and node_claude_code_binding_install_effect (write, read back, register). The hook-inventory gate
   that reads client_bindings (AC8) lives in omniclaude and is carried by that repository''s thin-shim PR; the omnibase_infra half (skill mapping entry, receipt-mode library call) is a separate PR in that
-  repository.'
+  repository. The compaction savings source (savings_estimates rows of task_type context_compaction written from PostCompact) also lands under this ticket.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -50,6 +50,12 @@ requirements:
   - id: AC12
     statement: 'AC12: `claude_code_binding_install` writes additive registrations into the user settings only, renders only rows whose probe rows (P16-P19) the capability report marks supported, and a re-install
       with a row removed removes its registration -- falsifier: a registration surviving its row''s removal, an unsupported row installed, or `git ls-files` listing a rendered registration.'
+
+- id: req-omn18531-compaction-savings
+  statement: HandlerCompactionSavings computes a compaction's tokens and dollars saved at the session model's manifest price, and SavingsProjectionRunner upserts a mod-answered PostCompact as a savings_estimates row under the registry tenant UUID while a native PostCompact and every other hook event write nothing.
+  acceptance:
+    - id: AC1
+      statement: 'AC1: a mod-answered compaction of 100,000 context tokens on a model priced 0.002 per 1k input yields a row of task_type context_compaction saving 0.200000 USD, a shortened one saves the difference, a native one writes no row, and the runner lands the mod-answered PostCompact under the house registry UUID -- falsifier: `uv run pytest tests/test_omn18531_compaction_savings.py -q`'
 evidence_requirements:
 - kind: tests
   description: The prompt-link parser tests pass, and six of them fail on the parser without the fields.
@@ -57,6 +63,10 @@ evidence_requirements:
 - kind: tests
   description: Adapter, render, install and contract tests
   command: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q --no-cov
+
+- kind: tests
+  description: The compaction savings tests pass, and fail at the merge base, which has no compaction source and does not subscribe the hook-event stream.
+  command: uv run pytest tests/test_omn18531_compaction_savings.py -q
 emergency_bypass:
   enabled: false
   justification: ''
@@ -198,3 +208,20 @@ dod_evidence:
     check_value: bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "import omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli as m, omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render
       as r, omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install as i; assert callable(m.main)"'
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn-18531-compaction-savings-ac1
+  description: The compaction savings measure and the writer's PostCompact branch behave as AC1 states.
+  source: manual
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn18531_compaction_savings.py -q
+      cwd: "${OMNI_HOME}/omnimarket"
+  binds_ac:
+    - AC1
+- id: dod-omn-18531-deploy-container-compaction-savings
+  description: Deploy probe. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev, reads a mod-answered PostCompact record through the product compaction_source_from_post_compact and computes its row with HandlerCompactionSavings. It asserts the row is task_type context_compaction with savings 0.200000, so it fails at the merge base, which has no such module. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+  source: manual
+  checks:
+    - check_type: command
+      check_value: |-
+        docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import HandlerCompactionSavings, compaction_source_from_post_compact; s = compaction_source_from_post_compact({"event_id": "e-1", "hook_event_name": "PostCompact", "emitted_at": "2026-10-15T04:01:16+00:00", "lineage": {"session_id": "s-1"}, "payload": {"hook_event_name": "PostCompact", "trigger": "manual", "context_tokens": 100000, "model": "claude-sonnet-5-5", "compact_summary_ref": {"length": 0}}}); r = HandlerCompactionSavings().handle(s); assert r.row is not None and r.row["task_type"] == "context_compaction", r; assert str(r.row["savings_usd"]) == "0.200000", r.row; print(r.tokens_saved, r.row["savings_usd"])'
+      cwd: "${OMNI_HOME}/omnimarket"
