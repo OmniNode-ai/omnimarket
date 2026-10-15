@@ -125,7 +125,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k 'ac1 or listed or measured'"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute/test_experiment_record.py tests/nodes/node_delegation_experiment_record_compute/test_measured_record.py -q -k 'ac1 or listed or measured'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn20422-ac6-run-ids-have-receipts"
@@ -133,7 +133,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac2"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute/test_experiment_record.py -q -k ac2"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
   - id: "dod-omn20422-ac7-no-routing-change"
@@ -141,7 +141,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac3"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute/test_experiment_record.py -q -k ac3"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
   - id: "dod-omn20422-ac8-supported-has-follow-on"
@@ -149,6 +149,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac4"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute/test_experiment_record.py -q -k ac4"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
