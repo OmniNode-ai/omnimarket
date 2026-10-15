@@ -215,6 +215,13 @@ requirements:
         statement: "AC35: check-direct-model-call and topic-naming-lint run at the pre-push stage, with the direct-model-call --base taken from the merge base with origin/dev, and the ci.yml jobs that back them run on every pull request -- falsifier: uv run pytest tests/ci/test_prepush_test_leg_retired_omn18162.py -q -k only_the_type_check_remains"
       - id: "AC36"
         statement: "AC36: the commit-stage public-repo-hygiene and deployment-config hooks are handed the staged paths, nothing else narrows them, .public-repo-hygiene.yaml still enforces added lines, and each has a whole-tree caller job -- falsifier: uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+  - id: "req-superseded-run-cancel"
+    statement: "A queued or in-progress CI run that a later push or a merge-queue exit left behind is cancelled from the run list and the queue read alone, one event per cancel, and a run on a PR's current head is never cancelled."
+    acceptance:
+      - id: "AC37"
+        statement: "AC37: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
+      - id: "AC38"
+        statement: "AC38: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -306,6 +313,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The commit-stage hygiene hooks take the staged paths and keep a whole-tree caller job."
     command: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
+  - kind: "tests"
+    description: "AC37 and AC38: the superseded-run cancel node over a recorded GitHub, with negative controls for the current head and for an incomplete queue read."
+    command: "uv run pytest tests/golden_chains/superseded_run_cancel -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -587,3 +597,25 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC36"]
+  - id: "dod-omn17427-ac37-superseded-run-rule"
+    description: "The supersede rule cancels runs behind a later PR head and runs out of the merge queue, and keeps every run on a PR's current head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]
+  - id: "dod-omn17427-ac38-superseded-run-events"
+    description: "One cancelled event per cancel; an unreadable run list or an incomplete queue read cancels nothing; a bus failure does not undo a cancel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel -q -k 'event or incomplete or unreadable or bus_failure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC38"]
+  - id: "dod-omn17427-ac37-superseded-run-deploy-probe"
+    description: "Deploy probe. The handler file GitHub serves at the checked-out commit defines HandlerSupersededRunCancel, the superseded-run cancel node this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_superseded_run_cancel_effect/handlers/handler_superseded_run_cancel.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerSupersededRunCancel:'"

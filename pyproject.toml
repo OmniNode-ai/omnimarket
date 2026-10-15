@@ -742,6 +742,7 @@ node_monitor_alert_responder = "omnimarket.nodes.node_monitor_alert_responder"
 # remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 node_rebase_effect = "omnimarket.nodes.node_rebase_effect"
 node_ci_rerun_effect = "omnimarket.nodes.node_ci_rerun_effect"
+node_superseded_run_cancel_effect = "omnimarket.nodes.node_superseded_run_cancel_effect"
 node_ci_fix_effect = "omnimarket.nodes.node_ci_fix_effect"
 node_conflict_hunk_effect = "omnimarket.nodes.node_conflict_hunk_effect"
 node_content_ingestion_effect = "omnimarket.nodes.node_content_ingestion_effect"

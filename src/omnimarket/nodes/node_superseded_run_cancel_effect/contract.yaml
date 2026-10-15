@@ -1,0 +1,109 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Superseded run cancel effect (OMN-17427)
+name: node_superseded_run_cancel_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Cancels the CI runs a later push or a queue exit left behind, on every
+  landing-controller tick. Reads one repository's queued and in-progress
+  workflow runs and, after them, the merge queue of each base branch a
+  merge_group run builds for. A pull_request run is superseded when its head
+  differs from the head of the PR's newest pull_request run in the same run
+  list. A merge_group run is superseded when its merge-group commit is no
+  longer an entry of its base branch's queue, judged only against a complete
+  queue read. The decision uses the run list and the queue read and nothing
+  else, so a run on the PR's current head is never selected. Each cancelled
+  run produces one SupersededRunCancelled event with repo, run id and reason.
+  A run list that cannot be read cancels nothing.
+
+input_model:
+  name: ModelSupersededRunSweepRequest
+  module: omnimarket.nodes.node_superseded_run_cancel_effect.models.model_superseded_run_sweep
+
+output_model:
+  name: ModelSupersededRunSweepResult
+  module: omnimarket.nodes.node_superseded_run_cancel_effect.models.model_superseded_run_sweep
+
+handler:
+  module: omnimarket.nodes.node_superseded_run_cancel_effect.handlers.handler_superseded_run_cancel
+  class: HandlerSupersededRunCancel
+  input_model: omnimarket.nodes.node_superseded_run_cancel_effect.models.model_superseded_run_sweep.ModelSupersededRunSweepRequest
+
+operations:
+  - name: list_live_runs
+    description: "GET /repos/{owner}/{repo}/actions/runs?status=queued, then status=in_progress, paged."
+    transport: rest
+  - name: read_merge_queue
+    description: "GraphQL read of the entries (merge-group commits) of a base branch's merge queue, once per base a merge_group run builds for."
+    transport: graphql
+  - name: cancel_run
+    description: "POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel for each superseded run."
+    transport: rest
+
+# `onex run-node` publishes the command and waits for the sweep-completed event;
+# the landing controller calls it once per repository each tick.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.superseded-run-sweep-completed.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+
+runtime_profiles:
+  - effects
+
+secrets:
+  # The same contract-declared ref node_ci_rerun_effect and
+  # node_pr_landing_github_effect use. No other credential.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for API calls (REST + GraphQL)."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.superseded-run-sweep-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.superseded-run-cancelled.v1
+    - onex.evt.omnimarket.superseded-run-sweep-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.superseded-run-sweep.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.superseded-run-cancelled.v1
+
+published_events:
+  - event_type: "SupersededRunCancelled"
+    topic: onex.evt.omnimarket.superseded-run-cancelled.v1
+    description: "One superseded run was cancelled: repo, run id, reason, head, and the PR's current head or the base branch."
+  - event_type: "SupersededRunSweepCompleted"
+    topic: onex.evt.omnimarket.superseded-run-sweep-completed.v1
+    description: "One sweep of a repository finished: runs read, runs cancelled, cancels GitHub refused, merge_group runs not judged, or the run-list read error."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "superseded_run.sweep"
+      message_category: "command"
+      handler:
+        name: "HandlerSupersededRunCancel"
+        module: "omnimarket.nodes.node_superseded_run_cancel_effect.handlers.handler_superseded_run_cancel"
+      event_model:
+        name: "ModelSupersededRunSweepRequest"
+        module: "omnimarket.nodes.node_superseded_run_cancel_effect.models.model_superseded_run_sweep"
+      topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
+      description: "One repository's superseded-run sweep; answered by one completed event and one cancelled event per cancelled run."
+
+metadata:
+  transport_type: kafka
