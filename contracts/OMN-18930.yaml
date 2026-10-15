@@ -52,3 +52,22 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_delegation_cohort_key_projection_omn18930.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn18930-pr3923-merged-fix-control"
+    description: "This PR binds the already-merged complete cohort key fix cd4a99c20e1bb86e5f10ae5e986699c049e5b999. The unit and PostgreSQL checks pass with that fix present and fail at the merge base with its product changes reverted: incomplete nested evidence must clear the key and digest while retaining the delegation row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegation_cohort_key_projection_omn18930.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18930_cohort_key_projection_real_postgres.py -q -k \"refuses_incomplete_nested_key\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn18930-pr3923-deploy-probe"
+    description: "Hosted-runner deploy probe reads the checked-out projection source in a disposable Python container and requires both the released cohort model validation and the fold's refusal call. It fails with the merged fix reverted; it claims source availability, not live lane deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          docker run --rm --network none --mount "type=bind,src=${PWD}/src,dst=/product,readonly" python:3.13-alpine python -c 'from pathlib import Path; p = Path("/product/omnimarket"); model = (p / "models/delegation/wire/model_delegate_skill_terminal_projection.py").read_text(); fold = (p / "nodes/node_projection_delegation/handlers/handler_delegation_cohort_key_fold.py").read_text(); assert "ModelDelegationCohortKey.model_validate(self.cohort_key)" in model; assert "request.cohort_key_validation_refusal()" in fold; print("OMN-18930 container source readback: nested model validation and fold refusal path present")'
+        cwd: "${OMNI_HOME}/omnimarket"
