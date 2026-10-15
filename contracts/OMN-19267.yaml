@@ -2,13 +2,13 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19267"
 title: "local reasoning and complex_reasoning delegations return an accepted deliverable"
-summary: "Local reasoning and complex_reasoning delegations return a non-empty, accepted deliverable (AC1), and the per-class profile test maps complex_reasoning to a thinking-suppressing profile (AC2). The verifier, receipt-runner and thinking-budget evidence items stay as appended records; their AC4, AC5 and AC6 bindings are retired because the ticket does not carry those criteria."
+summary: "Local reasoning and complex_reasoning delegations return a non-empty, accepted deliverable (AC1), and the per-class profile test maps complex_reasoning to a thinking-suppressing profile (AC2). The verifier, receipt-runner and thinking-budget evidence items remain executable without criterion bindings because AC4, AC5 and AC6 are not criteria of this ticket."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-local-reasoning-delegations-return-accepted-deliverable"
-    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are the ticket's two live criteria, transcribed from the ticket body; each id is the label a binding item claims through binds_ac. The ticket dropped its profile-pin criterion, and AC4, AC5 and AC6, which this contract once declared, are not criteria of the ticket: their bindings are retired by dod-omn19267-ac2-complex-reasoning-no-think."
+    statement: "Local reasoning and complex_reasoning delegations return a non-empty deliverable. The criteria below are the ticket's two live criteria, transcribed from the ticket body; each id is the label a binding item claims through binds_ac. The ticket dropped its profile-pin criterion, and AC4, AC5 and AC6, which this contract once declared, are not criteria of the ticket: those evidence items retain their checks without claiming a ticket criterion."
     acceptance:
       - id: "AC1"
         statement: "AC1: a reasoning-class delegation on the local tier returns a non-empty deliverable for a reasoning prompt, with no ambiguous_unmarked_deliverable refusal on the accepted attempt -- falsifier: onex delegate --task-type reasoning with a reasoning prompt against the lab endpoint, reading receipt.json output_refusal and result.txt"
@@ -45,7 +45,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_dod_verify_acceptance_basis.py tests/test_occ_falsifier_checks.py -q -k id_collision"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC4"]
+    binds_ac: []
   - id: "dod-omn19267-ac1-local-reasoning-delivers"
     description: "AC1 hosted probe. The real local dispatch port (system prompt, inference-protocol shaping, deliverable extraction, refusal handling) runs a reasoning and a complex_reasoning delegation against a stand-in for the lab model server that answers as the server measured on 2026-09-23 did: an untagged trace with no marker when thinking is on, a marked answer when the request carries enable_thinking false. Passes at the head; fails at the merge base with omnimarket#2809's profile change reverted, because the request then leaves thinking on and the extractor refuses the trace. The live-model half of AC1 is the lab probe on the OCC receipt for this criterion."
     source: "manual"
@@ -69,7 +69,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_occ_receipt_runner_shared_check_omn_19267.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC5"]
+    binds_ac: []
   - id: "dod-omn19267-ac6-reasoning-thinking-budget"
     description: "AC6 hosted probe. The reasoning thinking-on profile carries the 2048-token thinking budget in both server spellings, the budget travels on the request, and a response that spent the whole budget on thinking fails the class gate. Passes at the head; fails at the merge base, whose inference_protocols.v1.yaml carries no budget."
     source: "manual"
@@ -77,31 +77,16 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_reasoning_thinking_budget_omn19267.py"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC6"]
+    binds_ac: []
   - id: "dod-omn19267-ac2-complex-reasoning-no-think"
-    description: "AC2 hosted probe, complex_reasoning only, as the ticket's reworded criterion states. The per-class profile test cases for complex_reasoning map it to a thinking-suppressing profile. This item also retires the AC4, AC5 and AC6 bindings of three earlier items: the ticket carries only AC1 and AC2, so those labels are not criteria of the ticket."
+    description: "AC2 hosted probe, complex_reasoning only, as the ticket's reworded criterion states. The per-class profile test cases for complex_reasoning map it to a thinking-suppressing profile. The deploy readback loads this repo-owned contract with the installed canonical schema and checks that its requirements and evidence claim only the ticket criteria AC1 and AC2. The other evidence items keep running without claiming criteria the ticket does not carry."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q -k complex_reasoning"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |
+          uv run python -c 'from pathlib import Path; from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract; c=ModelTicketContract.from_yaml(Path("contracts/OMN-19267.yaml").read_text()); declared={a.id for r in c.requirements for a in r.acceptance}; claimed={label for item in c.dod_evidence for label in item.binds_ac}; assert declared == claimed == {"AC1", "AC2"}, (declared, claimed); print("LAB_OMN19267_CONTRACT_READBACK schema=valid declared=AC1,AC2 claimed=AC1,AC2")'
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-    supersedes_ac_binding:
-      - item: "dod-derived-falsifier-id-collision"
-        label: "AC4"
-        reason_kind: "no_longer_applicable"
-        reason: "The ticket carries no AC4; the verifier id-collision evidence is not a criterion of this ticket."
-        retired_by: "omn20886-m4"
-        retired_at: "2026-10-15T12:05:00Z"
-      - item: "dod-receipt-runner-one-supersession-per-check"
-        label: "AC5"
-        reason_kind: "no_longer_applicable"
-        reason: "The ticket carries no AC5; the receipt-runner supersession evidence is not a criterion of this ticket."
-        retired_by: "omn20886-m4"
-        retired_at: "2026-10-15T12:05:00Z"
-      - item: "dod-omn19267-ac6-reasoning-thinking-budget"
-        label: "AC6"
-        reason_kind: "no_longer_applicable"
-        reason: "The ticket carries no AC6; the thinking-budget evidence is not a criterion of this ticket."
-        retired_by: "omn20886-m4"
-        retired_at: "2026-10-15T12:05:00Z"
