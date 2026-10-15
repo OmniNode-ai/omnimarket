@@ -456,3 +456,99 @@ def test_runtime_selects_contract_database_dispatch_arm() -> None:
     )
 
     assert _typed_def_b_input_model(NodeLogPersistenceEffect(pg_dsn="")) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("status", ["completed", "failed", "timeout"])
+def test_captured_bus_terminal_materializes_replay_safe_execution_log(
+    status: str,
+) -> None:
+    """Runtime capture adds metadata that the strict response model refuses."""
+    from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+        ModelDelegateSkillCompleted,
+        ModelDelegateSkillFailed,
+    )
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    terminal_cls = (
+        ModelDelegateSkillCompleted
+        if status == "completed"
+        else ModelDelegateSkillFailed
+    )
+    correlation, event_id = uuid4(), uuid4()
+    timestamp = datetime(2026, 10, 15, tzinfo=UTC)
+    terminal = terminal_cls(
+        status=status,
+        correlation_id=correlation,
+        task_type="document",
+        model_name="lab-model",
+        quality_gate_passed=status == "completed",
+        execution_duration_ms=125,
+    )
+    payload = terminal.model_dump(mode="json")
+    payload.update(
+        prompt_chars=20,
+        prompt_sha256="a" * 64,
+        response_chars=10,
+        response_sha256="b" * 64,
+        actual_score=0.9 if status == "completed" else 0.0,
+        required_bar=0.8,
+        emitted_at=timestamp.isoformat(),
+        entity_id=str(correlation),
+        causation_id=str(uuid4()),
+        schema_version="1.0.0",
+    )
+    db = InmemoryDatabaseAdapter()
+    payload.update(
+        _db=db,
+        _topic=(
+            "onex.evt.omnimarket.delegate-skill-completed.v1"
+            if status == "completed"
+            else "onex.evt.omnimarket.delegate-skill-failed.v1"
+        ),
+        _envelope_id=str(event_id),
+        _envelope_timestamp=timestamp,
+    )
+    handler = NodeLogPersistenceEffect(pg_dsn="")
+    assert handler.handle(payload)["rows_upserted"] == 1
+    handler.handle(payload)
+    rows = db.query("log_entries")
+    assert len(rows) == 1
+    assert rows[0]["entry_id"] == event_id
+    assert rows[0]["timestamp"] == timestamp
+    assert rows[0]["correlation_id"] == str(correlation)
+    assert rows[0]["message"] == f"Delegation {status}"
+    assert rows[0]["duration_ms"] == 125
+    assert rows[0]["metadata"] == {"task_type": "document", "model_name": "lab-model"}
+    assert (
+        not {"prompt_text", "response", "prompt_sha256", "response_sha256"}
+        & rows[0].keys()
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("status", "topic_status"), [("failed", "completed"), ("completed", "failed")]
+)
+def test_captured_terminal_still_requires_topic_specific_verdict(
+    status: str, topic_status: str
+) -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+
+    db = InmemoryDatabaseAdapter()
+    payload = {
+        "status": status,
+        "correlation_id": str(uuid4()),
+        "task_type": "document",
+        "quality_gate_passed": status == "completed",
+        "prompt_chars": 20,
+        "_db": db,
+        "_topic": f"onex.evt.omnimarket.delegate-skill-{topic_status}.v1",
+        "_envelope_id": str(uuid4()),
+        "_envelope_timestamp": datetime(2026, 10, 15, tzinfo=UTC),
+    }
+    with pytest.raises(ValidationError):
+        NodeLogPersistenceEffect(pg_dsn="").handle(payload)
+    assert db.query("log_entries") == []

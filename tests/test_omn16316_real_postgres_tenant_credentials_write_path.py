@@ -934,3 +934,71 @@ class TestRealPostgresExpiresAt:
             )
             assert row is not None
             assert row["expires_at"] == datetime(2027, 1, 1, tzinfo=UTC)
+
+
+# --- OMN-20992: the router chooses among the pool on real Postgres ---
+#
+# Failure modes:
+#   K1  the catalog read through the runtime's read adapter returns expires_at
+#       in a type the selection cannot compare, or the read is refused, so the
+#       pool silently degrades to the overlay's one key;
+#   K2  an expired key in the pool is chosen.
+
+
+@pytest.mark.integration
+class TestRealPostgresKeyPoolSelection:
+    async def test_k1_k2_live_keys_spread_and_the_expired_key_is_never_chosen(
+        self,
+    ) -> None:
+        from omnimarket.projection.postgres_read_database import (
+            PostgresReadDatabaseAdapter,
+        )
+        from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
+
+        async with _provisioned_runner() as (runner, _admin_conn, schema):
+            live = [f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex}" for _ in range(3)]
+            lapsed = f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex}"
+            for offset, ref in enumerate([*live, lapsed]):
+                await runner.project_event(
+                    TOPIC_REGISTERED,
+                    {
+                        "tenant_id": BYOK_TENANT,
+                        "provider": "openrouter",
+                        "name": "pool-key",
+                        "api_key_ref": ref,
+                        "expires_at": (
+                            "2001-01-01T00:00:00+00:00"
+                            if ref == lapsed
+                            else "2099-01-01T00:00:00+00:00"
+                        ),
+                    },
+                    MessageMeta(
+                        partition=0,
+                        offset=offset,
+                        fallback_id=ref,
+                        topic=TOPIC_REGISTERED,
+                    ),
+                )
+
+            reader = PostgresReadDatabaseAdapter(
+                f"{_base_dsn()}?options=-csearch_path%3D{schema}%2Cpublic",
+                tenant_id=BYOK_TENANT,
+            )
+            try:
+                chosen = set()
+                for i in range(60):
+                    overlay = resolve_tenant_overlay(
+                        reader,
+                        tenant_id=BYOK_TENANT,
+                        task_type="code_generation",
+                        selector_key=f"corr-{i}",
+                    )
+                    assert overlay is not None
+                    chosen.add(overlay.secret_ref)
+            finally:
+                with contextlib.suppress(Exception):
+                    reader.close()
+
+            # The overlay row names the LAST registration (the lapsed key);
+            # selection must route around it to the live pool.
+            assert chosen == set(live)

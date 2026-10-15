@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
+from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_answer_check import (
+    HandlerDelegationAnswerCheck,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_doc_check import (
     HandlerDelegationDocCheck,
 )
@@ -8,4 +11,8 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_dele
     HandlerDelegationRouteCheck,
 )
 
-__all__ = ["HandlerDelegationDocCheck", "HandlerDelegationRouteCheck"]
+__all__ = [
+    "HandlerDelegationAnswerCheck",
+    "HandlerDelegationDocCheck",
+    "HandlerDelegationRouteCheck",
+]

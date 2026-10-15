@@ -611,6 +611,11 @@ jobs:
       # OMN-18932: keep the release bar paired with its pre-commit hook.
       - name: D1 output-only release acceptance (OMN-18932)
         run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+      # OMN-20780: RULING 2026-10-14T18:17:30Z, a delegated answer is gated by an independent judge for the
+      # text classes and by its own named tests for the code classes (OMN-20489). Paired with the
+      # delegation-answer-gate pre-commit hook; named by repo path so the ruling audit finds the gate.
+      - name: Delegated answers gated by an independent judge or named tests (OMN-20489)
+        run: uv run --frozen pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov
       # OMN-20282: paired with the work-ledger-principal-auth pre-commit hook.
       - name: Work-ledger signature and operator-only consent
         run: uv run --frozen pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q
