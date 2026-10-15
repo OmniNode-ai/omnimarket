@@ -203,7 +203,7 @@ async def test_tenant_id_is_appended_without_disturbing_the_column_contract(
         )
     ]
     assert columns, f"positive control: {view} exists and has columns"
-    # 094 may append provenance counts, and 095 the savings view's unpriced-call
+    # 094 may append provenance counts, and 096 the savings view's unpriced-call
     # count, but neither can move any existing column.
     assert columns[16 if view == OVERVIEW else 11] == "tenant_id", columns
     assert columns.count("tenant_id") == 1

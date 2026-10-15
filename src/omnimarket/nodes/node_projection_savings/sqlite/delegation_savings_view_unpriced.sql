@@ -1,7 +1,7 @@
 -- SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 -- SPDX-License-Identifier: MIT
 -- OMN-20717: the SQLite counterpart of node_projection_savings migration
--- 095_delegation_savings_unpriced_calls.sql. It is delegation_savings_view.sql
+-- 096_delegation_savings_unpriced_calls.sql. It is delegation_savings_view.sql
 -- (the OMN-20008 step, whose notes on the differences from Postgres all still
 -- hold) with one column appended: unpriced_call_count, the tenant's delegations
 -- whose stored cost_usd is NULL. A local store has no savings_estimates table,

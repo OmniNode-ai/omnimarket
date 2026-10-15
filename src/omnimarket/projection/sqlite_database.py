@@ -557,7 +557,7 @@ _DELEGATION_SAVINGS_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view.sql",
 )
-# OMN-20717: the counterpart of migration 095, which appends unpriced_call_count
+# OMN-20717: the counterpart of migration 096, which appends unpriced_call_count
 # to the savings view. Its own step after the OMN-20008 one: a store that has
 # recorded that step would never run it again.
 _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP = "omn20717_delegation_savings_unpriced_view"

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """A local store serves delegation.savings.v1's unpriced_call_count (OMN-20717).
 
-Migration 095 appends ``unpriced_call_count`` to the Postgres savings view and
+Migration 096 appends ``unpriced_call_count`` to the Postgres savings view and
 the exposure declares it. The read node refuses an exposure whose relation
 lacks a declared column (503 ``projection_column_missing``), so a local store
 must serve it too, or the local savings page goes dark.

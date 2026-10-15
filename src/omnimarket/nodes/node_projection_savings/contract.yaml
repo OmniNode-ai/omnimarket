@@ -218,7 +218,7 @@ projection_api:
         # the published row carries the tenant whose savings these are.
         # Declared as `tenant_column` at the foot of this exposure.
         - tenant_id
-        # OMN-20717: migration 095 appends the count of delegations no cost
+        # OMN-20717: migration 096 appends the count of delegations no cost
         # model priced, so a total that adds them in as 0 says how many it holds.
         - unpriced_call_count
       json_columns:

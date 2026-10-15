@@ -8,7 +8,7 @@ unknown, not zero, and shows how many calls were unpriced next to the total.
 ``projection_delegation_savings`` already adds an unpriced call in as 0, which
 leaves every total equal to the sum of the priced calls. What it could not do
 was say so: a tenant whose calls were all unpriced read a local cost of 0.0
-with nothing beside it. Migration 095 appends ``unpriced_call_count``. The
+with nothing beside it. Migration 096 appends ``unpriced_call_count``. The
 totals keep their values and stay numbers, because the pages read them as
 numbers.
 
@@ -41,7 +41,7 @@ ALL_PRICED = uuid.UUID("33333333-3333-4333-8333-333333333333")
 ESTIMATED = uuid.UUID("44444444-4444-4444-8444-444444444444")
 WHEN = datetime(2026, 10, 15, 12, tzinfo=UTC)
 
-#: The columns the view served before 095, in order. 095 may only append.
+#: The columns the view served before 096, in order. 096 may only append.
 EXISTING_COLUMNS = [
     "cumulative_savings_usd",
     "cumulative_local_cost_usd",
