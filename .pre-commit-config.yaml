@@ -1253,6 +1253,7 @@ repos:
         entry: uv run python scripts/validation/validate_contract_overlay_boundary.py
         files: ^src/omnimarket/nodes/[^/]+/contract\.yaml$
         pass_filenames: true
+        require_serial: true
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
