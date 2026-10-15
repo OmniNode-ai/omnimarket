@@ -193,12 +193,16 @@ def _goal_uuid(value: JsonValue) -> UUID | None:
 
 
 class ModelClaudeHookContentRefWire(BaseModel):
-    """A pointer to one restricted content record: never the content itself."""
+    """One content field exactly as the harness sent it (OMN-19513).
+
+    ``value`` is raw: the producer neither scrubs nor hashes it (operator
+    RULING 2026-10-15T04:24:42Z on the rolling work ledger).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     field: str = Field(min_length=1)
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    value: str
     length: int = Field(ge=0)
     content_record_id: UUID
 

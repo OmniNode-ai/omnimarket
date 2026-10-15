@@ -3,6 +3,7 @@
 """Host observer: launchd, cron completion evidence, receipts and the journal."""
 
 import json
+import os
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,11 @@ from omnimarket.nodes.node_automation_run_observer_effect.models import (
 )
 from omnimarket.nodes.node_automation_run_observer_effect.sources.host_command_runner import (
     ModelHostCommandOutcome,
+)
+from omnimarket.nodes.node_automation_run_observer_effect.sources.source_consumer_group import (
+    ModelConsumerGroupSnapshot,
+    ModelPartitionOffsets,
+    SourceConsumerGroup,
 )
 
 pytestmark = pytest.mark.unit
@@ -478,3 +484,294 @@ def test_observer_ignores_other_hosts_and_self_emitting_entries(tmp_path: Path) 
     result = poll(HandlerAutomationRunObserver(sink=sink), tmp_path, overlay, T0)
     assert result.entries_read == 0
     assert [t for t, _ in sink.published] == [HEARTBEAT_TOPIC]
+
+
+def read_heartbeats(sink: FakeSink, process_id: str) -> list[dict[str, object]]:
+    return [h for h in sink.of(HEARTBEAT_TOPIC) if h["process_id"] == process_id]
+
+
+def worker_overlay(tmp_path: Path) -> tuple[str, Path]:
+    progress = tmp_path / "worker-progress.json"
+    overlay = write_overlay(
+        tmp_path,
+        [
+            entry(
+                "host-a/worker",
+                trigger={"kind": "systemd-service", "native_id": "worker.service"},
+                max_runtime_seconds=None,
+                expected_interval_seconds=300,
+                real_work="applied",
+                demand="held_units",
+                evidence={"source": "state_file", "locator": str(progress)},
+            )
+        ],
+    )
+    return overlay, progress
+
+
+def write_progress(
+    path: Path, counter: int, last: datetime, now: datetime, held: int
+) -> None:
+    """The worker loop's own record, plus the liveness a wedged worker still shows."""
+    path.write_text(
+        json.dumps(
+            {
+                "progress_counter": counter,
+                "last_progress_at": last.isoformat(),
+                "pid": os.getpid(),
+                "advertiser_at": now.isoformat(),
+                "held_units": held,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_observer_wedged_worker_no_progress(tmp_path: Path) -> None:
+    overlay, progress = worker_overlay(tmp_path)
+    sink = FakeSink()
+    handler = HandlerAutomationRunObserver(sink=sink)
+
+    # the worker is wedged from T0 on: its PID is live (ours) and its advertiser
+    # beats at every poll, but the worker loop's counter never moves
+    write_progress(progress, 5, T0, T0 + timedelta(minutes=1), held=2)
+    inside = poll(handler, tmp_path, overlay, T0 + timedelta(minutes=1))
+    assert inside.findings == ()
+
+    write_progress(progress, 5, T0, T0 + timedelta(minutes=11), held=2)
+    stalled = poll(handler, tmp_path, overlay, T0 + timedelta(minutes=11))
+    assert [(f.verdict.value, f.reason.value) for f in stalled.findings] == [
+        ("overrun", "progress_stalled_with_demand")
+    ]
+    beat = read_heartbeats(sink, "host-a/worker")[-1]
+    assert beat["progress_counter"] == 5
+    assert beat["last_progress_at"] == T0.isoformat().replace("+00:00", "Z")
+    assert beat["demand_count"] == 2
+    assert beat["emitted_at"] == (T0 + timedelta(minutes=11)).isoformat().replace(
+        "+00:00", "Z"
+    )
+
+    # reported once while the stall lasts
+    write_progress(progress, 5, T0, T0 + timedelta(minutes=12), held=2)
+    assert poll(handler, tmp_path, overlay, T0 + timedelta(minutes=12)).findings == ()
+
+    # the worker answers: progress moves, and a later stall is reported again
+    write_progress(progress, 6, T0 + timedelta(minutes=13), T0, held=1)
+    moved = poll(handler, tmp_path, overlay, T0 + timedelta(minutes=14))
+    assert moved.findings == ()
+    assert read_heartbeats(sink, "host-a/worker")[-1]["progress_counter"] == 6
+    write_progress(progress, 6, T0 + timedelta(minutes=13), T0, held=1)
+    again = poll(handler, tmp_path, overlay, T0 + timedelta(minutes=30))
+    assert [f.reason.value for f in again.findings] == ["progress_stalled_with_demand"]
+
+
+def test_observer_wedged_worker_no_progress_positive_control(tmp_path: Path) -> None:
+    overlay, progress = worker_overlay(tmp_path)
+    sink = FakeSink()
+    handler = HandlerAutomationRunObserver(sink=sink)
+    for minute in (1, 11, 21, 31):
+        now = T0 + timedelta(minutes=minute)
+        write_progress(progress, minute, now, now, held=3)
+        assert poll(handler, tmp_path, overlay, now).findings == ()
+    assert len(read_heartbeats(sink, "host-a/worker")) == 4
+
+
+def test_observer_wedged_worker_no_progress_idle_worker_is_no_demand(
+    tmp_path: Path,
+) -> None:
+    overlay, progress = worker_overlay(tmp_path)
+    handler = HandlerAutomationRunObserver(sink=FakeSink())
+    write_progress(progress, 5, T0, T0, held=0)
+    poll(handler, tmp_path, overlay, T0 + timedelta(minutes=1))
+    write_progress(progress, 5, T0, T0, held=0)
+    assert poll(handler, tmp_path, overlay, T0 + timedelta(minutes=30)).findings == ()
+
+
+def test_observer_wedged_worker_unreadable_progress_is_reported_once(
+    tmp_path: Path,
+) -> None:
+    overlay, progress = worker_overlay(tmp_path)
+    handler = HandlerAutomationRunObserver(sink=FakeSink())
+    progress.write_text("{not json", encoding="utf-8")
+    first = poll(handler, tmp_path, overlay, T0)
+    assert [(f.verdict.value, f.reason.value) for f in first.findings] == [
+        ("unobservable", "evidence_unreadable")
+    ]
+    assert poll(handler, tmp_path, overlay, T0 + timedelta(minutes=1)).findings == ()
+
+
+class FakeGroupReader:
+    """Answers a consumer group's offsets from a table the test edits."""
+
+    def __init__(self) -> None:
+        self.end = 100
+        self.committed: int | None = 60
+        self.completions: int | None = 7
+        self.down = False
+
+    def read(
+        self, bootstrap: str, group: str, completion_topic: str | None
+    ) -> ModelConsumerGroupSnapshot:
+        if self.down:
+            raise ConnectionError("dev broker unreachable")
+        assert bootstrap == "dev-broker:19092"
+        return ModelConsumerGroupSnapshot(
+            partitions=(
+                ModelPartitionOffsets(
+                    topic="onex.cmd.example.work.v1",
+                    partition=0,
+                    end_offset=self.end,
+                    committed_offset=self.committed,
+                ),
+            ),
+            completions_total=self.completions if completion_topic else None,
+        )
+
+
+def consumer_overlay(
+    tmp_path: Path, completion_topic: str | None = "onex.evt.example.applied.v1"
+) -> str:
+    return write_overlay(
+        tmp_path,
+        [
+            entry(
+                "host-a/writer",
+                trigger={"kind": "bus-consumer", "native_id": "example-writer-group"},
+                max_runtime_seconds=None,
+                real_work="applied",
+                demand="backlog",
+                evidence={
+                    "source": "consumer_group",
+                    "locator": "example-writer-group",
+                    "completion_record": completion_topic,
+                },
+            )
+        ],
+    )
+
+
+def poll_consumer(
+    handler: HandlerAutomationRunObserver,
+    tmp_path: Path,
+    overlay: str,
+    now: datetime,
+):
+    return handler.handle(
+        ModelAutomationRunObserverRequest(
+            host=HOST,
+            overlay_path=overlay,
+            state_dir=str(tmp_path / "state"),
+            now=now,
+            consumer_bootstrap="dev-broker:19092",
+        )
+    )
+
+
+def test_observer_cron_completion_and_consumer_backlog_consumer_demand_no_work(
+    tmp_path: Path,
+) -> None:
+    overlay = consumer_overlay(tmp_path)
+    reader = FakeGroupReader()
+    sink = FakeSink()
+    handler = HandlerAutomationRunObserver(
+        sink=sink, sources=(SourceConsumerGroup(reader),)
+    )
+
+    # a fixed backlog of 40, no more production, no completion
+    first = poll_consumer(handler, tmp_path, overlay, T0)
+    assert first.findings == ()
+    beat = read_heartbeats(sink, "host-a/writer")[-1]
+    assert (beat["demand_count"], beat["progress_counter"]) == (40, 7)
+
+    stalled = poll_consumer(handler, tmp_path, overlay, T0 + timedelta(minutes=11))
+    assert [(f.verdict.value, f.reason.value) for f in stalled.findings] == [
+        ("overrun", "progress_stalled_with_demand")
+    ]
+    assert "demand 40" in stalled.findings[0].detail
+    beat = read_heartbeats(sink, "host-a/writer")[-1]
+    assert (beat["demand_count"], beat["progress_counter"]) == (40, 7)
+    assert beat["last_progress_at"] == T0.isoformat().replace("+00:00", "Z")
+
+    # committed offsets moving is not work; only a completion is
+    reader.committed = 90
+    assert (
+        poll_consumer(handler, tmp_path, overlay, T0 + timedelta(minutes=12)).findings
+        == ()
+    )
+    assert read_heartbeats(sink, "host-a/writer")[-1]["demand_count"] == 10
+
+    # a completion moves the counter and clears the stall
+    reader.completions = 8
+    poll_consumer(handler, tmp_path, overlay, T0 + timedelta(minutes=13))
+    assert read_heartbeats(sink, "host-a/writer")[-1]["progress_counter"] == 8
+
+
+def test_observer_cron_completion_and_consumer_backlog_consumer_drained_is_quiet(
+    tmp_path: Path,
+) -> None:
+    overlay = consumer_overlay(tmp_path)
+    reader = FakeGroupReader()
+    reader.committed = reader.end
+    handler = HandlerAutomationRunObserver(
+        sink=FakeSink(), sources=(SourceConsumerGroup(reader),)
+    )
+    poll_consumer(handler, tmp_path, overlay, T0)
+    drained = poll_consumer(handler, tmp_path, overlay, T0 + timedelta(minutes=30))
+    assert drained.findings == ()
+
+
+def test_observer_cron_completion_and_consumer_backlog_no_completion_evidence(
+    tmp_path: Path,
+) -> None:
+    overlay = consumer_overlay(tmp_path, completion_topic=None)
+    sink = FakeSink()
+    handler = HandlerAutomationRunObserver(
+        sink=sink, sources=(SourceConsumerGroup(FakeGroupReader()),)
+    )
+    first = poll_consumer(handler, tmp_path, overlay, T0)
+    assert [(f.verdict.value, f.reason.value) for f in first.findings] == [
+        ("unobservable", "demand_unreadable")
+    ]
+    second = poll_consumer(handler, tmp_path, overlay, T0 + timedelta(minutes=1))
+    assert second.findings == ()
+
+
+def test_observer_cron_completion_and_consumer_backlog_unreachable_broker(
+    tmp_path: Path,
+) -> None:
+    overlay = consumer_overlay(tmp_path)
+    reader = FakeGroupReader()
+    reader.down = True
+    handler = HandlerAutomationRunObserver(
+        sink=FakeSink(), sources=(SourceConsumerGroup(reader),)
+    )
+    first = poll_consumer(handler, tmp_path, overlay, T0)
+    assert [(f.verdict.value, f.reason.value) for f in first.findings] == [
+        ("unobservable", "evidence_unreadable")
+    ]
+
+
+def test_observer_cron_completion_and_consumer_backlog_no_commit_is_unobservable(
+    tmp_path: Path,
+) -> None:
+    overlay = consumer_overlay(tmp_path)
+    reader = FakeGroupReader()
+    reader.committed = None
+    handler = HandlerAutomationRunObserver(
+        sink=FakeSink(), sources=(SourceConsumerGroup(reader),)
+    )
+    first = poll_consumer(handler, tmp_path, overlay, T0)
+    assert [f.reason.value for f in first.findings] == ["evidence_unreadable"]
+    assert "no committed offset" in first.findings[0].detail
+
+
+def test_observer_consumer_group_without_broker_in_request_is_unobservable(
+    tmp_path: Path,
+) -> None:
+    overlay = consumer_overlay(tmp_path)
+    handler = HandlerAutomationRunObserver(
+        sink=FakeSink(), sources=(SourceConsumerGroup(FakeGroupReader()),)
+    )
+    result = poll(handler, tmp_path, overlay, T0)
+    assert [f.reason.value for f in result.findings] == ["evidence_unreadable"]
+    assert "consumer_bootstrap" in result.findings[0].detail
