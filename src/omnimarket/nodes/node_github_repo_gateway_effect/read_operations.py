@@ -26,6 +26,7 @@ from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     artifact_archive_request,
     artifact_request,
+    commit_check_runs_request,
     issue_comments_request,
     job_log_request,
     next_page_request,
@@ -48,11 +49,14 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelArtifactsResult,
     ModelArtifactSummary,
     ModelBranchProtectionResult,
+    ModelCheckRun,
     ModelCiChecksResult,
+    ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
     ModelJobLogTailResult,
     ModelJobStep,
     ModelMergeCommitShaResult,
+    ModelMergedPrResult,
     ModelOpenPrsResult,
     ModelOpenPrSummary,
     ModelPrComment,
@@ -618,6 +622,69 @@ def read_pr_heads(
     )
 
 
+def read_commit_check_runs(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelCommitCheckRunsResult:
+    """Latest check runs on a commit, optionally filtered by name (OMN-21146)."""
+    head_sha = request.head_sha
+    if head_sha is None:  # defensive; the request validator already enforces this
+        raise ValueError("this operation requires head_sha.")
+    raw, total, truncated = _collect(
+        transport,
+        commit_check_runs_request(
+            request.repo,
+            head_sha,
+            per_page=min(request.limit, LIST_PAGE_SIZE),
+            check_name=request.check_name,
+        ),
+        item_key="check_runs",
+        limit=request.limit,
+    )
+    return ModelCommitCheckRunsResult(
+        repo=request.repo,
+        head_sha=head_sha,
+        check_name=request.check_name,
+        total_count=total,
+        truncated=truncated,
+        check_runs=[
+            _pick(
+                ModelCheckRun,
+                {
+                    **run,
+                    "app_slug": _nested_str(run.get("app"), "slug") or None,
+                    "head_branch": _nested_str(run.get("check_suite"), "head_branch")
+                    or None,
+                },
+            )
+            for run in raw
+        ],
+    )
+
+
+def read_merged_pr(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelMergedPrResult:
+    """PR state, head refs and actual merge details from REST (OMN-21146)."""
+    pr_number = _require(request.pr_number, "pr_number")
+    pr_request = pull_request_request(request.repo, pr_number)
+    pr = _checked(pr_request, transport.send_sync(pr_request))
+    merged = bool(pr.get("merged", False))
+    merge_sha = pr.get("merge_commit_sha")
+    merged_at = pr.get("merged_at")
+    return ModelMergedPrResult(
+        repo=request.repo,
+        pr_number=pr_number,
+        state="MERGED" if merged else str(pr.get("state", "")).upper(),
+        merged=merged,
+        head_sha=_nested_str(pr.get("head"), "sha"),
+        head_ref=_nested_str(pr.get("head"), "ref"),
+        base_ref=_nested_str(pr.get("base"), "ref"),
+        # GitHub also supplies a test merge SHA for an unmerged PR.
+        merge_commit_sha=merge_sha if merged and isinstance(merge_sha, str) else None,
+        merged_at=merged_at if isinstance(merged_at, str) else None,
+    )
+
+
 def _require(value: int | None, name: str) -> int:
     if value is None:  # defensive; the request validator already enforces this
         raise ValueError(f"this operation requires {name}.")
@@ -628,8 +695,10 @@ __all__: list[str] = [
     "read_artifacts",
     "read_branch_protection",
     "read_ci_checks",
+    "read_commit_check_runs",
     "read_job_log_tail",
     "read_merge_commit_sha",
+    "read_merged_pr",
     "read_open_prs_list",
     "read_pr_heads",
     "read_pr_status",

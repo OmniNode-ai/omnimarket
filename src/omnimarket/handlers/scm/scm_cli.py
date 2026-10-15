@@ -272,6 +272,7 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
         "pr_status",
         "ci_checks",
         "merge_commit_sha",
+        "merged_pr",
         "review_gate",
         "ticket_ref",
     }
@@ -290,7 +291,12 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--branch", default=None, help="run-list, branch-protection, pr-heads."
     )
     @click.option(
-        "--head-sha", default=None, help="run-list: runs of this head; pr-heads."
+        "--head-sha",
+        default=None,
+        help="run-list: runs of this head; pr-heads; commit-check-runs.",
+    )
+    @click.option(
+        "--check-name", default=None, help="commit-check-runs: runs of this name."
     )
     @click.option("--workflow", default=None, help="run-list: a workflow file or id.")
     @click.option("--event", default=None, help="run-list: the triggering event.")

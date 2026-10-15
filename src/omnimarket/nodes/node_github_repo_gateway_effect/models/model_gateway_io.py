@@ -41,6 +41,9 @@ class EnumGithubGatewayOperation(StrEnum):
     # OMN-20977: every PR's head commit and merge outcome, the read the worktree
     # prune tools made with `gh pr list --state merged --json headRefName,headRefOid`.
     PR_HEADS = "pr_heads"
+    # OMN-21146
+    COMMIT_CHECK_RUNS = "commit_check_runs"
+    MERGED_PR = "merged_pr"
 
 
 # Operations scoped to a single PR require ``pr_number``.
@@ -52,6 +55,7 @@ _PR_SCOPED_OPERATIONS: frozenset[EnumGithubGatewayOperation] = frozenset(
         EnumGithubGatewayOperation.MERGE_COMMIT_SHA,
         EnumGithubGatewayOperation.TICKET_REF,
         EnumGithubGatewayOperation.PR_TEXT,
+        EnumGithubGatewayOperation.MERGED_PR,
     }
 )
 # Operations scoped to one workflow run require ``run_id``.
@@ -114,7 +118,15 @@ class ModelGithubGatewayRequest(BaseModel):
     head_sha: str | None = Field(
         default=None,
         pattern=r"^[0-9a-f]{40}$",
-        description="workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit.",
+        description=(
+            "workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit; "
+            "commit_check_runs: required commit to read."
+        ),
+    )
+    check_name: str | None = Field(
+        default=None,
+        min_length=1,
+        description="commit_check_runs only: keep check runs of this name",
     )
     workflow: str | None = Field(
         default=None,
@@ -169,6 +181,13 @@ class ModelGithubGatewayRequest(BaseModel):
             and self.job_id is None
         ):
             raise ValueError("operation 'job_log_tail' requires job_id to be set.")
+        if (
+            self.operation is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS
+            and self.head_sha is None
+        ):
+            raise ValueError(
+                "operation 'commit_check_runs' requires head_sha to be set."
+            )
         if (
             self.artifact_id is not None
             and self.operation is not EnumGithubGatewayOperation.ARTIFACTS
@@ -573,6 +592,51 @@ class ModelPrHeadsResult(_ModelBoundedList):
     prs: list[ModelPrHead] = Field(default_factory=list)
 
 
+# --- OMN-21146: commit checks and PR merge details ---------------------------
+
+
+class ModelCheckRun(BaseModel):
+    """One check run on a commit, including its app and check-suite branch."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    name: str
+    app_slug: str | None = None
+    status: str
+    conclusion: str | None = None
+    head_branch: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
+class ModelCommitCheckRunsResult(_ModelBoundedList):
+    """Commit check runs (replaces ``gh api repos/<r>/commits/<sha>/check-runs``)."""
+
+    operation: Literal["commit_check_runs"] = "commit_check_runs"
+    repo: str
+    head_sha: str
+    check_name: str | None = None
+    check_runs: list[ModelCheckRun] = Field(default_factory=list)
+
+
+class ModelMergedPrResult(BaseModel):
+    """PR state, head refs and merge details (replaces ``gh pr view --json``)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: Literal["merged_pr"] = "merged_pr"
+    repo: str
+    pr_number: int
+    state: str
+    merged: bool
+    head_sha: str
+    head_ref: str
+    base_ref: str
+    merge_commit_sha: str | None = None
+    merged_at: str | None = None
+
+
 GithubGatewayResult = Annotated[
     ModelPrStatusResult
     | ModelCiChecksResult
@@ -587,7 +651,9 @@ GithubGatewayResult = Annotated[
     | ModelArtifactsResult
     | ModelPrTextResult
     | ModelReleasesResult
-    | ModelPrHeadsResult,
+    | ModelPrHeadsResult
+    | ModelCommitCheckRunsResult
+    | ModelMergedPrResult,
     Field(discriminator="operation"),
 ]
 
@@ -621,12 +687,15 @@ __all__: list[str] = [
     "ModelArtifactsResult",
     "ModelBranchProtectionResult",
     "ModelCheckContext",
+    "ModelCheckRun",
     "ModelCiChecksResult",
+    "ModelCommitCheckRunsResult",
     "ModelGithubGatewayRequest",
     "ModelGithubGatewayResponse",
     "ModelJobLogTailResult",
     "ModelJobStep",
     "ModelMergeCommitShaResult",
+    "ModelMergedPrResult",
     "ModelOpenPrSummary",
     "ModelOpenPrsResult",
     "ModelPrComment",

@@ -19,8 +19,10 @@ from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
     read_artifacts,
     read_branch_protection,
     read_ci_checks,
+    read_commit_check_runs,
     read_job_log_tail,
     read_merge_commit_sha,
+    read_merged_pr,
     read_open_prs_list,
     read_pr_heads,
     read_pr_status,
@@ -61,6 +63,11 @@ def dispatch(
         return read_releases(transport, request)
     if op is EnumGithubGatewayOperation.PR_HEADS:
         return read_pr_heads(transport, request)
+
+    if op is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS:
+        return read_commit_check_runs(transport, request)
+    if op is EnumGithubGatewayOperation.MERGED_PR:
+        return read_merged_pr(transport, request)
 
     # PR-scoped operations: the request validator guarantees pr_number is set.
     pr_number = request.pr_number

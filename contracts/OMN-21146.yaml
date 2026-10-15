@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21146"
+title: "dod_verify reads PR facts and check-runs through the GitHub gateway node"
+summary: "node_github_repo_gateway_effect gains two read operations, commit_check_runs (a commit's latest check runs, optionally by name) and merged_pr (one PR's state, head and merge facts), each served by an onex scm verb. node_dod_verify reads a merged PR's facts and a commit's repo-evidence check runs through a gateway read client instead of the gh CLI: in process when the gateway's contract-declared token resolves, otherwise over the bus to the deployed gateway."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-gateway-answers-both-reads"
+    statement: "The GitHub gateway node answers a check-runs-at-commit request and a merged-PR-by-number request with typed results."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_github_repo_gateway_effect answers a check-runs-at-commit request and a merged-PR-by-number request over the bus -- falsifier: the gateway's handler tests for both operations fail, or a lab request for omnimarket#3726's merge commit check-runs returns no rows"
+  - id: "req-dod-verify-no-gh"
+    statement: "node_dod_verify reads PR facts and check runs the local source does not hold from the gateway node, never the gh CLI."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: node_dod_verify issues no gh subprocess for PR facts or check-runs -- falsifier: a test that installs a gh stub which fails on any call sees it called during a verify of a ticket whose PRs are outside the watcher window"
+      - id: "AC3"
+        statement: "AC3: on a lab host with the gh shim, dod_verify for OMN-19401 (PRs merged 2026-10-08 and 2026-10-10) reaches a verdict other than REPO_CONTRACT_UNRESOLVED -- falsifier: the lab run's receipt reads REPO_CONTRACT_UNRESOLVED or error_github_api"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the gateway's read tests for commit_check_runs and merged_pr, and the onex scm verbs that publish them."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect tests/unit/handlers/scm/test_onex_scm_command.py tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC2 and AC3: a verify of a ticket whose PRs merged outside the watcher window, with a gh on PATH that fails on any call."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_reads_through_gateway.py tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21146-ac1-gateway-operations"
+    description: "AC1: the gateway reads a commit's check runs (paged, filtered by name) and one PR's merge facts, and the commit-check-runs and pr-merged verbs publish them on the gateway's command topic and return the terminal result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect tests/unit/handlers/scm/test_onex_scm_command.py tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21146-ac2-no-gh"
+    description: "AC2: with a gh stub on PATH that fails on any call, a verify of a ticket whose PRs merged outside the watcher window never calls it and reads the PRs and check runs from the gateway."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_reads_through_gateway.py tests/unit/nodes/node_dod_verify/test_dod_verify_repo_first_lookup.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21146-ac3-verdict-not-unresolved"
+    description: "AC3 hosted probe: the same verify of PRs outside the watcher window reaches a verdict that is not REPO_CONTRACT_UNRESOLVED and names no error_github_api. The live half of AC3 is a lab dod_verify run for OMN-19401 once the gateway with merged_pr and commit_check_runs is deployed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_reads_through_gateway.py -q -p no:randomly --no-cov -k outside_the_watcher_window"
+    binds_ac: ["AC3"]
