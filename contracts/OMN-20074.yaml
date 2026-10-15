@@ -106,11 +106,11 @@ requirements:
           AC14: the three uncalled occ scripts do not exist, five files that listed the governance repository no longer name it and the imperative-contract-guard required check names its omnibase_core owner -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -p no:randomly fails at the merge base
   - id: "req-repo-evidence-preflight-key"
     statement: |-
-      Every workflow that waits on repo-evidence / dod-verify keys that wait job by the evidence it reads, repo-evidence-preflight, and no workflow declares, needs or reads the result of a job keyed occ-preflight; the key keeps the word preflight so omnibase_core's shape-gate independence guard still finds the job, and the job's display name Repo Evidence Dependency is unchanged.
+      The repo-evidence wait job in ci.yml and validator-runtime-profiles.yml is keyed by the evidence it reads, repo-evidence-preflight, and no workflow other than the four whose occ-preflight key omniclaude's advisory-job baseline grandfathers (auto-merge.yml, dep-health-gate.yml, market-skill-baseline.yml, plugin-compat-gate.yml) declares, needs or reads the result of a job keyed occ-preflight; the key keeps the word preflight so omnibase_core's shape-gate independence guard still finds the job, and the job's display name Repo Evidence Dependency is unchanged.
     acceptance:
       - id: "AC15"
         statement: |-
-          AC15: auto-merge.yml, ci.yml, dep-health-gate.yml, market-skill-baseline.yml, plugin-compat-gate.yml and validator-runtime-profiles.yml declare a repo-evidence-preflight job named Repo Evidence Dependency, every needs edge and result expression that named occ-preflight names it, and no workflow declares, needs or reads occ-preflight -- falsifier: uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -p no:randomly -k keyed_by_what_it_waits_for fails at the merge base
+          AC15: ci.yml and validator-runtime-profiles.yml declare a repo-evidence-preflight job named Repo Evidence Dependency, every needs edge and result expression there that named occ-preflight names it, and no workflow outside the four advisory-baseline workflows declares, needs or reads occ-preflight -- falsifier: uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -p no:randomly -k keyed_by_what_it_waits_for fails at the merge base
   - id: "req-main-target-guard-no-receipt"
     statement: |-
       The main-target guard admits no pull request onto main on a change-control promotion or hotfix receipt: main is release-synced and, per the operator ruling of 2026-10-10T16:52:56Z, anything targeting it violates the rule, so the guard refuses every pull request onto main and still admits every pull request onto dev.
@@ -159,7 +159,7 @@ evidence_requirements:
     description: "This PR's retired-boundary regression fails against the merge-base manifest and passes at the head."
     command: "uv run pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -k test_d2_bundled_manifest_lists_no_retired_change_control_boundary"
   - kind: "tests"
-    description: "Every repo-evidence wait job is keyed repo-evidence-preflight and no workflow names an occ-preflight job."
+    description: "The ci.yml and validator-runtime-profiles.yml repo-evidence wait jobs are keyed repo-evidence-preflight and only the four advisory-baseline workflows keep an occ-preflight job."
     command: "uv run pytest tests/ci/test_repo_evidence_prerequisite_workflow.py -q -p no:randomly -k keyed_by_what_it_waits_for"
   - kind: "tests"
     description: "The main-target guard refuses every PR onto main, receipt or not, and admits PRs onto dev."
@@ -301,7 +301,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC14"]
   - id: "dod-omn20074-repo-evidence-preflight-key"
-    description: "The six repo-evidence wait jobs are keyed repo-evidence-preflight and no workflow declares, needs or reads occ-preflight."
+    description: "The ci.yml and validator-runtime-profiles.yml wait jobs are keyed repo-evidence-preflight and only the four advisory-baseline workflows keep occ-preflight."
     source: "manual"
     checks:
       - check_type: "test_passes"

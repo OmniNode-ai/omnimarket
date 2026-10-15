@@ -38,7 +38,7 @@ env:
   PYTHON_VERSION: '3.12'
 
 jobs:
-  repo-evidence-preflight:
+  occ-preflight:
     name: Repo Evidence Dependency
     runs-on: ubuntu-latest
     permissions:
@@ -144,7 +144,7 @@ jobs:
           echo "::error::Timed out waiting for repo-evidence / dod-verify on ${HEAD_SHA}."
           exit 1
   plugin-compat-handshake:
-    needs: repo-evidence-preflight
+    needs: occ-preflight
     name: Runtime version handshake tests
     runs-on: >-
       ${{
@@ -154,7 +154,7 @@ jobs:
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
     timeout-minutes: 10
-    if: needs.repo-evidence-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.occ-preflight.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
       - name: Checkout code

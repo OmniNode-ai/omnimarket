@@ -19,6 +19,17 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
 CONTEXT = "repo-evidence / dod-verify"
 JOB_KEY = "repo-evidence-preflight"
+# OMN-20074: these four workflows still key the same wait job occ-preflight.
+# omniclaude's advisory-job gate grandfathers each by "<file>::occ-preflight" in
+# its census baseline (none of the four files carries a required context), so
+# the key moves only after that baseline entry is renamed in omniclaude.
+LEGACY_KEY = "occ-preflight"
+LEGACY_KEYED = (
+    "auto-merge.yml",
+    "dep-health-gate.yml",
+    "market-skill-baseline.yml",
+    "plugin-compat-gate.yml",
+)
 POLLERS = (
     "auto-merge.yml",
     "ci.yml",
@@ -31,7 +42,7 @@ POLLERS = (
 
 def _poller(filename: str) -> dict:
     workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
-    return workflow["jobs"][JOB_KEY]
+    return workflow["jobs"][LEGACY_KEY if filename in LEGACY_KEYED else JOB_KEY]
 
 
 @pytest.mark.parametrize("filename", POLLERS)
@@ -173,10 +184,11 @@ def test_repo_evidence_wait_is_keyed_by_what_it_waits_for() -> None:
     """OMN-20074: the wait job reads repo evidence, so its key no longer names OCC.
 
     Every workflow that waits on ``repo-evidence / dod-verify`` declares the job
-    as ``repo-evidence-preflight``, and no workflow declares, needs or reads
-    the result of a job keyed ``occ-preflight``. The key keeps the word
-    ``preflight``: omnibase_core's shape-gate independence guard finds the
-    preflight job by that word, so dropping it would hide the job from the guard.
+    as ``repo-evidence-preflight``, except the four in ``LEGACY_KEYED``, and no
+    other workflow declares, needs or reads the result of a job keyed
+    ``occ-preflight``. The key keeps the word ``preflight``: omnibase_core's
+    shape-gate independence guard finds the preflight job by that word, so
+    dropping it would hide the job from the guard.
     """
     keyed: set[str] = set()
     legacy: list[str] = []
@@ -185,11 +197,13 @@ def test_repo_evidence_wait_is_keyed_by_what_it_waits_for() -> None:
         jobs = (yaml.safe_load(text) or {}).get("jobs") or {}
         if JOB_KEY in jobs:
             keyed.add(path.name)
+        if path.name in LEGACY_KEYED:
+            continue
         for job_id, job in jobs.items():
             if job_id == "occ-preflight" or "occ-preflight" in _needs(job or {}):
                 legacy.append(f"{path.name}:{job_id}")
         if "needs.occ-preflight." in text:
             legacy.append(f"{path.name}:needs.occ-preflight expression")
     assert "preflight" in JOB_KEY
-    assert keyed == set(POLLERS)
+    assert keyed == set(POLLERS) - set(LEGACY_KEYED)
     assert not legacy, legacy
