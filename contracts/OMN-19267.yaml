@@ -33,6 +33,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC2: the per-class profile test maps complex_reasoning to a thinking-suppressing profile."
     command: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q -k complex_reasoning"
+  - kind: "tests"
+    description: "The canonical contract declares and claims only AC1 and AC2, while historical evidence retains its executable checks without criterion claims."
+    command: "uv run pytest tests/test_omn19267_contract_criteria.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -79,11 +82,14 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: []
   - id: "dod-omn19267-ac2-complex-reasoning-no-think"
-    description: "AC2 hosted probe, complex_reasoning only, as the ticket's reworded criterion states. The per-class profile test cases for complex_reasoning map it to a thinking-suppressing profile. The deploy readback loads this repo-owned contract with the installed canonical schema and checks that its requirements and evidence claim only the ticket criteria AC1 and AC2. The other evidence items keep running without claiming criteria the ticket does not carry."
+    description: "AC2 hosted probe, complex_reasoning only, as the ticket's reworded criterion states. The per-class profile test cases for complex_reasoning map it to a thinking-suppressing profile. Regression tests load this contract with the canonical schema, require declarations and claims to match AC1 and AC2, and require historical evidence to keep its checks without claiming other criteria. The deploy readback checks the installed contract's declarations and claims. This contract and test coverage change uses the hosted gate's test-only evidence path."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_prose_task_class_no_think_omn18967.py -q -k complex_reasoning"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19267_contract_criteria.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |
