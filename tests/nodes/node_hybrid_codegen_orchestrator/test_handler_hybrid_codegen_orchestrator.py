@@ -162,10 +162,14 @@ class TestPhaseRoutingEquivalence:
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
-        assert by_path["handler.py"] == "handler-src"
-        assert by_path["contract.yaml"] == "name: x\n"
-        assert "metadata.yaml" in by_path
-        assert ".rsd_provenance.json" in by_path
+        base = "omnimarket/nodes/node_greeter_compute"
+        # OMN-21152: the canonical node package layout, six files.
+        assert by_path[f"{base}/handlers/handler_greeter_compute.py"] == "handler-src"
+        assert f"{base}/contract.yaml" in by_path
+        assert f"{base}/metadata.yaml" in by_path
+        assert f"{base}/__init__.py" in by_path
+        assert f"{base}/handlers/__init__.py" in by_path
+        assert f"{base}/.rsd_provenance.json" in by_path
 
     def test_serialize_lint_failure_emits_rejected_contract_lint(self) -> None:
         # OMN-21151: a contract that failed its lint never reaches the file
@@ -288,7 +292,7 @@ class TestProvenanceStampSeam:
         )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
-        assert ".rsd_provenance.json" in by_path
+        assert "omnimarket/nodes/node_greeter_compute/.rsd_provenance.json" in by_path
 
     def test_provenance_stamp_schema_matches_gate_seam_contract(self) -> None:
         state = ModelCodegenPipelineState(
@@ -302,7 +306,8 @@ class TestProvenanceStampSeam:
         )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
-        stamp = json.loads(by_path[".rsd_provenance.json"])
+        base = "omnimarket/nodes/node_greeter_compute"
+        stamp = json.loads(by_path[f"{base}/.rsd_provenance.json"])
 
         # Field-for-field seam contract (OMN-14208 guard): every key/type the
         # omnibase_core gate reads MUST be present with these exact names.
@@ -312,9 +317,11 @@ class TestProvenanceStampSeam:
         assert stamp["run_id"] == "run-abc-123"
         assert stamp["node_name"] == "NodeGreeterCompute"
         assert set(stamp["files_sha256"]) == {
-            "handler.py",
+            "__init__.py",
             "contract.yaml",
             "metadata.yaml",
+            "handlers/__init__.py",
+            "handlers/handler_greeter_compute.py",
         }
 
         # The digest is RECOMPUTED here from the same content written to the
@@ -323,6 +330,5 @@ class TestProvenanceStampSeam:
         def _sha(text: str) -> str:
             return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-        assert stamp["files_sha256"]["handler.py"] == _sha(by_path["handler.py"])
-        assert stamp["files_sha256"]["contract.yaml"] == _sha(by_path["contract.yaml"])
-        assert stamp["files_sha256"]["metadata.yaml"] == _sha(by_path["metadata.yaml"])
+        for rel, digest in stamp["files_sha256"].items():
+            assert digest == _sha(by_path[f"{base}/{rel}"]), rel

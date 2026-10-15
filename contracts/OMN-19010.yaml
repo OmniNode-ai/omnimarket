@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19010"
+title: "The fan-out's READY control uses a declared shape directive, and a test-shaped item names its task class"
+summary: "The delegate fan-out now lives in node_delegate_fanout_effect. Its READY control prompt matches a declared response_shape_directives pattern, a test_shaped item without a task_type is refused at admission, and the pin reads the directive table from the contract file in this repository."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ready-control-shape-directive"
+    statement: "The criteria below are transcribed from the ticket body; each id is the label a dod_evidence item claims through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The workflow declares a READY control prompt whose text matches at least one pattern in `response_shape_directives`, read from the contract file at test time and applied as a case-insensitive regular expression — falsifier: `uv run pytest tests/test_delegate_fanout_workflow.py -k control_prompt`, red when the workflow's control prompt is reworded or when the matching phrase leaves the contract table."
+      - id: "AC2"
+        statement: "AC2: The pin discriminates rather than matching anything — falsifier: `uv run pytest tests/test_delegate_fanout_workflow.py -k discriminates`, asserting the prompt that failed on 2026-09-21 matches no pattern in the table, red if the matcher is loosened to accept it."
+      - id: "AC3"
+        statement: "AC3: An item marked test-shaped that declares no task type is refused at admission and never dispatched — falsifier: `uv run pytest tests/test_delegate_fanout_workflow.py -k test_shaped`, red when the refusal is removed or when a task type stops satisfying it."
+      - id: "AC4"
+        statement: "AC4: The cross-repo pin executes in the required whole-tree job rather than skipping — falsifier: `uv run pytest tests/test_delegate_fanout_workflow.py -k contract_is_reachable`, red when the contract file cannot be resolved from any declared search path, so an absent sibling checkout fails rather than silently skipping."
+      - id: "AC5"
+        statement: "AC5: A live run on the dev lane using the declared control prompt verbatim returns a completed terminal for the control — falsifier: `bash omnibase_infra/scripts/onex delegate` driven with the declared control prompt, its correlation id resolvable to a run directory whose receipt records a completed terminal rather than a single-word-fragment refusal."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe: the READY control prompt the node declares matches a pattern in response_shape_directives read from the contract file, and a reworded prompt matches none."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k control_prompt"
+  - kind: "tests"
+    description: "AC2 hosted probe: the 2026-09-21 capital-of-France prompt matches no pattern in the table while the READY control does."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k discriminates"
+  - kind: "tests"
+    description: "AC3 hosted probe: a test_shaped item with no, empty or blank task_type is refused at admission and one naming a task type is admitted."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k test_shaped"
+  - kind: "tests"
+    description: "AC4 hosted probe: the shape-directive contract file resolves inside this repository and its exact_literal list is non-empty; absence fails, never skips."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k contract_is_reachable"
+  - kind: "tests"
+    description: "AC5 hosted probe: every test of the READY control shape pin passes; the live dev-lane readback is recorded in the pull request."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19010-ac1"
+    description: "AC1 hosted probe: the READY control prompt the node declares matches a pattern in response_shape_directives read from the contract file, and a reworded prompt matches none."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k control_prompt"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19010-ac2"
+    description: "AC2 hosted probe: the 2026-09-21 capital-of-France prompt matches no pattern in the table while the READY control does."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k discriminates"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19010-ac3"
+    description: "AC3 hosted probe: a test_shaped item with no, empty or blank task_type is refused at admission and one naming a task type is admitted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k test_shaped"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19010-ac4"
+    description: "AC4 hosted probe: the shape-directive contract file resolves inside this repository and its exact_literal list is non-empty; absence fails, never skips."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly -k contract_is_reachable"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19010-ac5-ready-control-declared"
+    description: "AC5 hosted probe. The READY control the node declares matches a declared shape directive, the 2026-09-21 prompt matches none, and test-shaped admission holds, so the control prompt a live run sends verbatim is one the contract table admits. The live dev-lane run (onex delegate, deployed-lane, task type summarization, run 5f147b2a-8d99-4e2d-a3f5-64b13a590a2f, correlation 2c877731-253e-46a8-9f2c-616a884a9958, terminal completed, response READY) is recorded in the pull request that adds this contract; this probe is the part a hosted runner can repeat."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_ready_control_shape_directive.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]

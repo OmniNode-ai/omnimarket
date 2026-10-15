@@ -875,9 +875,9 @@ repos:
       - id: byok-customer-chooses-model
         name: BYOK customers choose their OpenRouter model
         language: system
-        entry: uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly
+        entry: uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly
         pass_filenames: false
-        files: ^(src/omnimarket/(cli/cli_secret|routing/byok_model_discovery|projection/credential_publisher)\.py|src/omnimarket/configs/byok_provider_backends\.v1\.yaml|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_delegate_skill_orchestrator)/.*|tests/test_omn20844_chosen_model_never_re_aimed\.py|tests/unit/cli/test_omn20844_openrouter_model_choice\.py|tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844\.py)$
+        files: ^(src/omnimarket/(cli/cli_secret|routing/byok_model_discovery|projection/credential_publisher)\.py|src/omnimarket/configs/byok_provider_backends\.v1\.yaml|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_delegate_skill_orchestrator|node_model_setup_effect)/.*|tests/test_omn20844_chosen_model_never_re_aimed\.py|tests/unit/cli/test_omn20844_openrouter_model_choice\.py|tests/unit/cli/test_omn20844_onboarding_default_model_overlay\.py|tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844\.py)$
         stages: [pre-commit]
 
       # OMN-20287: no new deployment fact (backend, endpoint, model name, secret
@@ -1253,6 +1253,7 @@ repos:
         entry: uv run python scripts/validation/validate_contract_overlay_boundary.py
         files: ^src/omnimarket/nodes/[^/]+/contract\.yaml$
         pass_filenames: true
+        require_serial: true
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
