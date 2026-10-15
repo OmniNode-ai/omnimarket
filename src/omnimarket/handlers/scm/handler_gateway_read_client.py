@@ -97,8 +97,14 @@ def read_over_bus(
                 correlation_id=request.correlation_id,
                 timeout_s=timeout_s,
             )
-        if terminal.failed:
-            raise GatewayReadError(f"gateway {request.operation.value} failed")
+        # The runtime answers a handler fault on the success topic with
+        # status=failed and the reason; a gateway that predates an operation
+        # refuses the request that way.
+        if terminal.failed or terminal.payload.get("status") == "failed":
+            reason = str(terminal.payload.get("failure_reason") or "no reason")
+            raise GatewayReadError(
+                f"gateway {request.operation.value} failed: {reason[:300]}"
+            )
         return terminal.payload
 
     try:

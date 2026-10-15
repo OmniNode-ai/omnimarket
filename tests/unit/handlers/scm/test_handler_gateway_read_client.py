@@ -102,3 +102,29 @@ def test_no_answer_is_a_typed_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
             ),
             timeout_s=0.2,
         )
+
+
+def test_a_gateway_that_refuses_the_request_is_a_typed_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deployed gateway that predates an operation answers status=failed."""
+    bus = FakeBus()
+
+    def refuse(topic: str, payload: dict[str, object]) -> tuple[str, dict[str, object]]:
+        return GATEWAY.success, {
+            "correlation_id": payload["correlation_id"],
+            "status": "failed",
+            "failure_reason": "Input should be 'pr_status', ... [input_value='merged_pr']",
+        }
+
+    monkeypatch.setattr(bus, "_respond", refuse)
+    _install(monkeypatch, bus)
+
+    with pytest.raises(GatewayReadError, match="merged_pr failed: Input should be"):
+        read_over_bus(
+            ModelGithubGatewayRequest(
+                operation=EnumGithubGatewayOperation.MERGED_PR,
+                repo=REPO,
+                pr_number=77,
+            )
+        )
