@@ -39,13 +39,15 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py -k 'every_rung_and_case_gets_a_row or rungs_config_names_every_configured_rung or unresolved_rung_is_reported' -q -p no:randomly --no-cov"
     binds_ac: ["AC1"]
   - id: "dod-omn19456-ac2-admission-fixtures"
-    description: "AC2: the two admission fixtures are committed under the rung_eval package and load as the nightly's cases."
+    description: "AC2: the two admission fixtures are committed under the rung_eval package and load as the nightly's cases; unresolved attempts for either fixture are reported as gaps rather than evidence that it ran."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py -k admission_fixtures_are_committed -q -p no:randomly --no-cov"
       - check_type: "command"
         check_value: "git grep -l -e pr_classification_37 -e m4_ticket_grouping_29 HEAD -- src/omnimarket/delegation/rung_eval/fixtures"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/rung_eval/test_rung_eval.py::test_unresolved_rung_is_reported_not_counted_as_a_row -q -p no:randomly --no-cov"
     binds_ac: ["AC2"]
   - id: "dod-omn19456-ac3-missing-night-report"
     description: "AC3: the detector reports a planted gap, a placeholder-only rung and an absent night, and keeps an error row as a row."
