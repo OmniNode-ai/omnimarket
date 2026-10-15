@@ -9,9 +9,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import asyncpg
 import pytest
 
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
+from omnimarket.nodes.node_projection_work_ledger import parity
 from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
     apply_ops,
     fold_row,
@@ -177,3 +179,150 @@ def test_cli_exit_codes_and_typed_json(
     assert main([*args, "--format", "text"]) == 1
     assert "exact=False" in capsys.readouterr().out
     assert main(["--ledger", str(tmp_path / "missing.md"), *args[2:]]) == 2
+
+
+class _ParityConnection:
+    """Exercise the real database loaders without opening a network connection."""
+
+    def __init__(self, *, fail_at: str = "", error: Exception | None = None) -> None:
+        self.fail_at = fail_at
+        self.error = error
+        self.queries: list[str] = []
+        self.closed = False
+        self.rows, self.state = _project(_canonical(split_ledger_rows(LEDGER)))
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, Any]]:
+        self.queries.append(query)
+        stage = {
+            parity._SELECT_ROWS: "rows",
+            parity._SELECT_STATE: "state",
+            parity._SELECT_SOURCES: "sources",
+        }[query]
+        if stage == self.fail_at:
+            assert self.error is not None
+            raise self.error
+        if stage == "rows":
+            assert args == (SINCE, UNTIL) or args == (
+                datetime(2026, 9, 28, tzinfo=UTC),
+                datetime(2026, 9, 28, 23, 59, 59, tzinfo=UTC),
+            )
+            return [
+                {"row_id": key, "row_ts": stamp} for key, stamp in self.rows.items()
+            ]
+        if stage == "state":
+            assert args == ()
+            return [{"entity_key": key, **value} for key, value in self.state.items()]
+        return [{"source": "onex-ledger", "n": len(self.rows)}]
+
+    async def close(self) -> None:
+        self.closed = True
+        if self.fail_at == "close":
+            assert self.error is not None
+            raise self.error
+
+
+def _database_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger.write_text(LEDGER)
+    monkeypatch.setenv("PARITY_TEST_DSN", "postgresql://test.invalid/parity")
+    return [
+        "--ledger", str(ledger), "--since", "2026-09-28T10:00:00Z",
+        "--until", "2026-09-28T23:00:00Z", "--dsn-env", "PARITY_TEST_DSN",
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("stage", ["connect", "rows", "state", "sources", "close"])
+@pytest.mark.parametrize(
+    ("error_type", "message"),
+    [
+        (
+            asyncpg.InsufficientPrivilegeError,
+            "permission denied for table work_ledger_state",
+        ),
+        (
+            asyncpg.UndefinedTableError,
+            'relation "omninode_internal.work_ledger_state" does not exist',
+        ),
+        (asyncpg.PostgresConnectionError, "connection was closed"),
+        (asyncpg.InterfaceError, "connection is closed"),
+        (ConnectionRefusedError, "connection refused"),
+        (TimeoutError, "connection timed out"),
+    ],
+    ids=[
+        "permission",
+        "missing-table",
+        "connection",
+        "interface",
+        "refused",
+        "timeout",
+    ],
+)
+@pytest.mark.parametrize("output", ["json", "text", "receipt"])
+def test_parity_database_error_exits_2(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    error_type: type[Exception],
+    message: str,
+    output: str,
+) -> None:
+    args = _database_args(tmp_path, monkeypatch)
+    error = error_type(message)
+    connection = _ParityConnection(fail_at=stage, error=error)
+
+    async def connect(dsn: str) -> _ParityConnection:
+        assert dsn == "postgresql://test.invalid/parity"
+        if stage == "connect":
+            raise error
+        return connection
+
+    monkeypatch.setattr(asyncpg, "connect", connect)
+    if output == "receipt":
+        args.extend(
+            ["--utc-day", "2026-09-28", "--receipt", "--state-dir", str(tmp_path)]
+        )
+    else:
+        args.extend(["--format", output])
+    assert main(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "work_ledger_parity:" in captured.err
+    assert type(error).__name__ in captured.err
+    assert str(error) in captured.err
+    if stage != "connect":
+        assert connection.closed
+
+
+@pytest.mark.parametrize("wrong_state", [False, True])
+def test_parity_database_reads_state_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    wrong_state: bool,
+) -> None:
+    args = _database_args(tmp_path, monkeypatch)
+    connection = _ParityConnection()
+    if wrong_state:
+        connection.state["claim:alpha"]["closed_at"] = datetime(
+            2026, 9, 28, 10, 45, tzinfo=UTC
+        )
+
+    async def connect(dsn: str) -> _ParityConnection:
+        return connection
+
+    monkeypatch.setattr(asyncpg, "connect", connect)
+    assert main(args) == (1 if wrong_state else 0)
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert captured.err == ""
+    assert report["state_entities_compared"] > 0
+    assert [m["kind"] for m in report["mismatches"]] == (
+        ["state_closed_at_differs"] if wrong_state else []
+    )
+    assert connection.queries == [
+        parity._SELECT_ROWS,
+        parity._SELECT_STATE,
+        parity._SELECT_SOURCES,
+    ]
+    assert connection.closed

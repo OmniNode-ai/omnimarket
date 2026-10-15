@@ -53,6 +53,9 @@ _FETCH_TIMEOUT_SECONDS = 900
 _BUILD_TIMEOUT_SECONDS = 1800
 _SSH_ERROR_EXIT = 255
 _ORPHAN_AGE_MINUTES = 60
+# A Linux host has no vm.loadavg sysctl; its one-minute load is the first field
+# of this file. The macOS lab hosts have no such file and use the sysctl.
+PROC_LOADAVG = "/proc/loadavg"
 
 
 class _SshWallClockExceededError(FocusedTestRunInfraError):
@@ -129,8 +132,10 @@ class EphemeralContainerFocusedRunSubprocess:
 
     def admission(self) -> ModelHostAdmission:
         docker = self._q(self.docker_bin())
+        proc = self._q(PROC_LOADAVG)
         out = self._ssh(
-            f"{docker} ps -q --filter label={DTL_LABEL_KEY} | wc -l; sysctl -n vm.loadavg"
+            f"{docker} ps -q --filter label={DTL_LABEL_KEY} | wc -l; "
+            f"if [ -r {proc} ]; then cat {proc}; else sysctl -n vm.loadavg; fi"
         ).stdout.decode()
         lines = [line.strip() for line in out.splitlines() if line.strip()]
         try:

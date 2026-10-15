@@ -163,6 +163,13 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.models.delegation.wire.model_answer_gate_request import (
+    EnumAnswerGateKind,
+    EnumIndependentJudgeVerdict,
+    ModelAnswerGateRequest,
+    ModelAnswerJudgeCall,
+    ModelIndependentJudgeVerdict,
+)
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunRequest,
@@ -196,11 +203,19 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import 
 # deterministic floor even at a graded score below the class ``required_bar`` (e.g.
 # code_generation ~0.733 < 0.85). Acceptance = ``passed`` AND ``score >= required_bar``
 # AND not a deterministic-floor rejection — resolved from the task-class contract.
-from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
-    RequiredBarAuthorityError,
-    is_quality_accepted,
-    resolve_required_bar_authority,
-    with_executed_check_verdict,
+# Canonical quality-gate reducer (OMN-13597): the SAME gate the bus path runs.
+# ``delta`` is the pure reducer; ``resolve_task_class_dod_checks`` is the routing
+# authority's public DoD resolver. Composing both here makes the local CLI path
+# run the real gate instead of recording a hardcoded PASS — a refusal or empty
+# answer now projects ``quality_gate_passed=false``.
+from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.handler_delegation_answer_gate import (
+    HandlerDelegationAnswerGate,
+    gate_as_quality_gate_result,
+    resolve_answer_gate_kind,
+)
+from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.judge_selection import (
+    render_judge_prompt,
+    select_independent_judge,
 )
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
@@ -210,11 +225,12 @@ from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import 
 # deterministic floor even at a graded score below the class ``required_bar`` (e.g.
 # code_generation ~0.733 < 0.85). Acceptance = ``passed`` AND ``score >= required_bar``
 # AND not a deterministic-floor rejection — resolved from the task-class contract.
-# Canonical quality-gate reducer (OMN-13597): the SAME gate the bus path runs.
-# ``delta`` is the pure reducer; ``resolve_task_class_dod_checks`` is the routing
-# authority's public DoD resolver. Composing both here makes the local CLI path
-# run the real gate instead of recording a hardcoded PASS — a refusal or empty
-# answer now projects ``quality_gate_passed=false``.
+from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
+    RequiredBarAuthorityError,
+    is_quality_accepted,
+    resolve_required_bar_authority,
+    with_executed_check_verdict,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as evaluate_quality_gate,
 )
@@ -285,6 +301,7 @@ from omnimarket.routing.customer_key_terminus import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+    load_bifrost_backends,
     refuse_undeclared_local_model,
     resolve_declared_local_model,
     resolve_effective_max_tokens,
@@ -854,6 +871,7 @@ _EFFECT_CHILD_BOOT_SAFETY_FACTOR = 4.0
 _observed_child_boot_seconds: float | None = None
 
 type _NamedTestRunner = Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
+type _AnswerJudge = Callable[[ModelAnswerJudgeCall], ModelIndependentJudgeVerdict]
 type _EffectHandler = Callable[
     [ModelLlmDelegationCallRequest], ModelLlmDelegationCallResult
 ]
@@ -1210,8 +1228,15 @@ class LocalDelegationDispatchPort:
         metering_refresh_publisher: ProtocolMeteringRefreshPublisher | None = None,
         run_step_publisher: ProtocolRunStepPublisher | None = None,
         named_test_runner: _NamedTestRunner | None = None,
+        answer_judge: _AnswerJudge | None = None,
     ) -> None:
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-20489: calls the independent judge the answer gate needs. When
+        # one is wired, an answer the contract checks passed is accepted only
+        # after node_delegation_answer_gate_compute: a text answer on an
+        # independent judge's accept, a code answer on its named tests passing.
+        # None leaves the contract verdict as it was.
+        self._answer_judge = answer_judge
         # OMN-21077: runs the tests a code-class request names against each
         # answer, so the gate judges the code by whether it works. None runs
         # nothing: the gate sees no test run and refuses the code answer as
@@ -3600,6 +3625,19 @@ class LocalDelegationDispatchPort:
         gate_result = gate_result_with_output_refusal(
             gate_result, output_refusal, raw_content=raw_content
         )
+        # OMN-20489: the contract verdict is necessary, not sufficient. A text
+        # answer also needs an independent judge's accept, a code answer its
+        # named tests passing; a rejection fails the gate result, so the ladder
+        # below climbs exactly as it does on a contract failure.
+        gate_result = await self._apply_answer_gate(
+            correlation_id=correlation_id,
+            task_type=task_type,
+            producer_model_id=backend.model_id,
+            source=stated_prompt,
+            answer=result.content or "",
+            gate_result=gate_result,
+            named_test_run=named_test_run,
+        )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
         # moment ago, so the text judged and the text returned are equal by
@@ -3751,6 +3789,98 @@ class LocalDelegationDispatchPort:
             reasoning_stripped_chars=reasoning_stripped_chars,
             named_test_run=named_test_run,
         )
+
+    async def _apply_answer_gate(
+        self,
+        *,
+        correlation_id: UUID,
+        task_type: str,
+        producer_model_id: str,
+        source: str,
+        answer: str,
+        gate_result: ModelQualityGateResult,
+        named_test_run: ModelNamedTestRun | None,
+    ) -> ModelQualityGateResult:
+        """Apply node_delegation_answer_gate_compute to a contract pass (OMN-20489).
+
+        Unchanged when no judge is wired, when the contract already failed (the
+        judge is not paid for an answer that is refused anyway), or for a class
+        that keeps its contract verdict.
+        """
+        if self._answer_judge is None or not gate_result.passed:
+            return gate_result
+        kind = resolve_answer_gate_kind(task_type)
+        if kind is EnumAnswerGateKind.CONTRACT_ONLY:
+            return gate_result
+        judge = (
+            await self._independent_judge_verdict(
+                producer_model_id=producer_model_id, source=source, answer=answer
+            )
+            if kind is EnumAnswerGateKind.TEXT
+            else None
+        )
+        gate = HandlerDelegationAnswerGate().handle(
+            ModelAnswerGateRequest(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                gate_kind=kind,
+                producer_model_id=producer_model_id,
+                contract_gate=gate_result,
+                judge=judge,
+                named_test_run=named_test_run,
+            )
+        )
+        logger.info(
+            "LocalDelegationDispatch: answer gate kind=%s accepted=%s judge=%s "
+            "judge_tokens_in=%s judge_tokens_out=%s tests_passed=%s correlation=%s",
+            kind.value,
+            gate.accepted,
+            f"{judge.backend_id}:{judge.verdict.value}" if judge else "none",
+            judge.tokens_in if judge else None,
+            judge.tokens_out if judge else None,
+            gate.tests_passed,
+            correlation_id,
+        )
+        return gate_as_quality_gate_result(gate_result, gate)
+
+    async def _independent_judge_verdict(
+        self, *, producer_model_id: str, source: str, answer: str
+    ) -> ModelIndependentJudgeVerdict | None:
+        """Ask the routing contract's judge of another family; ``None`` when none.
+
+        The judge backend is the first routing-contract backend declaring the
+        judge capability whose model family differs from the producer's. A
+        judge call that raises is recorded as UNAVAILABLE, which the gate
+        refuses: a judge that did not answer never accepts.
+        """
+        if self._answer_judge is None:
+            return None
+        selected = select_independent_judge(producer_model_id, load_bifrost_backends())
+        if selected is None:
+            return None
+        system_prompt, user_prompt = render_judge_prompt(
+            instruction="", source=source, answer=answer
+        )
+        call = ModelAnswerJudgeCall(
+            backend_id=str(selected["backend_id"]),
+            model_id=str(selected["model_name"]),
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+        try:
+            return await asyncio.to_thread(self._answer_judge, call)
+        except Exception as exc:  # any judge failure refuses, never accepts
+            logger.warning(
+                "LocalDelegationDispatch: independent judge %s failed: %s",
+                call.backend_id,
+                type(exc).__name__,
+            )
+            return ModelIndependentJudgeVerdict(
+                backend_id=call.backend_id,
+                model_id=call.model_id,
+                verdict=EnumIndependentJudgeVerdict.UNAVAILABLE,
+                reason=type(exc).__name__,
+            )
 
     async def _run_named_tests(
         self,

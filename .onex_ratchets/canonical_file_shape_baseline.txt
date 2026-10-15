@@ -103,7 +103,6 @@ scripts/ci/__init__.py
 scripts/ci/_wire_compat_probe.py
 scripts/ci/adequacy_receipt.py
 scripts/ci/aggregate_coverage_artifacts.py
-scripts/ci/build_occ_observation_effect_payload.py
 scripts/ci/canonical_handler_shape_baseline.py
 scripts/ci/chain_replacement_parity.py
 scripts/ci/check_action_pins.py
@@ -131,7 +130,6 @@ scripts/ci/check_model_registry_served_names.py
 scripts/ci/check_nightly_corpus_budget.py
 scripts/ci/check_no_hardcoded_topics.py
 scripts/ci/check_node_metadata_dependencies.py
-scripts/ci/check_occ_companion_merged.py
 scripts/ci/check_one_occ_producer.py
 scripts/ci/check_pr_hold_marker.py
 scripts/ci/check_projection_write_path_db_gate.py
@@ -166,7 +164,6 @@ scripts/ci/merge_queue_enqueue.py
 scripts/ci/merge_test_durations.py
 scripts/ci/occ_companion_merge_heal.py
 scripts/ci/occ_receipt_runner.py
-scripts/ci/occ_window_quiet_wait.py
 scripts/ci/parity_red_on_base_baseline.py
 scripts/ci/post_release_dev_bump.py
 scripts/ci/pr_stale_red_heal.py

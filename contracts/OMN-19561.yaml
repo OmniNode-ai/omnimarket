@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19561"
+title: "The delegation contracts declare no retry_policy that no handler honours"
+summary: "Neither delegation contract's handler reads error_handling.retry_policy: the workflow retries come from routing_tiers.yaml and same-tier backend fallback, and the skill handler never retries a dispatch timeout. The unhonoured declaration is removed from node_delegation_orchestrator and node_delegate_skill_orchestrator. The ticket's AC2 and AC3 run in omnibase_infra (merged there as #4806 and #4290) and are listed as unbound local_done_gate items, because the hosted check carries only this repository; AC4 was merged here as #3077 and is listed as an unbound local_done_gate item, because its test already passes at this pull request's merge base and so cannot be shown to fail there."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-retry-policy-honoured-or-removed"
+    statement: "Every retry_policy the delegation orchestrator contracts declare is either honoured by a handler or removed. The criteria below are transcribed from the ticket body; each id is the label a binding item claims through binds_ac. The ticket's AC2 and AC3 run in omnibase_infra and cannot run in this repository's hosted check, and its AC4 merged here as #3077 before this pull request, so all three stay in the ticket and in the unbound local_done_gate items, not in this repo-owned acceptance list."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every retry_policy the delegation orchestrator contract declares is either honoured by the handler or removed from the contract -- falsifier: a pytest in omnimarket that drives a provider timeout through HandlerDelegationWorkflow and asserts attempts_count against the declared max_retries"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: neither delegation contract declares an error_handling.retry_policy, and each keeps its error_types. The test fails against the merge base, where both contracts declared max_retries 1."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_retry_policy_contract_omn19561.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19561-ac1-retry-policy-removed"
+    description: "AC1: neither delegation contract declares an error_handling.retry_policy no handler reads, and each keeps its error_types."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_retry_policy_contract_omn19561.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC1"
+  - id: "dod-omn19561-ac4-terminal-failure-cause-enum"
+    description: "AC4 (merged as omnimarket#3077): every terminal_failure_cause the delegate-skill handler can emit is in the contract enum. Unbound, because this test already passes at this pull request's merge base, so no control can show it fail there."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_terminal_failure_cause_contract_enum_omn19561.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19561-ac2-omnibase-infra-restart-sweeper"
+    description: "AC2 omnibase_infra probe (merged as omnibase_infra#4806). Wiring in a running loop publishes the failure terminal and closes an abandoned persisted row without a dispatch."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/migrations/test_completion_bound_restart_omn19561.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnibase_infra"
+  - id: "dod-omn19561-ac3-omnibase-infra-absorb-updated-at"
+    description: "AC3 omnibase_infra probe (merged as omnibase_infra#4290). An absorbed duplicate or stale event leaves delegation_workflow_state updated_at unchanged."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/runtime/test_state_io_updated_at_absorb_omn19561.py -q"
+        cwd: "${OMNI_HOME}/omnibase_infra"
+  - id: "dod-omn19561-deploy-probe"
+    description: "Deploy smoke on the runtime after the deploy agent rolls this change - read both delegation contracts from the running container's installed omnimarket package and assert that neither declares error_handling.retry_policy. The command exits nonzero when the deployed image still carries the declaration, including the merge-base image. It reads deployed code, not this contract or a receipt. Hosted CI has no runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "import pathlib, yaml, omnimarket.nodes as n; root = pathlib.Path(n.__file__).parent; [(lambda c: (_ for _ in ()).throw(AssertionError(name)) if \"retry_policy\" in (c.get(\"error_handling\") or {}) else None)(yaml.safe_load((root / name / \"contract.yaml\").read_text())) for name in (\"node_delegation_orchestrator\", \"node_delegate_skill_orchestrator\")]"'
+        cwd: "${OMNI_HOME}/omnimarket"

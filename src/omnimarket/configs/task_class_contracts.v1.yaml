@@ -317,6 +317,23 @@ quality_rules:
       Fires only on an EXPLICIT self-disclaimer ("this may be inaccurate",
       "do not rely on this"). A response that tells the reader not to trust it
       cannot be handed on regardless of how it scores elsewhere.
+  # OMN-20489: `accurate` for a summary, without the bare word "unverified".
+  accurate_summary:
+    enforcement: blocking
+    rationale: >-
+      Same standing as `accurate`: it fires only on an EXPLICIT self-disclaimer.
+      A summary reporting that a scan found "0 unverified secrets" has disclaimed
+      nothing.
+  # OMN-20489: the prompt's own "at most N sentences", enforced.
+  within_sentence_limit:
+    enforcement: blocking
+    rationale: >-
+      A countable instruction the prompt gave. An answer over the limit is a
+      breach of the task, not a weaker answer, and no score makes it usable.
+      Reject-only. A prompt that states no limit waives the rule, so it is not
+      in that prompt's definition of done and moves no score.
+    waived_unless_prompt_matches:
+      - "\\b(?:at\\s+most|no\\s+more\\s+than)\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+sentences?\\b"
   semantic_adequacy:
     enforcement: blocking
     rationale: >-
@@ -1950,7 +1967,16 @@ task_classes:
       heuristic:
         - no_refusal
         - concise
-        - accurate
+        # OMN-20489: `accurate` without the bare word "unverified". A summary of a
+        # scan report or a CI log states that word as a fact about the source;
+        # three of the 120 calibration answers were vetoed as "disclaiming
+        # accuracy" for it. The real disclaimers ("cannot verify", "not
+        # verified", ...) still veto. Other classes keep `accurate` unchanged.
+        - accurate_summary
+        # OMN-20489: the sentence limit the prompt states ("in at most 4
+        # sentences"), counted with a list item as one sentence. Reject-only;
+        # without a stated limit it passes.
+        - within_sentence_limit
         # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_100 floor.
         # A correct short summary (one complete sentence) passes at tier 1 instead
         # of escalating on a length floor; an empty/truncated stub still fails.

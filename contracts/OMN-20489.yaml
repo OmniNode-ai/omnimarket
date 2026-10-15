@@ -1,0 +1,148 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20489"
+title: "The summarization contract grader agrees with a careful reading of 120 summaries: claims are checked against the whole commit or PR body, a bare unverified is not a disclaimer, and the prompt's sentence limit is enforced"
+summary: "On 120 summaries read against their sources the summarization grader agreed with a careful reading on 78 answers. Its claims_grounded check searched only the one source line holding the ticket id, so a state written in a commit or PR body was never found; its accurate check read the bare word unverified as the answer disclaiming its own accuracy; and nothing counted the prompt's own at-most-N-sentences limit. A commit line or a Title line now opens a source record that runs to the next one, summarization declares accurate_summary (accurate without the bare word, every real disclaimer kept) in place of accurate, and a new within_sentence_limit check, waived for a prompt that states no limit, rejects an answer over it. The other task classes' definitions of done are unchanged. The 120 labelled answers are a fixture set and the grader agrees on 99 of them."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claims-whole-record"
+    statement: "A state the answer asserts about a ticket id is looked for in the whole commit or PR body the id came from, not only the line that holds the id."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the 17 labelled answers a careful reading accepts, which the grader refused because the state word sat in a commit or PR body, now pass; a state the record does not hold is still refused -- falsifier: any of the 17 still refused, or an invented state in a commit body accepted"
+  - id: "req-bare-unverified"
+    statement: "The bare word unverified is not read as the answer disclaiming its own accuracy, and the real disclaimers still veto."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the 4 labelled answers vetoed for the bare word now pass; cannot verify, not verified and may be inaccurate still veto; every other task class keeps accurate unchanged -- falsifier: any of the 4 still vetoed, a real disclaimer accepted, or accurate_summary declared by another class"
+  - id: "req-sentence-limit"
+    statement: "The prompt's at-most-N-sentences limit is a check."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the 2 labelled answers over their prompt's limit are rejected, and a prompt with no stated limit is unaffected -- falsifier: either answer accepted, or a prompt without a limit given the rule"
+  - id: "req-agreement"
+    statement: "The grader's agreement with the careful reading on the 120 labelled answers is at least 99 (was 78)."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: graded with the real gate the way production builds it, the grader agrees with the careful reading on at least 99 of 120 -- falsifier: an agreement count below 99"
+  - id: "req-text-answer-needs-independent-judge"
+    statement: |-
+      A text-class answer is accepted only when its contract checks pass and an independent judge of another model family accepts its content; no verdict, an unparseable verdict or a same-family judge refuses it.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: text gate over 120 labelled answers -- falsifier: a labelled row whose contract or judge verdict is a reject is accepted, or of the 19 rows a careful reading rejects the gate passes other than 7 where the grader alone passed 17
+  - id: "req-code-answer-needs-named-tests"
+    statement: |-
+      A code-class answer is accepted only when its contract checks pass and its named tests ran against it and passed.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: code gate -- falsifier: an answer whose named pytest test fails in a workspace copy is accepted, or one whose test passes is refused
+  - id: "req-rejection-escalates-and-is-recorded"
+    statement: |-
+      A gate rejection fails the quality-gate result with fallback recommended, and the judge or test verdict is recorded in rule_evaluations; the in-process dispatch refuses a summary its judge rejects or whose judge call fails.
+    acceptance:
+      - id: "AC8"
+        statement: |-
+          AC8: dispatch applies the gate -- falsifier: with a judge wired, a summary the judge rejects completes, or a summary the judge accepts fails
+  - id: "req-no-routing-change"
+    statement: |-
+      No routing contract or overlay change cites this ticket.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: no routing, contract or overlay change cites this ticket -- falsifier: git log of the bifrost contract path shows a commit citing this ticket
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4: the fixture-driven agreement and named-case tests and the controls for the real disclaimers, the other classes and the sentence counter."
+    command: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0"
+  - kind: "tests"
+    description: "Answer gate over the labelled rows, the code gate with real named tests, and the in-process dispatch with a judge wired."
+    command: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20489-ac1-claims-whole-record"
+    description: "AC1: the 17 named answers pass, and an invented state in a commit body is still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py -q -p no:randomly --no-cov -n 0 -k 'claim_found_in_the_commit_or_pr_body or invented_state'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20489-ac2-bare-unverified"
+    description: "AC2: the 4 named answers pass; real disclaimers still veto; other classes keep accurate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0 -k 'bare_unverified or real_disclaimers or only_summarization'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20489-ac3-sentence-limit"
+    description: "AC3: the 2 named answers are rejected for exceeding the prompt's limit, a prompt with no limit is unaffected, and the counter reads a list item as a sentence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py tests/unit/delegation/test_omn20489_summarization_grader_controls.py -q -p no:randomly --no-cov -n 0 -k 'sentence'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20489-ac4-agreement"
+    description: "AC4: the grader agrees with the careful reading on at least 99 of the 120 labelled answers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20489_summarization_grader_agreement.py -q -p no:randomly --no-cov -n 0 -k 'agrees_with_the_careful_reading'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20489-deploy-probe"
+    description: "Deploy probe. The summarization definition of done at the checked-out commit declares within_sentence_limit, which is what the deploy agent rolls onto the dev lane; the probe reads the contract from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq -- \"- within_sentence_limit\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20489-gate1-text-gate"
+    description: "Every labelled row is accepted exactly when its contract and judge verdicts both accept; the judge veto cuts the careful-reject answers passed from 17 to 7; a same-family, unknown-family, absent or unparseable judge refuses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k 'text or judge or labelled or fixture'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20489-gate2-code-gate"
+    description: "A slugify answer whose named pytest test passes in a workspace copy is accepted; one whose test fails is refused with the failing test id; no test run is refused as INSUFFICIENT."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k code"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20489-gate3-dispatch"
+    description: "The in-process dispatch with a judge wired completes a summary its judge accepts, fails one its judge rejects or whose judge call raises, and leaves the verdict unchanged with no judge wired."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k 'dispatch or rejection or acceptance'"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20489-ac3-no-routing-change"
+    description: "No commit touching the bifrost routing contract cites this ticket, and the new gate selects an independent judge from that unchanged contract. The selection test cannot pass without the answer-gate implementation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c '! git log --format=%B -- src/omnimarket/configs/bifrost_delegation.yaml | grep -q OMN-20489'"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov -k judge_is_a_routing_contract"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20489-deploy-answer-gate"
+    description: "Deploy probe: GitHub serves the answer-gate handler at the checked-out commit, including its independent-judge and named-test acceptance paths. A commit without the handler or either path fails this source readback; no live judge wiring is claimed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_answer_gate_compute/handlers/handler_delegation_answer_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c "import sys; s = sys.stdin.read(); assert all(part in s for part in (\"class HandlerDelegationAnswerGate:\", \"and judge_family != producer_family\", \"tests_passed = run is not None and run.passed\"))"'
+  - id: "dod-omn20489-shared-answer-gate-models"
+    description: "AC8: dispatch and the answer gate share request and judge models without importing another node's private models; the boundary check rejects a cross-node model import and the dispatch tests reject incorrect acceptance behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_no_cross_node_reach_in.py tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC8"]

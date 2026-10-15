@@ -31,6 +31,20 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: the pre-push hook main-target-guard warns and exits 0 on a push to refs/heads/main, prints nothing for any other ref, and the guard's shipped step refuses a feature branch onto main and admits it onto dev -- falsifier: uv run pytest tests/ci/test_main_target_guard_prepush_omn20780.py -q -p no:randomly --no-cov fails at the merge base because the hook is absent
+  - id: "req-wire-review-gateway-privacy"
+    statement: |-
+      The tests that prove node_claude_review_gateway_effect refuses a cloud review only for a repository on its refused list, and serves every other repository, run in a pre-commit hook and in the required lint job (ruling 2026-10-13T20:50:03Z).
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the pre-commit hook review-gateway-privacy and the required lint job both run the privacy tests of tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -- falsifier: uv run pytest tests/ci/test_review_gateway_privacy_wiring_omn20780.py -q -p no:randomly --no-cov fails at the merge base because the hook and the lint step are absent
+  - id: "req-wire-delegation-answer-gate"
+    statement: |-
+      The tests that prove a delegated answer is accepted only after its gate, an independent judge of another model family for the text classes and its own named tests for the code classes, run in a pre-commit hook and in the required lint job (ruling 2026-10-14T18:17:30Z).
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: the pre-commit hook delegation-answer-gate and the required lint job both run tests/unit/delegation/test_answer_gate_omn20489.py -- falsifier: uv run pytest tests/ci/test_delegation_answer_gate_wiring_omn20780.py -q -p no:randomly --no-cov fails at the merge base because the hook and the lint step are absent
 evidence_requirements:
   - kind: "tests"
     description: "The hook and the lint job run the guarding tests, and the guarding tests pass."
@@ -72,3 +86,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_main_target_guard_prepush_omn20780.py tests/ci/test_prepush_test_leg_retired_omn18162.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn20780-review-gateway-privacy-wiring"
+    description: "The hook and the lint step name the review gateway privacy tests, and the wiring test and the privacy tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -k privacy tests/ci/test_review_gateway_privacy_wiring_omn20780.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20780-delegation-answer-gate-wiring"
+    description: "The hook and the lint step name the delegated-answer gate tests, and the wiring test and the gate tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_delegation_answer_gate_wiring_omn20780.py tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]

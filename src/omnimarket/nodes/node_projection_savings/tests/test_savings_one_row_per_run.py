@@ -48,6 +48,12 @@ FIRST = "2026-10-01T12:23:58.700000+00:00"
 SECOND = "2026-10-01T12:23:59.100000+00:00"
 
 
+@pytest.fixture(autouse=True)
+def _no_configured_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A host-set ONEX_TENANT_ID would replace the house tenant these rows stamp."""
+    monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+
+
 def _cf_cost() -> float:
     cf = build_premium_counterfactual(prompt_tokens=319, completion_tokens=154)
     assert cf is not None

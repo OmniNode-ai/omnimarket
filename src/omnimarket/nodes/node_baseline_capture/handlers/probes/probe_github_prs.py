@@ -25,7 +25,6 @@ _DEFAULT_OMNINODE_REPOS = (
     "OmniNode-ai/omnimemory",
     "OmniNode-ai/omnimarket",
     "OmniNode-ai/omniweb",
-    "OmniNode-ai/onex_change_control",
 )
 
 

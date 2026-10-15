@@ -3369,11 +3369,14 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
+        "idx_claude_hook_events_assistant_usage",
         "idx_claude_hook_events_emitted",
         "idx_claude_hook_events_goal_id",
+        "idx_claude_hook_events_guard_refusal",
         "idx_claude_hook_events_parent_call",
         "idx_claude_hook_events_pre_tool_call",
         "idx_claude_hook_events_projection_cursor",
+        "idx_claude_hook_events_refusal_call",
         "idx_claude_hook_events_session_agent_emitted",
         "idx_claude_hook_events_session_emitted"
       ],

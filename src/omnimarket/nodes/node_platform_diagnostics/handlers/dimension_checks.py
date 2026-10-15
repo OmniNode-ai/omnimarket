@@ -47,7 +47,6 @@ _GITHUB_REPOS = [
     "OmniNode-ai/omnibase_spi",
     "OmniNode-ai/omniintelligence",
     "OmniNode-ai/omnidash",
-    "OmniNode-ai/onex_change_control",
 ]
 
 

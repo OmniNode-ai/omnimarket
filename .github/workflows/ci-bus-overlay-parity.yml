@@ -99,14 +99,43 @@ jobs:
         with:
           persist-credentials: false
 
+      - id: pins
+        name: Read the sibling release pins from this head's uv.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import tomllib
+
+          with open("uv.lock", "rb") as lock_file:
+              packages = tomllib.load(lock_file).get("package", [])
+          pins = {}
+          failed = False
+          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+              entries = [package for package in packages if package.get("name") == name]
+              sources = [package.get("source") for package in entries]
+              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+                  failed = True
+                  continue
+              pins[output] = entries[0]["version"]
+          if failed:
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
+              for key, version in pins.items():
+                  line = f"{key}={version}"
+                  print(line)
+                  print(line, file=output_file)
+          PY
       - name: Checkout the omnibase_infra publisher model
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OmniNode-ai/omnibase_infra
           # The omnibase_infra release this repo's uv.lock pins : a merge
-          # in omnibase_infra cannot turn this repo's check red. Bump it with the
-          # omnibase-infra lock pin, after an integration run against the new tag.
-          ref: v0.38.71
+          # in omnibase_infra cannot turn this repo's check red. Resolve it from the
+          # omnibase-infra lock pin after integration testing the release.
+          ref: v${{ steps.pins.outputs.infra_version }}
           path: .ci-bus-consumer
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           persist-credentials: false
@@ -122,7 +151,7 @@ jobs:
           set -euo pipefail
           SHA="$(git -C .ci-bus-consumer rev-parse HEAD)"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
-          echo "::notice::Consumer model resolved at omnibase_infra v0.38.71 ${SHA}"
+          echo "::notice::Consumer model resolved at omnibase_infra v${{ steps.pins.outputs.infra_version }} ${SHA}"
 
       - name: Assert the consumer checkout produced the model
         shell: bash
@@ -157,7 +186,7 @@ jobs:
           uv run python scripts/ci/check_ci_bus_overlay_parity.py \
             --overlay config/ci_bus_lanes.yaml \
             --consumer-model .ci-bus-consumer/scripts/trigger_rebuild_on_merge.py \
-            --consumer-ref "omnibase_infra v0.38.71 ${{ steps.consumer.outputs.sha }}"
+            --consumer-ref "omnibase_infra v${{ steps.pins.outputs.infra_version }} ${{ steps.consumer.outputs.sha }}"
 
       - name: Pin the gate's own behaviour
         run: |

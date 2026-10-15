@@ -152,14 +152,16 @@ class HandlerMorningGroundState:
         gateway: ProtocolMorningPhaseGateway | None = None,
         overlay: ModelMorningOverlay | None = None,
     ) -> None:
-        from .handler_morning_phase_bus import HandlerMorningPhaseBus
+        from .handler_morning_phase_lab_work import HandlerMorningPhaseLabWork
 
         # OMN-17427: the overlay is a deployment fact of a RUN. Auto-wiring builds
         # this handler inside the effects runtime, and a constructor that raises
         # there takes every other node's runtime down with it, so nothing here
         # touches the deployment: an absent overlay is refused when a run starts.
         self._overlay = overlay
-        self.gateway = gateway or HandlerMorningPhaseBus(event_bus, overlay=overlay)
+        # agent_delegation is pending a capability (task-class contract), so the
+        # phases run as bus lab work until an agent-capable producer exists.
+        self.gateway = gateway or HandlerMorningPhaseLabWork(event_bus, overlay=overlay)
         self.schemas = cast(
             dict[str, dict[str, JsonValue]],
             json.loads(

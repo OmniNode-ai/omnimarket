@@ -143,6 +143,23 @@ class TestDuplicationSweepGoldenChain:
             assert entry["producer_repo"]
             assert entry["consumer_repo"]
 
+    async def test_d2_bundled_manifest_lists_no_retired_change_control_boundary(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-20074: onex_change_control's contract-drift-detected boundary has
+        a producer only and no subscriber anywhere, so the bundled manifest
+        carries no boundary that names onex_change_control."""
+        data = yaml.safe_load(_KAFKA_BOUNDARIES_YAML.read_text(encoding="utf-8"))
+        entries = data["boundaries"]
+        assert entries
+        retired = [
+            entry["topic_name"]
+            for entry in entries
+            if "onex_change_control" in (entry["producer_repo"], entry["consumer_repo"])
+            or "contract-drift-detected" in entry["topic_name"]
+        ]
+        assert retired == []
+
     async def test_d2_reads_bundled_manifest_without_occ_checkout(
         self, event_bus: EventBusInmemory, tmp_path: Path
     ) -> None:

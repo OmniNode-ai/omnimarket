@@ -177,7 +177,7 @@ tiers:
           - summarization
         fast_path_threshold_tokens: 8192
     eval_before_accept: true
-    eval_model: qwen3.6-35b
+    eval_model: null
     max_retries: 2
   - name: cheap_cloud
     cost_per_1k_tokens: 0.002
@@ -288,7 +288,7 @@ tiers:
       # OMN-16833 gate (omnimarket.validators.routing_tier_backend_bindability)
       # fails on a tier that references a non-local backend with a null endpoint.
     eval_before_accept: true
-    eval_model: qwen3.6-35b
+    eval_model: null
     max_retries: 1
   # cheap_frontier tier — high-capability free-tier cloud models for the June 5
   # model-experimentation campaign (OMN-12492). Requires OPENROUTER_API_KEY.
@@ -398,7 +398,7 @@ tiers:
       # placement in bifrost_delegation.yaml. The mirrored entry copies the
       # ultra rung's use_for, so it still serves every class that rung serves.
     eval_before_accept: true
-    eval_model: qwen3.6-35b
+    eval_model: null
     max_retries: 1
   # Ceiling tier (OMN-13215). Executes through the canonical HTTP inference path
   # like every lower tier — NO subprocess, NO shelled CLI. The model maps to an

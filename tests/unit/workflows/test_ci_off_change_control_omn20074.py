@@ -7,7 +7,9 @@ its contract.yaml files for census completeness. omnimarket is cut over to its
 own contracts, so that checkout, and the graph's reference to the package, are
 gone. Three occ-* workflows only operated on companions that nothing in this
 repository mints any more and are deleted; two stay until the retirement plan's
-S9 (see KEPT_UNTIL_S9).
+S9 (see KEPT_UNTIL_S9). The consumer-side companion scripts with no caller left
+in this repository, and the lists that name the governance repository as a
+sibling to protect, scan or import, are gone too.
 
 These tests read this repository's own files, so they run on every runner.
 """
@@ -86,3 +88,56 @@ def test_dead_occ_workflow_is_deleted(name: str) -> None:
 @pytest.mark.parametrize("name", KEPT_UNTIL_S9)
 def test_occ_workflow_kept_until_s9_still_present(name: str) -> None:
     assert (WORKFLOWS / name).is_file()
+
+
+# Consumer-side companion scripts that no workflow, hook, node or bound contract
+# in this repository calls. occ_companion_merge_heal.py and occ_receipt_runner.py
+# stay: contracts OMN-17427 (AC13) and OMN-19267 (AC5) bind tests of them.
+DELETED_SCRIPTS = (
+    "scripts/ci/occ_window_quiet_wait.py",
+    "scripts/ci/build_occ_observation_effect_payload.py",
+    "scripts/ci/check_occ_companion_merged.py",
+)
+
+
+@pytest.mark.parametrize("relative", DELETED_SCRIPTS)
+def test_script_without_a_caller_is_deleted(relative: str) -> None:
+    assert not (ROOT / relative).exists()
+
+
+# Files that listed the governance repository as a repository to protect, scan or
+# import. Each is read for the bare name, so a prose mention would also fail it.
+NAMES_NO_CHANGE_CONTROL = (
+    ".github/required-checks.yaml",
+    "scripts/apply_branch_protection.sh",
+    "scripts/validation/run_leaked_literals_org_wide.sh",
+    "scripts/ci/check_node_metadata_dependencies.py",
+    "scripts/ci/check_workflow_module_refs.py",
+)
+
+
+@pytest.mark.parametrize("relative", NAMES_NO_CHANGE_CONTROL)
+def test_file_names_no_change_control(relative: str) -> None:
+    text = (ROOT / relative).read_text(encoding="utf-8")
+    assert "onex_change_control" not in text
+    assert "onex-change-control" not in text
+
+
+def test_names_no_change_control_positive_control() -> None:
+    """The same read finds a name that is there, so the absences above are not
+    an unreadable or empty file."""
+    text = (ROOT / "scripts/apply_branch_protection.sh").read_text(encoding="utf-8")
+    assert "omnibase_core" in text
+
+
+def test_imperative_contract_guard_required_check_names_its_core_owner() -> None:
+    parsed = yaml.safe_load((ROOT / ".github/required-checks.yaml").read_text())
+    rows = [
+        row
+        for row in parsed["gates"]
+        if row.get("caller_workflow") == "imperative-contract-guard.yml"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["cross_repo_ref"].startswith(
+        "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml@"
+    )
