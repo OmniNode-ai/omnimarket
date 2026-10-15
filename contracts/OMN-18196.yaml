@@ -49,6 +49,9 @@ dod_evidence:
     description: "A disposable container runs the delegation handler's refusal regressions from the checked-out source. All three customer-key refusal reasons must produce credential_source none, while a non-refusal routing failure leaves it unset. The hosted runner needs Docker and the checkout; the refusal assertions fail with the pre-fix handler."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn18196_refusal_records_credential_source_none.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |-
           docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/refusal-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/delegation/test_omn18196_refusal_records_credential_source_none.py -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/refusal-tests
