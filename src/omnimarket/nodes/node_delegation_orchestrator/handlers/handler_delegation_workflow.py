@@ -5597,13 +5597,15 @@ class HandlerDelegationWorkflow:
             return intent
         run: ModelDelegationNamedTestRun | None = None
         if payload.llm_response_content.strip():
-            spec = ModelNamedTestSpec(
-                answer_path=named_tests.answer_path,
-                test_ids=named_tests.test_ids,
-                test_files=tuple(
-                    ModelNamedTestFile(path=f.path, content=f.content)
-                    for f in named_tests.test_files
-                ),
+            spec = ModelNamedTestSpec.model_validate(
+                {
+                    "answer_path": named_tests.answer_path,
+                    "test_ids": named_tests.test_ids,
+                    "test_files": tuple(
+                        ModelNamedTestFile(path=f.path, content=f.content)
+                        for f in named_tests.test_files
+                    ),
+                }
             )
             outcome = await asyncio.to_thread(
                 self._named_test_runner,

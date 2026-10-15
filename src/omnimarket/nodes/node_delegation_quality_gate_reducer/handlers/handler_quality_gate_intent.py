@@ -87,18 +87,24 @@ class HandlerQualityGateIntent:
             else resolve_task_class_response_contract(intent.payload.task_type)
         )
         # OMN-17427: the orchestrator ran the request's named tests and carried
-        # the run on the intent; the gate judges the answer on it.
-        named_test_run = intent.payload.named_test_run
-        result = quality_gate_delta(
-            intent.payload,
-            response_contract=response_contract,
-            named_test_run=(
-                None
-                if named_test_run is None
-                else ModelNamedTestRun.model_validate(named_test_run.model_dump())
-            ),
-            named_tests_requested=intent.payload.named_tests_requested,
-        )
+        # the run on the intent; the gate judges the answer on it. An intent
+        # that carries neither is gated as before.
+        carried_run = intent.payload.named_test_run
+        if carried_run is None and not intent.payload.named_tests_requested:
+            result = quality_gate_delta(
+                intent.payload, response_contract=response_contract
+            )
+        else:
+            result = quality_gate_delta(
+                intent.payload,
+                response_contract=response_contract,
+                named_test_run=(
+                    None
+                    if carried_run is None
+                    else ModelNamedTestRun.model_validate(carried_run.model_dump())
+                ),
+                named_tests_requested=intent.payload.named_tests_requested,
+            )
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f "
             "score_verified=%s unverified_because=%s correlation_id=%s",
