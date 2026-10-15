@@ -342,6 +342,13 @@ def _select_pool_secret_ref(
             TENANT_CREDENTIALS_TABLE,
             filters={"tenant_id": tenant_id, "provider": provider},
         )
+        # A missing or malformed primary key means the catalog could not be
+        # read as credentials, not that every registered key has expired.
+        # Keep this schema failure inside the existing read-error boundary.
+        for row in catalogued:
+            ref = row["api_key_ref"]
+            if not isinstance(ref, str) or not ref.strip():
+                raise ValueError("tenant key catalog contains an invalid api_key_ref")
     except Exception:
         logger.warning(
             "tenant key pool read failed for tenant_id=%s provider=%s; routing "

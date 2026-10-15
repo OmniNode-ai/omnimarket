@@ -231,3 +231,25 @@ def test_key_pool_catalog_read_failure_keeps_the_overlay_as_read() -> None:
 
     reader = _Broken([_overlay(_ref(4))], [])
     assert _selected(reader, "c") == _ref(4)
+
+
+@pytest.mark.parametrize(
+    "credential",
+    [
+        {},
+        {"api_key_ref": None},
+        {"api_key_ref": ""},
+        {"api_key_ref": " "},
+        {"api_key_ref": 123},
+    ],
+)
+def test_key_pool_malformed_catalog_keeps_the_overlay_as_read(
+    credential: dict[str, object], caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unreadable credential identity is not evidence of an exhausted pool."""
+    reader = _Reader(
+        [_overlay(_ref(4))],
+        [{"tenant_id": _TENANT, "provider": "anthropic", **credential}],
+    )
+    assert _selected(reader, "c") == _ref(4)
+    assert "tenant key pool read failed" in caplog.text
