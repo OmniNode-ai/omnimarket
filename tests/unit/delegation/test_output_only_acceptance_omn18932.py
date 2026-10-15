@@ -103,6 +103,19 @@ def test_the_declared_render_start_marker_is_the_only_permitted_leading_text() -
     assert refused.refusals == (EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,)
 
 
+def test_a_markdown_table_behind_the_marker_line_is_accepted_on_raw_bytes() -> None:
+    """The lab scorecard shape: the raw bytes are the marker line plus the table."""
+    table = "| Criterion | Score |\n| --- | --- |\n| Clarity | 4 |\n| Accuracy | 5 |"
+    raw = "### ANSWER\n" + table
+    verdict = _verdict(raw, table)
+    assert verdict.accepted is True, verdict.details
+    assert verdict.refusals == ()
+    assert verdict.evidence_basis is EnumOutputOnlyEvidenceBasis.RAW_PROVIDER_BYTES
+    assert verdict.raw_chars == len(raw)
+    assert verdict.caller_chars == len(table)
+    assert _verdict(raw + "\n\nLet me know if you want more.", table).accepted is False
+
+
 def test_caller_bytes_that_are_not_a_raw_slice_are_refused() -> None:
     verdict = _verdict(_ARTIFACT, _ARTIFACT.replace("requested", "rewritten"))
     assert EnumOutputOnlyRefusal.CALLER_BYTES_NOT_A_RAW_SLICE in verdict.refusals

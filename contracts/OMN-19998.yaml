@@ -26,6 +26,11 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "AC4: both spawned customer-route cancellation scenarios retain their exact inference stage, routing, credential and attempt evidence even when total child startup consumes the original 12-second handler budget -- falsifier: delay spawn startup and run uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q with the test at the merge base"
+  - id: "req-repo-status-check-per-tick"
+    statement: "Operator RULING 2026-10-15T00:42:51Z: the merge-throughput tick decision gives every repository with open non-draft PRs and zero merges in the window one typed status verdict (merging normally, waiting on CI, base branch red, merge queue ejecting, shared red unowned, parked or escalated), deduped per repository while its unit is open, and an unowned shared red or an ejecting merge queue is a MISSING line whose FIX names one cause lane or the controller."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: given repo_status facts, a repository with two open PRs red on the same check and no cause lease is shared_red_unowned with a MISSING repo-status line naming one cause lane, a base_blocked ejection is merge_queue_ejecting, an open unit with the same verdict emits no event, and the verdicts ride the node's result over the in-memory bus -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -83,3 +88,18 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn19998-repo-status-check-per-tick"
+    description: "The repo-status scenarios pass at the head and fail at the merge base, whose request model refuses repo_status."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn19998-repo-status-check-deploy-probe"
+    description: "Hosted-runner probe reads the throughput-tick decision handler at this commit and requires the repo-status check; the base lacks it and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def check_repo_status('
