@@ -239,6 +239,10 @@ SNAPSHOT_AGGREGATE_KEY = (SNAPSHOT_GRAIN_COLUMN, SNAPSHOT_TENANT_COLUMN)
 #: never reclaim.
 _DELEGATION_ROW_KEY: Final[str] = "correlation_id"
 
+_DELEGATION_MONEY_COLUMNS: Final[frozenset[str]] = frozenset(
+    {"cost_usd", "cost_savings_usd", "budget_headroom_consumed_usd"}
+)
+
 # OMN-18140: the closed set of SQL expressions a write-attestation column may
 # be stamped with. These strings reach the composed statement UNCAST and
 # unparameterised -- that is the point, since a bound parameter would let this
@@ -1490,6 +1494,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         placeholders: list[str] = []
         for i, col in enumerate(columns, start=1):
             value = row[col]
+            if (
+                table == self._table_delegation
+                and col in _DELEGATION_MONEY_COLUMNS
+                and isinstance(value, float)
+            ):
+                value = Decimal(str(value))
             if isinstance(value, list | dict):
                 values.append(json.dumps(value, default=str))
                 placeholders.append(f"${i}::jsonb")
