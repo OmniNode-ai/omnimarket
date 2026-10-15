@@ -219,9 +219,9 @@ requirements:
     statement: "A queued or in-progress CI run that a later push or a merge-queue exit left behind is cancelled from the run list and the queue read alone, one event per cancel, and a run on a PR's current head is never cancelled."
     acceptance:
       - id: "AC37"
-        statement: "AC37: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
+        statement: "AC37: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
       - id: "AC38"
-        statement: "AC38: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
+        statement: "AC38: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -315,7 +315,7 @@ evidence_requirements:
     command: "uv run pytest tests/unit/workflows/test_public_repo_hygiene_enforcement_omn20781.py tests/ci/test_precommit_ci_backstops_omn19612.py -q"
   - kind: "tests"
     description: "AC37 and AC38: the superseded-run cancel node over a recorded GitHub, with negative controls for the current head and for an incomplete queue read."
-    command: "uv run pytest tests/golden_chains/superseded_run_cancel -q"
+    command: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -602,7 +602,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel -q"
+        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC37"]
   - id: "dod-omn17427-ac38-superseded-run-events"
@@ -610,7 +610,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel -q -k 'event or incomplete or unreadable or bus_failure'"
+        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC38"]
   - id: "dod-omn17427-ac37-superseded-run-deploy-probe"
