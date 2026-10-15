@@ -55,7 +55,6 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py" | grep -F "GENERATED_PACKAGE_ROOT"'
-    binds_ac: ["AC1"]
   - id: "dod-omn21152-regressions"
     description: "The orchestrator, outcome-reducer, file-writer, validator and mypy-effect suites still pass with the new layout."
     source: "manual"
