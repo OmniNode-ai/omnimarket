@@ -1,0 +1,38 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19458"
+title: "The focused-run admission probe reads the host load on a Linux lab host"
+summary: "onex test-loop run and run-focused admit a run by reading the host's one-minute load with the macOS sysctl vm.loadavg. On the Linux lab host h201 that command fails (sysctl: cannot stat /proc/sys/vm/loadavg), so every focused run ends in infra_error and the loop never reaches its container. The admission probe reads /proc/loadavg where it exists and falls back to the sysctl where it does not."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-admission-reads-linux-load"
+    statement: "The focused-run admission probe reports the host's one-minute load on a Linux host (first field of /proc/loadavg) and on a macOS host (vm.loadavg sysctl), so a Linux lab host admits or refuses a run by its load instead of failing the probe."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: with a sysctl that fails as it does on Linux and a /proc/loadavg reading 0.52, LocalShellFocusedRunSubprocess.admission() reports load_one_minute 0.52; with no /proc/loadavg and a sysctl printing { 1.25 1.50 1.75 } it reports 1.25 -- falsifier: uv run pytest tests/nodes/node_focused_test_run_effect/test_node_focused_test_run_effect.py -q -k admission_reads_the_load fails at the merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "The admission probe reads the load on a Linux host and on a macOS host."
+    command: "uv run pytest tests/nodes/node_focused_test_run_effect/test_node_focused_test_run_effect.py -q -k admission_reads_the_load"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19458-admission-reads-linux-load"
+    description: "Both admission scenarios pass at the head; at the merge base the probe runs sysctl -n vm.loadavg unconditionally, which fails on Linux."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_focused_test_run_effect/test_node_focused_test_run_effect.py -q -k admission_reads_the_load"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19458-deploy-linux-admission-smoke"
+    description: "The new unbound dod-omn19458-deploy-linux-admission-smoke item in contracts/OMN-19458.yaml starts an isolated Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image, installs this checkout using uv run --frozen --no-dev with a temporary virtual environment, calls the product LocalShellFocusedRunSubprocess.admission(), and asserts its one-minute load lies between /proc/loadavg readings taken immediately before and after. ONEX_DTL_DOCKER_BIN=/bin/true isolates the container-count portion without exposing the host Docker socket; this probe covers only the real Linux kernel load read. It fails with the merge-base admission method, which calls sysctl -n vm.loadavg. The existing AC1 test_passes item is preserved. This is runnable by hosted Ubuntu with Docker and registry access; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/admission-venv -e ONEX_DTL_DOCKER_BIN=/bin/true ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'import json; from pathlib import Path; from omnimarket.nodes.node_focused_test_run_effect import LocalShellFocusedRunSubprocess; before = float(Path("/proc/loadavg").read_text().split()[0]); result = LocalShellFocusedRunSubprocess().admission(); after = float(Path("/proc/loadavg").read_text().split()[0]); assert min(before, after) <= result.load_one_minute <= max(before, after), (before, result, after); print(json.dumps({"before": before, "admission": result.model_dump(), "after": after}))'
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -15,7 +15,7 @@
 # in Python or YAML is prohibited — use this registry as the single source.
 
 schema_version: "1.0.0"
-model_registry_version: "1.3.0"
+model_registry_version: "1.4.0"
 pricing_manifest_version: "2026-06-11-gemini-25-flash-lite"
 observed_at: "2026-06-11T00:00:00Z"
 
@@ -41,79 +41,6 @@ models:
       "max_model_len": 122880}: the endpoint has since been redeployed
       SGLang -> vLLM and serves the pre-OMN-16419 id again. Zero marginal API
       cost. context_window=131072 (live max_model_len).
-
-  deepseek-r1-14b:
-    model_id: "deepseek-r1-14b"
-    provider: "local"
-    endpoint_env: "LLM_CODER_FAST_URL"
-    model_name: "Qwen3.6-27B-MTP-IQ4_XS.gguf"
-    context_window: 114688
-    pricing_per_1m_input: "0.00"
-    pricing_per_1m_output: "0.00"
-    cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-30T00:00:00Z"
-    source: "manual benchmark"
-    notes: >
-      Stale slot — the second local endpoint (llama.cpp GPU1) is DEAD: connection
-      refused on live probe 2026-08-23 (OMN-16419/OMN-16442, GPU1 decommissioned).
-      Superseded by qwen3-coder-30b (Qwen3.6-35B-A3B via SGLang on the primary
-      local endpoint). Key retained
-      for routing contract stability; downstream contracts should migrate to
-      qwen3-coder-30b. model_name/context_window record the last-served model.
-
-  deepseek-r1-32b:
-    model_id: "deepseek-r1-32b"
-    provider: "local"
-    endpoint_env: "LLM_DEEPSEEK_R1_URL"
-    context_window: 8192
-    pricing_per_1m_input: "0.00"
-    pricing_per_1m_output: "0.00"
-    cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-24T00:00:00Z"
-    source: "manual benchmark"
-    notes: >
-      Stale slot retained for routing contract stability.
-      LLM_DEEPSEEK_R1_URL env var still declared.
-
-  qwen3.6-35b:
-    model_id: "qwen3.6-35b"
-    provider: "local"
-    endpoint_env: "LLM_QWEN3_NEXT_URL"
-    model_name: "mlx-community/Qwen3.6-35B-A3B-8bit"
-    context_window: 8192
-    pricing_per_1m_input: "0.00"
-    pricing_per_1m_output: "0.00"
-    cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-24T00:00:00Z"
-    source: "manual benchmark"
-    notes: >
-      STALE SLOT (OMN-16442, 2026-08-28) — the endpoint behind LLM_QWEN3_NEXT_URL
-      (MLX Qwen3.6-35B-A3B-8bit) is DEAD: a models request to it returns
-      exit 7 "Couldn't connect to server", and the deployment's hardware
-      inventory (verified 2026-08-28) records that the host has no model
-      listener on that port range.
-      The replacement workstation service was also retired. Key retained ONLY
-      because routing_tiers.yaml still names it
-      as the local/cheap_cloud/cheap_frontier `eval_model`; repointing that
-      eval_model is the scoped follow-on on OMN-16442. Do NOT treat this row as a
-      routable serving slot.
-
-  qwen3-next-80b:
-    model_id: "qwen3-next-80b"
-    provider: "local"
-    endpoint_env: "LLM_QWEN3_NEXT_URL"
-    model_name: "mlx-community/Qwen3.6-35B-A3B-8bit"
-    context_window: 8192
-    pricing_per_1m_input: "0.00"
-    pricing_per_1m_output: "0.00"
-    cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-24T00:00:00Z"
-    source: "manual benchmark"
-    notes: >
-      Compatibility alias for qwen3.6-35b. Key retained for routing key stability.
-      STALE SLOT (OMN-16442, 2026-08-28) — inherits qwen3.6-35b's dead
-      LLM_QWEN3_NEXT_URL (connection refused on live probe). Not a
-      routable serving slot; see the qwen3.6-35b entry above.
 
   gemini-2.5-flash-lite:
     model_id: "gemini-2.5-flash-lite"
@@ -219,31 +146,3 @@ models:
     notes: >
       OpenRouter free tier — Llama 3.3 70B Instruct. Rate-limited, no SLA.
       Zero API cost but provider bears inference cost. CI default.
-
-  claude-sonnet-4-6:
-    model_id: "claude-sonnet-4-6"
-    provider: "anthropic"
-    endpoint_env: "ANTHROPIC_DELEGATION_URL"
-    context_window: 200000
-    pricing_per_1m_input: "3.00"
-    pricing_per_1m_output: "15.00"
-    cost_basis: "cloud_api_cost"
-    observed_at: "2026-05-23T00:00:00Z"
-    source: "provider docs"
-    notes: >
-      Claude Sonnet 4.6. Frontier fallback. Metered CLOUD_API_COST.
-      Pricing sourced from Anthropic docs 2026-05-23.
-
-  claude-opus-4-6:
-    model_id: "claude-opus-4-6"
-    provider: "anthropic"
-    endpoint_env: "ANTHROPIC_DELEGATION_URL"
-    context_window: 1000000
-    pricing_per_1m_input: "15.00"
-    pricing_per_1m_output: "75.00"
-    cost_basis: "cloud_api_cost"
-    observed_at: "2026-05-23T00:00:00Z"
-    source: "provider docs"
-    notes: >
-      Claude Opus 4.6. Baseline for opus-equivalent cost calculations.
-      Metered CLOUD_API_COST. Pricing sourced from Anthropic docs 2026-05-23.
