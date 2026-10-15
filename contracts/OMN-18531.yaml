@@ -29,3 +29,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac:
       - AC1
+  - id: dod-omn-18531-deploy-container-parse
+    description: Deploy probe. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev and calls the product parse_ledger_row on a linked RULING row and a CORRECTION row, then round-trips the ruling through the ModelLedgerRowEvent union. It asserts prompt_id, covers and operator_span survive both steps, so it fails at the merge base, whose parser drops those cells. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'import json; from pydantic import TypeAdapter; from omnimarket.events.model_ledger_row_event import ModelLedgerRowEvent; from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import parse_ledger_row; p = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"; r = parse_ledger_row("2026-10-15T06:00:00Z | RULING | lane=probe | question=q | prompt_id=" + p + " | covers=12:41 | \"ship it\" | recorded"); c = parse_ledger_row("2026-10-15T06:05:00Z | CORRECTION | lane=probe | corrects=2026-10-15T06:00:00Z | operator_span=0:4 | wrong"); a = TypeAdapter(ModelLedgerRowEvent); back = a.validate_json(a.dump_json(r)); assert (back.prompt_id, back.covers) == (p, "12:41"), back; assert c.operator_span == "0:4", c; print(json.dumps({"prompt_id": back.prompt_id, "covers": back.covers, "operator_span": c.operator_span}))'
+        cwd: "${OMNI_HOME}/omnimarket"
