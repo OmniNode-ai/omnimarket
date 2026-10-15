@@ -827,7 +827,7 @@ class HandlerSwarmDispatchOrchestrator:
             event_type = f"{parts[2]}.{parts[3]}" if len(parts) >= 5 else topic
             # Correlation/run id from payload for tracing
             corr_id = payload.get("correlation_id") or str(_uuid.uuid4())
-            envelope = ModelEventEnvelope(
+            envelope = ModelEventEnvelope[dict[str, Any]](
                 payload=payload,
                 correlation_id=_uuid.UUID(str(corr_id)),
                 event_type=event_type,

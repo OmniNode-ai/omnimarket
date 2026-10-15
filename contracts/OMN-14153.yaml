@@ -50,3 +50,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_golden_chain_projection_swarm.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn14153-deploy-swarm-envelope"
+    description: "Read the published swarm handler at the checked-out revision and require its typed canonical event envelope. This hosted-runner probe fails on an unreadable revision or the untyped producer. It verifies published source; persistent runtime rollout and subscriber readback remain required before ticket closure."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_swarm_dispatch_orchestrator/handlers/handler_swarm_dispatch.py" | grep -F "envelope = ModelEventEnvelope[dict[str, Any]]("'
+        cwd: "${OMNI_HOME}/omnimarket"
