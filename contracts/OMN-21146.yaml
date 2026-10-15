@@ -58,7 +58,6 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/model_github_gateway_io.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python -c 'import sys; s = sys.stdin.read(); assert "COMMIT_CHECK_RUNS = \"commit_check_runs\"" in s; assert "MERGED_PR = \"merged_pr\"" in s'
-    binds_ac: ["AC1"]
   - id: "dod-omn21146-ac2-shared-models-deploy-probe"
     description: "AC2 hosted deploy probe: the DoD evidence handler GitHub serves at the checked-out commit imports the shared gateway models."
     source: "manual"
@@ -66,4 +65,3 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'from omnimarket.models.model_github_gateway_io import (' > /dev/null
-    binds_ac: ["AC2"]
