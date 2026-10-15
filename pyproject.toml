@@ -137,13 +137,11 @@ dependencies = [
     # ModelTicketContract refuses a binds_ac entry that is not a criterion label
     # and a binds_ac item with check_type command_exit_0 (core#1935); Contract
     # Compliance Check and contract-validation validate contracts/ with it.
-    # OMN-21106: floor raised 0.47.39 -> 0.47.44, the first release whose
-    # EnumContextFactor carries the session and tier factors (core#1987, TA.2) that
-    # ModelContextProfile validates and the compaction_orchestrator profile selects.
+    # OMN-21106 / OMN-21109: floor raised 0.47.39 -> 0.47.44, the first release
+    # whose EnumContextFactor carries the session and tier factors (core#1987,
+    # TA.2). ModelContextProfile validates them, compaction_orchestrator selects
+    # them, and node_context_pack_render_compute classifies chunks by them.
     # Raised in BOTH places.
-    # OMN-21109: floor raised 0.47.39 -> 0.47.44, the first release whose
-    # EnumContextFactor carries the session and tier factors (core#1987, TA.2)
-    # node_context_pack_render_compute classifies chunks by.
     "omnibase-core>=0.47.44,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
@@ -1127,8 +1125,7 @@ override-dependencies = [
     # unconditionally, so an older core fails at import. Raised in BOTH places.
     # OMN-20885: floor raised 0.47.36 -> 0.47.39 (core#1935), the ticket-contract
     # refusals Contract Compliance Check relies on. Raised in BOTH places.
-    # OMN-21109: floor raised 0.47.39 -> 0.47.44 (core#1987, TA.2).
-    # OMN-21106: floor raised 0.47.39 -> 0.47.44 (core#1987, TA.2 factor members).
+    # OMN-21106 / OMN-21109: floor raised 0.47.39 -> 0.47.44 (core#1987, TA.2).
     "omnibase-core>=0.47.44,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
