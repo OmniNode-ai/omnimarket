@@ -99,6 +99,15 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_registered,
     apply_credential_revoked,
 )
+from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
+    HandlerSecretStore,
+)
+from omnimarket.nodes.node_secret_store_effect.models import (
+    EnumSecretStoreOperation,
+    EnumSecretStoreOutcome,
+    ModelSecretStoreRequest,
+    ModelSecretStoreResult,
+)
 from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
@@ -413,6 +422,77 @@ def _tenant_key_store() -> LocalByokCredentialStore:
     return LocalByokCredentialStore()
 
 
+#: OMN-20994. The secret store node's contract maps this reference namespace to
+#: the tenant folder, so this command holds a reference and never a folder.
+_TENANT_REFERENCE_PREFIX = "secret://onex/tenant/"
+
+
+class CentralStoreRefusedError(Exception):
+    """The secret store node did not create the key. Carries no value."""
+
+    def __init__(self, result: ModelSecretStoreResult) -> None:
+        detail = f" ({result.detail})" if result.detail else ""
+        super().__init__(
+            f"the central secret store answered {result.outcome.value}{detail}"
+        )
+        self.outcome = result.outcome
+
+
+def _central_secret_handler() -> HandlerSecretStore:
+    """The secret store node's handler, store and identity from this machine's overlay."""
+    return HandlerSecretStore()
+
+
+class _CentralTenantKeyStore:
+    """``ProtocolSecretStore`` over the secret store node's handler (OMN-20994).
+
+    A tenant key is written in process, create-only, under the minted
+    reference in the tenant namespace. Anything but ``created`` raises
+    :class:`CentralStoreRefusedError`, so a refusal stops the registration
+    before any event is published.
+    """
+
+    def __init__(self, handler: HandlerSecretStore) -> None:
+        self._handler = handler
+
+    async def get_secret(self, key: str) -> str | None:
+        result = await self._handler.handle(
+            ModelSecretStoreRequest(
+                operation=EnumSecretStoreOperation.RESOLVE,
+                reference=f"{_TENANT_REFERENCE_PREFIX}{key}",
+            )
+        )
+        if result.outcome is EnumSecretStoreOutcome.NOT_FOUND:
+            return None
+        if result.value is None:
+            raise CentralStoreRefusedError(result)
+        return result.value.get_secret_value()
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        result = await self._handler.handle(
+            ModelSecretStoreRequest(
+                operation=EnumSecretStoreOperation.CREATE,
+                reference=f"{_TENANT_REFERENCE_PREFIX}{key}",
+                value=SecretStr(value),
+            )
+        )
+        if result.outcome is not EnumSecretStoreOutcome.CREATED:
+            raise CentralStoreRefusedError(result)
+        return True
+
+    async def delete_secret(self, key: str) -> bool:
+        raise PermissionError("the central secret store is written create-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        raise PermissionError("the central tenant store is not listed from here")
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        return None
+
+
 def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     """Let the publisher construct and own this runtime's Settings-backed bus.
 
@@ -529,6 +609,18 @@ def _resolve_bound_host(declared: str | None) -> str | None:
         "the lab the key is unbound."
     ),
 )
+@click.option(
+    "--store",
+    "store_choice",
+    type=click.Choice(["local", "central"]),
+    default="local",
+    show_default=True,
+    help=(
+        "Where the value is held. local: this machine's store. central: the "
+        "shared tenant folder, written through the secret store node, so every "
+        "lab host resolves it; this machine's store is left untouched."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
@@ -537,12 +629,14 @@ def register_tenant_key(
     model_option: str | None,
     expires: str | None,
     host: str | None,
+    store_choice: str,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
     expires_at = _parse_expires(expires)
     bound_host = _resolve_bound_host(host)
+    central = store_choice == "central"
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -560,7 +654,11 @@ def register_tenant_key(
             register_inference_credential(
                 request,
                 tenant_id=tenant,
-                secret_store=_tenant_key_store(),
+                secret_store=(
+                    _CentralTenantKeyStore(_central_secret_handler())
+                    if central
+                    else _tenant_key_store()
+                ),
                 event_bus=_tenant_key_event_bus(),
             )
         )
@@ -580,6 +678,10 @@ def register_tenant_key(
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
+    except CentralStoreRefusedError as exc:
+        raise click.ClickException(
+            f"{exc}. Nothing was stored and nothing was published."
+        ) from exc
     shown: dict[str, str | None] = {
         "api_key_ref": response.api_key_ref,
         "provider": response.provider,
@@ -596,7 +698,8 @@ def register_tenant_key(
         shown["expiry_warning"] = response.expiry_warning.value
     if response.bound_host is not None:
         shown["bound_host"] = response.bound_host
-    _fold_registered_tenant_key(response, tenant)
+    if not central:
+        _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
 
 

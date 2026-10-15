@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Local acceptance of a code answer is decided by executed tests (OMN-21077)."""
+"""Local code acceptance records requests naming no tests as UNTESTED (OMN-17427)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
@@ -34,8 +35,8 @@ from omnimarket.routing.delegation_backend_resolution import (
 # A good-but-mechanically-incomplete code answer: clears the code_generation
 # deterministic floor (compiles / single artifact / non-empty) but carries none of
 # the convention/regression heuristic markers, so the deterministic-only graded
-# score is ~0.733. The score decides nothing for a code class: with no named
-# test run the answer is refused as untested (OMN-21077).
+# score is below the bar. The score decides nothing for a code class: with no
+# tests named the answer completes as UNTESTED (OMN-17427).
 _GOOD_CODE = "### ANSWER\ndef add(a: int, b: int) -> int:\n    return a + b"
 
 _LOCAL_BACKEND = ModelResolvedDelegationBackend(
@@ -106,25 +107,52 @@ def _dispatch(
 
 
 # ---------------------------------------------------------------------------
-# End-to-end local dispatch: an untested code answer is refused
+# End-to-end local dispatch: a request naming no tests completes UNTESTED
 # ---------------------------------------------------------------------------
 
 
-def test_valid_local_artifact_with_no_named_tests_refused(
+def test_valid_local_artifact_with_no_named_tests_completes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A valid local artifact no test ran against fails without escalation."""
+    """A valid artifact with no tests named completes without escalation."""
     _no_escalation(monkeypatch)
     port = LocalDelegationDispatchPort(
         effect_handler=_effect_returning(_GOOD_CODE),
         evidence_db_path=tmp_path / "d.sqlite",
         effect_process_boundary=False,
     )
+    accepted_gates: list[ModelQualityGateResult] = []
+    original_acceptance = port._is_quality_accepted
+
+    def record_acceptance(
+        task_type: str,
+        gate_result: ModelQualityGateResult,
+        *,
+        declared_deterministic: tuple[str, ...] | None = None,
+    ) -> bool:
+        accepted_gates.append(gate_result)
+        return original_acceptance(
+            task_type, gate_result, declared_deterministic=declared_deterministic
+        )
+
+    monkeypatch.setattr(port, "_is_quality_accepted", record_acceptance)
     result = _dispatch(port, task_type="code_generation")
 
-    assert result["status"] == "failed"
-    assert result["quality_gate_passed"] is False
+    assert result["status"] == "completed"
+    assert result["quality_gate_passed"] is True
     assert result["escalation_count"] == 0
+
+    assert len(accepted_gates) == 1
+    gate = accepted_gates[0]
+    assert gate.passed is True
+    assert "passes_existing_tests" in gate.skipped_checks
+    evaluation = next(
+        e for e in gate.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
+    assert gate.score_verified is False
 
 
 def test_deterministic_floor_still_rejects_empty_artifact(
