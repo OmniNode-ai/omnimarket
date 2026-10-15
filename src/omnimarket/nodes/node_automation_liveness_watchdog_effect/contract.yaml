@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_automation_liveness_watchdog_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-20806. The automation-liveness watchdog's durable half. One tick takes
+  the alarm episodes the compute node opened and the state it asked to carry,
+  commits both to the local outbox store in one transaction, then delivers
+  what is due. Delivery marks an attempt before it sends and reads the alert
+  channel's history for the episode id before any re-send, so a crash after
+  deciding, after Slack accepted, or after the outbox recorded loses no alarm
+  and costs at most one duplicate. A missing alert-channel credential is a
+  failed delivery, never a silent return. A low-severity episode is posted in
+  its 6-hourly digest with no retry; one not delivered by its due time is sent
+  again and then escalated once to the route outside Slack. At most 20
+  messages an hour reach the channel, and the rest ride one digest message.
+  The sender, the channel history and the escalation route plug in through
+  protocols.
+
+input_model: omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery.ModelWatchdogDeliveryRequest
+output_model: omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery.ModelWatchdogDeliveryResult
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerAutomationLivenessWatchdogEffect
+        module: omnimarket.nodes.node_automation_liveness_watchdog_effect.handlers.handler_automation_liveness_watchdog_effect
+      event_model:
+        name: ModelWatchdogDeliveryRequest
+        module: omnimarket.nodes.node_automation_liveness_watchdog_effect.models
+
+handler:
+  module: omnimarket.nodes.node_automation_liveness_watchdog_effect.handlers.handler_automation_liveness_watchdog_effect
+  class: HandlerAutomationLivenessWatchdogEffect
+  input_model: omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery.ModelWatchdogDeliveryRequest
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.automation-liveness-watchdog-delivered.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.automation-liveness-watchdog-deliver-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.automation-liveness-alarm-delivered.v1
+    - onex.evt.omnimarket.automation-liveness-watchdog-delivered.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-liveness-watchdog-deliver-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.automation-liveness-alarm-delivered.v1
+  - onex.evt.omnimarket.automation-liveness-watchdog-delivered.v1
+
+metadata:
+  transport_type: kafka
+  description: "Effect node: durable outbox, at-least-once alarm delivery with episode-id reconciliation, due-time retry and escalation, hourly cap"
+  author: "OmniNode Platform Team"
+  created: "2026-10-15"
+  tags:
+    - "effect"
+    - "liveness"
