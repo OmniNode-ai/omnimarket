@@ -1242,6 +1242,20 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-20201 (M47): a node contract.yaml never carries a model id, a model
+      # key, a model-env default or an endpoint literal; those live in contract
+      # overlays. Scoped to the staged contracts so no new debt enters while the
+      # contracts that already carry findings are migrated one by one. SYNC with
+      # ci.yml step "Contract overlay boundary gate (changed contracts)".
+      - id: contract-overlay-boundary
+        name: Contract overlay boundary (OMN-20201)
+        language: system
+        entry: uv run python scripts/validation/validate_contract_overlay_boundary.py
+        files: ^src/omnimarket/nodes/[^/]+/contract\.yaml$
+        pass_filenames: true
+        require_serial: true
+        stages: [pre-commit]
+
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
       # core COMPUTE validator omnibase_core.validation.validator_routing_authority
       # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py

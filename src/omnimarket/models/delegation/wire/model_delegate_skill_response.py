@@ -53,6 +53,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.delegation.wire.model_delegation_output_files import (
+    ModelDelegationOutputFile,
+    ModelDelegationOutputManifest,
+)
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -109,11 +113,6 @@ def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
         return data
     return {key: value for key, value in data.items() if key not in keys}
 
-
-# OMN-19600: response keys OMN-19602 declares for delegated output files.
-OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
-    {"output_manifest", "output_files"}
-)
 
 #: The terminal key that carries the ticket a delegation worked (OMN-19514).
 #: The request carries it in ``metadata`` under the same name.
@@ -539,6 +538,28 @@ class ModelDelegateSkillResponse(BaseModel):
             "safe customer deliverable."
         ),
     )
+    # OMN-19599 (OMN-19602 step 2 of 2): present only on a completed terminal
+    # whose request declared output files. Step 1 (OMN-19600, v0.4.225) taught
+    # this model to decode both keys, so the wire compatibility gate accepts
+    # declaring them. ``exclude_if`` keeps every other terminal byte-identical.
+    output_manifest: ModelDelegationOutputManifest | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Exactly which declared files the delegation produced (path, kind, "
+            "sha256, size, artifact ref) and which it refused, with a digest "
+            "over the entries. Present only when the request declared outputs."
+        ),
+    )
+    output_files: tuple[ModelDelegationOutputFile, ...] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The accepted files with their content, in declaration order, "
+            "each matching its output_manifest entry. Present only when the "
+            "request declared outputs."
+        ),
+    )
     preamble_chars: int | None = Field(
         default=None,
         ge=0,
@@ -717,24 +738,6 @@ class ModelDelegateSkillResponse(BaseModel):
             except ValueError:
                 return None
         return None
-
-    # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
-    # they are declared. The wire compatibility gate (OMN-18868) refuses a new
-    # field until a release that decodes it is out; this release is that
-    # consumer. A consumer at this release has no use for the manifest or the
-    # files, so they are dropped and the rest of the terminal decodes.
-    @model_validator(mode="before")
-    @classmethod
-    def tolerate_output_file_keys_before_they_are_declared(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping) or not (
-            OUTPUT_FILE_RESPONSE_WIRE_KEYS & set(data)
-        ):
-            return data
-        return {
-            key: item
-            for key, item in data.items()
-            if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
-        }
 
     # OMN-20274, step 1 of 2 (OMN-19969): a CONSUMER that decodes the savings
     # baseline keys before any producer emits them. omnimarket#3172 declares
@@ -1417,7 +1420,6 @@ def delegate_skill_terminal_from_response(
 
 __all__ = [
     "CALLER_LANE_WIRE_KEY",
-    "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
     "SESSION_ID_WIRE_KEY",
     "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
