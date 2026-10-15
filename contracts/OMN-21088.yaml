@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21088"
+title: "result.response is the final answer only; no reasoning asked for or billed (omnimarket half)"
+summary: "The skill response carries only the final answer: reasoning blocks, an opening answer header and surrounding blank lines are removed, and removed reasoning is kept on response_reasoning. The reasoning-prose rules (cites_sources, methodical_analysis, step_by_step_explanation) apply only when the prompt asks for them, the research and reasoning system prompts no longer ask for thorough or step-by-step answers, a one-token answer to a short direct question clears semantic_adequacy, and OpenRouter slugs are sent reasoning effort minimal (low for task type reasoning) with exclude true."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-final-answer-only"
+    statement: "result.response holds no reasoning block, no opening answer header and no leading or trailing blank lines."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: final_answer_text and the skill response turn '\\n\\n### ANSWER\\n4' and a think block before the answer into '4' -- falsifier: a response that keeps the header or the block"
+  - id: "req-no-reasoning-asked"
+    statement: "No task class asks a prompt that did not ask for them for sources, reasoning, tradeoffs or numbered steps."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: for 'what is 2+2' no class band holds cites_sources, methodical_analysis or step_by_step_explanation, and a prompt asking for sources or tradeoffs keeps the rule -- falsifier: a class band that still holds one"
+  - id: "req-provider-reasoning"
+    statement: "OpenRouter model slugs are asked to exclude reasoning and to reason at minimal effort, low for task type reasoning; local ids are unchanged."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: apply_inference_protocol for qwen/qwen3.8-27b returns the reasoning option and for Qwen3.8-27B returns none -- falsifier: a local id receiving the option"
+  - id: "req-one-line-answer-passes"
+    statement: "A correct one-line answer to a short question clears the quality gate."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the gate passes '4' for 'what is 2+2' and still refuses a bare word answering an open request -- falsifier: either outcome reversed"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4 in one focused test file."
+    command: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21088-ac1-final-answer"
+    description: "AC1: the response seam strips reasoning and the answer header."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'response or reasoning_is_kept or header or indentation or clean_answer'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21088-ac2-no-reasoning-asked"
+    description: "AC2: no class asks a short question for reasoning prose; a prompt that asks keeps the rule."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'not_asked_for_reasoning or keeps_the_rule or keeps_the_step_rule or system_prompt'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21088-ac3-provider-reasoning"
+    description: "AC3: OpenRouter slugs receive the reasoning option and local ids do not."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'openrouter or local_model_id'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21088-ac4-one-line-answer"
+    description: "AC4: a one-line correct answer clears the gate; a bare word for an open request does not."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'one_line or one_token or bare_word'"
+    binds_ac: ["AC4"]
