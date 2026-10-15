@@ -14,17 +14,13 @@
 --    source, or no source, is left alone: an old 0 cannot be told apart from a
 --    free call, so it is not rewritten.
 --
--- The backfill runs under FORCE ROW LEVEL SECURITY (0023). A non-superuser
--- owner sees no row without a tenant GUC, so an UPDATE would match zero rows
--- and report success. As 0033 does, the block assumes the owner role, lifts
--- FORCE for the one statement inside this transaction and restores it before
--- COMMIT, so no committed state ever has FORCE off.
---
--- 3. The tenant_isolation policy is restated, unchanged, in the same block (as
---    0034 does): a file that turns FORCE ROW LEVEL SECURITY on must also
---    CREATE POLICY on the relation, so the file alone leaves the relation with
---    its admitting rule. The predicate is 0034's, byte for byte, and the
---    app_dashboard read grant is restated with it (the OMN-14894 ratchet).
+-- The table's row-level security is forced (0023): a migrate identity that is
+-- neither superuser nor BYPASSRLS sees no row without a tenant GUC, so the
+-- UPDATE would match nothing and report success. As the savings rebackfill
+-- (095) does, such an identity takes the table owner's role and adds one
+-- transaction-scoped permissive policy covering exactly the rows the backfill
+-- may touch, and drops it before the block ends. The table's row-level
+-- security, its forcing and tenant_isolation are never changed.
 
 BEGIN;
 
@@ -34,39 +30,43 @@ ALTER TABLE delegation_events
 
 DO $$
 DECLARE
-    v_owner  NAME;
-    v_forced BOOLEAN;
+    v_owner  REGROLE;
+    v_bypass BOOLEAN;
 BEGIN
     v_owner := (
-        SELECT pg_get_userbyid(relowner)
-        FROM pg_catalog.pg_class
-        WHERE oid = 'delegation_events'::regclass);
-    v_forced := (
-        SELECT relforcerowsecurity
-        FROM pg_catalog.pg_class
-        WHERE oid = 'delegation_events'::regclass);
+        SELECT c.relowner::regrole
+        FROM pg_catalog.pg_class c
+        WHERE c.oid = 'delegation_events'::regclass);
+    v_bypass := (
+        SELECT r.rolsuper OR r.rolbypassrls
+        FROM pg_catalog.pg_roles r
+        WHERE r.rolname = current_user);
 
-    IF NOT pg_has_role(current_user, v_owner, 'USAGE') THEN
-        RAISE EXCEPTION
-            'OMN-20717: the migrate identity % is not a member of '
-            'delegation_events'' owner role %; under FORCE ROW LEVEL SECURITY '
-            'the backfill would see no row and silently change nothing.',
-            current_user, v_owner;
-    END IF;
-    -- INHERIT and SET are independent memberships since PostgreSQL 16
-    -- (OMN-17316): without SET, set_config('role', ...) below aborts on a bare
-    -- permission error.
-    IF NOT pg_has_role(current_user, v_owner, 'SET') THEN
-        RAISE EXCEPTION
-            'OMN-20717: the migrate identity % may not SET ROLE to '
-            'delegation_events'' owner role %; the backfill and the policy '
-            'restatement must run as the owner. Fix: GRANT % TO % WITH SET TRUE.',
-            current_user, v_owner, v_owner, current_user;
-    END IF;
-    PERFORM set_config('role', v_owner::text, true);
-
-    IF v_forced THEN
-        ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
+    IF NOT v_bypass THEN
+        IF NOT pg_has_role(current_user, v_owner, 'USAGE') THEN
+            RAISE EXCEPTION
+                'OMN-20717: % is not a member of delegation_events'' owner '
+                'role % with INHERIT, so under the forced tenant policy the '
+                'backfill would see no row and silently change nothing.',
+                current_user, v_owner;
+        END IF;
+        -- INHERIT and SET are independent memberships since PostgreSQL 16
+        -- (OMN-17316): without SET, set_config('role', ...) below aborts on a
+        -- bare permission error.
+        IF NOT pg_has_role(current_user, v_owner, 'SET') THEN
+            RAISE EXCEPTION
+                'OMN-20717: % cannot SET ROLE to delegation_events'' owner '
+                'role %, so it cannot add the transaction-scoped backfill '
+                'policy. Fix: GRANT % TO % WITH SET TRUE.',
+                current_user, v_owner, v_owner, current_user;
+        END IF;
+        PERFORM set_config('role', v_owner::text, true);
+        DROP POLICY IF EXISTS omn20717_unpriced_backfill ON delegation_events;
+        CREATE POLICY omn20717_unpriced_backfill ON delegation_events
+          AS PERMISSIVE
+          FOR ALL
+          USING (cost_measurement_source = 'no_cost_model')
+          WITH CHECK (cost_measurement_source = 'no_cost_model');
     END IF;
 
     UPDATE delegation_events
@@ -74,18 +74,9 @@ BEGIN
     WHERE cost_measurement_source = 'no_cost_model'
       AND cost_usd = 0;
 
-    IF v_forced THEN
-        ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
+    IF NOT v_bypass THEN
+        DROP POLICY omn20717_unpriced_backfill ON delegation_events;
     END IF;
-
-    DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
-    CREATE POLICY tenant_isolation ON delegation_events
-      FOR ALL
-      USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-      WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
-    GRANT SELECT ON delegation_events TO app_dashboard;
-
-    RESET ROLE;
 END;
 $$;
 

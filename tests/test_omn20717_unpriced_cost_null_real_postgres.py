@@ -17,7 +17,8 @@ Postgres too. Failure modes this module is written against:
 - F6 the aggregate the dashboards read prices an unpriced call at 0;
 - F7 a tenant none of whose calls was priced reads a total of 0.0 instead of
   null (a total that defaults to 0 passes every mixed-tenant case);
-- F8 the migration's restatement of the tenant policy changes it, or loses the
+- F8 the backfill's helper policy outlives the migration, or the migration
+  changes the tenant policy, the table's forced row-level security or the
   dashboard's read grant.
 
 A priced call and a free local call keep their costs. The database is the
@@ -162,9 +163,9 @@ async def test_the_backfill_nulls_only_unpriced_zero_rows_as_a_non_superuser_own
         await admin_conn.execute(f"SET ROLE {owner}")
         await admin_conn.execute(_MIGRATION.read_text())
         await admin_conn.execute("RESET ROLE")
-        # F8: 0061 restates the tenant policy (omnibase_infra's RULE A needs a
-        # CREATE POLICY in a file that turns FORCE on); it must come back
-        # exactly as it was, with the dashboard's read grant.
+        # F8: the backfill's helper policy is dropped before the block ends, so
+        # the policies afterwards are exactly the ones before, and the
+        # dashboard's read grant is untouched.
         assert [dict(r) for r in await admin_conn.fetch(_POLICIES)] == [
             dict(r) for r in policies_before
         ]

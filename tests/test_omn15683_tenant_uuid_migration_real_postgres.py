@@ -118,15 +118,12 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # 0045 and is withheld with it.
 # OMN-20717: 0062 re-creates projection_delegation_token_usage, which groups
 # ON tenant_id, so it depends on the column and is withheld with 0039.
-# OMN-20717: 0061 restates tenant_isolation with 0034's uuid predicate, which
-# compares tenant_id to a uuid, so it is withheld from the same arrangement.
 _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
     {
         "0039_delegation_aggregate_views_per_tenant.sql",
         "0045_terminal_construction_outcome_metrics.sql",
         "0050_delegation_summary_excludes_fixture_savings.sql",
         "0055_model_routing_local_call_share.sql",
-        "0061_delegation_events_cost_usd_nullable.sql",
         "0062_delegation_token_usage_unpriced_calls.sql",
     }
 )
