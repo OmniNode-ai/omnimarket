@@ -71,4 +71,4 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/tests/test_delegation_keeps_counterfactual.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'seed_tenant_registry(db)' && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_savings/tests/test_savings_one_row_per_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'monkeypatch.delenv("ONEX_TENANT_ID", raising=False)'
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/tests/test_delegation_keeps_counterfactual.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'seed_tenant_registry(db)' && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_savings/tests/test_savings_one_row_per_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'monkeypatch.delenv("ONEX_TENANT_ID", raising=False)'
