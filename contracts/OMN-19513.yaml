@@ -46,6 +46,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq \"    value: str\"'"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    value: str\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
