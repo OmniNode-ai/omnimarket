@@ -260,6 +260,34 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
         "repo": r.repo,
         "truncated": False,
     },
+    "commit_check_runs": lambda r: {
+        "operation": "commit_check_runs",
+        "repo": r.repo,
+        "head_sha": r.head_sha,
+        "check_name": r.check_name,
+        "truncated": False,
+        "check_runs": [
+            {
+                "id": 9,
+                "name": r.check_name or "ci",
+                "app_slug": "github-actions",
+                "status": "completed",
+                "conclusion": "success",
+            }
+        ],
+    },
+    "merged_pr": lambda r: {
+        "operation": "merged_pr",
+        "repo": r.repo,
+        "pr_number": r.pr_number,
+        "state": "MERGED",
+        "merged": True,
+        "head_sha": HEAD,
+        "head_ref": "omn-1-x",
+        "base_ref": "dev",
+        "merge_commit_sha": MOVED,
+        "merged_at": "2026-10-10T18:00:00Z",
+    },
 }
 
 
@@ -390,6 +418,14 @@ _READ_ARGS: dict[str, list[str]] = {
     "run-download": [REPO, "--run-id", "11"],
     "release-list": [REPO],
     "pr-heads": [REPO, "--source", "bus"],
+    "commit-check-runs": [
+        REPO,
+        "--head-sha",
+        "a" * 40,
+        "--check-name",
+        "repo-evidence / dod-verify",
+    ],
+    "pr-merged": [f"{REPO}#77"],
 }
 _WRITE_ARGS: dict[str, list[str]] = {
     "pr-create": [
@@ -499,7 +535,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 14
+    assert len(declared) == 16
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )

@@ -1,0 +1,54 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20514"
+title: "onex code-edit pins the lab host a model turn uses, and records the host before the first turn"
+summary: "onex code-edit run gains --backend-id: each model turn is sent with the backend pin, the backend and its host are resolved and printed before the first turn and written to the loop's pre_run.json, and a turn the delegate receipt shows served by another backend or host ends the loop with no further turn. Tests: tests/unit/cli/test_cli_code_edit_backend_pin.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-code-edit-backend-pin"
+    statement: |-
+      The in-process delegate route of onex code-edit accepts a backend pin, which fixes the lab host, refuses to continue after a turn lands anywhere else, and records the resolved backend and host before the first model turn. The criteria below are the ticket's two live criteria, transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the in-process delegate route accepts a host or backend pin and refuses to send a turn anywhere else -- falsifier: a unit test in the repository that ships the in-process route, pinning one lab host's backend and asserting no turn is routed to the other lab host, run by that repository's required test job
+      - id: "AC2"
+        statement: |-
+          AC2: the resolved backend and host are printed and written to the receipt before the first model turn -- falsifier: a unit test asserting the receipt's pre-run record names the host
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: pinning one backend sends the pin on each turn, and a turn served by another backend or host ends the loop after one turn."
+    command: "uv run pytest tests/unit/cli/test_cli_code_edit_backend_pin.py -q"
+  - kind: "tests"
+    description: "AC2: the pre-run record names the pinned backend and host and exists when the first model turn starts."
+    command: "uv run pytest tests/unit/cli/test_cli_code_edit_backend_pin.py -k pinned_run_sends_the_pin -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20514-ac1-pin-refuses-other-host"
+    description: "AC1: with one backend pinned, every turn carries --backend-id, a turn served by a different backend ends the loop as delegate_failed after one turn, an attempt on a different host after the pinned one is refused, and an unresolvable pin is refused before any turn."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_code_edit_backend_pin.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20514-ac2-pre-run-record-names-host"
+    description: "AC2: the pre-run record pre_run.json names the pinned backend and host, was on disk when the first model turn started, and the printed pin line and the loop receipt carry the same host."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_code_edit_backend_pin.py -k pinned_run_sends_the_pin -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20514-deploy-backend-pin-readback"
+    description: "Hosted-runner readback of the code-edit ports at the checked-out PR revision: turns forward the backend pin, pre_run.json records the resolved pin, and each delegate receipt is checked for a pin violation. The AC1/AC2 tests exercise these paths without a lab endpoint."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/delegated_code_edit/loop_ports.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("argv += [\"--backend-id\", self._pin.backend_id]") and contains("self._write_pre_run(loop_dir, loop_run_id)") and contains("pin_violation(run_dir / \"receipt.json\", self._pin)")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"

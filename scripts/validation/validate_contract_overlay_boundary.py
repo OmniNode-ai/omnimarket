@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import subprocess
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -30,6 +32,9 @@ LLM_ENDPOINT_RE = re.compile(r"(?i)\bhttps?://[^\s\"']+")
 MODEL_ENV_DEFAULT_RE = re.compile(
     r"\b[A-Z0-9_]*MODEL[A-Z0-9_]*\b\s*[:=]\s*['\"]?[^'\"\s]+"
 )
+
+# A git hook exports these, and they override ``git -C`` and ``cwd``.
+_GIT_LOCATION_ENV = {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"}
 
 IGNORED_KEY_PATH_PARTS = {
     "author",
@@ -69,14 +74,18 @@ def _is_approved_authority_file(path: Path) -> bool:
     )
 
 
+def _is_scanned_contract(path: Path) -> bool:
+    if path.name != "contract.yaml":
+        return False
+    if set(path.parts) & {".git", ".venv", "node_modules", "__pycache__"}:
+        return False
+    return "/.claude/worktrees/" not in path.as_posix()
+
+
 def _iter_contracts(root: Path) -> Iterable[Path]:
     for path in sorted(root.rglob("contract.yaml")):
-        parts = set(path.parts)
-        if parts & {".git", ".venv", "node_modules", "__pycache__"}:
-            continue
-        if "/.claude/worktrees/" in path.as_posix():
-            continue
-        yield path
+        if _is_scanned_contract(path):
+            yield path
 
 
 def _path_text(parts: tuple[str, ...]) -> str:
@@ -171,11 +180,51 @@ def _find_in_contract(path: Path) -> list[BoundaryFinding]:
     return findings
 
 
-def validate_contract_overlay_boundary(root: Path) -> list[BoundaryFinding]:
+def validate_contract_overlay_boundary(
+    root: Path, paths: Iterable[Path] | None = None
+) -> list[BoundaryFinding]:
+    """Scan every node contract under ``root``, or only the contracts in ``paths``.
+
+    A path that is not an existing ``contract.yaml`` is skipped, so a caller can hand
+    over a whole changed-file list.
+    """
+    if paths is None:
+        contracts: Iterable[Path] = _iter_contracts(root)
+    else:
+        contracts = sorted(
+            {p.resolve() for p in paths if p.is_file() and _is_scanned_contract(p)}
+        )
     findings: list[BoundaryFinding] = []
-    for contract in _iter_contracts(root):
+    for contract in contracts:
         findings.extend(_find_in_contract(contract))
     return findings
+
+
+def changed_contracts(root: Path, ref: str) -> list[Path]:
+    """The contracts added, copied, modified or renamed between ``ref`` and HEAD.
+
+    Raises ``RuntimeError`` when git cannot resolve ``ref``.
+    """
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            f"{ref}...HEAD",
+            "--",
+            "*contract.yaml",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_ENV},
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"git diff against {ref!r} failed: {result.stderr.strip()}")
+    return [root / line for line in result.stdout.splitlines() if line]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -188,10 +237,31 @@ def main(argv: list[str] | None = None) -> int:
         default=Path.cwd(),
         help="Repository root to scan. Defaults to current working directory.",
     )
+    parser.add_argument(
+        "--changed-since",
+        metavar="REF",
+        help="Scan only contracts changed between REF and HEAD (git merge-base diff).",
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="Scan only these contract.yaml files (pre-commit passes the staged ones).",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
 
-    findings = validate_contract_overlay_boundary(root)
+    scoped: list[Path] | None = None
+    if args.changed_since:
+        try:
+            scoped = changed_contracts(root, args.changed_since)
+        except RuntimeError as exc:
+            print(f"contract-overlay-boundary: {exc}", file=sys.stderr)
+            return 2
+    if args.paths:
+        scoped = [*(scoped or []), *args.paths]
+
+    findings = validate_contract_overlay_boundary(root, scoped)
     if findings:
         print(
             f"contract-overlay-boundary: blocking - {len(findings)} finding(s)",
@@ -201,7 +271,11 @@ def main(argv: list[str] | None = None) -> int:
             print(finding.format(root), file=sys.stderr)
         return 1
 
-    print("contract-overlay-boundary: PASS")
+    print(
+        "contract-overlay-boundary: PASS"
+        if scoped is None
+        else f"contract-overlay-boundary: PASS ({len(scoped)} contract path(s) scoped)"
+    )
     return 0
 
 

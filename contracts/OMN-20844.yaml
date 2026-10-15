@@ -20,7 +20,7 @@ requirements:
           AC2: ModelDelegateSkillRequest declares an optional model field, omitted from the wire when unset; the delegate handler passes it to the dispatch port only when set; the in-process port runs the customer's own route on it and refuses it for any other route; the runtime port refuses it.
       - id: "AC3"
         statement: |-
-          AC3: with no model named for OpenRouter, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN; a credential with no model is refused at call time; a model the customer named is never re-aimed at a catalogue pick.
+          AC3: onboarding selects the default OpenRouter model declared in the onboarding overlay, with no model id in code, and the customer can change it with one documented command (`onex models add openrouter --model <id>`) -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly; with no model named and none declared, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN, and a model the customer named is never re-aimed at a catalogue pick.
       - id: "AC4"
         statement: |-
           AC4: the delegation result names the chosen model, and onex models add fails its test when the answer names another model than the chosen one.
@@ -161,6 +161,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5"]
+  - id: "dod-omn20844-onboarding-default-model-overlay"
+    description: "The OpenRouter default model onboarding registers is read from the node_model_setup_effect overlay (or ONEX_OPENROUTER_DEFAULT_MODEL), refused naming the overlay when none declares it, stored nowhere by the read, and replaced by the one documented command. Every model id in the tests is a fixture the test declares."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
   - id: "dod-omn20844-guard-tests-are-wired"
     description: "The customer-chooses-model tests run in a check-only pre-commit hook and in a named ci.yml job registered as a strict gate of CI Summary."
     source: "manual"
