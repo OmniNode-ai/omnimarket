@@ -35,6 +35,22 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4 (superseded by OMN-20910): the omniintelligence clone is pinned to a full sha that carries the self-negating drop and the voters overlay reader -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k pinned
+  - id: "req-experiment-record-check"
+    statement: |-
+      node_delegation_experiment_record_compute checks the results records of the delegation experiment program: a record per listed experiment with hypothesis, metric, baseline, arms, per-arm values and a verdict; every counted run id has a receipt; no changed path is the dev-lane overlay or the bifrost contract path; a supported verdict names a follow-on or a declining ruling. The ticket's four live criteria are bound here as AC5 to AC8, in the ticket's order, because AC1 to AC4 above are held by the earlier reviewer requirements.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5 (ticket AC1): each experiment in the program has a results record with hypothesis, metric, baseline, arms, run count, per-arm values and a verdict; a listed experiment with no record, or a record missing per-arm values, is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k "ac1 or listed or measured"
+      - id: "AC6"
+        statement: |-
+          AC6 (ticket AC2): every run an experiment counts is traceable to a receipt run id; a run id with no receipt is refused and named -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac2
+      - id: "AC7"
+        statement: |-
+          AC7 (ticket AC3): a record whose changed paths include the dev-lane overlay or the bifrost contract path is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac3
+      - id: "AC8"
+        statement: |-
+          AC8 (ticket AC4): a record with a supported verdict and neither a follow-on ticket or PR nor a declining ruling is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac4
 evidence_requirements:
   - kind: "tests"
     description: "The workflow voter tests pass at the head."
@@ -48,6 +64,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The workflow clones omniintelligence at a full 40-hex sha and reads every voter from the overlay at the head."
     command: "env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q"
+  - kind: "tests"
+    description: "The experiment record check, its registration and the first measured record pass at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_experiment_record_compute -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -101,3 +120,35 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -k 'reads_the_overlay or from_the_overlay or outside_the_workspace'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20422-ac5-experiment-record-complete"
+    description: "A record missing hypothesis, metric, baseline, verdict or a per-arm value is refused, a listed experiment with no record is refused, and the first measured record passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k 'ac1 or listed or measured'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20422-ac6-run-ids-have-receipts"
+    description: "A counted run id with no receipt is refused and named; the first measured record was also checked against the receipts on the lab host."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac2"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20422-ac7-no-routing-change"
+    description: "A changed path naming the bifrost contract or its overrides is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac3"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20422-ac8-supported-has-follow-on"
+    description: "A supported verdict with neither follow-on nor ruling is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_experiment_record_compute -q -k ac4"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
