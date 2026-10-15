@@ -108,6 +108,10 @@ _POST_CONVERSION_MODEL_ROUTING_VIEW = "0055_model_routing_local_call_share.sql"
 # ON tenant_id, so it depends on the column the conversion alters and is
 # withheld with 0039.
 _POST_CONVERSION_TOKEN_USAGE_VIEW = "0062_delegation_token_usage_unpriced_calls.sql"
+# OMN-20717: 0061 restates tenant_isolation with the uuid predicate 0034
+# installs, which compares tenant_id to a uuid, so it is withheld from the
+# pre-conversion (TEXT) arrangement with the other post-conversion files.
+_POST_CONVERSION_POLICY_RESTATEMENT = "0061_delegation_events_cost_usd_nullable.sql"
 
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
@@ -195,6 +199,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_SUMMARY_VIEW,
             _POST_CONVERSION_MODEL_ROUTING_VIEW,
             _POST_CONVERSION_TOKEN_USAGE_VIEW,
+            _POST_CONVERSION_POLICY_RESTATEMENT,
         }
     ]
 

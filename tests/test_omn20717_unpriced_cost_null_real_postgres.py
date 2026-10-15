@@ -13,7 +13,9 @@ Postgres too. Failure modes this module is written against:
 - F4 the backfill runs under FORCE ROW LEVEL SECURITY as a non-superuser owner
   and silently matches no row;
 - F5 the backfill rewrites a zero it cannot prove was unpriced (a free local
-  call, or a row with no pricing source).
+  call, or a row with no pricing source);
+- F6 the migration's restatement of the tenant policy changes it, or loses the
+  dashboard's read grant.
 
 A priced call and a free local call keep their costs. The database is the
 INTEGRATION_POSTGRES_* one CI configures; the module skips without one.
@@ -46,6 +48,11 @@ _MIGRATION = _MIGRATIONS_DIR / "0061_delegation_events_cost_usd_nullable.sql"
 _SELECT = (
     "SELECT cost_usd, cost_measurement_source FROM delegation_events "
     "WHERE correlation_id = $1"
+)
+_POLICIES = (
+    "SELECT policyname, permissive, roles::text[] AS roles, cmd, qual, with_check"
+    " FROM pg_policies WHERE schemaname = current_schema()"
+    " AND tablename = 'delegation_events' ORDER BY policyname"
 )
 _TENANT = "beta-business-proof"
 _UNREGISTERED_TIER = "omn20717-no-cost-model-tier"
@@ -147,9 +154,20 @@ async def test_the_backfill_nulls_only_unpriced_zero_rows_as_a_non_superuser_own
             "SELECT relforcerowsecurity FROM pg_class"
             " WHERE oid = 'delegation_events'::regclass"
         )
+        policies_before = await admin_conn.fetch(_POLICIES)
+        assert policies_before, "the tenant policy must exist before 0061"
         await admin_conn.execute(f"SET ROLE {owner}")
         await admin_conn.execute(_MIGRATION.read_text())
         await admin_conn.execute("RESET ROLE")
+        # F6: 0061 restates the tenant policy (omnibase_infra's RULE A needs a
+        # CREATE POLICY in a file that turns FORCE on); it must come back
+        # exactly as it was, with the dashboard's read grant.
+        assert [dict(r) for r in await admin_conn.fetch(_POLICIES)] == [
+            dict(r) for r in policies_before
+        ]
+        assert await admin_conn.fetchval(
+            "SELECT has_table_privilege('app_dashboard', 'delegation_events', 'SELECT')"
+        )
         costs = {
             key: await admin_conn.fetchval(
                 "SELECT cost_usd FROM delegation_events WHERE correlation_id = $1",

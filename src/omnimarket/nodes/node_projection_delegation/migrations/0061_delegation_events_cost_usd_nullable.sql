@@ -19,6 +19,12 @@
 -- and report success. As 0033 does, the block assumes the owner role, lifts
 -- FORCE for the one statement inside this transaction and restores it before
 -- COMMIT, so no committed state ever has FORCE off.
+--
+-- 3. The tenant_isolation policy is restated, unchanged, in the same block (as
+--    0034 does): a file that turns FORCE ROW LEVEL SECURITY on must also
+--    CREATE POLICY on the relation, so the file alone leaves the relation with
+--    its admitting rule. The predicate is 0034's, byte for byte, and the
+--    app_dashboard read grant is restated with it (the OMN-14894 ratchet).
 
 BEGIN;
 
@@ -47,6 +53,16 @@ BEGIN
             'the backfill would see no row and silently change nothing.',
             current_user, v_owner;
     END IF;
+    -- INHERIT and SET are independent memberships since PostgreSQL 16
+    -- (OMN-17316): without SET, set_config('role', ...) below aborts on a bare
+    -- permission error.
+    IF NOT pg_has_role(current_user, v_owner, 'SET') THEN
+        RAISE EXCEPTION
+            'OMN-20717: the migrate identity % may not SET ROLE to '
+            'delegation_events'' owner role %; the backfill and the policy '
+            'restatement must run as the owner. Fix: GRANT % TO % WITH SET TRUE.',
+            current_user, v_owner, v_owner, current_user;
+    END IF;
     PERFORM set_config('role', v_owner::text, true);
 
     IF v_forced THEN
@@ -61,6 +77,15 @@ BEGIN
     IF v_forced THEN
         ALTER TABLE delegation_events FORCE ROW LEVEL SECURITY;
     END IF;
+
+    DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
+    CREATE POLICY tenant_isolation ON delegation_events
+      FOR ALL
+      USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+      WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+    GRANT SELECT ON delegation_events TO app_dashboard;
+
+    RESET ROLE;
 END;
 $$;
 
