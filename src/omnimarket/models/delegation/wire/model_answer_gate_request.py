@@ -30,6 +30,20 @@ class EnumIndependentJudgeVerdict(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class EnumNamedTestVerdict(StrEnum):
+    """What a code answer's named tests said (OMN-17427).
+
+    ``untested`` is the verdict for a request that named no tests: the answer
+    is decided by its contract checks and is never recorded as tested.
+    ``not_run`` is a request that named tests no runner ran, which is refused.
+    """
+
+    PASSED = "passed"
+    FAILED = "failed"
+    NOT_RUN = "not_run"
+    UNTESTED = "untested"
+
+
 class ModelIndependentJudgeVerdict(BaseModel):
     """One independent judge call: who judged, what it said, what it cost."""
 
@@ -66,11 +80,15 @@ class ModelAnswerGateRequest(BaseModel):
     contract_gate: ModelQualityGateResult
     judge: ModelIndependentJudgeVerdict | None = None
     named_test_run: ModelNamedTestRun | None = None
+    #: OMN-17427: whether the request named tests. With none named and no run,
+    #: a code answer is UNTESTED rather than refused as INSUFFICIENT.
+    named_tests_requested: bool = False
 
 
 __all__ = [
     "EnumAnswerGateKind",
     "EnumIndependentJudgeVerdict",
+    "EnumNamedTestVerdict",
     "ModelAnswerGateRequest",
     "ModelAnswerJudgeCall",
     "ModelIndependentJudgeVerdict",
