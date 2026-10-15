@@ -156,6 +156,9 @@ class HandlerRoutingIntent:
             self._tenant_overlay_db,
             tenant_id=tenant_id,
             task_type=intent.payload.task_type,
+            # OMN-20992: a tenant with several live keys for the routed
+            # provider has one chosen per request, stably for this request.
+            selector_key=str(intent.payload.correlation_id),
         )
         # OMN-19528: the DoD overlay, read once per request under the request's
         # tenant (the lane's tenant when the request names none), threaded into
