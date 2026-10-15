@@ -55,7 +55,6 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_stub_mutant_handler_rejected_by_handler_test tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_real_handler_accepted_and_written -q"
-        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21153-ac2-control-outcomes"
     description: "AC2: the effect's pinned sources show real handler accepted (grade accepted_call, mutant failed_call), vacuous test rejected (control_did_not_fail), broken handler rejected (real run failed_call), and a missing test source rejected."
@@ -63,7 +62,6 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_codegen_handler_test_effect -q"
-        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21153-regressions"
     description: "The orchestrator, reducer, file-writer, validator and mypy-effect suites still pass with the new phase wired end to end, including the runtime boot through wire_from_manifest."
@@ -71,4 +69,10 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_handler_test_effect tests/nodes/node_codegen_outcome_reducer tests/nodes/node_codegen_file_writer_effect tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
-        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21153-deploy-handler-acceptance"
+    description: "Deploy probe: read the orchestrator source at the checked-out commit from GitHub and require both contract-lint rejection and handler-test acceptance before writing. The base lacks the handler-test stage and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; s = sys.stdin.read(); assert "REJECTED_CONTRACT_LINT" in s; assert "return ModelCodegenHandlerTestCommand(state=outcome.state)" in s; assert "REJECTED_HANDLER_TEST" in s; assert "if not result.accepted:" in s'
