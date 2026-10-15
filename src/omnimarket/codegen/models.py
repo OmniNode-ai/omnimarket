@@ -153,6 +153,16 @@ class ModelMypyRequestSeam(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_text: str = Field(min_length=1)
+    ignore_missing_imports: bool = Field(
+        default=False,
+        description=(
+            "The factory's policy (OMN-21150): generated code may import only "
+            "modules that actually exist. The consumer model defaults this to "
+            "True for ad-hoc snippet checks; the factory overrides it to False "
+            "so a phantom import fails the type-check leg instead of surfacing "
+            "as an ImportError at runtime."
+        ),
+    )
     correlation_id: str = Field(
         default="",
         description=(

@@ -440,6 +440,7 @@ node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effec
 node_work_ledger_delegation_mirror = "omnimarket.nodes.node_work_ledger_delegation_mirror"
 node_canonical_clone_refresh_effect = "omnimarket.nodes.node_canonical_clone_refresh_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
+node_key_pool_expiry_alert_compute = "omnimarket.nodes.node_key_pool_expiry_alert_compute"
 node_manifest_fetch_effect = "omnimarket.nodes.node_manifest_fetch_effect"
 node_nl_intent_pipeline = "omnimarket.nodes.node_nl_intent_pipeline"
 node_ambiguity_gate = "omnimarket.nodes.node_ambiguity_gate"

@@ -4,8 +4,15 @@
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_answer_check import (
     HandlerDelegationAnswerCheck,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_doc_check import (
+    HandlerDelegationDocCheck,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_route_check import (
     HandlerDelegationRouteCheck,
 )
 
-__all__ = ["HandlerDelegationAnswerCheck", "HandlerDelegationRouteCheck"]
+__all__ = [
+    "HandlerDelegationAnswerCheck",
+    "HandlerDelegationDocCheck",
+    "HandlerDelegationRouteCheck",
+]

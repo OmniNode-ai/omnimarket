@@ -149,6 +149,8 @@ not_routing_configs:
     reason: evaluation rung list in which every endpoint and model is an environment variable name
   - path: src/omnimarket/configs/inference_protocols.v1.yaml
     reason: provider protocol directives keyed by model pattern; they shape a request and select no route
+  - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
+    reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
   - path: src/omnimarket/configs/seams.v1.yaml
     reason: seam declarations
   - path: src/omnimarket/configs/service_endpoints.yaml

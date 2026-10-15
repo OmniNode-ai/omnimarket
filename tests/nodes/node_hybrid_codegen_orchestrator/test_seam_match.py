@@ -171,7 +171,11 @@ class TestSeamMatch:
             ModelCodegenValidationOutcome(state=_state(), is_valid=True)
         )
         assert topic.endswith("mypy-check-requested.v1")
-        _assert_seam("mypy-check-requested.v1", model.model_dump())
+        dump = model.model_dump()
+        _assert_seam("mypy-check-requested.v1", dump)
+        # OMN-21150: the seam carries the factory's policy — never ignore a
+        # missing import — overriding the consumer model's True default.
+        assert dump["ignore_missing_imports"] is False
 
     def test_contract_serialize_seam_matches(self) -> None:
         topic, model = _emit_for(

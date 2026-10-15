@@ -9,16 +9,17 @@ any non-empty answer, so it contributed a false "passed" to the deterministic
 fraction while verifying nothing about test execution (a tautology-class
 truth-integrity defect).
 
-This suite pins the honest behavior under OMN-21077:
+This suite pins honest test evidence under OMN-17427:
 
-  * A code class without a named-test run is refused as INSUFFICIENT, with a
-    failed ``passes_existing_tests`` evaluation rather than a skipped check.
-  * The deterministic fraction (``actual_score``) includes that failure, so
-    missing execution evidence cannot inflate the score.
+  * A request naming no tests records UNTESTED, skipped and never passed.
+  * Named tests without a run are refused as INSUFFICIENT, with a failed
+    ``passes_existing_tests`` evaluation rather than a skipped check.
+  * The deterministic fraction (``actual_score``) includes a named-test
+    missing-run failure; UNTESTED checks are excluded from the fraction.
   * The empty/refusal deterministic HARD FLOOR still hard-blocks an empty answer,
     independently of the missing execution evidence.
   * A real deterministic check still produces a real pass and a real fail
-    alongside the missing-run failure.
+    alongside a named-test missing-run failure.
 
 Execution of named tests is an EFFECT boundary; this reducer stays pure and
 reads the execution evidence supplied by its caller.
@@ -34,6 +35,7 @@ import yaml
 
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta,
@@ -74,37 +76,42 @@ def _gate(
 
 
 @pytest.mark.unit
-def test_passes_existing_tests_missing_run_is_recorded_as_failure() -> None:
-    """Missing code execution evidence surfaces as an explicit failed check."""
+def test_passes_existing_tests_with_no_named_tests_is_recorded_untested() -> None:
+    """No tests named: accept the contract and record no test pass."""
     result = delta(
         _gate(
             _GOOD_CODE,
             deterministic=("compiles_without_errors", "passes_existing_tests"),
         )
     )
-    # OMN-21077: a code class cannot skip required execution evidence.
-    assert result.passed is False
-    assert result.fail_category == "fail_deterministic"
-    assert "passes_existing_tests" not in result.skipped_checks
-    assert result.failure_reasons == (NO_NAMED_TEST_RUN_REASON,)
-    assert result.failure_cases == result.failure_reasons
-    assert result.no_rung_can_satisfy is True
+    assert result.passed is True
+    assert result.fail_category == "pass"
+    assert result.skipped_checks == ("passes_existing_tests",)
+    assert result.failure_reasons == ()
+    assert result.failure_cases == ()
+    assert result.no_rung_can_satisfy is False
+    assert result.actual_score == 1.0  # Only the compilation check was scored.
+    assert result.score_verified is False
     evaluation = next(
         e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
     )
+    assert evaluation.enforcement == "scored"
     assert evaluation.passed is False
-    assert evaluation.detail == NO_NAMED_TEST_RUN_REASON
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
 
 
 @pytest.mark.unit
 def test_missing_run_check_never_reports_passed_alone() -> None:
-    """A lone check without execution evidence cannot accept a clean answer.
+    """A lone named-test check without a run cannot accept a clean answer.
 
-    ``passes_existing_tests`` is the only declared deterministic check. It runs
-    nothing, so it confers no acceptance authority — the clean answer is NOT
+    Tests were named and ``passes_existing_tests`` is the only declared check.
+    It runs nothing, so it confers no acceptance authority — the clean answer is NOT
     accepted (the old phantom returned ``passed=True`` here).
     """
-    result = delta(_gate(_GOOD_CODE, deterministic=("passes_existing_tests",)))
+    result = delta(
+        _gate(_GOOD_CODE, deterministic=("passes_existing_tests",)),
+        named_tests_requested=True,
+    )
     assert result.passed is False
     # OMN-21077: missing execution is a scored deterministic failure.
     assert result.fail_category == "fail_deterministic"
@@ -125,7 +132,8 @@ def test_deterministic_fraction_includes_the_missing_run_failure() -> None:
                 "final_artifact_only",
                 "passes_existing_tests",
             ),
-        )
+        ),
+        named_tests_requested=True,
     )
     # OMN-21077: the required missing run contributes a failure to the fraction.
     assert result.passed is False
@@ -146,7 +154,8 @@ def test_real_evaluated_fail_scores_alongside_missing_run_failure() -> None:
                 "final_artifact_only",
                 "passes_existing_tests",
             ),
-        )
+        ),
+        named_tests_requested=True,
     )
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"
@@ -204,9 +213,15 @@ def test_empty_floor_not_double_counted_with_declared_response_non_empty() -> No
     )
     empty_reasons = [r for r in result.failure_reasons if "empty response" in r]
     assert len(empty_reasons) == 1
-    # OMN-21077: missing-run refusal accompanies the single empty-response reason.
-    assert "passes_existing_tests" not in result.skipped_checks
-    assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
+    # The empty floor blocks independently of the skipped UNTESTED check.
+    assert "passes_existing_tests" in result.skipped_checks
+    assert NO_NAMED_TEST_RUN_REASON not in result.failure_reasons
+    evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"
 
