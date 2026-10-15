@@ -44,3 +44,31 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn20303-pr3929-ac1-host-tenant
+  description: The savings regression exercises both terminal orders with a host-configured tenant, which the isolated house-tenant tests must not inherit.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_projection_savings/tests/test_savings_one_row_per_run.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env ONEX_TENANT_ID=00000000-0000-4000-8000-000000020651 uv run pytest src/omnimarket/nodes/node_projection_savings/tests/test_savings_one_row_per_run.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn20303-pr3929-ac2-registry-tenant
+  description: The counterfactual regression writes both terminals with an explicit registry-backed tenant and retains the stored attribution.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_projection_delegation/tests/test_delegation_keeps_counterfactual.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn20303-pr3929-deploy-revision-probe
+  description: Hosted runners read both changed test modules at the checked-out revision through the GitHub content API and require the registry seed and host-tenant isolation. The parent revision lacks both statements. This checks revision content, not deployment to the dev lane.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/tests/test_delegation_keeps_counterfactual.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'seed_tenant_registry(db)' && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_savings/tests/test_savings_one_row_per_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq 'monkeypatch.delenv("ONEX_TENANT_ID", raising=False)'
