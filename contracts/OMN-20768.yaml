@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20768"
+title: "dod_verify reads merged-PR facts from the canonical clones, never gh"
+summary: "A contract item that is a gh pr view or gh api contents read, and the merged-PR checks rollup, are answered from the canonical clone, the PR watcher state and the gateway instead of gh."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dod-verify-local-pr-reads"
+    statement: "dod_verify answers a merged PR's facts without a GitHub read once the PR watcher no longer holds the PR."
+    acceptance:
+      - id: "AC1"
+        statement: "A command check running gh pr view --json files, gh api contents (JSON and raw) or gh api tarball for a PR or commit the canonical clone holds passes with the gh on PATH refusing every call -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20768_local_pr_facts.py -q -k without_gh"
+      - id: "AC2"
+        statement: "A merged PR the watcher has dropped and the clone proves merged on its base branch rolls up checks_green from the merge event with no GitHub read, and a PR no local source holds stays unresolved -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20768_local_pr_facts.py -q -k 'merge_event or stays_unresolved'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused tests of the local gh reads and the merge-event rollup."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20768_local_pr_facts.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-local-gh-reads-without-gh"
+    description: "Contract items that read PR files, file contents and tarballs pass against a refusing gh because the shim answers them from the clone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20768_local_pr_facts.py -q -k without_gh"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-merged-pr-rollup-from-merge-event"
+    description: "A merged PR beyond the watcher's retention rolls up from the merge event with no gh spawn; a PR neither source holds stays unresolved."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20768_local_pr_facts.py -q -k 'merge_event or stays_unresolved'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

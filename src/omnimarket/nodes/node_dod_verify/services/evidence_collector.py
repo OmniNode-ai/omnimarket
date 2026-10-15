@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import ast
+import atexit
 import contextlib
 import fcntl
 import functools
@@ -73,6 +74,9 @@ from omnimarket.enums.enum_dod_verify_execution_audience import (
 )
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
+    SCM_CACHE_DIR_ENV,
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
@@ -154,6 +158,10 @@ from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
     default_contract_path,
     resolve_repo_contracts,
+)
+from omnimarket.nodes.node_dod_verify.services.local_gh_reads import (
+    REAL_GH_ENV,
+    install_gh_shim,
 )
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
@@ -780,6 +788,12 @@ _HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
 # silently move its working directory and re-root every relative path in it.
 _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
+)
+
+# OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
+# local ``gh`` shim first on its PATH (see ``local_gh_reads``).
+_GH_READ_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?<![\w./-])['"]?gh['"]?[\s,]+['"]?(?:pr|api)['"]?(?![\w-])"""
 )
 
 # OMN-18756. The Python sibling of the two routings above, and the narrowest
@@ -2349,6 +2363,8 @@ class EvidenceCollector:
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
         self._must_fail_runner = must_fail_runner
+        # OMN-20768: the directory of the local ``gh`` shim, made on first use.
+        self._gh_shim_dir: Path | None = None
         # OMN-20858: reads the live ticket whose criteria the contract is pinned
         # to. None means the Linear effect, built on first use.
         self._ticket_reader = ticket_reader
@@ -7396,6 +7412,11 @@ class EvidenceCollector:
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
 
+        # OMN-20768: a command that reads PR facts through ``gh`` runs against a
+        # shim that answers the clone-held shapes locally (see local_gh_reads).
+        if _GH_READ_INVOCATION_RE.search(cmd_str) is not None:
+            run_env = self._with_local_gh_shim(run_env)
+
         logger.info(
             "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s, "
             "node stage=%s): %s",
@@ -7465,6 +7486,26 @@ class EvidenceCollector:
             )
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _with_local_gh_shim(self, env: dict[str, str] | None) -> dict[str, str]:
+        """``env`` with the local ``gh`` shim first on PATH (OMN-20768).
+
+        The shim directory is made once per collector and removed at exit. The
+        real ``gh``, found on the PATH the check would have used, rides in
+        ``REAL_GH_ENV`` for every invocation the shim does not answer.
+        """
+        out = dict(env if env is not None else os.environ)
+        if self._gh_shim_dir is None:
+            shim_dir = Path(tempfile.mkdtemp(prefix="dod-verify-gh-"))
+            install_gh_shim(shim_dir)
+            atexit.register(shutil.rmtree, shim_dir, True)
+            self._gh_shim_dir = shim_dir
+        real_gh = shutil.which("gh", path=out.get("PATH"))
+        if real_gh:
+            out[REAL_GH_ENV] = real_gh
+        out[SCM_CACHE_DIR_ENV] = str(self._gh_shim_dir)
+        out["PATH"] = os.pathsep.join([str(self._gh_shim_dir), out.get("PATH", "")])
+        return out
 
     def _run_released_check(self, check: dict[str, Any]) -> tuple[bool, str]:
         """Assert every cited merge is released (OMN-18010 deliverable 2).
