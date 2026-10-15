@@ -373,6 +373,9 @@ quality_rules:
       - '\baccording to\b'
       - '\bbibliograph\w*'
       - '\bevidence\b'
+      - '\bresearch\b'
+      - '\binvestigat\w*'
+      - '\bsurvey\b'
     rationale: >-
       OMN-13354: an unattributed research answer fails. Attribution is the
       thing that makes a research answer checkable, so its absence is a floor
@@ -449,6 +452,9 @@ quality_rules:
       - '\bdecid\w*'
       - '\bdecision\b'
       - '\brecommend\w*'
+      - '\bhow (?!many\b|much\b|old\b|long\b|far\b|big\b)\w+'
+      - '\bresearch\b'
+      - '\binvestigat\w*'
     rationale: >-
       OMN-14220: the reject-only filter that keeps a bad planning or review
       output from terminalising as adequate.
