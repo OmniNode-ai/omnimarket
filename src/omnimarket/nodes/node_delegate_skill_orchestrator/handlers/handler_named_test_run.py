@@ -49,8 +49,36 @@ def _write_file(sandbox: Path, relative: str, content: str) -> None:
     path = (sandbox / relative).resolve()
     if not path.is_relative_to(sandbox):
         raise ValueError(f"path {relative!r} resolves outside the sandbox")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    # Write along the resolved path one component at a time, never following
+    # a symlink: one swapped in after the check fails the write (ELOOP or
+    # ENOTDIR) instead of redirecting it outside the sandbox.
+    *parents, name = path.relative_to(sandbox).parts
+    nofollow = os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    directory = os.open(sandbox, os.O_RDONLY | os.O_DIRECTORY | nofollow)
+    try:
+        for part in parents:
+            with suppress(FileExistsError):
+                os.mkdir(part, dir_fd=directory)
+            try:
+                child = os.open(
+                    part, os.O_RDONLY | os.O_DIRECTORY | nofollow, dir_fd=directory
+                )
+            except NotADirectoryError as exc:
+                raise FileExistsError(
+                    exc.errno, f"{part!r} exists and is not a directory"
+                ) from exc
+            os.close(directory)
+            directory = child
+        handle = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | nofollow,
+            0o644,
+            dir_fd=directory,
+        )
+    finally:
+        os.close(directory)
+    with os.fdopen(handle, "w", encoding="utf-8") as stream:
+        stream.write(content)
 
 
 def _run_test(sandbox: Path, test_id: str, timeout_seconds: int) -> tuple[int, str]:

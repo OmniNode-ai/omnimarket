@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import time
 from pathlib import Path
@@ -304,3 +305,53 @@ def test_posix_resource_limits() -> None:
 
     assert result.run is not None
     assert result.run.passed, result.detail
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("swapped", ["directory", "file"])
+def test_symlink_swapped_in_after_the_check_cannot_redirect_the_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swapped: str
+) -> None:
+    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+        handler_named_test_run,
+    )
+
+    sandbox = (tmp_path / "sandbox").resolve()
+    (sandbox / "nested").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    real_resolve = Path.resolve
+
+    def resolve_then_swap(self: Path, strict: bool = False) -> Path:
+        resolved = real_resolve(self, strict=strict)
+        # The containment check sees a plain path; a symlink replaces it
+        # before the write, as a concurrent writer could.
+        if swapped == "directory":
+            (sandbox / "nested").rmdir()
+            (sandbox / "nested").symlink_to(outside, target_is_directory=True)
+        else:
+            (sandbox / "nested" / "add_impl.py").symlink_to(outside / "add_impl.py")
+        monkeypatch.setattr(Path, "resolve", real_resolve)
+        return resolved
+
+    monkeypatch.setattr(Path, "resolve", resolve_then_swap)
+
+    with pytest.raises(OSError, match=r"symbolic links|not a directory") as raised:
+        handler_named_test_run._write_file(sandbox, "nested/add_impl.py", "x = 1\n")
+    assert raised.value.errno in {errno.ELOOP, errno.ENOTDIR}
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.unit
+def test_symlink_inside_the_sandbox_still_carries_a_write(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+        handler_named_test_run,
+    )
+
+    sandbox = (tmp_path / "sandbox").resolve()
+    (sandbox / "real").mkdir(parents=True)
+    (sandbox / "alias").symlink_to(sandbox / "real", target_is_directory=True)
+
+    handler_named_test_run._write_file(sandbox, "alias/deep/add_impl.py", "x = 1\n")
+
+    assert (sandbox / "real" / "deep" / "add_impl.py").read_text() == "x = 1\n"
