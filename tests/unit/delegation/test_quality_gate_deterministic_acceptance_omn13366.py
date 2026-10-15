@@ -101,7 +101,7 @@ def test_verifiable_fail_records_failure_cases_and_actual_score() -> None:
 def test_verifiable_heuristic_markers_do_not_override_deterministic_authority(
     exit_code: int | None,
 ) -> None:
-    # OMN-21077: execution evidence, rather than heuristic markers, decides code.
+    # The named test must run; heuristic markers cannot substitute for it.
     run = (
         ModelNamedTestRun(
             test_ids=("tests/test_normalize.py::test_normalize",), exit_code=exit_code
@@ -117,6 +117,7 @@ def test_verifiable_heuristic_markers_do_not_override_deterministic_authority(
             heuristic=("covers_edge_cases",),
         ),
         named_test_run=run,
+        named_tests_requested=True,
     )
 
     test_evaluation = next(

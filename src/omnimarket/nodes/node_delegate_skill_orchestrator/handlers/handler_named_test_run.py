@@ -38,7 +38,10 @@ def _apply_resource_limits(timeout_seconds: int) -> None:
 
     cpu_seconds = timeout_seconds + 5
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-    resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
+    # macOS refuses an RLIMIT_AS below the current address space; the CPU and
+    # file-size limits and the timeout still bound the child there.
+    with suppress(ValueError, OSError):
+        resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
     resource.setrlimit(resource.RLIMIT_FSIZE, (64 * 1024**2, 64 * 1024**2))
 
 
@@ -52,7 +55,9 @@ def _write_file(sandbox: Path, relative: str, content: str) -> None:
 
 def _run_test(sandbox: Path, test_id: str, timeout_seconds: int) -> tuple[int, str]:
     env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        # The interpreter's own bin directory, not the parent's PATH: the
+        # child environment carries nothing read from the caller's.
+        "PATH": os.pathsep.join((str(Path(sys.executable).parent), "/usr/bin:/bin")),
         "HOME": str(sandbox),
         "PYTHONPATH": str(sandbox),
         "PYTHONDONTWRITEBYTECODE": "1",
