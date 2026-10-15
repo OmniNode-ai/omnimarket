@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-17104"
 title: "Delegation wire exports use the loader's config models"
-summary: "The public Bifrost configuration DTO family is the local family the production loader validates. The installed inference contract and handler also resolve the same request model and timeout ceiling."
+summary: "The public Bifrost configuration DTO family is the local family the production loader validates. The installed inference contract and handler already resolve the same request model and timeout ceiling, checked here as supporting evidence."
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
@@ -15,11 +15,6 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "One canonical ModelDelegationBackendConfig shape; the re-exported core class either matches the shape the loader actually needs or the re-export is removed in favor of the local one, so the wire package's public surface is not a class that fails to parse the live contract."
-  - id: "req-canonical-inference-request"
-    statement: "The inference contract and handler agree on the request model."
-    acceptance:
-      - id: "AC2"
-        statement: "One canonical ModelLlmInferenceRequest timeout ceiling; the contract-declared module and the handler-imported module agree, or the contract is updated to name the module actually imported."
 evidence_requirements:
   - kind: "tests"
     description: "Load the packaged Bifrost contract through the production loader and public DTOs; inspect the installed inference contract and handler's request identity."
@@ -37,9 +32,8 @@ dod_evidence:
         check_value: "uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov -k bifrost_public"
     binds_ac: ["AC1"]
   - id: "dod-omn17104-ac2-request-timeout"
-    description: "The installed inference contract's request class is the handler's request class and its timeout ceiling is 1800 seconds."
+    description: "Supporting, not bound: the installed inference contract's request class is the handler's request class and its timeout ceiling is 1800 seconds. The locked omnibase-infra package already satisfies this before this change, so no omnimarket change can make it fail and it binds no criterion here."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov -k inference_contract"
-    binds_ac: ["AC2"]
