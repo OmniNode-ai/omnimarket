@@ -32,10 +32,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialError,
     LocalByokCredentialStore,
     register_local_byok_credential,
     resolve_local_byok_credential_ref,
     revoke_local_byok_credential,
+    set_local_byok_credential_models,
 )
 from omnimarket.local_deployment.tenant_identity import (
     resolve_or_mint_local_deployment_tenant_id,
@@ -90,7 +92,39 @@ class HandlerLocalSecretStore:
     def handle(self, request: ModelLocalSecretRequest) -> ModelLocalSecretResult:
         if request.operation == "set":
             return self._set(request)
+        if request.operation == "set_models":
+            return self._set_models(request)
         return self._delete(request)
+
+    def _set_models(self, request: ModelLocalSecretRequest) -> ModelLocalSecretResult:
+        ref = request.secret_ref
+        provider = offered_provider(ref)
+        if provider is None:
+            raise LocalSecretStoreRefusedError(
+                f"{ref} names no provider key the catalogue offers, so it has no "
+                "model list to change."
+            )
+        store = LocalByokCredentialStore()
+        try:
+            written = set_local_byok_credential_models(
+                provider,
+                request.models,
+                model_chosen_by=request.model_chosen_by,
+                db_path=store.db_path,
+            )
+        except LocalByokCredentialError as refusal:
+            raise LocalSecretStoreRefusedError(str(refusal)) from None
+        if not written:
+            raise LocalSecretStoreRefusedError(
+                f"this machine holds no {provider} key; add one with: "
+                f"onex models add {provider}"
+            )
+        return ModelLocalSecretResult(
+            operation="set_models",
+            secret_ref=ref,
+            provider=provider,
+            models=request.models,
+        )
 
     def _set(self, request: ModelLocalSecretRequest) -> ModelLocalSecretResult:
         ref = request.secret_ref

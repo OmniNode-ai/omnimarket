@@ -366,6 +366,45 @@ def register_local_byok_credential(
     return ref
 
 
+def set_local_byok_credential_models(
+    provider: str,
+    models: Sequence[str],
+    *,
+    model_chosen_by: str | None = None,
+    db_path: Path | None = None,
+) -> bool:
+    """Replace the ordered models of ``provider``'s stored credential, keeping its key.
+
+    OMN-21059. The whole list is written at once, so an add, a reorder and a
+    remove are each one replacement and a reader never sees a half-edited list.
+    Returns whether a credential for ``provider`` exists; ``False`` writes
+    nothing. An empty ``models`` clears the list.
+
+    Raises:
+        LocalByokCredentialError: the chooser is invalid or a model repeats.
+    """
+    if model_chosen_by not in (
+        None,
+        MODEL_CHOSEN_BY_CUSTOMER,
+        MODEL_CHOSEN_BY_CATALOGUE,
+    ):
+        raise LocalByokCredentialError(
+            "model_chosen_by must be 'customer', 'catalogue', or None"
+        )
+    chosen_models = _normalize_models(None, models)
+    ref = resolve_local_byok_credential_ref(provider, db_path=db_path)
+    if ref is None:
+        return False
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    conn = _connect(resolved_path)
+    try:
+        _write_models(conn, ref, chosen_models, model_chosen_by)
+        conn.commit()
+    finally:
+        conn.close()
+    return True
+
+
 def revoke_local_byok_credential(provider: str, *, db_path: Path | None = None) -> int:
     """Delete every locally registered credential for ``provider``.
 
@@ -747,4 +786,5 @@ __all__: list[str] = [
     "resolve_local_byok_credential_ref",
     "resolve_local_byok_model_chooser",
     "revoke_local_byok_credential",
+    "set_local_byok_credential_models",
 ]
