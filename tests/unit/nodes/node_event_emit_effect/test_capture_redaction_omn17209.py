@@ -524,7 +524,7 @@ def test_every_governed_topic_is_declared_with_the_transform_in_the_registry() -
         for rule in event.get("fan_out", [])
         if rule.get("transform") == "redact_capture"
     }
-    assert declared == set(load_contract().topics)
+    assert declared == set(load_contract().topics) - RAW_CAPTURE_TOPICS
 
 
 @pytest.mark.unit
@@ -682,6 +682,18 @@ def test_a_benign_container_under_a_verbatim_field_still_crosses_verbatim() -> N
 # The local bus has eight hook classes (the eighth, full content, is OMN-19550).  This is intentionally a policy and
 # registry test, not an egress test: the later atomic infra activation must
 # couple its governed/allowlist widening to this already-tested transform.
+
+#: OMN-19513, operator RULING 2026-10-15T04:24:42Z: these two topics carry
+#: captured content raw. The emit registry routes them with ``passthrough``;
+#: their contract entries remain only for the content size bound the producer
+#: reads, never as a redaction applied on the bus.
+RAW_CAPTURE_TOPICS = frozenset(
+    {
+        "onex.evt.omniclaude.hook-event.v1",
+        "onex.cmd.omniintelligence.content-captured.v1",
+    }
+)
+
 ALL_HOOK_CAPTURE_TOPICS: dict[str, tuple[str, str, dict[str, object]]] = {
     "onex.evt.omniclaude.session-started.v1": (
         "session.started",
@@ -769,7 +781,8 @@ def test_all_seven_hook_capture_topics_are_governed_and_transformed() -> None:
         rules = registry[event]["fan_out"]
         matching = [rule for rule in rules if rule["topic"] == topic]
         assert len(matching) == 1, f"{event} must declare {topic} exactly once"
-        assert matching[0].get("transform") == "redact_capture"
+        expected = "passthrough" if topic in RAW_CAPTURE_TOPICS else "redact_capture"
+        assert matching[0].get("transform") == expected
 
 
 @pytest.mark.unit
@@ -781,7 +794,8 @@ def test_all_seven_semantic_events_resolve_without_a_topic_override() -> None:
         targets = resolve_event_type(request.event_type)
         matching = [target for target in targets if target.topic == topic]
         assert len(matching) == 1
-        assert matching[0].transform_name == "redact_capture"
+        expected = "passthrough" if topic in RAW_CAPTURE_TOPICS else "redact_capture"
+        assert matching[0].transform_name == expected
 
 
 @pytest.mark.unit

@@ -72,6 +72,12 @@ class ModelAutomationRunObserverRequest(BaseModel):
         description="launchctl domain target, e.g. gui/<uid>; a launchd entry "
         "reads UNOBSERVABLE without it.",
     )
+    consumer_bootstrap: NonEmptyStr | None = Field(
+        default=None,
+        description="Bootstrap servers of the broker whose consumer groups an "
+        "entry reads (the dev broker on its own host); a consumer-group entry "
+        "reads UNOBSERVABLE without it.",
+    )
     census: ModelUndeclaredCensusScope = Field(
         default_factory=ModelUndeclaredCensusScope
     )

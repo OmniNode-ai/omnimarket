@@ -11,10 +11,20 @@ requirements:
     acceptance:
       - id: AC1
         statement: 'AC1: a mod-answered compaction of 100,000 context tokens on a model priced 0.002 per 1k input yields a row of task_type context_compaction saving 0.200000 USD, a shortened one saves the difference, a native one writes no row, and the runner lands the mod-answered PostCompact under the house registry UUID -- falsifier: `uv run pytest tests/test_omn18531_compaction_savings.py -q`'
+  - id: req-checkpoint-projection-kind
+    statement: The session-content projection stores a checkpoint content record as a checkpoint row.
+    acceptance:
+      - id: AC2
+        statement: "A checkpoint larger than one chunk is stored as one row per chunk whose reassembled content hashes to the written file's sha256 -- falsifier: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k 'reassembles or writer_upserts or single_chunk' fails with a missing row or a hash mismatch"
+      - id: AC3
+        statement: "The operator capture reader leaves a checkpoint record alone -- falsifier: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k operator_capture_reader fails when a checkpoint record reads as an operator prompt"
 evidence_requirements:
   - kind: tests
     description: The compaction savings tests pass, and fail at the merge base, which has no compaction source and does not subscribe the hook-event stream.
     command: uv run pytest tests/test_omn18531_compaction_savings.py -q
+  - kind: tests
+    description: "The checkpoint kind tests pass beside the existing session content projection tests"
+    command: "uv run pytest tests/unit/nodes/node_projection_session_content -q"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -36,4 +46,38 @@ dod_evidence:
       - check_type: command
         check_value: |-
           docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import HandlerCompactionSavings, compaction_source_from_post_compact; s = compaction_source_from_post_compact({"event_id": "e-1", "hook_event_name": "PostCompact", "emitted_at": "2026-10-15T04:01:16+00:00", "lineage": {"session_id": "s-1"}, "payload": {"hook_event_name": "PostCompact", "trigger": "manual", "context_tokens": 100000, "model": "claude-sonnet-5-5", "compact_summary_ref": {"length": 0}}}); r = HandlerCompactionSavings().handle(s); assert r.row is not None and r.row["task_type"] == "context_compaction", r; assert str(r.row["savings_usd"]) == "0.200000", r.row; print(r.tokens_saved, r.row["savings_usd"])'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-checkpoint-chunks-reassemble-to-file-hash
+    binds_ac:
+      - AC2
+    description: >
+      The projection stores each chunk of a multi-chunk checkpoint as a row and
+      the reassembled content hashes to the written file.
+    source: manual
+    status: verified
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k 'reassembles or writer_upserts or single_chunk'"
+  - id: dod-checkpoint-not-an-operator-prompt
+    binds_ac:
+      - AC3
+    description: >
+      A checkpoint record is not read as an operator prompt by the operator
+      capture reader.
+    source: manual
+    status: verified
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k operator_capture_reader"
+  - id: dod-omn-18531-deploy-container-checkpoint-fold
+    binds_ac:
+      - AC2
+    description: Deploy probe for the checkpoint content kind. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev, folds a four-chunk checkpoint record through the product fold_session_content and ModelSessionContentRecord, and asserts every row keeps content_kind checkpoint and the reassembled rows hash to the written text's sha256. It fails when the fold drops, reorders or truncates a chunk or rewrites the kind. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py::test_a_checkpoint_larger_than_one_chunk_reassembles_to_the_files_sha256 -q
+      - check_type: command
+        check_value: |-
+          docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'import hashlib, json; from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import fold_session_content; from omnimarket.nodes.node_projection_session_content.models.model_session_content import ModelSessionContentRecord as R; t = json.dumps({"schema": "omni.session-checkpoint/1", "notes": ["n" * 90 for _ in range(20)]}) + "\n"; d = hashlib.sha256(t.encode()).hexdigest(); ps = [t[i : i + 500] for i in range(0, len(t), 500)]; rows = [fold_session_content(R.model_validate({"session_id": "11111111-2222-3333-4444-555555555555", "turn_id": None, "correlation_id": "11111111-2222-3333-4444-555555555555", "emitted_at": "2026-10-15T06:00:01.000000+00:00", "hook_source": "checkpoint", "actor": "claude", "content_kind": "checkpoint", "tool_name": None, "tool_use_id": None, "chunk_index": i, "chunk_count": len(ps), "content_sha256": d, "original_chars": len(t), "truncated": False, "producer_redaction": {}, "content": p, "redaction_state": "passthrough"})) for i, p in enumerate(ps)]; assert len(ps) > 1 and len(rows) == len(ps), rows; assert {r.content_kind for r in rows} == {"checkpoint"}, rows; got = hashlib.sha256("".join(r.content for r in sorted(rows, key=lambda r: r.chunk_index)).encode()).hexdigest(); assert got == d, (got, d); print(json.dumps({"rows": len(rows), "content_kind": "checkpoint", "sha256": got}))'
         cwd: "${OMNI_HOME}/omnimarket"

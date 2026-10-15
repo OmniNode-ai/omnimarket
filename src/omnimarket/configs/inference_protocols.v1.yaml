@@ -473,3 +473,60 @@ profiles:
     model_name_patterns:
       - "claude-*"
     default_temperature: 1.0
+
+  # OMN-21088: ask OpenRouter not to reason where the class does not need it,
+  # and never to return reasoning text. Measured 2026-10-14 (omnimarket
+  # 0.4.313, "what is 2+2", qwen/qwen3.8-27b on OpenRouter): output_tokens was
+  # 1290 for about 250 tokens of visible text. The `*qwen*` profiles above send
+  # `chat_template_kwargs.enable_thinking: false`, a vLLM/SGLang template switch
+  # OpenRouter does not read, so the model reasoned on the bill. OpenRouter's
+  # own switch is the `reasoning` object (openrouter.ai/docs, "Reasoning
+  # Tokens"): `effort` sets how much the model may reason and `exclude: true`
+  # keeps any reasoning it does out of the response. `minimal` is used rather
+  # than `enabled: false` because OpenRouter refuses `enabled: false` on a
+  # model whose reasoning is mandatory, and these slugs are chosen by the
+  # customer; an effort level is accepted on every model and ignored by one
+  # that does not reason. Not yet measured on OpenRouter: the measuring host
+  # holds no OpenRouter key.
+  #
+  # Matched by the `vendor/model` slug form, which is OpenRouter's catalogue id
+  # shape. The local rungs serve bare ids (Qwen3.8-27B, qwen3.6-35b-a3b), and
+  # z.ai, Gemini and Anthropic ids carry no slash, so none of them receives it.
+  # Last in the file so its `reasoning` key is the one sent.
+  - profile_id: openrouter-reasoning-minimal-excluded
+    enabled: true
+    model_name_patterns:
+      - "*/*"
+    task_types:
+      - "code_generation"
+      - "refactor"
+      - "documentation"
+      - "document"
+      - "research"
+      - "test"
+      - "validator_generation"
+      - "complex_reasoning"
+      - "planning"
+      - "review"
+      - "code_review"
+      - "summarization"
+      - "agent_delegation"
+      - "escalation"
+    request_options:
+      reasoning:
+        effort: minimal
+        exclude: true
+
+  # OMN-21088: task type `reasoning` keeps the model's thinking (OMN-20469
+  # measured it as the better arm on the local rung) at the lowest effort, and
+  # its trace is still excluded from the response.
+  - profile_id: openrouter-reasoning-low-excluded
+    enabled: true
+    model_name_patterns:
+      - "*/*"
+    task_types:
+      - "reasoning"
+    request_options:
+      reasoning:
+        effort: low
+        exclude: true

@@ -93,10 +93,16 @@ def _event(**overrides: Any) -> dict[str, Any]:
 @pytest.mark.unit
 def test_hook_event_routes_to_its_topic_partitioned_by_session() -> None:
     targets = resolve_event_type(HOOK_EVENT)
-    assert [(t.topic, t.transform_name) for t in targets] == [
-        (HOOK_TOPIC, "redact_capture")
-    ]
+    assert [t.topic for t in targets] == [HOOK_TOPIC]
     assert resolve_partition_key_field(HOOK_EVENT) == "session_id"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("event_type", [HOOK_EVENT, "content.captured"])
+def test_captured_content_crosses_the_emit_seam_untransformed(event_type: str) -> None:
+    """OMN-19513 RULING 2026-10-15T04:24:42Z: no redaction on the bus."""
+    targets = resolve_event_type(event_type)
+    assert [t.transform_name for t in targets] == ["passthrough"]
 
 
 @pytest.mark.unit
