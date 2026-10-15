@@ -2,7 +2,6 @@
 name: node_context_profile_resolver_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
-runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Resolves one context profile by name from the YAML data under
@@ -30,6 +29,7 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 1000
+  runtime_profiles: [effects]
 
 inputs:
   profile_name:

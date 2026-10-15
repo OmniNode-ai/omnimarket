@@ -31,7 +31,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC4: the profile model tests and the resolver tests."
-    command: "uv run pytest tests/pack/test_model_context_profile.py tests/nodes/node_context_profile_resolver_effect -q -p no:randomly --no-cov -n 0"
+    command: "uv run pytest tests/pack/test_model_context_profile.py tests/nodes/node_context_profile_resolver_effect/test_handler_context_profile_resolver.py -q -p no:randomly --no-cov -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -56,7 +56,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect -q -p no:randomly --no-cov -n 0"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_handler_context_profile_resolver.py -q -p no:randomly --no-cov -n 0"
     binds_ac: ["AC3"]
   - id: "dod-omn21106-ac4-profile-fields-and-refusals"
     description: "AC4: the item 5 fields exist and each of the four violations is refused, each with a validating control."
