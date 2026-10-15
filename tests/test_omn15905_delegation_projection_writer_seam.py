@@ -416,6 +416,8 @@ class TestQualityGateResultWriterParity:
         # quality-gate verdict on onex-dev was rejected with "new row violates
         # row-level security policy" and DLQ'd with its offset committed.
         _insert_columns, _update_clause = sql.split("ON CONFLICT", 1)
+        # RETURNING reads columns; it does not overwrite them.
+        _update_clause = _update_clause.split(" RETURNING ", 1)[0]
         assert "tenant_id" not in _update_clause, (
             "quality-gate-result UPSERT must not overwrite tenant_id -- an "
             "already-resolved tenant on the row is untouched"

@@ -220,7 +220,7 @@ class TestTheRecordedTenantIsStillHonoured:
         )
 
         assert len(seen) == 1, "an attributable verdict was not written"
-        assert seen[0]["tenant"] == _SUBMITTING_TENANT
+        # The central writer resolves the GUC from this already resolved row tenant.
         assert seen[0]["row"]["tenant_id"] == _SUBMITTING_TENANT
 
 

@@ -216,7 +216,14 @@ def _proposed_row(mock_db: AsyncMock) -> dict[str, Any]:
     sql = str(calls[-1].args[0])
     columns_segment = sql.split("(", 1)[1].split(")", 1)[0]
     columns = [c.strip() for c in columns_segment.split(",")]
-    return dict(zip(columns, calls[-1].args[1:], strict=True))
+    # Database-authored attestation expressions consume no bound parameter.
+    slots = sql.split("VALUES (", 1)[1].split(")", 1)[0].split(",")
+    bound = [
+        column
+        for column, slot in zip(columns, slots, strict=True)
+        if slot.strip().startswith("$")
+    ]
+    return dict(zip(bound, calls[-1].args[1:], strict=True))
 
 
 def _do_update_columns(mock_db: AsyncMock) -> set[str]:
