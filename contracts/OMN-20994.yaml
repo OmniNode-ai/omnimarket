@@ -28,7 +28,7 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: |-
-          AC3: the node contract declares the tenant folder as a reference namespace, so a caller holds a reference and never a folder string -- falsifier: uv run pytest tests/unit/nodes/node_secret_store_effect -k tenant_namespace
+          AC3: the node contract declares the tenant folder as a reference namespace, so a caller holds a reference and never a folder string -- falsifier: uv run pytest tests/unit/nodes/node_secret_store_effect/test_tenant_namespace.py -k tenant_namespace
 evidence_requirements:
   - kind: "tests"
     description: "The central-store and tenant-namespace tests pass at the head and fail on the base, where register-tenant-key has no --store option and the node contract has no tenant namespace."
