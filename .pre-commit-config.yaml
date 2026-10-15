@@ -1784,6 +1784,15 @@ repos:
         files: ^(src/omnimarket/nodes/node_delegation_answer_gate_compute/|src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch\.py|src/omnimarket/models/delegation/wire/model_answer_gate_request\.py|src/omnimarket/inference/task_class_authority\.py|tests/unit/delegation/test_answer_gate_omn20489\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
         stages: [pre-commit]
 
+      # OMN-17104: SYNC with the delegation public models step in ci.yml.
+      - id: delegation-wire-public-models
+        name: Delegation public models match loader and inference contract
+        language: system
+        entry: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/(models/delegation/wire/.*|adapters/llm/bifrost/config_loader_bifrost_delegation\.py|configs/bifrost_delegation\.yaml)|tests/unit/models/delegation/wire/test_public_exports\.py|contracts/OMN-17104\.yaml|pyproject\.toml|uv\.lock|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15630: routing-completeness invariant. For every task class declared
       # in task_class_contracts.v1.yaml, every tier in that class's OWN
       # escalation_policy.tier_order must be served by >=1 backend's use_for,
