@@ -13,7 +13,7 @@ from omnimarket.delegation.rung_eval.missing_nights import (
 )
 from omnimarket.delegation.rung_eval.rows_store import read_rows, write_night
 from omnimarket.delegation.rung_eval.rungs import load_rungs
-from omnimarket.delegation.rung_eval.runner import OpenAIChatTransport, run_night
+from omnimarket.delegation.rung_eval.runner import RungTransport, run_night
 
 
 def main() -> int:
@@ -31,7 +31,7 @@ def main() -> int:
     args = parser.parse_args()
     rungs, cases = load_rungs(), load_cases()
     if args.command == "run":
-        rows = run_night(args.night, rungs, cases, OpenAIChatTransport())
+        rows = run_night(args.night, rungs, cases, RungTransport())
         write_night(args.out_dir, args.night, rows)
         for row in rows:
             print(row.model_dump_json())
