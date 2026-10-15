@@ -110,3 +110,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn20287-code-edit-turn-run-id-deploy-probe"
+    description: "Read the published code edit handler at the checked-out commit and require the missing-run-id guard. This hosted-runner probe fails when the source cannot be read or the guard is absent. It reads published source; AC8's test_passes check verifies the refusal behavior."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegated_code_edit_orchestrator/handlers/handler_delegated_code_edit_orchestrator.py" | grep -F '\''if not reply.run_id and (reply.ok or reply.raw_text):'\'''
+        cwd: "${OMNI_HOME}/omnimarket"
