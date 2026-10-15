@@ -1,0 +1,96 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18997"
+title: "A reusable delegate fan-out workflow, so a lane stops hand-rolling its own loop and every closeout carries receipt count and correlation ids"
+summary: "The reusable delegate fan-out now lives in the omnimarket node node_delegate_fanout_effect (handler HandlerDelegateFanout), which replaced the workflow script the ticket first named. Each criterion binds to the node's tests as the successor of the deleted workflow script's tests. AC6 additionally binds to the refusal-row test; its live dev-lane run is recorded in the pull request that adds this contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-reusable-delegate-fanout"
+    statement: "The criteria below are the ticket's six criteria, transcribed from the ticket body. AC1 to AC5 name a workflow script and a test file that no longer exist; the node and its tests replaced them, and the evidence items bind each criterion to the node's tests."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: `.claude/workflows/delegate-fanout.js` exists and its invocation string names the wrapper path `omnibase_infra/scripts/onex` verbatim, with the kafka bus, the deployed-lane locus and the workspace-root flag"
+      - id: "AC2"
+        statement: "AC2: The terminal verdict is read from the run's `receipt.json` and never from the CLI exit code"
+      - id: "AC3"
+        statement: "AC3: A run producing no run directory is recorded as a NO_RECEIPT row carrying the CLI's last stdout line"
+      - id: "AC4"
+        statement: "AC4: No retry of a failed item inside the workflow"
+      - id: "AC5"
+        statement: "AC5: The whole check-only test file passes under the repository's own pytest invocation, the one the required whole-tree job runs"
+      - id: "AC6"
+        statement: "AC6: A live lab-first run on the dev lane with three items, one READY control, one classification with a declared response contract, and one opening with the two words \"write a\" to prove the refusal"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the node's invocation names the sanctioned wrapper path and carries the kafka bus, the explicit lane and the deployed-lane locus."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py -q -k sanctioned_wrapper"
+  - kind: "tests"
+    description: "AC2: the terminal is the receipt's fact, including after a kill, and an exit 0 without a receipt is not a success."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py -q -k 'terminal_is_receipt_fact or exit_zero_without_receipt'"
+  - kind: "tests"
+    description: "AC3: a run with no run directory keeps its evidence as a visible row, and a hard-bound kill keeps the CLI's refusal reason."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py -q -k 'no_receipt or hard_timeout_without_receipt or hard_bound_preserves'"
+  - kind: "tests"
+    description: "AC4: a failed terminal is reported once and never retried."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py -q -k not_retried"
+  - kind: "tests"
+    description: "AC5: every test of the node passes."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka'"
+  - kind: "tests"
+    description: "AC6: the READY control stays admitted with its contract declared, an item opening with the two words write a and no task type is a refusal row and is never dispatched, and a mixed batch yields the closeout fragment naming receipt count, correlation ids and failure count."
+    command: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka' -k 'refused_items_are_rows or ready_control or mixed_batch'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18997-ac1-wrapper-invocation"
+    description: "AC1 hosted probe. The node's invocation names the sanctioned wrapper path and carries the kafka bus, the explicit lane and the deployed-lane locus. The node replaced the workflow script the criterion names."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py -q -k sanctioned_wrapper"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18997-ac2-terminal-from-receipt"
+    description: "AC2 hosted probe. The terminal is read from the receipt, including after a kill, and a real subprocess that exits 0 without a receipt is reported as a failure."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py -q -k 'terminal_is_receipt_fact or exit_zero_without_receipt'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn18997-ac3-no-receipt-row"
+    description: "AC3 hosted probe. A run with no run directory keeps its evidence as a visible row, a hard-bound kill without a receipt is visible, and a real subprocess killed at the bound keeps the CLI's refusal reason."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_delegate_fanout_handler.py -q -k 'no_receipt or hard_timeout_without_receipt or hard_bound_preserves'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn18997-ac4-no-retry"
+    description: "AC4 hosted probe. The delegate callable is invoked once for a failed item and the failed terminal is reported."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect/test_golden_chain_delegate_fanout.py -q -k not_retried"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn18997-ac5-node-tests-pass"
+    description: "AC5 hosted probe. Every test of the node passes under the repository's own pytest invocation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn18997-ac6-refusal-and-control-rows"
+    description: "AC6 hosted probe. The READY control stays admitted with its contract declared, a write-a item with no task type is a refusal row that is never dispatched, and a mixed batch yields the closeout fragment. The live dev-lane run of the three items is recorded in the pull request that adds this contract; this probe is the part a hosted runner can repeat."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegate_fanout_effect -q -m 'not kafka' -k 'refused_items_are_rows or ready_control or mixed_batch'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
