@@ -34,6 +34,9 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     _response_from_result,
 )
@@ -147,6 +150,57 @@ def test_the_skill_response_carries_only_the_final_answer() -> None:
 
 def test_the_skill_response_of_a_clean_answer_has_no_reasoning_field_value() -> None:
     assert _response("4") == ("4", "")
+
+
+def test_reasoning_is_accepted_without_emitting_a_new_wire_key() -> None:
+    response = ModelDelegateSkillResponse.model_validate(
+        {
+            "status": "completed",
+            "correlation_id": uuid4(),
+            "task_type": "research",
+            "response": "4",
+            "response_reasoning": "2 plus 2.",
+        }
+    )
+    assert response.response_reasoning == "2 plus 2."
+    assert "response_reasoning" not in response.model_dump(mode="json")
+    assert "response_reasoning" not in response.model_json_schema()["properties"]
+    decoded = ModelDelegateSkillResponse.model_validate_json(response.model_dump_json())
+    assert decoded.response == "4"
+
+
+def test_removed_reasoning_is_serialized_on_the_deciding_attempt() -> None:
+    response = _response_from_result(
+        ModelDelegateSkillRequest(
+            prompt="what is 2+2",
+            task_type="research",
+            source="claude-code",
+            correlation_id=uuid4(),
+        ),
+        {
+            "status": "completed",
+            "content": "<think>2 plus 2.</think>\n### ANSWER\n4",
+            "quality_gate_passed": True,
+            "attempts": [
+                {
+                    "tier": "local",
+                    "backend_id": "local-coder",
+                    "model_id": "model",
+                    "quality_gate_passed": True,
+                    "acceptance_decision": "accept",
+                    "reasoning_preamble": "Earlier recorded preamble.",
+                }
+            ],
+        },
+        tenant_id=None,
+        queue_wait_ms=None,
+        execution_duration_ms=10,
+        budget_evidence=None,
+    )
+    decoded = ModelDelegateSkillResponse.model_validate_json(response.model_dump_json())
+    assert decoded.response == "4"
+    assert "2 plus 2." in decoded.attempts[0].reasoning_preamble
+    assert "Earlier recorded preamble." in decoded.attempts[0].reasoning_preamble
 
 
 # --- 2. no class asks for reasoning the prompt did not ask for -------------------
@@ -274,3 +328,23 @@ def test_a_bare_word_answering_an_open_request_is_still_refused() -> None:
         "research", "Write an overview of how MVCC works in PostgreSQL.", "MVCC"
     )
     assert passed is False
+
+
+@pytest.mark.parametrize("marker", ["", "### ANSWER\n"])
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("handler_routing: [unfinished block", False),
+        ("handler_routing: {unfinished: block", False),
+        ("handler_routing: [valid, block]", True),
+        ('handler_routing: ["a literal [ inside a string"]', True),
+        ("A prose answer can cite [12] without becoming YAML.", True),
+    ],
+)
+def test_research_still_rejects_unfinished_flow_collections(
+    marker: str, content: str, expected: bool
+) -> None:
+    passed, reasons = _gate(
+        "research", "write a handler_routing block", marker + content
+    )
+    assert passed is expected, reasons

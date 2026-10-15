@@ -1026,6 +1026,18 @@ def _check_semantic_adequacy(
     if stripped[-1] in _TRUNCATION_TRAILING_TOKENS:
         return "WEAK_OUTPUT: response truncated mid-token, fails semantic_adequacy"
 
+    # An unfinished YAML flow collection is incomplete even when its last
+    # character is an ordinary word. Research's optional prose rules must not
+    # be the only reason a truncated configuration block is refused.
+    structured = re.sub(r"\A### ANSWER\s*\n", "", stripped, flags=re.IGNORECASE)
+    if re.match(r"[A-Za-z_][\w.-]*:\s*[\[{]", structured):
+        try:
+            yaml.compose(structured, Loader=yaml.SafeLoader)
+        except yaml.YAMLError:
+            return (
+                "WEAK_OUTPUT: malformed YAML flow collection, fails semantic_adequacy"
+            )
+
     # A complete structured / code artifact is a complete answer regardless of
     # prose sentence shape.
     if _extract_fenced_code_blocks(content) or '"""' in stripped or "'''" in stripped:

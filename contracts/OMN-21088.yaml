@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21088"
 title: "result.response is the final answer only; no reasoning asked for or billed (omnimarket half)"
-summary: "The skill response carries only the final answer: reasoning blocks, an opening answer header and surrounding blank lines are removed, and removed reasoning is kept on response_reasoning. The reasoning-prose rules (cites_sources, methodical_analysis, step_by_step_explanation) apply only when the prompt asks for them, the research and reasoning system prompts no longer ask for thorough or step-by-step answers, a one-token answer to a short direct question clears semantic_adequacy, and OpenRouter slugs are sent reasoning effort minimal (low for task type reasoning) with exclude true."
+summary: "The skill response carries only the final answer: reasoning blocks, an opening answer header and surrounding blank lines are removed, and removed reasoning is kept in the existing deciding-attempt evidence and on an in-process response_reasoning property; no new terminal wire key is emitted before compatible consumers release. The reasoning-prose rules (cites_sources, methodical_analysis, step_by_step_explanation) apply only when the prompt asks for them, the research and reasoning system prompts no longer ask for thorough or step-by-step answers, a one-token answer to a short direct question clears semantic_adequacy, and OpenRouter slugs are sent reasoning effort minimal (low for task type reasoning) with exclude true."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -30,7 +30,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC4 in one focused test file."
-    command: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0"
+    command: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,26 +41,33 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'response or reasoning_is_kept or header or indentation or clean_answer'"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -k 'response or reasoning_is_kept or header or indentation or clean_answer'"
     binds_ac: ["AC1"]
   - id: "dod-omn21088-ac2-no-reasoning-asked"
     description: "AC2: no class asks a short question for reasoning prose; a prompt that asks keeps the rule."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'not_asked_for_reasoning or keeps_the_rule or keeps_the_step_rule or system_prompt'"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -k 'not_asked_for_reasoning or keeps_the_rule or keeps_the_step_rule or system_prompt'"
     binds_ac: ["AC2"]
   - id: "dod-omn21088-ac3-provider-reasoning"
     description: "AC3: OpenRouter slugs receive the reasoning option and local ids do not."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'openrouter or local_model_id'"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -k 'openrouter or local_model_id'"
     binds_ac: ["AC3"]
   - id: "dod-omn21088-ac4-one-line-answer"
     description: "AC4: a one-line correct answer clears the gate; a bare word for an open request does not."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -n 0 -k 'one_line or one_token or bare_word'"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21088_final_answer_only.py -q -p no:randomly --no-cov -k 'one_line or one_token or bare_word'"
     binds_ac: ["AC4"]
+  - id: "dod-omn21088-deploy-final-answer-seam"
+    description: "Hosted deploy probe: read the delegate handler from GitHub at the evaluated commit and require both final_answer_text extraction and the response assignment. The probe fails on the merge-base handler, which has neither. This checks published source at the evaluated revision, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("final_answer, response_reasoning = final_answer_text") and contains("response=final_answer,"))' | grep -qx true
