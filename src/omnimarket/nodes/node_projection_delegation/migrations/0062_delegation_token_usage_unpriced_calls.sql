@@ -96,6 +96,12 @@ FROM totals
 LEFT JOIN provenance USING (tenant_id)
 LEFT JOIN by_model USING (tenant_id);
 
+-- The DROP above discards the view's options as well as its grants. 0040 set
+-- security_invoker so the tenant policy on delegation_events applies to the
+-- reader, not to the view's owner; restate it, or a superuser-owned copy reads
+-- every tenant's rows.
+ALTER VIEW projection_delegation_token_usage SET (security_invoker = true);
+
 GRANT SELECT ON projection_delegation_token_usage TO app_dashboard;
 GRANT SELECT ON projection_delegation_token_usage TO tenant_projection_writer;
 
