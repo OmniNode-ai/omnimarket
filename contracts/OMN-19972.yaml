@@ -55,6 +55,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A depth-1 clone used as the must-fail runner's source still lets it run the test on the pre-change commit. The command fails with the PR's tests overlaid onto the merge base, where the throwaway tree cannot read that commit and the run returns checkout failed. Measured at 2.6 seconds on the lab host."
     command: "uv run pytest tests/unit/delegated_test_loop/test_must_fail_local_tree_run_shallow_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
+  - kind: "tests"
+    description: "A run through the deployed delegation path (RuntimeDelegationDispatchPort over a bus) publishes its numbered steps on onex.evt.omnimarket.delegation-run-step.v1, each one decoding the way the run-trace writer decodes it: a completed escalated run, a failed routed run that names its failing step, an unrouted run, a timed-out run, and no step when no tenant is known. The command fails with the PR's tests overlaid onto the merge base, where the deployed port publishes no step."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_run_steps_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -133,4 +136,11 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegated_test_loop/test_must_fail_local_tree_run_shallow_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19972-deployed-path-publishes-run-steps"
+    description: "The deployed delegation path publishes each numbered step of a run on the declared run-step topic, so the run-trace writer has steps to fold for a deployed run as it does for a local one. This is the producer half of the ticket body's run-trace writer item; it does not bind or discharge AC1, AC2 or AC3."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_run_steps_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
