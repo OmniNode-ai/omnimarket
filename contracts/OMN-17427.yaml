@@ -236,6 +236,8 @@ requirements:
         statement: "AC41: code requests naming no tests are decided UNTESTED on the local and bus paths, while named tests that never ran remain INSUFFICIENT -- falsifier: the focused verdict cases fail at the merge base."
       - id: "AC42"
         statement: "AC42: the named-test runner preserves the source workspace, scrubs parent secrets, bounds resources and output, kills timed-out process groups, and refuses writes through escaping symlinks -- falsifier: the focused runner module fails at the merge base."
+      - id: "AC43"
+        statement: "AC43: the deployed orchestrator runs the named tests a bus request carries in the sandbox runner before its gate intent leaves, the gate reducer judges the answer on that run, a request naming none stays UNTESTED, and named tests no runner ran are refused as INSUFFICIENT -- falsifier: the four deployed-chain cases fail at the merge base."
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -333,6 +335,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC38 and AC39: the superseded-run cancel node over a recorded GitHub, with negative controls for the current head and for an incomplete queue read."
     command: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
+  - kind: "tests"
+    description: "The deployed orchestrator runs a bus request's named tests before the gate and the gate judges the run."
+    command: "uv run pytest tests/unit/delegation/test_deployed_named_tests_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -693,3 +698,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_named_test_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerNamedTestRun" for n in tree.body); assert all(name in source for name in ("RLIMIT_CPU", "RLIMIT_AS", "RLIMIT_FSIZE", "os.killpg", "subprocess.TimeoutExpired")); print("named-test runner deploy probe: PASS")'
+  - id: "dod-omn17427-ac43-deployed-named-tests"
+    description: "The deployed orchestrator runs the named tests a bus request carries before its gate, and the gate judges that run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_named_tests_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC43"]
+  - id: "dod-omn17427-deployed-named-tests-deploy-probe"
+    description: "Deploy probe. GitHub serves the orchestrator handler at the checked-out HEAD running the request's named tests off the event loop before its gate intent. It fails at the merge base, which has no such step, and needs no lab network or model on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_with_named_test_run", "asyncio.to_thread", "named_tests_requested")); print("deployed named-tests deploy probe: PASS")'
