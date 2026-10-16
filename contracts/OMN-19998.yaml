@@ -196,4 +196,4 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c -- '--consumer-ref "$pin"'
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cF -- '--consumer-ref "$pin"'
