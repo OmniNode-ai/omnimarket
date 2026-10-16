@@ -51,6 +51,10 @@ from omnimarket.models.model_local_runtime_lane import (
     ModelLocalRuntimeLane,
     declare_local_runtime_lane,
 )
+from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
+    DashboardBundleError,
+    ensure_bundle,
+)
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
     DASHBOARD_TOKEN_PARAM,
     HandlerLocalDashboardServe,
@@ -228,6 +232,16 @@ def dashboard_command(overlay_path: Path | None) -> None:
         raise click.ClickException(str(exc)) from exc
     if port == 0:
         port = _free_port(host)
+    # OMN-20705: the pages are fetched and verified before the address is
+    # announced. A bundle that cannot be fetched or fails its checksum ends the
+    # command here, non-zero and named on stderr, rather than after it has
+    # printed an address that serves nothing.
+    try:
+        pages = ensure_bundle()
+    except DashboardBundleError as exc:
+        raise click.ClickException(
+            f"the dashboard pages are unavailable, so nothing was served: {exc}"
+        ) from exc
     identity = read_local_tenant_identity()
     tenant = None if identity is None else str(identity.tenant_uuid)
     # OMN-19916: the request mints this start's token. The start URL is the one
@@ -240,4 +254,4 @@ def dashboard_command(overlay_path: Path | None) -> None:
         f"onex dashboard: {start_url} "
         f"(tenant {tenant or 'not configured: run `onex local init`'})"
     )
-    asyncio.run(HandlerLocalDashboardServe().handle(request))
+    asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
