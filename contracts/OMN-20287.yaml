@@ -39,6 +39,11 @@ requirements:
     acceptance:
       - id: "AC8"
         statement: "AC8: a reply with model output and an empty run id writes nothing to the worktree, is recorded as a failed turn naming the missing run id, and two in a row end as delegate_failed -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q in omnimarket"
+  - id: "req-grounding-budget-per-task-class"
+    statement: "The packaged config configs/grounding_budget_by_task_class.yaml declares the grounded input budget per task class: a class named for a backend gets its own budget, every other class keeps the backend default from the bifrost contract, which carries no new wire key, the local backends give code_generation a budget above 20000 tokens with the measured readback (token counts and delegate run ids) in the comment above each value, and a research prompt of 18245 tokens above the default is still sent to the next rung."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: a 20,000 token code_generation turn is sent to the local rung, a summary-class prompt above the default budget still escalates, the budget resolves per task class, and the code-class value cites its readback -- falsifier: uv run pytest tests/unit/delegation/test_grounded_input_budget_per_task_class_omn20486.py -q in omnimarket"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The reconciled-schema unit tests pass at the head and fail at the merge base, where the lineage columns do not exist."
@@ -49,6 +54,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Execute the code edit loop run-id tests."
     command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q"
+  - kind: "tests"
+    description: "Execute the per-task-class grounded input budget tests."
+    command: "uv run pytest tests/unit/delegation/test_grounded_input_budget_per_task_class_omn20486.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -110,6 +118,14 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_unreceipted_model_turn.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn20287-ac9-budget-per-task-class"
+    description: "AC9 hosted probe. The per-task-class budget tests pass at the head and fail at the merge base, where one budget value refuses a 20,000 token code_generation turn."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_grounded_input_budget_per_task_class_omn20486.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
   - id: "dod-omn20287-code-edit-turn-run-id-deploy-probe"
     description: "Read the published code edit handler at the checked-out commit and require the missing-run-id guard. This hosted-runner probe fails when the source cannot be read or the guard is absent. It reads published source; AC8's test_passes check verifies the refusal behavior."
     source: "manual"
