@@ -54,6 +54,17 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19998-omn19401-selection-names-test-file"
+    description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-19401.yaml's dod-omn19401-ac1-step-by-step-selection runs pytest over a directory instead of naming the reducer test file that holds its step_by_step tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/structure/test_deploy_probe_evidence_binding_omn19998.py -q -k omn19401"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn19998-merge-queue-base-queues-behind-green"
     description: "The merge-queue scenarios pass at the head; with the handler at the merge base, the three green behind PRs on one merge-queue base each get update_branch instead of merge."
     source: "manual"

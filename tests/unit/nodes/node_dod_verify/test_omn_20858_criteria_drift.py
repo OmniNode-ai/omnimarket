@@ -155,7 +155,7 @@ def test_criteria_unchanged_verifies_omn_19267_recorded_criteria(
     # `_run` verifies the contract it writes as OMN-20999; the criteria are the
     # recorded ones.
     recorded["ticket_id"] = "OMN-20999"
-    # AC4 and AC5 are recorded without their label in front; the ticket line
+    # A criterion recorded without its label in front gets it; the ticket line
     # carries it.
     criteria = {
         criterion["id"]: (
@@ -166,7 +166,7 @@ def test_criteria_unchanged_verifies_omn_19267_recorded_criteria(
         for requirement in recorded["requirements"]
         for criterion in requirement["acceptance"]
     }
-    assert sorted(criteria) == ["AC1", "AC2", "AC4", "AC5", "AC6"]
+    assert sorted(criteria) == ["AC1", "AC2"]
     body = criteria_body(criteria)
 
     state, _ = _verify(tmp_path, monkeypatch, [body], contract=recorded)

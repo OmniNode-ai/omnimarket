@@ -155,8 +155,8 @@ def test_control_unevaluated_criterion_is_refused() -> None:
 
 
 def test_control_missing_test_run_is_evaluated_and_refused() -> None:
-    """The vocabulary is valid, but a code answer without a run is refused."""
-    # OMN-21077: missing execution evidence now evaluates to INSUFFICIENT, not skip.
+    """Valid vocabulary cannot accept named tests that no runner ran."""
+    # OMN-17427: named tests without execution evidence remain INSUFFICIENT.
     violations = check_corpus(_corpus_with(_integration_case("passes_existing_tests")))
     assert violations == []
     result = delta(
@@ -166,7 +166,8 @@ def test_control_missing_test_run_is_evaluated_and_refused() -> None:
             llm_response_content="def add(a, b):\n    return a + b",
             quality_contract_mode="replace_task_class",
             acceptance_criteria=("passes_existing_tests",),
-        )
+        ),
+        named_tests_requested=True,
     )
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"

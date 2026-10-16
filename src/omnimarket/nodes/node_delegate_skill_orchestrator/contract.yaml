@@ -291,6 +291,15 @@ inputs:
       rather than silently dropped. Omit to send no response_format at all.
       Distinct from response_contract, which drives ONEX-side structural
       validation and is never sent to the provider.
+  declared_outputs:
+    type: object
+    required: false
+    description: >
+      Optional files the delegation should produce (OMN-19599): a files list
+      of relative path, kind, media type and size cap each, plus a total size
+      bound. The orchestrator derives the response contract from it, so it is
+      mutually exclusive with response_contract, and stamps output_manifest and
+      output_files on the completed terminal. Omit for an ordinary delegation.
 
 db_io:
   # OMN-18887: the durable claim that stops a redelivered delegate-skill

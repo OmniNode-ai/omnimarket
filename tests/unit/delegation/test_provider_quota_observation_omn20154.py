@@ -33,6 +33,7 @@ from omnimarket.inference.provider_quota_observation import (
 from omnimarket.inference.provider_quota_state import (
     ModelProviderQuotaBlock,
     ModelProviderQuotaSnapshot,
+    ModelProviderQuotaUsage,
     StaticProviderQuotaReader,
     read_provider_quota_snapshot,
 )
@@ -236,6 +237,11 @@ class _RaisingReader:
     def read_active_blocks(
         self, *, tenant_id: UUID, as_of: datetime
     ) -> Sequence[ModelProviderQuotaBlock]:
+        raise ConnectionError("projection database unreachable")
+
+    def read_window_usage(
+        self, *, tenant_id: UUID, as_of: datetime
+    ) -> Sequence[ModelProviderQuotaUsage]:
         raise ConnectionError("projection database unreachable")
 
 

@@ -44,6 +44,9 @@ evidence_requirements:
     description: "The caller pins a released verifier that ships the unbound-criteria refusal, so the required repo-evidence / dod-verify check applies it."
     command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k refuses_unbound"
   - kind: "tests"
+    description: "Every repo contract still binds every criterion to test evidence: a command-only deploy probe is unbound evidence, and a planted bound probe is refused."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_bound_command_only_deploy_probe tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_an_unbound_command_only_deploy_probe -q"
+  - kind: "tests"
     description: "The four scratch-PR outcomes read back from recorded check runs and the ruleset's expected source."
     command: "uv run pytest tests/ci/test_ruleset_readback_omn20070.py -q -k scratch_outcomes"
 emergency_bypass:
@@ -91,3 +94,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_ruleset_readback_omn20070.py -q -k scratch_outcomes"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-repo-evidence-ac2-deploy-probe-unbound"
+    description: "The contract binding test holds over every repo contract again and refuses a planted command-only deploy probe that carries binds_ac. It fails at the merge base, where contracts/OMN-21152.yaml binds its deploy probe to AC1."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_bound_command_only_deploy_probe tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_accepts_an_unbound_command_only_deploy_probe -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

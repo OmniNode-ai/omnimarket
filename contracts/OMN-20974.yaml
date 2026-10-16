@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20974"
+title: "The nightly rung eval reads the team's provider keys as the dogfood tenant, by reference"
+summary: "The cloud rung of the nightly per-rung eval is an onex delegate pinned to a backend and run as the dogfood tenant, so the eval holds no provider key; its row names the tenant that answered and the credential reference the run used, and a run that answers as another tenant or on a non-tenant credential is an error row. The workflow no longer references the Actions secret, and a ratchet refuses any workflow that references a provider key secret. Not in this change: a live nightly run whose cloud-rung row names the dogfood tenant (it needs the lab runtime to read tenant references and the repository variables set), and deleting the Actions secret after that run."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-cloud-rung-as-tenant"
+    statement: "The cloud rung runs as the dogfood tenant through onex delegate with a backend pin, holds no key, and its row names the tenant and credential reference."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the cloud rung is a pinned onex delegate run as the configured tenant on a tenant credential reference, and a run that answers as another tenant or on a house credential is refused -- falsifier: a cloud-rung row that carries no tenant, or an answer from another tenant that is graded"
+  - id: "req-no-provider-key-in-workflows"
+    statement: "No workflow in omnimarket references a provider key secret."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the ratchet finds no provider key secret in .github/workflows and flags a planted one -- falsifier: a workflow that references RUNG_EVAL_CLOUD_OPENROUTER_API_KEY or another provider key secret"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2 in two focused test files."
+    command: "uv run pytest tests/unit/delegation/rung_eval/test_cloud_rung_dogfood_tenant_omn20974.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20974-ac1-cloud-rung-as-tenant"
+    description: "AC1: the pinned delegate transport runs as the tenant, refuses another tenant and a house credential, and the row names tenant and reference."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/rung_eval/test_cloud_rung_dogfood_tenant_omn20974.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20974-ac2-no-provider-key-in-workflows"
+    description: "AC2: the ratchet over .github/workflows with a planted positive control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_no_provider_key_in_workflows_omn20974.py -k no_provider_key_in_workflows -q -p no:randomly --no-cov"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20974-deploy-probe-tenant-transport"
+    description: "Deploy probe: the runner source GitHub serves at the evaluated commit assigns the injected environment directly. The dispatch head reads os.environ instead, so this source probe fails there. Focused tests exercise backend and tenant propagation, receipt validation, refusal paths and row identity."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/rung_eval/test_cloud_rung_dogfood_tenant_omn20974.py -q -p no:randomly --no-cov"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/delegation/rung_eval/runner.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d' | grep -qx '        self._environ = environ'"
+    binds_ac: ["AC1"]

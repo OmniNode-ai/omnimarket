@@ -1,0 +1,75 @@
+---
+name: node_context_profile_resolver_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Resolves one context profile by name from the YAML data under
+  omnimarket/pack/profiles. The result carries the validated profile and the
+  sha256 of its canonical dump, or PROFILE_NOT_FOUND / INVALID_PROFILE. The
+  node reads only its packaged profile data and holds no other state. A failed
+  resolve is a typed result on the same terminal event, not a second topic.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: context_profile_resolver
+      handler:
+        name: HandlerContextProfileResolver
+        module: omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver
+
+handler:
+  module: omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver
+  class: HandlerContextProfileResolver
+  input_model: omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request.ModelContextProfileResolveRequest
+  output_model: omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_result.ModelContextProfileResolveResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [effects]
+
+inputs:
+  profile_name:
+    type: str
+    required: true
+
+outputs:
+  status:
+    type: str
+    enum: [ok, failed]
+  profile_name:
+    type: str
+  profile:
+    type: object
+    required: false
+    nullable: true
+  profile_content_hash:
+    type: str
+    required: false
+    nullable: true
+  failure_class:
+    type: str
+    required: false
+    nullable: true
+  errors:
+    type: array
+
+terminal_event: onex.evt.omnimarket.context-profile-resolve-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-profile-resolve-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-profile-resolve-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-profile-resolve-completed.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-profile-resolve-requested.v1

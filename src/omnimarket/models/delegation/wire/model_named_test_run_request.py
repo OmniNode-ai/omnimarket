@@ -12,12 +12,21 @@ named-test runner the in-process delegation port is given, whose
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Self
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    PrivateAttr,
+    TypeAdapter,
+    model_validator,
+)
 
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 
@@ -27,18 +36,55 @@ NAMED_TESTS_METADATA_KEY = "named_tests"
 NAMED_TESTS_ANSWER_PATH_METADATA_KEY = "named_tests_answer_path"
 #: The workspace the tests run in. A copy of it, never the directory itself.
 NAMED_TESTS_WORKSPACE_METADATA_KEY = "named_tests_workspace"
+#: The test files themselves, as a JSON object of workspace-relative path to
+#: source (OMN-17427). A request that carries its tests needs no workspace, so
+#: the runner can test the answer wherever the delegation runs.
+NAMED_TESTS_FILES_METADATA_KEY = "named_tests_files"
 
 MAX_NAMED_TESTS = 20
+MAX_NAMED_TEST_FILES = 20
+MAX_NAMED_TEST_FILE_CHARS = 200_000
 DEFAULT_NAMED_TEST_TIMEOUT_SECONDS = 120
 
 
-class ModelNamedTestSpec(BaseModel):
-    """The tests a delegation names, the workspace they run in, and the answer file."""
+def _inside_workspace(relative: str) -> bool:
+    path = PurePosixPath(relative)
+    return not (path.is_absolute() or ".." in path.parts or ".git" in path.parts)
+
+
+class ModelNamedTestFile(BaseModel):
+    """One test file a request carries: where it goes in the sandbox, and its source."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    workspace_root: str = Field(
-        ..., min_length=1, description="Absolute path of the workspace to copy."
+    path: str = Field(..., min_length=1, description="Workspace-relative path.")
+    content: str = Field(..., max_length=MAX_NAMED_TEST_FILE_CHARS)
+
+    @model_validator(mode="after")
+    def _validate_path(self) -> Self:
+        if not _inside_workspace(self.path):
+            raise ValueError(f"test file {self.path!r} must stay inside the workspace")
+        return self
+
+
+_TEST_FILES_ADAPTER: TypeAdapter[tuple[ModelNamedTestFile, ...]] = TypeAdapter(
+    tuple[ModelNamedTestFile, ...]
+)
+
+
+class ModelNamedTestSpec(BaseModel):
+    """The tests a delegation names, the workspace they run in, and the answer file.
+
+    ``workspace_root`` is copied into the sandbox when set; ``test_files`` are
+    written into it after the copy. At least one of the two must be given.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    workspace_root: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Absolute path of the workspace to copy.",
     )
     answer_path: str = Field(
         ...,
@@ -52,12 +98,49 @@ class ModelNamedTestSpec(BaseModel):
         description="Workspace-relative pytest node ids, run one at a time.",
     )
 
+    # Test files the request carries, written into the sandbox (OMN-17427).
+    # Consumer first: v0.4.314 forbids the test_files wire key, so the files
+    # are decoded and retained for in-process callers, never emitted until a
+    # consumer carrying this decoder is released.
+    _test_files: tuple[ModelNamedTestFile, ...] = PrivateAttr(default=())
+
+    @property
+    def test_files(self) -> tuple[ModelNamedTestFile, ...]:
+        """The test files the request carries; not a wire field yet."""
+        return self._test_files
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _retain_test_files_without_emitting_them(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        if not isinstance(data, Mapping):
+            return handler(data)
+        test_files = _TEST_FILES_ADAPTER.validate_python(data.get("test_files", ()))
+        if len(test_files) > MAX_NAMED_TEST_FILES:
+            raise ValueError(
+                f"at most {MAX_NAMED_TEST_FILES} test files, got {len(test_files)}"
+            )
+        spec = handler({k: v for k, v in data.items() if k != "test_files"})
+        if spec.workspace_root is None and not test_files:
+            raise ValueError("named tests need a workspace_root or test_files")
+        if any(f.path == spec.answer_path for f in test_files):
+            raise ValueError("a test file cannot be written over answer_path")
+        return spec.retain_test_files(test_files)
+
+    def retain_test_files(self, test_files: tuple[ModelNamedTestFile, ...]) -> Self:
+        """Attach in-process test files without changing the frozen wire fields."""
+        self._test_files = test_files
+        return self
+
     @model_validator(mode="after")
     def _validate_paths(self) -> Self:
-        if not PurePosixPath(self.workspace_root).is_absolute():
+        if (
+            self.workspace_root is not None
+            and not PurePosixPath(self.workspace_root).is_absolute()
+        ):
             raise ValueError("workspace_root must be an absolute path")
-        answer = PurePosixPath(self.answer_path)
-        if answer.is_absolute() or ".." in answer.parts or ".git" in answer.parts:
+        if not _inside_workspace(self.answer_path):
             raise ValueError("answer_path must stay inside the workspace")
         for test_id in self.test_ids:
             path = PurePosixPath(test_id.split("::", 1)[0])
@@ -85,20 +168,48 @@ class ModelNamedTestSpec(BaseModel):
                 f"{NAMED_TESTS_METADATA_KEY} names tests but "
                 f"{NAMED_TESTS_ANSWER_PATH_METADATA_KEY} is not set"
             )
-        workspace = (
-            metadata.get(NAMED_TESTS_WORKSPACE_METADATA_KEY) or default_workspace
+        test_files = _test_files_from_metadata(
+            metadata.get(NAMED_TESTS_FILES_METADATA_KEY, "")
         )
-        if not workspace:
+        workspace = metadata.get(NAMED_TESTS_WORKSPACE_METADATA_KEY) or (
+            None if test_files else default_workspace
+        )
+        if not workspace and not test_files:
             raise ValueError(
-                f"{NAMED_TESTS_METADATA_KEY} names tests but no workspace is set "
-                f"({NAMED_TESTS_WORKSPACE_METADATA_KEY} or the request's "
-                "working directory)"
+                f"{NAMED_TESTS_METADATA_KEY} names tests but neither a workspace "
+                f"({NAMED_TESTS_WORKSPACE_METADATA_KEY} or the request's working "
+                f"directory) nor {NAMED_TESTS_FILES_METADATA_KEY} is set"
             )
-        return cls(
-            workspace_root=workspace,
-            answer_path=answer_path,
-            test_ids=tuple(raw_tests),
+        return cls.model_validate(
+            {
+                "workspace_root": workspace or None,
+                "test_files": test_files,
+                "answer_path": answer_path,
+                "test_ids": tuple(raw_tests),
+            }
         )
+
+
+def _test_files_from_metadata(raw: str) -> tuple[ModelNamedTestFile, ...]:
+    """Parse ``named_tests_files``: a JSON object of path to source."""
+    if not raw.strip():
+        return ()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"{NAMED_TESTS_FILES_METADATA_KEY} is not JSON: {exc}"
+        ) from exc
+    if not isinstance(parsed, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()
+    ):
+        raise ValueError(
+            f"{NAMED_TESTS_FILES_METADATA_KEY} must be a JSON object of path to source"
+        )
+    return tuple(
+        ModelNamedTestFile(path=path, content=content)
+        for path, content in sorted(parsed.items())
+    )
 
 
 class ModelNamedTestRunRequest(BaseModel):
@@ -149,10 +260,14 @@ class ModelNamedTestRunResult(BaseModel):
 __all__ = [
     "DEFAULT_NAMED_TEST_TIMEOUT_SECONDS",
     "MAX_NAMED_TESTS",
+    "MAX_NAMED_TEST_FILES",
+    "MAX_NAMED_TEST_FILE_CHARS",
     "NAMED_TESTS_ANSWER_PATH_METADATA_KEY",
+    "NAMED_TESTS_FILES_METADATA_KEY",
     "NAMED_TESTS_METADATA_KEY",
     "NAMED_TESTS_WORKSPACE_METADATA_KEY",
     "EnumNamedTestRunStatus",
+    "ModelNamedTestFile",
     "ModelNamedTestRunRequest",
     "ModelNamedTestRunResult",
     "ModelNamedTestSpec",
