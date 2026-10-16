@@ -107,7 +107,13 @@ def db(tmp_path: Path) -> SqliteDatabaseAdapter:
 
 def test_u1_one_model_under_two_tiers_is_two_rows(db: SqliteDatabaseAdapter) -> None:
     _apply(db, _call("c1", "qwen", "local"), _call("c2", "qwen", "cheap_cloud"))
-    assert sorted(_rows(db)) == [("qwen", "cheap_cloud"), ("qwen", "local")]
+    rows = _rows(db)
+    assert sorted(rows) == [("qwen", "cheap_cloud"), ("qwen", "local")]
+    # Each tier's row counts only its own calls over the day's, so the two halves
+    # of one model's day share it and sum to one; a share keyed on the model alone
+    # would give the second tier the whole day and leave the first stale.
+    assert rows[("qwen", "local")]["call_share"] == pytest.approx(0.5)
+    assert rows[("qwen", "cheap_cloud")]["call_share"] == pytest.approx(0.5)
 
 
 def test_u2_shares_are_calls_over_the_days_calls_and_sum_to_one(
