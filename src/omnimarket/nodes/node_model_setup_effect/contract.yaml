@@ -14,7 +14,7 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Model setup EFFECT. Reports which of the models delegation can use (Gemini,
-  OpenRouter, OpenAI, Anthropic, Ollama) are set up on this machine, and tests one by
+  OpenRouter, OpenAI, Anthropic, Ollama, a local URL) are set up on this machine, and tests one by
   running a single delegation pinned to its backend (`onex delegate
   --backend-id`, pin-or-refuse), recording pass, or fail with the provider's
   reason, and the time. Storing a key is not this node's work: the `onex models`
@@ -24,7 +24,11 @@ description: >
   deployment overlay (`<root>/node_model_setup_effect/overlay.yaml`, field
   `openrouter_default_model`), else the model registry entry this contract names
   under `config`, so a first run needs no private overlay. Never from code; the
-  customer changes it with `onex models add openrouter --model <id>`.
+  customer changes it with `onex models add openrouter --model <id>`. A local
+  model server on an OpenAI-compatible URL needs no key (`add_local`): the URL
+  must answer a models or chat request, then it is declared as the `local-url`
+  backend in the local routes overlay, beside the entries already there, and
+  `remove_local` takes only that entry out.
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 

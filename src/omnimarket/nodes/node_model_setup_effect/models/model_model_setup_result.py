@@ -17,7 +17,7 @@ class ModelModelTestResult(BaseModel):
     """One test delegation pinned to a provider's backend.
 
     ``not_set_up`` means nothing was run: the provider has no key stored, or
-    (Ollama) no local routes point at it.
+    (Ollama) no local routes point at it, or (local) no URL is declared.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -57,6 +57,8 @@ class ModelModelSetupResult(BaseModel):
         "reorder",
         "remove_model",
         "default_model",
+        "add_local",
+        "remove_local",
     ]
     tests: tuple[ModelModelTestResult, ...] = ()
     providers: tuple[ModelModelStatus, ...] = ()
