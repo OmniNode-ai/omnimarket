@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: "AC9"
         statement: "AC9: node_external_deadman_check_compute raises when both mirrors are stale or unreadable, when a fresh mirror reports an episode undelivered or unrecorded past its due time plus the escalation bound, or when the day's canary is past its receipt deadline, keeps one issue, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/test_external_deadman_omn20808.py tests/test_golden_chain_external_deadman_check_compute.py -q fails at the merge base"
+  - id: "req-release-gates-accept-git-pin"
+    statement: "omnimarket's release-gated checks grade the commit a consumer pins instead of waiting for a release: the Wire Compatibility Gate replays against the omnimarket commit omniclaude dev's uv.lock pins, the sibling pins steps accept a uv.lock git source locked to one commit and check omnibase_infra out at it, and a dev merge dispatches omnimarket-dev-moved to omniclaude."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: check_wire_compatibility.py --consumer-ref grades the pinned commit and fails closed on an unresolvable ref, the gate step passes omniclaude's pin, every pins step accepts a commit-locked git source and refuses a moving one, and runtime-rebuild-trigger.yml dispatches omnimarket-dev-moved on a dev merge -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q, uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -k 'pinned_consumer or unresolvable_consumer_ref' and uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k commit_pin fail at the merge base"
   - id: "req-release-staleness-advisory"
     statement: "Operator RULING 2026-10-16T07:34:18Z (no release wait; no users yet): Release Staleness (OMN-18010) keeps running unconditionally in ci.yml and keeps its 24-hour STALE measurement, but CI Summary lists it in SOFT_ALLOWLIST instead of STRICT_GATE_JOBS, so a stale, failed, absent or running Release Staleness job never fails or holds CI Summary, while any other failed job still fails it."
     acceptance:
@@ -61,6 +66,11 @@ requirements:
     acceptance:
       - id: "AC11"
         statement: "AC11: .github/workflows/dev-merge-tag.yml triggers only on push to dev, and its tag step, run against a throwaway repository with a +05:30 committer date, pushes one lightweight tag named dev-<committer time in UTC>-<sha12> at the commit, pushes nothing on a second run or when a dev tag for that sha already exists, pushes nothing in a dry run, and refuses a value that is not a full sha -- falsifier: uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py -q fails at the merge base, where the workflow does not exist"
+  - id: "req-mirror-durable-merge-outbox"
+    statement: "The git query mirror persists merge payloads before moving its scan watermark and marks a PR published only after its Kafka adapter returns from the broker acknowledgement; a restarted handler republishes pending payloads with their original event IDs."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: publish failure leaves the merge pending and unpublished, a new process republishes the saved payload, the Kafka adapter waits for acknowledgement before the published marker is written, partial batches retry only unacknowledged merges, and failures before the scan or published-marker write retain recoverable state -- falsifier: uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q fails with the mirror and handler at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -76,6 +86,24 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19998-mirror-durable-outbox"
+    description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_golden_chain_git_query_mirror_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn19998-mirror-outbox-deploy-probe"
+    description: "Hosted-runner source probe requires the mirror's publication path to await adapter.publish before mark_merge_published; the base has no such path and fails. This source probe does not claim successful live broker delivery."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'import ast; from pathlib import Path; p=Path("src/omnimarket/nodes/node_git_query_mirror_effect/handlers/handler_git_query_mirror.py"); t=ast.parse(p.read_text()); f=next(n for n in ast.walk(t) if isinstance(n,ast.AsyncFunctionDef) and n.name=="_publish_pending"); a=[n for n in ast.walk(f) if isinstance(n,ast.Await)]; publish=next(n.lineno for n in a if "adapter.publish" in ast.unparse(n)); ack=next(n.lineno for n in a if "mirror.mark_merge_published" in ast.unparse(n)); assert publish < ack'
   - id: "dod-omn19998-construction-consumer-first"
     description: "The consumer JSON decode and terminal conversion tests preserve the gate fact and null score, retain the declared construction-result fields, and refuse contradictory evidence and unknown keys."
     source: "manual"
@@ -207,6 +235,27 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_external_deadman_check_compute/handlers/handler_external_deadman_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerExternalDeadmanCheck'
+  - id: "dod-omn19998-release-gates-accept-git-pin"
+    description: "The pinned-consumer wire replay, the commit-pin acceptance of every sibling pins step and the omniclaude dispatch pass at the head; at the merge base the new tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -k 'pinned_consumer or unresolvable_consumer_ref'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k commit_pin"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn19998-git-pin-gates-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this commit and requires the wire gate to pass omniclaude's pin as --consumer-ref; the base has no such line and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cF -- '--consumer-ref "$pin"'
   - id: "dod-omn19998-release-staleness-advisory"
     description: "The release-staleness registration and CI Summary verdict tests pass at the head; at the merge base the job is a strict gate, so a failed or absent Release Staleness fails or holds CI Summary and six tests fail."
     source: "manual"

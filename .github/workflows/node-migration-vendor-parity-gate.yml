@@ -94,6 +94,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import os
+          import re
           import tomllib
 
           with open("uv.lock", "rb") as lock_file:
@@ -103,11 +104,22 @@ jobs:
           for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
                   failed = True
                   continue
               pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
@@ -120,7 +132,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v${{ steps.pins.outputs.infra_version }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: omnibase_infra-dest
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
