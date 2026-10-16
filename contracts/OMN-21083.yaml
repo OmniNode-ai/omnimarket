@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21083-served-row-is-the-committed-row"
-    description: "Served path: two real DelegationProjectionRunner writes of one run, the first publish held so the snapshots arrive newest first, then delegation.decisions.v1 read through the real /projection/{topic} route serves the stored 0.009. The projection API reads the writer's table, not the snapshot cache, so this is what a client is served. Whether the cache class itself must also order these rows is asked of the ticket's author on the ticket."
+    description: "Served path: two real DelegationProjectionRunner writes of one run, the first publish held so the snapshots arrive newest first, then delegation.decisions.v1 read through the real /projection/{topic} route serves the stored 0.009. The projection API reads the writer's table, not the snapshot cache, so this is what a client is served. Per the ruling on the ticket (comment 8d6a4630), this test is the regression guard, and the unused cache class is retired under OMN-21159 rather than fixed."
     source: "manual"
     checks:
       - check_type: "test_passes"
