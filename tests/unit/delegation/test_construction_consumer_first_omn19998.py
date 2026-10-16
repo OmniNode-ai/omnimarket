@@ -137,3 +137,20 @@ def test_legacy_terminal_is_unscored_by_default() -> None:
     # OMN-19013: an unscored terminal carries None, not a measured zero.
     assert terminal.quality_score is None
     assert delegate_skill_succeeded(terminal)
+
+
+@pytest.mark.parametrize(
+    "model", [ModelDelegateSkillResponse, ModelDelegateSkillFailed]
+)
+def test_declared_construction_fields_round_trip_through_json(
+    model: type[ModelDelegateSkillResponse],
+) -> None:
+    payload = _construction()
+    terminal = model.model_validate_json(json.dumps(payload))
+    dumped = terminal.model_dump(mode="json")
+    for key in ("operational_outcome", "content_verdict", "terminal_failure_reason"):
+        assert dumped[key] == payload[key]
+    assert terminal.rule_evaluations == ()
+    assert "rule_evaluations" not in dumped
+    again = model.model_validate_json(terminal.model_dump_json())
+    assert again.model_dump(mode="json") == dumped
