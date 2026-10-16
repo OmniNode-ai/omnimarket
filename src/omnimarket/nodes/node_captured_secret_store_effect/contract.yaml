@@ -12,6 +12,10 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
+# The in-process caller supplies the directory holding its private overlay.
+dependency_ownership:
+  - onex_home
+
 description: >
   Captured secret store EFFECT (operator ruling 2026-10-10, RULING row
   2026-10-10T22:38:48Z lane=secret-refs-9f8a). One detected secret in, one
