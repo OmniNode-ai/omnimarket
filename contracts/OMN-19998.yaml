@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: "AC9"
         statement: "AC9: node_external_deadman_check_compute raises when both mirrors are stale or unreadable, when a fresh mirror reports an episode undelivered or unrecorded past its due time plus the escalation bound, or when the day's canary is past its receipt deadline, keeps one issue, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/test_external_deadman_omn20808.py tests/test_golden_chain_external_deadman_check_compute.py -q fails at the merge base"
+  - id: "req-release-staleness-advisory"
+    statement: "Operator RULING 2026-10-16T07:34:18Z (no release wait; no users yet): Release Staleness (OMN-18010) keeps running unconditionally in ci.yml and keeps its 24-hour STALE measurement, but CI Summary lists it in SOFT_ALLOWLIST instead of STRICT_GATE_JOBS, so a stale, failed, absent or running Release Staleness job never fails or holds CI Summary, while any other failed job still fails it."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: Release Staleness (OMN-18010) is in SOFT_ALLOWLIST and in neither STRICT_GATE_JOBS nor SKIPPABLE_GATE_JOBS, CI Summary evaluates SUCCESS with that job failed, cancelled, absent or running, an unregistered failed job still yields FAILURE, and the job stays unconditional with its STALE controls -- falsifier: uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -197,3 +202,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_external_deadman_check_compute/handlers/handler_external_deadman_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerExternalDeadmanCheck'
+  - id: "dod-omn19998-release-staleness-advisory"
+    description: "The release-staleness registration and CI Summary verdict tests pass at the head; at the merge base the job is a strict gate, so a failed or absent Release Staleness fails or holds CI Summary and six tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn19998-staleness-advisory-deploy-probe"
+    description: "Hosted-runner probe parses scripts/ci/ci_summary_gate.py at this commit and requires Release Staleness in SOFT_ALLOWLIST and out of STRICT_GATE_JOBS; at the base it is strict and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/scripts/ci/ci_summary_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast,sys; t=ast.parse(sys.stdin.read()); v={n.target.id: ((ast.literal_eval(n.value.args[0]) if n.value.args else ()) if isinstance(n.value, ast.Call) else ast.literal_eval(n.value)) for n in t.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in ("STRICT_GATE_JOBS","SOFT_ALLOWLIST")}; j="Release Staleness (OMN-18010)"; assert j in v["SOFT_ALLOWLIST"] and j not in v["STRICT_GATE_JOBS"], "Release Staleness still gates CI Summary"'
