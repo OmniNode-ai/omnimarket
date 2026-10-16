@@ -198,6 +198,34 @@ def test_lock_expression_resolves_to_the_lock_version() -> None:
     assert done.stdout == _lock_version("omnibase-core")
 
 
+# The sibling-release-compat job (OMN-19998) also accepts a uv.lock git source
+# pinned to a sibling dev-<UTC>-<sha12> tag, so it checks out the resolved ref
+# and writes the release-or-tag outputs; every other job checks out the release.
+RELEASE_REF = "v${{ steps.pins.outputs.infra_version }}"
+DEV_TAG_REF = "${{ steps.pins.outputs.infra_ref }}"
+DEV_TAG_JOBS = {("ci.yml", "sibling-release-compat")}
+
+
+def _release_pin_lines(
+    wf: str, job: str, infra_version: str, core_version: str
+) -> list[str]:
+    if (wf, job) not in DEV_TAG_JOBS:
+        return [f"infra_version={infra_version}", f"core_version={core_version}"]
+    lines = []
+    for name, key, version in (
+        ("omnibase-infra", "infra", infra_version),
+        ("omnibase-core", "core", core_version),
+    ):
+        lines += [
+            f"{key}_version={version}",
+            f"{key}_ref=v{version}",
+            f"{key}_ref_name=v{version}",
+            f"{key}_dev_tag=",
+            f"{key}_spec={name}=={version}",
+        ]
+    return lines
+
+
 def _infra_pin_steps() -> list[tuple[str, str, dict[str, Any]]]:
     hosted = _hosted_reusables()
     steps = _steps()
@@ -208,9 +236,11 @@ def _infra_pin_steps() -> list[tuple[str, str, dict[str, Any]]]:
         and (step.get("with") or {}).get("repository") == "OmniNode-ai/omnibase_infra"
     ]
     assert checkouts
+    assert {(wf, job) for wf, job, _ in checkouts} >= DEV_TAG_JOBS
     found = []
     for wf, job, checkout in checkouts:
-        assert checkout["with"]["ref"] == "v${{ steps.pins.outputs.infra_version }}"
+        expected_ref = DEV_TAG_REF if (wf, job) in DEV_TAG_JOBS else RELEASE_REF
+        assert checkout["with"]["ref"] == expected_ref, (wf, job)
         job_steps = [step for w, j, step in steps if (w, j) == (wf, job)]
         resolvers = [step for step in job_steps if step.get("id") == "pins"]
         assert len(resolvers) == 1, (wf, job)
@@ -230,10 +260,9 @@ def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
             text=True,
             check=True,
         )
-        assert output.read_text().splitlines() == [
-            f"infra_version={_lock_version('omnibase-infra')}",
-            f"core_version={_lock_version('omnibase-core')}",
-        ], (wf, job)
+        assert output.read_text().splitlines() == _release_pin_lines(
+            wf, job, _lock_version("omnibase-infra"), _lock_version("omnibase-core")
+        ), (wf, job)
 
 
 @pytest.mark.parametrize("version", ["0.38.71", "0.38.72", "0.38.73"])
@@ -257,10 +286,9 @@ def test_every_infra_checkout_resolves_a_new_lock_release(
             text=True,
         )
         assert done.returncode == 0, (wf, job, done.stdout, done.stderr)
-        assert output.read_text().splitlines() == [
-            f"infra_version={version}",
-            f"core_version={_lock_version('omnibase-core')}",
-        ], (wf, job)
+        assert output.read_text().splitlines() == _release_pin_lines(
+            wf, job, version, _lock_version("omnibase-core")
+        ), (wf, job)
 
 
 @pytest.mark.parametrize("kind", ["missing", "duplicate", "unreleased"])
@@ -295,7 +323,14 @@ def test_every_infra_checkout_refuses_an_invalid_release_pin(
             text=True,
         )
         assert done.returncode != 0, (wf, job)
-        assert "a released pin is required" in done.stdout, (wf, job)
+        if (wf, job) not in DEV_TAG_JOBS:
+            refusal = "a released pin is required"
+        elif kind == "unreleased":
+            refusal = "a pin must be a PyPI release or a git source pinned to a dev-"
+        else:
+            refusal = "exactly one pin is required"
+        assert "::error::omnibase-infra: " in done.stdout, (wf, job)
+        assert refusal in done.stdout, (wf, job)
         assert not output.exists(), (wf, job)
 
 

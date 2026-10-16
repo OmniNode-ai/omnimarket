@@ -247,7 +247,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py -q -n 0"
+        check_value: "uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py tests/ci/test_sibling_pins_omn20001.py -q -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC12"]
   - id: "dod-omn19998-sibling-gate-dev-tag-deploy-probe"
