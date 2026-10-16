@@ -43,6 +43,7 @@ Related:
 from __future__ import annotations
 
 import importlib
+import importlib.resources
 import logging
 import os
 import re
@@ -96,6 +97,9 @@ from omnimarket.models.delegation.model_entry_tier_share import (
     entry_share_draw,
     entry_share_from_contract_entry,
     validate_entry_share,
+)
+from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
+    ModelGroundingBudgetByTaskClass,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -187,10 +191,13 @@ _SYSTEM_PROMPTS: dict[str, str] = {
     # OMN-18349: this prompt asked for code-line citations after OMN-13354
     # replaced `cites_specific_lines` with `cites_sources` on the research
     # class, so it asked for the one citation form the gate no longer grades.
+    # OMN-21088: it then asked every research prompt to "be thorough and
+    # attribute your claims", and "what is 2+2" came back as about 990 bytes of
+    # sourced reasoning. Sources are asked for by the `cites_sources` directive,
+    # and only when the prompt asks for them.
     "research": (
-        "You are a code research assistant. Analyze the provided code and answer "
-        "questions about its behavior, architecture, and design decisions. "
-        "Be thorough and attribute your claims to their sources."
+        "You are a research assistant. Answer the question directly, at the "
+        "length the question needs."
     ),
     "code_generation": (
         "You are a code generation assistant. Implement the requested functionality "
@@ -204,9 +211,10 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are a refactoring assistant. Improve the structure, readability, and "
         "maintainability of the provided code without changing its behavior."
     ),
+    # OMN-21088: the answer, not the working. Numbered steps are asked for by
+    # the `step_by_step_explanation` directive, and only when the prompt asks.
     "reasoning": (
-        "You are a reasoning assistant. Think through the problem step by step "
-        "and provide a well-structured analysis."
+        "You are a reasoning assistant. Work the problem out and give the conclusion."
     ),
     "planning": (
         "You are a planning assistant. Break down the requested work into clear, "
@@ -1992,10 +2000,15 @@ def measure_grounding_input_tokens(text: str) -> int:
     return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
 
 
-def resolve_backend_grounding_budget(backend_id: str) -> int | None:
+def resolve_backend_grounding_budget(
+    backend_id: str, task_type: str | None = None
+) -> int | None:
     """Return the contract-declared input budget for ``backend_id``.
 
-    OMN-18297. ``None`` means the backend declares no budget -- NOT DECLARED,
+    OMN-18297. OMN-20486: a ``task_type`` named for the backend in
+    ``configs/grounding_budget_by_task_class.yaml`` gets that class's value; any
+    other class, and a call with no ``task_type``, gets the backend default.
+    ``None`` means the backend declares no budget -- NOT DECLARED,
     never "unlimited by policy". Reading it here keeps the bifrost contract the
     single authority for per-backend limits, the same way
     :func:`backend_id_for_tier` keeps tier->backend mapping here rather than in
@@ -2015,8 +2028,24 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
     )
     for backend in config.backends:
         if backend.backend_id == backend_id:
+            if task_type is not None:
+                class_budget = _load_grounding_budget_by_task_class().budget_for(
+                    backend_id, task_type
+                )
+                if class_budget is not None:
+                    return class_budget
             return backend.max_grounded_input_tokens
     return None
+
+
+@lru_cache(maxsize=1)
+def _load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
+    """Load the packaged per-task-class grounded input budgets (OMN-20486)."""
+    resource = importlib.resources.files("omnimarket").joinpath(
+        "configs/grounding_budget_by_task_class.yaml"
+    )
+    data = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+    return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
 def backend_id_for_tier(

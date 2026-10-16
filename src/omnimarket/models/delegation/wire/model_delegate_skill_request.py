@@ -28,6 +28,9 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
+from omnimarket.models.delegation.wire.model_delegation_output_files import (
+    ModelDeclaredOutputs,
+)
 
 # OMN-15482: the closed set of ``response_format`` directives this delegation
 # path genuinely threads end-to-end (onto the outbound chat-completions
@@ -42,14 +45,15 @@ _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
 # ``requested_timeout_seconds``.
 NO_ESCALATION_WIRE_KEY = "no_escalation"
 
-# OMN-19600: the request key OMN-19602 declares for delegated output files.
-# Decoded, not declared, by ``_tolerate_declared_outputs_before_it_is_declared``.
-DECLARED_OUTPUTS_WIRE_KEY = "declared_outputs"
-
 # OMN-20844: the request key that names the model the customer's own provider
 # key runs for one call. Decoded, not declared, by
 # ``_tolerate_model_before_it_is_declared``.
 MODEL_WIRE_KEY = "model"
+
+# OMN-19437 AC1, consumer half: the keys the CLI and RuntimeLocal will stamp on a
+# command so its terminal can carry the same ids. Decoded, not declared, by
+# ``_tolerate_trace_context_before_it_is_declared``.
+TRACE_CONTEXT_WIRE_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
 
 
 class ModelDelegateSkillRequest(BaseModel):
@@ -328,29 +332,22 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
 
-    # OMN-19600, step 1 of 2 for OMN-19602: decode ``declared_outputs`` before
-    # it is declared, the same tolerate-before-declare shape OMN-18931 step 1
-    # used for ``no_escalation`` (that validator is deleted above, in this same
-    # change, now that the field it tolerated is declared outright). A null is
-    # the ordinary request and is dropped. A real declaration asks this
-    # release to write files, which it does not do in the orchestrator;
-    # dropping it would return a text-only result the caller did not ask for,
-    # so it is refused by name.
-    @model_validator(mode="before")
-    @classmethod
-    def _tolerate_declared_outputs_before_it_is_declared(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping) or DECLARED_OUTPUTS_WIRE_KEY not in data:
-            return data
-        if data[DECLARED_OUTPUTS_WIRE_KEY] is not None:
-            raise ValueError(
-                f"{DECLARED_OUTPUTS_WIRE_KEY} is not honoured by this release: "
-                "the delegate-skill orchestrator writes declared output files "
-                "only once the field is declared (OMN-19602). Refused rather "
-                "than dropped, so the caller is not handed a text-only result."
-            )
-        return {
-            key: item for key, item in data.items() if key != DECLARED_OUTPUTS_WIRE_KEY
-        }
+    # OMN-19599 (OMN-19602 step 2 of 2): the files this delegation should
+    # produce. Step 1 (OMN-19600, released in v0.4.225) taught this model to
+    # decode the key, so the wire compatibility gate accepts declaring it. Set,
+    # the orchestrator asks the model for exactly these files through the
+    # request's own ``response_contract`` seam and stamps ``output_manifest``
+    # and ``output_files`` on the completed terminal. ``exclude_if`` keeps the
+    # ordinary request byte-identical to today's.
+    declared_outputs: ModelDeclaredOutputs | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Files the delegation should produce: relative path, kind and "
+            "size cap each. Mutually exclusive with response_contract, which "
+            "the orchestrator derives from this declaration."
+        ),
+    )
 
     # OMN-20844, step 1 of 2: decode ``model`` before it is declared, the same
     # tolerate-before-declare order as ``declared_outputs`` above. Declaring it
@@ -373,6 +370,23 @@ class ModelDelegateSkillRequest(BaseModel):
                 "so the call does not run a model the caller did not name."
             )
         return {key: item for key, item in data.items() if key != MODEL_WIRE_KEY}
+
+    # OMN-19437, step 1 of 2: decode ``trace_id`` and ``span_id`` before they are
+    # declared, the same tolerate-before-declare order as ``model`` above. The
+    # Wire Compatibility Gate refuses declaring them while the last release
+    # forbids the keys. They are tracing context only, so a release that does
+    # not yet honour them drops them without changing what the command asks.
+    # Step 2 declares the fields once a release carrying this is out.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_trace_context_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or TRACE_CONTEXT_WIRE_KEYS.isdisjoint(data):
+            return data
+        return {
+            key: item
+            for key, item in data.items()
+            if key not in TRACE_CONTEXT_WIRE_KEYS
+        }
 
     @field_validator("published_at")
     @classmethod
@@ -401,6 +415,17 @@ class ModelDelegateSkillRequest(BaseModel):
         """A no-escalation policy names exactly one backend, so it needs the pin."""
         if self.no_escalation and self.backend_id is None:
             raise ValueError(f"{NO_ESCALATION_WIRE_KEY}=True requires backend_id")
+        return self
+
+    @model_validator(mode="after")
+    def _declared_outputs_own_the_response_contract(self) -> ModelDelegateSkillRequest:
+        """Declared outputs derive the response contract, so a caller's would be lost."""
+        if self.declared_outputs is not None and self.response_contract is not None:
+            raise ValueError(
+                "declared_outputs and response_contract are mutually exclusive: "
+                "the orchestrator derives the response contract from the "
+                "declared output files"
+            )
         return self
 
     @model_validator(mode="after")
@@ -442,9 +467,9 @@ class ModelDelegateSkillRequest(BaseModel):
 
 
 __all__: list[str] = [
-    "DECLARED_OUTPUTS_WIRE_KEY",
     "MODEL_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
+    "TRACE_CONTEXT_WIRE_KEYS",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
 ]

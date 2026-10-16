@@ -41,6 +41,13 @@ OMN-20851: a lane the ledger records as dispatched with no placement receipt for
 `unplaced_lane_alarm_minutes`, and a cross-host dispatch-venv divergence older than
 `venv_divergence_alarm_minutes`, are ALARM verdicts (typed in `alarms`, exit code 1), a younger one a NOTE;
 a running receipt counts as a running lane only when a CLAIM carrying `host=` and a run id backs it.
+
+OMN-19998 (operator RULING 2026-10-15T00:42:51Z lane=orchestrator-bb1a): given `repo_status` facts, every
+repository with open non-draft PRs and no merge in the window gets one typed status verdict, read from the
+watcher state, state.json and tick lines already in the request (merging normally, waiting on CI, base branch
+red, merge queue ejecting, shared red unowned, parked or escalated). An unowned shared red or an ejecting
+queue is a MISSING `repo-status:<repo>` line whose FIX names one cause lane or the controller; every other
+verdict is a NOTE. A verdict event is due only when no unit is open for the repository or its verdict changed.
 """
 
 from __future__ import annotations
@@ -61,9 +68,12 @@ from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_through
     ModelLabHost,
     ModelLabMark,
     ModelLabReceipt,
+    ModelRepoStatusFacts,
+    ModelRepoStatusVerdict,
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
     ModelTickAlarmVerdict,
+    RepoStatusVerdict,
 )
 
 CELLS = ("causes", "cause_leases", "cause_members", "cause_exhausted", "fixer_hold")
@@ -132,6 +142,17 @@ VENV_DIVERGENCE_FIX = (
     "both hosts' venvs again, and until they agree place no lane on either host that needs the diverged "
     "package set; the tick dispatches nothing"
 )
+SHARED_RED_FIX = (
+    "dispatch ONE cause lane for check {check} in {repo} (red on {prs}; no cause lease or park owns it), "
+    "pr_claim_registry_cli.py list first for a peer already on it; gates still decide; the tick dispatches nothing"
+)
+EJECT_FIX = (
+    "the merge queue ejected {prs} for the base-branch red {checks}: the controller re-admits them once the base "
+    "is green (/omni:landing-controller status); with no cause lease on it, dispatch ONE cause lane for {checks} "
+    "on the {repo} base branch; the tick dispatches nothing"
+)
+EJECT_OWNED_FIX = "the controller owns it ({owner}): read /omni:landing-controller status; the session starts no fix work for it"
+BASE_RED = frozenset({"failure", "timed_out", "startup_failure"})
 PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
@@ -1239,6 +1260,227 @@ def check_venv_divergence(
             )
 
 
+def _pr_short(text: object) -> str:
+    """`Owner/repo#n` or `repo#n` to `repo#n`."""
+    return str(text).rsplit("/", 1)[-1]
+
+
+def _base_red(data: dict[str, Any], repo: str) -> list[str]:
+    """Checks whose newest run on the repository's default branch failed, sorted."""
+    repos = data.get("repos") or {}
+    base = (repos.get(repo) or {}).get("default_branch") or "main"
+    branch = (data.get("branches") or {}).get(f"{repo}@{base}") or {}
+    rows = (branch.get("checks") or {}).get("rows") or []
+    newest: dict[str, list[Any]] = {}
+    for row in rows:
+        if isinstance(row, list) and len(row) >= 4:
+            name = str(row[0])
+            if name not in newest or str(row[3]) > str(newest[name][3]):
+                newest[name] = row
+    return sorted(
+        name
+        for name, row in newest.items()
+        if row[1] == "completed" and row[2] in BASE_RED
+    )
+
+
+def _repo_verdict(
+    repo: str,
+    prs: list[tuple[str, dict[str, Any]]],
+    data: dict[str, Any],
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+    now: datetime,
+) -> tuple[RepoStatusVerdict, str | None, str, float | None, list[str]]:
+    """(verdict, check, reason, queue wait, prs) for one repository, most urgent first."""
+    keys = [key for key, _ in prs]
+    repo_covers = [
+        c
+        for c in covers
+        if c.repo == repo or {_pr_short(m) for m in c.members} & set(keys)
+    ]
+    leased = [c for c in repo_covers if c.lease_id]
+    reds: dict[str, list[str]] = {}
+    for key, pr in prs:
+        for name in (pr.get("ci") or {}).get("red") or []:
+            reds.setdefault(str(name), []).append(key)
+    shared = sorted(
+        ((name, sorted(on)) for name, on in reds.items() if len(on) > 1),
+        key=lambda item: (-len(item[1]), item[0]),
+    )
+    if shared and not leased and not any(c.parked_until for c in repo_covers):
+        name, on = shared[0]
+        return "shared_red_unowned", name, f"{name} red on {len(on)} open PRs", None, on
+    newest = ticks[0] if ticks else {}
+    blocked = newest.get("base_blocked")
+    if not isinstance(blocked, dict):
+        blocked = {}
+    ejected = sorted(
+        _pr_short(s)
+        for s in blocked.get("prs") or []
+        if _pr_short(s).partition("#")[0] == repo
+    )
+    if ejected:
+        checks = sorted(str(c) for c in (blocked.get("checks") or []))
+        return (
+            "merge_queue_ejecting",
+            ", ".join(checks) or None,
+            f"{len(ejected)} PRs ejected for base-branch red {', '.join(checks) or 'unread'}",
+            None,
+            ejected,
+        )
+    base = _base_red(data, repo)
+    if base:
+        return (
+            "base_branch_red",
+            base[0],
+            f"base branch red on {', '.join(base)}",
+            None,
+            [],
+        )
+    degraded = {_pr_short(s) for s in _degraded_subjects(newest)} & set(keys)
+    parked = sorted(
+        key
+        for key, pr in prs
+        if str(pr.get("reason") or "").startswith(f"repo {repo} is parked")
+    )
+    if repo_covers or degraded or parked:
+        if repo_covers:
+            reason = "; ".join(sorted({c.note() for c in repo_covers}))
+        elif degraded:
+            reason = f"the controller escalated {', '.join(sorted(degraded))}"
+        else:
+            reason = f"repo {repo} is parked"
+        return "parked_or_escalated", None, reason, None, sorted(degraded) or parked
+    waits = []
+    for _, pr in prs:
+        ci = pr.get("ci") or {}
+        pending = set(ci.get("pending") or [])
+        for row in ci.get("detail") or []:
+            if isinstance(row, list) and len(row) >= 3 and row[0] in pending:
+                try:
+                    waits.append((now - parse_stamp(str(row[2]))).total_seconds() / 60)
+                except ValueError:
+                    continue
+    waiting = sorted(key for key, pr in prs if (pr.get("ci") or {}).get("pending"))
+    if waiting:
+        wait = round(max(waits), 1) if waits else None
+        return (
+            "waiting_on_ci",
+            None,
+            f"{len(waiting)} PRs with checks pending",
+            wait,
+            waiting,
+        )
+    queued = sorted(key for key, pr in prs if pr.get("queued"))
+    reason = (
+        f"{len(queued)} PRs in the merge queue"
+        if queued
+        else "no blocker in the watcher, controller or base reads"
+    )
+    return "merging_normally", None, reason, None, queued
+
+
+def check_repo_status(
+    rep: Report,
+    request: ModelThroughputTickRequest,
+    facts: ModelRepoStatusFacts,
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+    now: datetime,
+) -> list[ModelRepoStatusVerdict]:
+    """One verdict per repository with open non-draft PRs and no merge in the window (OMN-19998)."""
+    rep.checked.append("repo-status")
+    window = timedelta(minutes=facts.window_minutes)
+    try:
+        if request.watcher_read_error is not None:
+            raise ValueError(request.watcher_read_error)
+        if request.watcher_path is None:
+            raise ValueError("no PR watcher state to read")
+        data: Any = request.watcher_state
+        ts = data["last_tick"]
+        age = (now - parse_stamp(ts)).total_seconds() / 60
+        open_prs: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        merged: dict[str, int] = {}
+        for key, pr in data["prs"].items():
+            pr_facts = pr["facts"]
+            repo = pr_facts.get("repo")
+            if not repo:
+                continue
+            if pr_facts.get("merged_at"):
+                elapsed = now - parse_stamp(pr_facts["merged_at"])
+                merged[repo] = merged.get(repo, 0) + (timedelta(0) <= elapsed <= window)
+            elif (
+                pr_facts.get("state") == "OPEN"
+                and not pr_facts.get("draft")
+                and pr.get("cls") != "held-excluded"
+            ):
+                open_prs.setdefault(repo, []).append((_pr_short(key), pr))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        rep.unk(
+            "repo-status",
+            f"cannot read watcher state {request.watcher_path}: {exc}",
+            WATCHER_FIX,
+        )
+        return []
+    if age > request.watcher_max_minutes:
+        rep.unk(
+            "repo-status",
+            f"stale watcher: last tick {ts} is {age:.0f} min old (> {request.watcher_max_minutes})",
+            WATCHER_FIX,
+        )
+        return []
+    units = {u.repo: u for u in facts.open_units}
+    verdicts = []
+    for repo in sorted(open_prs):
+        if merged.get(repo):
+            continue
+        prs = sorted(open_prs[repo])
+        verdict, check, reason, wait, named = _repo_verdict(
+            repo, prs, data, covers, ticks, now
+        )
+        unit = units.get(repo)
+        event = unit is None or unit.verdict != verdict
+        result = ModelRepoStatusVerdict(
+            repo=repo,
+            verdict=verdict,
+            open_prs=len(prs),
+            merges_in_window=0,
+            window_minutes=facts.window_minutes,
+            check=check,
+            reason=reason,
+            queue_wait_minutes=wait,
+            prs=named,
+            opened_at=request.now if event or unit is None else unit.opened_at,
+            event=event,
+        )
+        verdicts.append(result)
+        loop = f"repo-status:{repo}"
+        why = (
+            f"{repo}: {len(prs)} open, 0 merged in {facts.window_minutes} min; {verdict}: {reason}"
+            + (f" (waiting {wait:g} min)" if wait is not None else "")
+        )
+        if verdict == "shared_red_unowned":
+            rep.miss(
+                loop,
+                why,
+                SHARED_RED_FIX.format(check=check, repo=repo, prs=", ".join(named)),
+            )
+        elif verdict == "merge_queue_ejecting":
+            owner = next((c for c in covers if c.lease_id and c.repo == repo), None)
+            fix = (
+                EJECT_OWNED_FIX.format(owner=owner.note())
+                if owner is not None
+                else EJECT_FIX.format(
+                    prs=", ".join(named), checks=check or "unread", repo=repo
+                )
+            )
+            rep.miss(loop, why, fix)
+        else:
+            rep.note(f"{loop} | {why}")
+    return verdicts
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -1275,6 +1517,11 @@ class HandlerThroughputTickDecision:
             check_unplaced_lanes(rep, request, now)
         if request.venv_divergences is not None:
             check_venv_divergence(rep, request, now)
+        repo_status = (
+            check_repo_status(rep, request, request.repo_status, covers, ticks, now)
+            if request.repo_status is not None
+            else []
+        )
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
@@ -1288,4 +1535,5 @@ class HandlerThroughputTickDecision:
             else 1,
             open_count=opened,
             pr_land=pr_land,
+            repo_status=repo_status,
         )

@@ -185,6 +185,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import 
     current_dispatch_progress,
     dispatch_stage,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_test_run import (
+    HandlerNamedTestRun,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
 )
@@ -347,11 +350,14 @@ _DEFAULT_CALL_TEMPERATURE: float = float(
 _TASK_TYPE_SYSTEM_PROMPTS: dict[str, str] = {
     "test": "You are an expert test engineer. Write comprehensive, well-structured tests.",
     "document": "You are a technical writer. Write clear, accurate documentation.",
-    "research": "You are a senior software engineer. Analyze the topic thoroughly and provide a detailed, well-structured response.",
+    # OMN-21088: answer at the length the question needs; reasoning, sources
+    # and tradeoffs are asked for by the class directives only when the prompt
+    # asks for them.
+    "research": "You are a senior software engineer. Answer the question directly, at the length the question needs.",
     "code_generation": "You are an expert software engineer. Write clean, production-quality code.",
     "code_review": "You are a code review assistant. Identify bugs, style violations, and architectural issues in the provided code. Be specific and actionable.",
     "refactor": "You are an expert software engineer specializing in refactoring. Improve code quality while preserving behavior.",
-    "reasoning": "You are an expert analyst. Think step-by-step and provide well-reasoned conclusions.",
+    "reasoning": "You are an expert analyst. Work the problem out and give the conclusion.",
     "review": "You are a senior code reviewer. Provide thorough, actionable feedback.",
 }
 
@@ -1238,10 +1244,16 @@ class LocalDelegationDispatchPort:
         # None leaves the contract verdict as it was.
         self._answer_judge = answer_judge
         # OMN-21077: runs the tests a code-class request names against each
-        # answer, so the gate judges the code by whether it works. None runs
-        # nothing: the gate sees no test run and refuses the code answer as
-        # INSUFFICIENT, never accepts it untested.
-        self._named_test_runner = named_test_runner
+        # answer, so the gate judges the code by whether it works.
+        # OMN-17427: None takes HandlerNamedTestRun, this node's sandboxed
+        # runner, so a request that names tests has them run wherever this port
+        # is built. Before, nothing passed a runner anywhere, and every code
+        # answer was refused as INSUFFICIENT whatever its tests said.
+        self._named_test_runner: _NamedTestRunner = (
+            named_test_runner
+            if named_test_runner is not None
+            else HandlerNamedTestRun().handle
+        )
         # OMN-19987: where each numbered step of a run is published. By default
         # the same emit effect the terminal uses (spool, then the bus).
         self._run_step_publisher: ProtocolRunStepPublisher = (
@@ -1662,7 +1674,9 @@ class LocalDelegationDispatchPort:
             # contained. The ladder escalates instead; the receipt carries both
             # the budget and the measured input so the hop is attributable.
             measured_input_tokens = measure_grounding_input_tokens(prompt)
-            grounding_budget = resolve_backend_grounding_budget(backend.backend_id)
+            grounding_budget = resolve_backend_grounding_budget(
+                backend.backend_id, task_type
+            )
             if (
                 grounding_budget is not None
                 and measured_input_tokens > grounding_budget
@@ -3570,6 +3584,11 @@ class LocalDelegationDispatchPort:
             deliverable=result.content or "",
             correlation_id=correlation_id,
         )
+        # OMN-17427: only a code class whose request named tests is refused for
+        # a missing run; one that named none is decided UNTESTED.
+        named_tests_requested = (
+            named_tests is not None and resolve_task_class_execution_required(task_type)
+        )
 
         # 4. CANONICAL QUALITY GATE (OMN-13597) — run the SAME reducer the bus
         #    path runs. HTTP/transport success is NOT a quality verdict: a model
@@ -3617,6 +3636,7 @@ class LocalDelegationDispatchPort:
                 finish_reason=result.finish_reason,
                 reasoning_stripped_chars=result.reasoning_stripped_chars,
                 named_test_run=named_test_run,
+                named_tests_requested=named_tests_requested,
             )
         from omnimarket.delegation.deliverable_extraction import (
             gate_result_with_output_refusal,
@@ -3637,6 +3657,7 @@ class LocalDelegationDispatchPort:
             answer=result.content or "",
             gate_result=gate_result,
             named_test_run=named_test_run,
+            named_tests_requested=named_tests_requested,
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
@@ -3723,6 +3744,7 @@ class LocalDelegationDispatchPort:
         reasoning_stripped_chars: int = 0,
         grounding_source: str | None = None,
         named_test_run: ModelNamedTestRun | None = None,
+        named_tests_requested: bool = False,
     ) -> ModelQualityGateResult:
         """Run the canonical deterministic quality-gate reducer.
 
@@ -3788,6 +3810,7 @@ class LocalDelegationDispatchPort:
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
             named_test_run=named_test_run,
+            named_tests_requested=named_tests_requested,
         )
 
     async def _apply_answer_gate(
@@ -3800,17 +3823,22 @@ class LocalDelegationDispatchPort:
         answer: str,
         gate_result: ModelQualityGateResult,
         named_test_run: ModelNamedTestRun | None,
+        named_tests_requested: bool = False,
     ) -> ModelQualityGateResult:
         """Apply node_delegation_answer_gate_compute to a contract pass (OMN-20489).
 
-        Unchanged when no judge is wired, when the contract already failed (the
-        judge is not paid for an answer that is refused anyway), or for a class
-        that keeps its contract verdict.
+        Unchanged when the contract already failed (the judge is not paid for
+        an answer that is refused anyway), for a class that keeps its contract
+        verdict, or for a text class when no judge is wired. A code class needs
+        no judge, so its test verdict is applied whenever the contract passed
+        (OMN-17427): the receipt then says passed, failed or untested.
         """
-        if self._answer_judge is None or not gate_result.passed:
+        if not gate_result.passed:
             return gate_result
         kind = resolve_answer_gate_kind(task_type)
         if kind is EnumAnswerGateKind.CONTRACT_ONLY:
+            return gate_result
+        if kind is EnumAnswerGateKind.TEXT and self._answer_judge is None:
             return gate_result
         judge = (
             await self._independent_judge_verdict(
@@ -3828,7 +3856,7 @@ class LocalDelegationDispatchPort:
                 contract_gate=gate_result,
                 judge=judge,
                 named_test_run=named_test_run,
-            )
+            ).retain_named_tests_requested(named_tests_requested)
         )
         logger.info(
             "LocalDelegationDispatch: answer gate kind=%s accepted=%s judge=%s "
@@ -3893,19 +3921,13 @@ class LocalDelegationDispatchPort:
         """Run the request's named tests against a code-class answer (OMN-21077).
 
         ``None`` when the class is not a code class, no tests were named, the
-        answer is empty, no named-test runner is wired, or the run was refused;
-        the gate then treats the code answer as untested and refuses it.
+        answer is empty, or the run was refused. With tests named, the gate
+        then refuses the code answer as INSUFFICIENT; with none named it is
+        UNTESTED (OMN-17427).
         """
         if named_tests is None or not resolve_task_class_execution_required(task_type):
             return None
         if not deliverable.strip():
-            return None
-        if self._named_test_runner is None:
-            logger.info(
-                "LocalDelegationDispatch: named tests not run, no named-test "
-                "runner is wired correlation=%s",
-                correlation_id,
-            )
             return None
         outcome = await asyncio.to_thread(
             self._named_test_runner,

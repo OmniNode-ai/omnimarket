@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: capture_item_identity_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Shared item identity, per-session per-stream producer sequence and
+  barrier fields for the two Claude Code capture streams. A content record id is
+  a uuid5 over the lineage event id and the field name; the event id of a hook
+  call is settled between the lineage hook and the content hook through a
+  per-session item state under a file lock; a producer sequence is issued from
+  a lock-guarded counter. The callers' hooks load the handler module by file
+  path, because a per-tool-call hook cannot pay a package import or a bus
+  round-trip; the module level imports the standard library only.
+input_model: omnimarket.nodes.node_capture_item_identity_effect.models.ModelCaptureItemIdentityRequest
+output_model: omnimarket.nodes.node_capture_item_identity_effect.models.ModelCaptureItemIdentityResult
+handler:
+  module: omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity
+  class: HandlerCaptureItemIdentity
+  input_model: omnimarket.nodes.node_capture_item_identity_effect.models.ModelCaptureItemIdentityRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerCaptureItemIdentity
+      module: omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity
+    event_model:
+      name: ModelCaptureItemIdentityRequest
+      module: omnimarket.nodes.node_capture_item_identity_effect.models
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 3000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.capture-item-identity-resolved.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.capture-item-identity-resolve.v1
+  publish_topics:
+  - onex.evt.omnimarket.capture-item-identity-resolved.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.capture-item-identity-resolve.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.capture-item-identity-resolved.v1
+metadata:
+  transport_type: kafka
+inputs:
+  operation:
+    type: string
+    required: true
+    description: One of content_record_id, claim_event_id, next_producer_seq,
+      high_water.
+  item_dir:
+    type: string
+    required: false
+    description: The directory that holds the session's item state; read by
+      claim_event_id, next_producer_seq and high_water.
+  session_id:
+    type: string
+    required: false
+    description: The session whose state is read; needed with item_dir.
+  stream:
+    type: string
+    required: false
+    description: lineage or content; read by claim_event_id, next_producer_seq
+      and high_water.
+  agent_id:
+    type: string
+    required: false
+    description: The agent of the hook call, when a subagent made it.
+  hook_event_name:
+    type: string
+    required: false
+    description: The hook's event name; read by claim_event_id.
+  discriminator:
+    type: string
+    required: false
+    description: The value both hooks of a call read from the same stdin.
+  minted_event_id:
+    type: string
+    required: false
+    description: The event id this stream minted, kept when it is first of its pair.
+  event_id:
+    type: string
+    required: false
+    description: The lineage event id; read by content_record_id.
+  field:
+    type: string
+    required: false
+    description: The lineage field name; read by content_record_id.
+outputs:
+  event_id:
+    type: string
+    description: The event id the stream uses for this call (claim_event_id).
+  content_record_id:
+    type: string
+    description: The id of the content record that fulfils the field
+      (content_record_id).
+  sequence:
+    type: integer
+    description: The issued sequence number, or the stream's high-water
+      (next_producer_seq, high_water).

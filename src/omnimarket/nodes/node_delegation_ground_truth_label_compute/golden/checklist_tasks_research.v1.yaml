@@ -1,0 +1,130 @@
+# Research tasks for the delegation ground-truth measurement.
+# Each prompt carries the only facts the answer may use. Each checklist item is
+# a yes-or-no question scored by a model other than the delegated one; an answer
+# is adequate only when every item is met. Several items test a trap: a fact the
+# table deliberately leaves out, or a unit or default that is easy to assume.
+schema_version: 1
+task_class: research
+tasks:
+  - id: research_fiber_trial
+    prompt: |
+      Using only the pasted source notes, answer this question: What did the fictional fiber trial measure, what result was recorded, and can its durability after washing be established? Write three short bullets. Cite the supporting note as [N1], [N2], or [N3] for every factual claim. Explicitly identify anything the notes do not cover.
+      Facts:
+      Source notes:
+      - [N1] Two woven sample strips were compared for stretch under a single fixed load.
+      - [N2] Strip Amber stretched 4 millimeters; strip Birch stretched 7 millimeters.
+      - [N3] Neither strip was washed during the trial; washing durability was not measured.
+      Do not add load weights, statistical significance, washing outcomes, or recommendations that the facts do not state.
+    checklist:
+      - {id: three_bullets, text: "Does the answer contain exactly three short bullets?"}
+      - {id: measurement_scope, text: "Does the answer say two woven strips were compared for stretch under a single fixed load, citing [N1]?"}
+      - {id: exact_results, text: "Does the answer report Amber at 4 millimeters and Birch at 7 millimeters, citing [N2]?"}
+      - {id: washing_unknown, text: "Does the answer explicitly say washing durability cannot be established because neither strip was washed and durability was not measured, citing [N3]?"}
+      - {id: claims_cited, text: "Does every factual claim in the answer have a supporting note citation?"}
+      - {id: no_invented_trial_findings, text: "Is the answer free of invented load weights, significance claims, washing outcomes, and recommendations?"}
+  - id: research_archive_hours
+    prompt: |
+      Use only these pasted source notes to answer a visitor's question about a fictional archive: When is the reading room open, is booking required, and is there an admission charge? Return three bullets, one for each part of the question. Attach a note citation such as [N1] to every supported claim and explicitly say when the notes do not cover an answer.
+      Facts:
+      Source notes:
+      - [N1] An older notice listed reading-room hours as 09:00 to 16:00 on weekdays.
+      - [N2] The current notice replaces those hours with 10:00 to 15:00 on weekdays.
+      - [N3] A booking is required for every reading-room visit. Admission charges are not discussed in these notes.
+      Do not add weekend hours, prices, booking methods, or policies the facts do not state.
+    checklist:
+      - {id: three_bullets, text: "Does the answer contain exactly three bullets covering hours, booking, and admission charge?"}
+      - {id: current_hours, text: "Does the answer give the current weekday hours as 10:00 to 15:00 with [N2], without presenting the older hours as current?"}
+      - {id: booking_required, text: "Does the answer say booking is required for every visit, citing [N3]?"}
+      - {id: charge_not_covered, text: "Does the answer explicitly say the notes do not cover the admission charge, citing [N3]?"}
+      - {id: claims_cited, text: "Does every supported factual claim have a citation to the note supporting it?"}
+      - {id: no_invented_archive_policy, text: "Is the answer free of invented weekend hours, prices, free-admission claims, booking methods, and other policies?"}
+  - id: research_glider_comparison
+    prompt: |
+      Answer this question about a fictional paper-glider comparison using only the pasted source notes: Which design stayed aloft longer in the recorded launches, how many launches were observed, and what can be said about outdoor performance? Use three short bullets and cite each claim with its supporting note label. State explicitly when evidence is absent instead of filling the gap.
+      Facts:
+      Source notes:
+      - [N1] The comparison took place indoors, with one recorded launch per design.
+      - [N2] Design Leaf stayed aloft for 6 seconds; design Reed stayed aloft for 9 seconds.
+      - [N3] No outdoor launches were observed, and no outdoor performance measurements are supplied.
+      Do not add averages, wind conditions, reliability claims, or general design rankings the facts do not state.
+    checklist:
+      - {id: reed_longer, text: "Does the answer identify Reed as longer in the recorded launches, with 9 seconds versus Leaf at 6 seconds, citing [N2]?"}
+      - {id: launch_count, text: "Does the answer say there was one indoor launch per design, citing [N1]?"}
+      - {id: outdoor_unknown, text: "Does the answer explicitly say the notes provide no outdoor performance evidence, citing [N3]?"}
+      - {id: format_and_citations, text: "Does the answer use three short bullets and cite every factual claim with a supporting note label?"}
+      - {id: no_invented_glider_findings, text: "Is the answer free of invented averages, wind conditions, reliability claims, and general design rankings?"}
+  - id: research_lantern_battery
+    prompt: |
+      Using only the pasted source notes, answer a question about a fictional lantern: What battery does it use, what runtime was observed, and can recharge time be reported? Write three bullets, with a supporting note citation on each factual claim. If the notes do not cover an answer, say so explicitly rather than inferring it from a related measurement.
+      Facts:
+      Source notes:
+      - [N1] The lantern accepts one removable battery module labeled B4.
+      - [N2] In a low-brightness bench run, the lantern remained lit for 11 hours on one module.
+      - [N3] The notes contain no charging procedure or recharge-time measurement.
+      Do not add battery chemistry, high-brightness runtime, recharge estimates, or compatibility that the facts do not state.
+    checklist:
+      - {id: battery_module, text: "Does the answer say the lantern accepts one removable B4 battery module, citing [N1]?"}
+      - {id: runtime_scope, text: "Does the answer report 11 hours on one module specifically in a low-brightness bench run, citing [N2]?"}
+      - {id: recharge_unknown, text: "Does the answer explicitly say recharge time is not covered by the notes, citing [N3]?"}
+      - {id: three_cited_bullets, text: "Does the answer use exactly three bullets and cite every factual claim with its supporting note?"}
+      - {id: no_invented_battery_details, text: "Is the answer free of invented chemistry, high-brightness runtime, recharge estimates, and battery compatibility?"}
+  - id: research_garden_survey
+    prompt: |
+      Use only the pasted source notes to answer this fictional garden survey question: How many plots were surveyed, how many showed sprouts, and do the notes explain why other plots had no sprouts? Write three short bullets, citing the relevant note label for every claim. Explicitly state when the notes do not cover the requested explanation.
+      Facts:
+      Source notes:
+      - [N1] The final survey covered 18 plots; an earlier draft count of 16 plots was corrected.
+      - [N2] Sprouts were observed in 12 of the 18 surveyed plots.
+      - [N3] The survey recorded presence only and did not investigate reasons for absent sprouts.
+      Do not add weather, seed quality, soil conditions, or causal explanations that the facts do not state.
+    checklist:
+      - {id: corrected_count, text: "Does the answer give 18 as the final plot count, citing [N1], without treating 16 as current?"}
+      - {id: sprout_count, text: "Does the answer report sprouts in 12 of the 18 surveyed plots, citing [N2]?"}
+      - {id: cause_not_covered, text: "Does the answer explicitly say the notes do not explain absent sprouts because reasons were not investigated, citing [N3]?"}
+      - {id: three_cited_bullets, text: "Does the answer use exactly three short bullets with a supporting note citation for every factual claim?"}
+      - {id: no_invented_survey_causes, text: "Is the answer free of invented weather, seed quality, soil conditions, and causal explanations?"}
+  - id: research_ceramic_coating
+    prompt: |
+      Answer a question about a fictional ceramic coating using only the pasted source notes: What did the scratch check show, was the coating tested with food, and is food-contact suitability established? Write three bullets, one per question. Use note labels as citations for every claim and explicitly identify evidence the notes do not cover.
+      Facts:
+      Source notes:
+      - [N1] A coated ceramic sample showed no visible scratch after ten passes of a wooden stylus.
+      - [N2] No food or drink contacted the sample during testing.
+      - [N3] Food-contact suitability was not assessed; the notes contain no certification finding.
+      Do not add scratch-proof guarantees, chemical safety conclusions, approvals, or test conditions that the facts do not state.
+    checklist:
+      - {id: scratch_observation, text: "Does the answer report no visible scratch after ten wooden-stylus passes on the sample, citing [N1]?"}
+      - {id: no_food_test, text: "Does the answer state that no food or drink contacted the sample during testing, citing [N2]?"}
+      - {id: suitability_unknown, text: "Does the answer explicitly say food-contact suitability is not established and no certification finding is provided, citing [N3]?"}
+      - {id: three_cited_bullets, text: "Does the answer use three bullets with a supporting note citation for every factual claim?"}
+      - {id: no_invented_coating_claims, text: "Is the answer free of invented scratch-proof guarantees, chemical safety conclusions, approvals, and test conditions?"}
+  - id: research_transit_pilot
+    prompt: |
+      Use only the pasted source notes to answer a question about a fictional shuttle pilot: What route was tested, how long was the observed trip, and can the pilot's operating frequency be reported? Return three short bullets, citing the supporting note for every factual claim. Clearly say when the notes do not cover part of the question.
+      Facts:
+      Source notes:
+      - [N1] The pilot route connected Meadow Hall and Lantern Yard without intermediate stops.
+      - [N2] One observed trip took 14 minutes from departure to arrival.
+      - [N3] The notes do not give a timetable, departure frequency, or number of daily trips.
+      Do not infer a recurring schedule from a single trip or add fares, return-trip timing, and operating hours the facts do not state.
+    checklist:
+      - {id: route_stops, text: "Does the answer identify Meadow Hall to Lantern Yard with no intermediate stops, citing [N1]?"}
+      - {id: observed_time, text: "Does the answer describe 14 minutes as one observed trip time, citing [N2]?"}
+      - {id: frequency_unknown, text: "Does the answer explicitly say the notes do not provide operating frequency or a timetable, citing [N3]?"}
+      - {id: three_cited_bullets, text: "Does the answer contain three short bullets with a supporting note citation for every factual claim?"}
+      - {id: no_invented_shuttle_schedule, text: "Is the answer free of invented recurring schedules, fares, return-trip times, and operating hours?"}
+  - id: research_lexicon_scope
+    prompt: |
+      Answer this question about a fictional pocket lexicon using only the pasted source notes: How many entries does the current edition have, which languages are paired, and does it provide pronunciation audio? Use exactly three bullets and cite each factual claim with the supporting note label. Explicitly distinguish an unsupported feature from a feature known to be absent.
+      Facts:
+      Source notes:
+      - [N1] The current edition lists 240 entries; the withdrawn draft listed 204 entries.
+      - [N2] Each entry pairs the invented languages Luma and Varo in written form.
+      - [N3] The notes do not discuss pronunciation audio, either its presence or its absence.
+      Do not add audio availability, language coverage, or edition features the facts do not state.
+    checklist:
+      - {id: current_entry_count, text: "Does the answer give 240 as the current entry count, citing [N1], without presenting 204 as current?"}
+      - {id: language_pair, text: "Does the answer say the entries pair written Luma and Varo, citing [N2]?"}
+      - {id: audio_unknown, text: "Does the answer explicitly say audio availability is not covered, without claiming audio is absent, citing [N3]?"}
+      - {id: three_cited_bullets, text: "Does the answer contain exactly three bullets with a supporting note citation for every factual claim?"}
+      - {id: no_invented_lexicon_features, text: "Is the answer free of invented audio availability, additional language coverage, and edition features?"}

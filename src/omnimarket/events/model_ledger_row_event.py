@@ -152,14 +152,34 @@ class ModelLedgerAckEvent(ModelLedgerRowEventBase):
     re: str | None = None
 
 
-class ModelLedgerRulingEvent(ModelLedgerRowEventBase):
+class ModelLedgerLinkedWordsEvent(ModelLedgerRowEventBase):
+    """A row of the operator's words, linked to the captured prompt that holds them.
+
+    ``prompt_id`` and ``covers`` (``<start>:<end>`` offsets into that prompt) are
+    written together; ``prompt_match`` is ``ambiguous`` when several prompts matched
+    and then neither is written; ``confirms`` and ``confirmed_by`` mark a confirmed
+    candidate (OMN-18531, TA.4). The values are the row's text: the ledger grammar
+    judged their shape on append, and this parser only types them.
+    """
+
+    prompt_id: str | None = None
+    covers: str | None = None
+    prompt_match: str | None = None
+    confirms: str | None = None
+    confirmed_by: str | None = None
+
+
+class ModelLedgerRulingEvent(ModelLedgerLinkedWordsEvent):
     row_type: Literal[EnumLedgerRowType.RULING] = EnumLedgerRowType.RULING
     amends: tuple[str, ...] = ()
     supersedes: tuple[str, ...] = ()
     approved_by: str | None = None
+    # ``<first prompt uuid>..<last prompt uuid>``: prompts the operator reviewed
+    # with nothing further to record (decision D10).
+    reviewed: str | None = None
 
 
-class ModelLedgerOperatorConsentEvent(ModelLedgerRowEventBase):
+class ModelLedgerOperatorConsentEvent(ModelLedgerLinkedWordsEvent):
     row_type: Literal[EnumLedgerRowType.OPERATOR_CONSENT] = (
         EnumLedgerRowType.OPERATOR_CONSENT
     )
@@ -177,6 +197,9 @@ class ModelLedgerFrictionEvent(ModelLedgerRowEventBase):
 class ModelLedgerCorrectionEvent(ModelLedgerRowEventBase):
     row_type: Literal[EnumLedgerRowType.CORRECTION] = EnumLedgerRowType.CORRECTION
     corrects: tuple[str, ...] = ()
+    # ``<start>:<end>`` into the target row's quoted cell: the characters that are
+    # the operator's words (OMN-18531, TA.4).
+    operator_span: str | None = None
 
 
 ModelLedgerRowEvent = Annotated[
@@ -218,6 +241,7 @@ __all__: list[str] = [
     "ModelLedgerCorrectionEvent",
     "ModelLedgerFrictionEvent",
     "ModelLedgerHoldEvent",
+    "ModelLedgerLinkedWordsEvent",
     "ModelLedgerMsgEvent",
     "ModelLedgerOperatorConsentEvent",
     "ModelLedgerReleaseEvent",

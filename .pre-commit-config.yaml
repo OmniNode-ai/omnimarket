@@ -875,9 +875,9 @@ repos:
       - id: byok-customer-chooses-model
         name: BYOK customers choose their OpenRouter model
         language: system
-        entry: uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly
+        entry: uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly
         pass_filenames: false
-        files: ^(src/omnimarket/(cli/cli_secret|routing/byok_model_discovery|projection/credential_publisher)\.py|src/omnimarket/configs/byok_provider_backends\.v1\.yaml|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_delegate_skill_orchestrator)/.*|tests/test_omn20844_chosen_model_never_re_aimed\.py|tests/unit/cli/test_omn20844_openrouter_model_choice\.py|tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844\.py)$
+        files: ^(src/omnimarket/(cli/cli_secret|routing/byok_model_discovery|projection/credential_publisher)\.py|src/omnimarket/configs/byok_provider_backends\.v1\.yaml|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_delegate_skill_orchestrator|node_model_setup_effect)/.*|tests/test_omn20844_chosen_model_never_re_aimed\.py|tests/unit/cli/test_omn20844_openrouter_model_choice\.py|tests/unit/cli/test_omn20844_onboarding_default_model_overlay\.py|tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844\.py)$
         stages: [pre-commit]
 
       # OMN-20287: no new deployment fact (backend, endpoint, model name, secret
@@ -1242,6 +1242,20 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # OMN-20201 (M47): a node contract.yaml never carries a model id, a model
+      # key, a model-env default or an endpoint literal; those live in contract
+      # overlays. Scoped to the staged contracts so no new debt enters while the
+      # contracts that already carry findings are migrated one by one. SYNC with
+      # ci.yml step "Contract overlay boundary gate (changed contracts)".
+      - id: contract-overlay-boundary
+        name: Contract overlay boundary (OMN-20201)
+        language: system
+        entry: uv run python scripts/validation/validate_contract_overlay_boundary.py
+        files: ^src/omnimarket/nodes/[^/]+/contract\.yaml$
+        pass_filenames: true
+        require_serial: true
+        stages: [pre-commit]
+
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
       # core COMPUTE validator omnibase_core.validation.validator_routing_authority
       # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py
@@ -1328,6 +1342,16 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_model_registry_served_names.py
         files: ^(src/omnimarket/data/model_registry/model_registry_v1\.yaml|src/omnimarket/configs/bifrost_delegation\.yaml|scripts/ci/check_model_registry_served_names\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17122: catalog retirement, generated constants, and eval references.
+      # SYNC with ci.yml step "Delegation model registry drift gate".
+      - id: delegation-model-registry-drift
+        name: Delegation model registry drift gate
+        language: system
+        entry: uv run pytest tests/unit/test_generated_llm_routing_constants.py -q
+        files: ^(src/omnimarket/(data/model_registry/model_registry_v1\.yaml|routing/generated_llm_routing_constants\.py|configs/routing_tiers\.yaml)|scripts/generate_llm_routing_constants\.py|tests/unit/test_generated_llm_routing_constants\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1761,6 +1785,26 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/omnimarket/delegation/output_only_acceptance\.py|tests/unit/delegation/test_output_only_acceptance_omn18932\.py)$
+        stages: [pre-commit]
+
+      # OMN-20780: RULING 2026-10-14T18:17:30Z, a delegated answer is gated by an independent judge for the text
+      # classes and by its own named tests for the code classes (OMN-20489). CI twin: the "Delegated answers gated
+      # by an independent judge or named tests" step of ci.yml. Check-only.
+      - id: delegation-answer-gate
+        name: Delegated answers gated by an independent judge or named tests (OMN-20489)
+        entry: uv run --frozen pytest tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_delegation_answer_gate_compute/|src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch\.py|src/omnimarket/models/delegation/wire/model_answer_gate_request\.py|src/omnimarket/inference/task_class_authority\.py|tests/unit/delegation/test_answer_gate_omn20489\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
+      # OMN-17104: SYNC with the delegation public models step in ci.yml.
+      - id: delegation-wire-public-models
+        name: Delegation public models match loader and inference contract
+        language: system
+        entry: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/(models/delegation/wire/.*|adapters/llm/bifrost/config_loader_bifrost_delegation\.py|configs/bifrost_delegation\.yaml)|tests/unit/models/delegation/wire/test_public_exports\.py|contracts/OMN-17104\.yaml|pyproject\.toml|uv\.lock|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
         stages: [pre-commit]
 
       # OMN-15630: routing-completeness invariant. For every task class declared

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -370,7 +371,11 @@ def test_reuses_captured_hook_fixture_digest_and_main_thread_identity() -> None:
         hook_event_name=raw["hook_event_name"],
         tool_name=raw["payload"]["tool_name"],
         tool_use_id=raw["lineage"]["tool_use_id"],
-        tool_input_sha256=raw["payload"]["tool_input_ref"]["sha256"],
+        # OMN-19513: the reference carries the raw value; the join digest is
+        # the consumer's own sha256 of it.
+        tool_input_sha256=hashlib.sha256(
+            raw["payload"]["tool_input_ref"]["value"].encode("utf-8")
+        ).hexdigest(),
     )
     req = ModelHookFollowupRequest(
         receipts=(

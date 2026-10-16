@@ -24,6 +24,21 @@ requirements:
       - id: "AC9"
         statement: |-
           AC9: the append request carries no writer identity of its own, and a command whose payload carries one is refused -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -k "request_has_no_payload_writer_identity or rejects_obsolete_payload_attribution"
+  - id: "req-markdown-projection-node"
+    statement: "The rendered work-ledger markdown file is a projection of the row events: one node per file, identity ledger_seq, the file as its own watermark, offsets committed only over rendered seqs, gaps repaired from the ledger of record or blocking visibly (M6 deliverable 2, design in the ledger-projection TLA+ model)."
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: rows of one seq range split across topics and delivered out of order are rendered in ledger_seq order, offsets are committable only over the rendered prefix per topic, and a broker outage leaves a gap the head probe repairs from the ledger of record -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_partition.py -q
+      - id: "AC11"
+        statement: |-
+          AC11: a late event after its repair is dropped as a duplicate, a lost last row is found by the head probe, a row the source cannot supply blocks visibly with the seq and is retried until a repair or a late event lifts the block, and a row_id conflict at a held seq blocks -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_lag.py -q
+      - id: "AC12"
+        statement: |-
+          AC12: a crash between the row write and the offset commit costs a redelivery and no row, a torn last line is truncated before the watermark is read from the file, the pending set is rebuilt from redelivery, and a second node on the same file is refused -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_crash.py -q
+      - id: "AC13"
+        statement: |-
+          AC13: over the in-memory bus, out-of-order row events, a never-published last row and malformed payloads produce the right file, the right committable offsets, a rendered event, a blocked event and a dead-letter event, and the contract declares every topic with no runtime attachment -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py -q
 evidence_requirements:
   - kind: "tests"
     description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
@@ -71,4 +86,43 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_append_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^  name_prefix: \"work-ledger-append-from-\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac10-markdown-projection-partition"
+    description: "AC10: out-of-order rows across topics, committable prefix offsets, and a broker outage repaired by the head probe."
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_partition.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac11-markdown-projection-lag"
+    description: "AC11: late event dropped, lost last row found, unsuppliable row blocks and lifts, row_id conflict blocks."
+    source: "manual"
+    binds_ac: ["AC11"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_lag.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac12-markdown-projection-crash"
+    description: "AC12: crash between write and commit, torn tail, volatile pending set, one node per file."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_crash.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac13-markdown-projection-golden-chain"
+    description: "AC13: golden chain over the in-memory bus."
+    source: "manual"
+    binds_ac: ["AC13"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-probe-projection-contract"
+    description: "Deploy probe. The markdown projection node contract GitHub serves at the checked-out commit names the node, the declaration this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_render_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^name: work_ledger_render_effect'"
         cwd: "${OMNI_HOME}/omnimarket"

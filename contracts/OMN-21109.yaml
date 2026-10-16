@@ -1,0 +1,115 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21109"
+title: "TA.7 node_context_pack_render_compute"
+summary: "A pure, definition-B compute node renders a ModelContextPack into an ordered role/text message list: a fixed legend, the stable factors, the volatile factors, the model-written factors, then an identity trailer. Per-build values appear in the trailer only, stable blocks keep their immutable source identifiers, and body_hash and stable_prefix_hash are sha256 over the canonical JSON of the role/text list."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-render-golden"
+    statement: "The render is deterministic, labelled and ordered stable first with the identity trailer last."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: same pack, same `body_hash` -- falsifier: golden test."
+      - id: "AC2"
+        statement: "AC2: the identity trailer (the last block, v5) names `candidate_id`, `assembly_hash`, `final_pack_hash` (v6), the version vector hash, the profile identity, the unrecorded-prompt count, the reviewed-prompt count (D10), the scrubbed-span count and the transcript-extract candidate count, and the fixed legend (the first block) labels each factor's provenance (ledger row, operator quote, registry or document excerpt `path@sha`, observed state, verified extract, model output) -- falsifier: golden diff."
+      - id: "AC3"
+        statement: "AC3: the trailer lists every uncited carried prompt by id, in capture order, as the ids the operator would name in a review row, and lists no prompt that is cited or already in a reviewed range -- falsifier: a golden trailer with a missing, extra or reordered id."
+      - id: "AC4"
+        statement: "AC4: rulings render as row reference plus full row text -- falsifier: a ruling rendered without its timestamp and lane, or with altered text."
+      - id: "AC5"
+        statement: "AC5: two packs over the same stable sources and selection, with different `generated_at`, ledger rows and tail, render the same `stable_prefix_hash` and byte-identical leading messages up to the first volatile factor -- falsifier: a byte difference in the stable prefix."
+      - id: "AC6"
+        statement: "AC6: no per-build value appears before the last stable block (`candidate_id`, `assembly_hash`, `final_pack_hash`, the version vector hash, `generated_at`, any count, ledger watermark or activation id), while every stable block keeps its immutable source identifiers (`path@sha`, `id@sha` and span, blob sha, gate receipt) -- falsifier: a golden render with a per-build value in the prefix, or a stable block rendered without its source identifier."
+      - id: "AC7"
+        statement: "AC7: two renders whose stable sources differ only in a pinned commit change exactly the blocks from that source, and their source identifiers -- falsifier: a byte change in a block whose source did not change."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC7 in the render golden tests and the contract tests."
+    command: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21109-ac1"
+    description: "AC1: same pack, same body_hash: one pack renders one hash, a changed pack another, and the whole message list is golden."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'same_pack_same_body_hash or changed_pack_changes or golden_message_list'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21109-ac2"
+    description: "AC2: The trailer names every identity field and the fixed first block labels each provenance, as a golden diff."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'golden_message_list or legend or identity_trailer or compact_route'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21109-ac3"
+    description: "AC3: The trailer lists uncited carried prompts by id in capture order and none cited or reviewed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'uncited_prompts or says_none or prompt_id_appearing'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21109-ac4"
+    description: "AC4: A ruling renders its timestamp, lane and unaltered row text; without them the render is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'ruling'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21109-ac5"
+    description: "AC5: Different generated_at, ledger rows and tail give the same stable_prefix_hash and leading bytes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'same_stable_sources_share'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21109-ac6"
+    description: "AC6: No per-build value precedes the last stable block and every stable block keeps its source identifier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'no_per_build_value or without_its_source_identifier'"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21109-ac7"
+    description: "AC7: A pinned-commit change moves exactly the blocks of that source."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_render.py -q -p no:randomly --no-cov -k 'pinned_commit_change'"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21109-contracts"
+    description: "The node contract declares its topics, resolves its handler, is an onex.nodes entry point and imports no event envelope."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_render_compute/test_contracts.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21109-deploy-container-render"
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, renders a two-chunk pack through the product handler and asserts the stable prefix holds the legend and the source-identified stable block, the per-build candidate id appears in the trailer only, and the status is ok. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          uv run --frozen --no-dev python -c '
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.enums.enum_context_pack_provenance import EnumContextPackProvenance as P
+          from omnibase_core.models.pack.model_context_chunk import ModelContextChunk as C
+          from omnibase_core.models.pack.model_context_pack import ModelContextPack as K
+          from omnimarket.models.context_pack_render import ModelContextPackRenderChunkRef as R, ModelContextPackRenderIdentity as I, ModelContextPackRenderRequest as Q
+          from omnimarket.nodes.node_context_pack_render_compute.handlers.handler_context_pack_render import HandlerContextPackRender as H
+          def c(f, t): return C(chunk_id="ctx_" + f.value, factor=f, content=t, token_estimate=1, token_estimation_method="m", tokenizer_source="s", tokenizer_version="1", estimation_accuracy="estimated", provenance=P.CURATED, source_artifact_hash="h", source_ticket_id=None, source_contract_hash="k", source_run_id=None)
+          a = c(F.LANE_RULES, "rules")
+          b = c(F.OPEN_WORK, "row")
+          i = I(candidate_id="cand-1", assembly_hash="a", final_pack_hash="f", version_vector_hash="v", profile_name="p", unrecorded_prompt_count=0, reviewed_prompt_count=0, scrubbed_span_count=0, transcript_extract_candidate_count=0)
+          r = H().handle(Q(pack=K(pack_id="p", contract_hash="k", model_id="m", chunks=(b, a), total_token_estimate=2, generated_at="2026-10-15T00:00:00Z", profile_version="1"), chunk_refs=(R(chunk_id=a.chunk_id, source_identifier="x.md@abc"),), identity=i))
+          t = [m.text for m in r.messages]
+          assert r.status.value == "ok" and r.stable_prefix_message_count == 2, r
+          assert "x.md@abc" in t[1] and "cand-1" not in t[0] + t[1] and "cand-1" in t[-1], t
+          print(r.body_hash, r.stable_prefix_hash)'

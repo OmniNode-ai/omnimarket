@@ -100,6 +100,43 @@ def test_l11_manifest_receipt_run_ids_are_reproducible() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("locus", "expects_lane_flag"),
+    [
+        (response_contract_conformance_runner.LOCUS_DEPLOYED_LANE, True),
+        (response_contract_conformance_runner.LOCUS_IN_PROCESS, False),
+    ],
+)
+def test_live_runner_asks_the_wrapper_for_the_json_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    trusted_workspace: Path,
+    locus: str,
+    expects_lane_flag: bool,
+) -> None:
+    """OMN-19385: the wrapper prints the plain answer unless asked for JSON.
+
+    Since OMN-20124 the default stdout of `onex delegate` is the answer and an
+    artifacts line, so a runner that does not pass `--json` has every live
+    trial parsed as `wrapper_non_json` and never reaches the terminal evidence.
+    """
+    calls: list[list[str]] = []
+
+    def record(command: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(command)
+        return CompletedProcess(args=command, returncode=0, stdout="{}")
+
+    monkeypatch.setattr(response_contract_conformance_runner.subprocess, "run", record)
+
+    run_live_manifest(_manifest(), timeout_seconds=1, locus=locus)
+
+    assert calls, "the live runner never invoked the wrapper"
+    for command in calls:
+        assert "--json" in command, command
+        assert ("--lane" in command) is expects_lane_flag, command
+        assert command[command.index("--locus") + 1] == locus, command
+
+
+@pytest.mark.unit
 def test_l11_capture_without_the_instruction_refuses_even_a_valid_answer() -> None:
     manifest = _manifest()
     contracts = manifest["contracts"]

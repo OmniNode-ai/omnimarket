@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""An untested code answer is refused on the BUS path (OMN-21077).
+"""A code request naming no tests completes UNTESTED on the bus (OMN-17427).
 
-``code_generation`` is a code class: it is accepted on its deterministic checks
-and an executed test run, never on a score. The bus carries no named test run,
-so a valid ``code_generation`` artifact is refused as INSUFFICIENT and the
-ladder stops on the first rung: no costlier rung can supply the missing tests.
+The contract checks decide acceptance when no tests were named. Missing test
+execution is recorded as UNTESTED, never as a test pass, and the valid artifact
+completes on the first rung without invoking a judge.
 
 Every hop uses the real handler; acceptance never calls the judge (OMN-20164).
 """
@@ -19,7 +18,6 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.models.delegation.wire import (
-    EnumQualityScoreComparison,
     ModelInferenceIntent,
     ModelInferenceResponseData,
     ModelQualityGateIntent,
@@ -29,7 +27,7 @@ from pydantic import BaseModel
 
 from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
 from omnimarket.models.delegation.wire.model_quality_gate import (
-    NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
 )
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
@@ -47,7 +45,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
-    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
@@ -222,7 +219,7 @@ class TestJudgeUnavailableFloorRealDispatchPath:
         return gate_result, terminal_events, bridge
 
     @pytest.mark.asyncio
-    async def test_untested_code_answer_is_refused_on_local_tier(
+    async def test_untested_code_answer_completes_on_local_tier(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Keep the terminal evidence covered with a single draft and no next tier.
@@ -242,21 +239,28 @@ class TestJudgeUnavailableFloorRealDispatchPath:
 
         # Acceptance never calls the judge (OMN-20164).
         assert bridge.calls == 0
-        # OMN-21077: no named test run reached the gate, so the code answer is
-        # not checked and is refused, and no rung can cure that.
-        assert gate_result.passed is False
+        # No tests were named: the contract decides and tests remain UNTESTED.
+        assert gate_result.passed is True
         assert gate_result.score_source == "deterministic_acceptance"
-        assert NO_NAMED_TEST_RUN_REASON in gate_result.failure_reasons
-        assert gate_result.no_rung_can_satisfy is True
-        assert TOPIC_ID_DELEGATION_FAILED in _terminal_topics(terminal_events)
-        assert TOPIC_ID_DELEGATION_COMPLETED not in _terminal_topics(terminal_events)
+        assert gate_result.failure_reasons == ()
+        assert gate_result.no_rung_can_satisfy is False
+        assert "passes_existing_tests" in gate_result.skipped_checks
+        evaluation = next(
+            e for e in gate_result.rule_evaluations if e.rule == "passes_existing_tests"
+        )
+        assert evaluation.enforcement == "scored"
+        assert evaluation.passed is False
+        assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
+        assert gate_result.score_verified is False
+        assert TOPIC_ID_DELEGATION_COMPLETED in _terminal_topics(terminal_events)
+        assert TOPIC_ID_DELEGATION_FAILED not in _terminal_topics(terminal_events)
         terminal = next(
             event
             for event in terminal_events
-            if isinstance(event, ModelDelegationFailed)
+            if isinstance(event, ModelDelegationCompleted)
         )
-        assert terminal.required_quality_bar == 0.85
-        assert terminal.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR
-        assert NO_NAMED_TEST_RUN_REASON in terminal.failed_acceptance_criteria
+        assert terminal.quality_passed is True
+        assert evaluation in terminal.rule_evaluations
+        assert terminal.failed_acceptance_criteria == ()
         wf = workflow.workflows[request.correlation_id]
-        assert wf.state == EnumDelegationState.FAILED
+        assert wf.state == EnumDelegationState.COMPLETED

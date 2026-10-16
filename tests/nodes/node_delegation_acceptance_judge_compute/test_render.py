@@ -38,10 +38,10 @@ def test_render_batches_hold_at_most_the_rubric_batch_size() -> None:
 
 
 def test_render_prompt_is_blind_to_the_model_name() -> None:
-    result = render([item("x1", model="Qwen3.8-27B"), item("x2", model="gpt-oss-120b")])
+    result = render([item("x1", model="Qwen3.8-27B"), item("x2", model="glm-5.3")])
     for batch in result.batches:
         assert "Qwen3.8-27B" not in batch.prompt
-        assert "gpt-oss-120b" not in batch.prompt
+        assert "glm-5.3" not in batch.prompt
 
 
 def test_render_is_deterministic_and_the_seed_changes_the_order() -> None:

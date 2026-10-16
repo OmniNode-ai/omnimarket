@@ -16,11 +16,6 @@ requirements:
         statement: "AC2: A mixed store's measured savings total equals the real rows' total, fixtures excluded by default -- falsifier: the mixed-store pytest includes a fixture row in the sum"
       - id: "AC3"
         statement: "AC3: Every fixture row carries the fixture label through to the exposure rows -- falsifier: the lab-step exposure read returns a fixture row without `data_source: fixture`"
-  - id: "req-ci-summary-docs-only-marker-pending"
-    statement: "CI Summary keeps a skipped tier pending while the docs-only marker has not completed, and never defers a tier failure or a non-tier skip."
-    acceptance:
-      - id: "AC4"
-        statement: "AC4: CI Summary with the docs-only marker still pending keeps a skipped tier pending instead of rejecting it, and never defers a tier failure or a non-tier skip -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:randomly --no-cov -n 0 -k docs_only_marker fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Seed replay, mixed-store savings and exposure provenance tests."
@@ -115,4 +110,32 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:randomly --no-cov -n 0 -k docs_only_marker"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC4"]
+  - id: "dod-omn19970-retire-ac4-ci-summary"
+    description: "The repo-owned contract declares and binds AC1 to AC3 only. The historical CI Summary checks remain executable above without an AC4 claim; the core ticket schema validates the contract without OCC-only retirement fields."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'CHECK'
+          from pathlib import Path
+          import yaml
+          from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
+          text = Path("contracts/OMN-19970.yaml").read_text()
+          ModelTicketContract.from_yaml(text)
+          contract = yaml.safe_load(text)
+          declared = {ac["id"] for req in contract["requirements"] for ac in req["acceptance"]}
+          claimed = {ac for item in contract["dod_evidence"] for ac in item.get("binds_ac", [])}
+          assert declared == claimed == {"AC1", "AC2", "AC3"}, (declared, claimed)
+          historical = next(item for item in contract["dod_evidence"] if item["id"] == "dod-omn19970-ci-summary-docs-only-marker-pending")
+          assert historical["checks"] and not historical.get("binds_ac"), historical
+          print("core schema valid; declared and bound criteria: AC1 AC2 AC3; historical CI Summary checks retained without AC4")
+          CHECK
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19970-ac1-broker-path-reseed-same-rows"
+    description: "AC1 over the broker path: two onex seed --bus kafka runs publish the same keyed messages, and projecting both batches leaves one row per fixture run, every row labelled fixture."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dev_seed_effect.py::test_golden_chain_reseed_over_the_broker_path_leaves_the_same_rows -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

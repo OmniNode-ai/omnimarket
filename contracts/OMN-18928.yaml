@@ -42,3 +42,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q -k \"test_remote_no_response_preserves_prior_gate_evidence or test_remote_failure_without_prior_answer_has_no_content\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn18928-lab-first-step"
+    description: "Lab-first step, run 2026-10-15 on the lab dev lane (bus kafka, lane dev, runtime-effects image built from omnibase_infra revision f32d46c8965d57f23d12127e41c86bddf8a1d9c7 at 2026-10-15T00:02:27Z, omnimarket 0.4.314 at 7126c3994). One valid response and one injected schema rejection, each read from delegation_events in omnidash_analytics by correlation id. Valid response, correlation 7100fe33-046d-4465-b500-83f44b9d6db0: terminal_ok true, operational_outcome completed, content_verdict usable, actual_score 1.000, terminal_failure_cause empty. Injected schema rejection (a response contract with minimum 100 and maximum 1), correlation 7724b464-5c21-4cef-b3a9-436f240984e9: terminal_ok false, operational_outcome schema_rejected, content_verdict unusable, terminal_failure_cause quality_gate_refused, actual_score 0.000. The two terminals carry different outcome and content fields. Rows written since that build, read 2026-10-15T01:01:42Z: quality_rejected/unusable 126, completed/usable 70, timeout/not_applicable 3, schema_rejected/unusable 1, and 1 row with both fields empty (a pre-dispatch refusal, which no outcome path covers). The check re-runs the focused tests at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

@@ -50,8 +50,10 @@ v1(a) explicit non-goals (design-feasibility comment 41f99997):
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
@@ -66,6 +68,11 @@ _ENV_TENANT_OVERLAY_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 
 #: Table created by migration 0001 (node_delegation_routing_reducer/migrations).
 TENANT_OVERLAY_TABLE = "delegation_routing_tenant_overlay"
+
+#: The tenant's key catalog (node_projection_tenant_credentials, OMN-16316).
+#: OMN-20992: the pool the router chooses from. One row per registered key,
+#: keyed by ``api_key_ref``, with ``revoked_at`` and (since 0006) ``expires_at``.
+TENANT_CREDENTIALS_TABLE = "tenant_inference_credentials"
 
 #: Sentinel stored in ``task_type`` for a row that binds EVERY task type of one
 #: tenant to one backend (OMN-17372).
@@ -176,6 +183,8 @@ def resolve_tenant_overlay(
     *,
     tenant_id: str | None,
     task_type: str,
+    selector_key: str | None = None,
+    now: datetime | None = None,
 ) -> ModelTenantRoutingOverlayBackend | None:
     """Resolve a tenant's routing overlay for one ``task_type``, or ``None``.
 
@@ -262,6 +271,15 @@ def resolve_tenant_overlay(
     if not rows:
         return None
     row = rows[0]
+    provider = _optional_str(row.get("provider"))
+    secret_ref = _select_pool_secret_ref(
+        db,
+        tenant_id=tenant_id,
+        provider=provider,
+        overlay_secret_ref=_optional_str(row.get("secret_ref")),
+        selector_key=selector_key,
+        now=now if now is not None else datetime.now(UTC),
+    )
     return ModelTenantRoutingOverlayBackend(
         tenant_id=str(row["tenant_id"]),
         # OMN-17372: the REQUESTED task type, not the stored one. A sentinel
@@ -273,13 +291,117 @@ def resolve_tenant_overlay(
         # row is unaffected: its stored task_type already IS ``task_type``.
         task_type=task_type,
         backend_id=str(row["backend_id"]),
-        provider=_optional_str(row.get("provider")),
+        provider=provider,
         endpoint_url=str(row["endpoint_url"]),
         model_name=str(row["model_name"]),
-        secret_ref=_optional_str(row.get("secret_ref")),
+        secret_ref=secret_ref,
         timeout_ms=_optional_int(row.get("timeout_ms")),
         max_tokens=_optional_int(row.get("max_tokens")),
     )
+
+
+def _select_pool_secret_ref(
+    db: ProtocolTenantOverlayReader,
+    *,
+    tenant_id: str,
+    provider: str | None,
+    overlay_secret_ref: str | None,
+    selector_key: str | None,
+    now: datetime,
+) -> str | None:
+    """Choose the key this request runs on from the tenant's pool (OMN-20992).
+
+    The overlay row names ONE ``secret_ref``: the key registered last, because
+    the BYOK bridge overwrites it on every registration. A tenant that holds
+    several keys for the routed provider (the company pool, operator ruling
+    2026-10-11T16:00:52Z) has them all in ``tenant_inference_credentials``, so
+    the choice is made here from that catalog, at the same I/O boundary that
+    already read the overlay, and the reducer keeps receiving a plain overlay.
+
+    * Candidates are this tenant's keys for the overlay's provider that are not
+      revoked and whose ``expires_at`` is unset or still ahead of ``now``.
+      Nothing routes to a lapsed key (ruling 2026-10-11T16:02:35Z).
+    * With ``selector_key`` (the request's correlation id) the choice is a hash
+      of it over the candidates sorted by ref: stable for one request, spread
+      across the pool over many, and independent of the order a read returns.
+    * Without one, the overlay's own ref is kept while it is a candidate.
+    * Catalogued keys with none live: ``None``. The row is kept, so the tenant
+      fails closed at the effect boundary instead of falling back to a house
+      key (OMN-17372 ruling 3).
+    * No catalogued keys at all (a house overlay row, OMN-19186), no provider on
+      the row, or an unreadable catalog: the overlay's ref is returned as read,
+      which is exactly the behaviour before the pool existed. An unreadable
+      catalog is logged; the provider still refuses a lapsed key, so the cost
+      of not filtering here is one failed call, not a call on someone else's
+      key.
+    """
+    if not provider:
+        return overlay_secret_ref
+    try:
+        catalogued = db.query(
+            TENANT_CREDENTIALS_TABLE,
+            filters={"tenant_id": tenant_id, "provider": provider},
+        )
+        # A missing or malformed primary key means the catalog could not be
+        # read as credentials, not that every registered key has expired.
+        # Keep this schema failure inside the existing read-error boundary.
+        for row in catalogued:
+            ref = row["api_key_ref"]
+            if not isinstance(ref, str) or not ref.strip():
+                raise ValueError("tenant key catalog contains an invalid api_key_ref")
+    except Exception:
+        logger.warning(
+            "tenant key pool read failed for tenant_id=%s provider=%s; routing "
+            "on the overlay's own key without pool selection",
+            tenant_id,
+            provider,
+            exc_info=True,
+        )
+        return overlay_secret_ref
+    if not catalogued:
+        return overlay_secret_ref
+    live = sorted(
+        str(row["api_key_ref"])
+        for row in catalogued
+        if row.get("api_key_ref")
+        and row.get("revoked_at") is None
+        and _not_expired(row.get("expires_at"), now)
+    )
+    if not live:
+        logger.warning(
+            "tenant key pool has no live key: tenant_id=%s provider=%s "
+            "catalogued=%d; the route is kept with no key so the call fails "
+            "closed",
+            tenant_id,
+            provider,
+            len(catalogued),
+        )
+        return None
+    if selector_key is None:
+        return overlay_secret_ref if overlay_secret_ref in live else live[0]
+    digest = hashlib.sha256(selector_key.encode("utf-8")).digest()
+    return live[int.from_bytes(digest[:8], "big") % len(live)]
+
+
+def _not_expired(value: object, now: datetime) -> bool:
+    """``True`` for an undated key or one whose expiry is still ahead of ``now``.
+
+    Postgres returns a ``datetime``; the local SQLite store returns ISO text.
+    A stored value that parses as neither is treated as expired: a date nobody
+    can read cannot prove the key still works.
+    """
+    if value is None:
+        return True
+    if isinstance(value, datetime):
+        expires_at = value
+    else:
+        try:
+            expires_at = datetime.fromisoformat(str(value))
+        except ValueError:
+            return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at > now
 
 
 def _optional_str(value: object) -> str | None:
@@ -303,6 +425,7 @@ def _optional_int(value: object) -> int | None:
 __all__: list[str] = [
     "BYOK_ALL_TASK_TYPES",
     "HOUSE_OVERLAY_COST_TIER",
+    "TENANT_CREDENTIALS_TABLE",
     "TENANT_OVERLAY_TABLE",
     "ModelTenantRoutingOverlayBackend",
     "ProtocolTenantOverlayReader",

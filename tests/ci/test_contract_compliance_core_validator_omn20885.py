@@ -127,7 +127,7 @@ def _contracts(tmp_path: Path, files: dict[str, str]) -> Path:
 def test_contract_compliance_job_reads_no_onex_change_control() -> None:
     job = _job(CI, CCC_JOB_KEY)
     assert job["name"] == CCC_JOB_NAME
-    assert job["needs"] == "occ-preflight"
+    assert job["needs"] == "repo-evidence-preflight"
     rendered = yaml.safe_dump(job)
     assert "onex_change_control" not in rendered
     assert "validate-yaml" not in rendered

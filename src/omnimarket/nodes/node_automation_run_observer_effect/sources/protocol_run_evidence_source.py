@@ -4,9 +4,10 @@
 
 A source reads one overlay entry's run facts from one kind of evidence and
 returns the runs it found plus the cursor to resume from. The shard-1 sources
-(receipts file, log line, launchd state) are registered by the handler; the
-systemd journal, container, consumer-group and probe sources implement the same
-protocol and are passed to the handler's constructor.
+(receipts file, log line, launchd state) and the daemon-progress sources (state
+file, consumer group) are registered by the handler; the systemd journal,
+container and probe sources implement the same protocol and are passed to the
+handler's constructor.
 """
 
 from typing import Protocol
@@ -40,6 +41,25 @@ class ModelObservedRun(BaseModel):
     evidence_ref: NonEmptyStr
 
 
+class ModelDaemonProgress(BaseModel):
+    """A daemon's worker-loop progress, never the liveness of its process.
+
+    ``progress_counter`` is counted by the worker loop (or is the count of
+    completed handlers); a live PID or a beating advertiser does not move it.
+    ``demand_count`` is None when the entry declares demand the evidence does
+    not carry.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    progress_counter: NonNegativeInt
+    #: When the counter last moved, if the evidence says; else the observer
+    #: dates the move at the poll that first sees it.
+    last_progress_at: AwareDatetime | None = None
+    process_started_at: AwareDatetime | None = None
+    demand_count: NonNegativeInt | None = None
+
+
 class ModelEvidenceReadContext(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -47,12 +67,15 @@ class ModelEvidenceReadContext(BaseModel):
     cursor: ModelProcessCursor
     now: AwareDatetime
     launchd_domain: NonEmptyStr | None = None
+    consumer_bootstrap: NonEmptyStr | None = None
 
 
 class ModelEvidenceRead(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     runs: tuple[ModelObservedRun, ...] = ()
+    #: Set by a source that reads a daemon's progress rather than discrete runs.
+    progress: ModelDaemonProgress | None = None
     cursor: ModelProcessCursor
     #: Why the evidence could not be read; a declared source that cannot be
     #: read is UNOBSERVABLE, never an empty read.
