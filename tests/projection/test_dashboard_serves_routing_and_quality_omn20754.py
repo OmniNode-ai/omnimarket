@@ -119,6 +119,17 @@ def test_run_locally_and_tier_mix_have_their_served_fields(client: TestClient) -
             "count": 1,
             "tier_routed": True,
             "pct_of_tier_routed": 1.0,
+            # OMN-21015 AC2: each tier also lists its models. This run's row carries
+            # no cost, so the cost is null and counted as unmeasured, never 0.
+            "models": [
+                {
+                    "model_name": "qwen-local",
+                    "count": 1,
+                    "pct_of_tier_routed": 1.0,
+                    "cost_usd": None,
+                    "unmeasured_cost_count": 1,
+                }
+            ],
         }
     ]
 

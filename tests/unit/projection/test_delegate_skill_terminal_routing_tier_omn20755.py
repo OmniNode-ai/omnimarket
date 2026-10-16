@@ -210,11 +210,17 @@ def test_the_tier_mix_lists_the_run_under_its_tier(tmp_path: Path) -> None:
     by_tier = (result.response or {})["rows"][0]["by_tier"]
     assert by_tier["tier_routed_total"] == 1
     assert by_tier["not_tier_routed_count"] == 0
-    assert by_tier["tiers"] == [
+    # OMN-21015 AC2 (migration 0060) adds one key, ``models``, to each tier entry; the
+    # four keys this test pins are unchanged, and the one run is that tier's one model.
+    tiers = by_tier["tiers"]
+    assert [{k: v for k, v in tier.items() if k != "models"} for tier in tiers] == [
         {
             "cost_tier_name": "cheap_frontier",
             "count": 1,
             "tier_routed": True,
             "pct_of_tier_routed": 1.0,
         }
+    ]
+    assert [(m["count"], m["pct_of_tier_routed"]) for m in tiers[0]["models"]] == [
+        (1, 1.0)
     ]

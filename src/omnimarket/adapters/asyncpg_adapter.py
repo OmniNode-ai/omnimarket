@@ -9,6 +9,10 @@ from typing import Any
 
 import asyncpg
 
+from omnimarket.handlers.handler_projection_derived_write import (
+    HandlerProjectionDerivedWrite,
+)
+from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     TenantScopedWriteUnboundError,
@@ -138,14 +142,37 @@ class AsyncpgAdapter:
         return self._pool
 
     async def execute(
-        self, query: str, *params: Any, tenant: str | None = None
+        self,
+        query: str,
+        *params: Any,
+        tenant: str | None = None,
+        derived_write: ModelProjectionDerivedWrite | None = None,
     ) -> list[dict[str, Any]]:
         _refuse_unbound_tenant_scoped_write(query, tenant)
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn, conn.transaction():
             await self._set_tenant_context(conn, tenant)
-            rows = await conn.fetch(query, *params)
-            return [dict(r) for r in rows]
+            rows = [dict(record) for record in await conn.fetch(query, *params)]
+            if derived_write is not None:
+                if len(rows) != 1:
+                    raise RuntimeError("derived UPSERT did not return exactly one row")
+                values = HandlerProjectionDerivedWrite.derived_values(
+                    derived_write, rows[0]
+                )
+                statement, bindings = HandlerProjectionDerivedWrite.update_statement(
+                    derived_write, rows[0], values, dialect="numeric"
+                )
+                final = [
+                    dict(record)
+                    for record in await conn.fetch(
+                        statement, *(value for _, value in bindings)
+                    )
+                ]
+                rows = HandlerProjectionDerivedWrite.check_final_rows(
+                    derived_write, final
+                )
+            # Returning leaves the context only after its commit succeeds.
+            return rows
 
     async def execute_many(
         self,

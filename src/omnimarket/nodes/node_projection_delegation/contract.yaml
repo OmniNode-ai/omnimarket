@@ -247,7 +247,7 @@ db_io:
     - name: projection_delegation_token_usage
       database_ref: application
       schema: public
-      migration: "0039_delegation_aggregate_views_per_tenant.sql"
+      migration: "0062_delegation_token_usage_unpriced_calls.sql"
       access: read
       role: aggregate_token_usage
 
@@ -407,6 +407,12 @@ projection_api:
         # cost_usd is null for a run whose cost was never measured.
         - terminal_ok
         - cost_usd
+        # OMN-21015: one canonical per-run modelled figure, with its own basis.
+        # Legacy rows and unmeasured runs keep a nullable figure.
+        - modelled_savings_usd
+        - savings_baseline_model
+        - savings_pricing_manifest_version
+        - savings_measurement
         - created_at
         # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
         - data_source
@@ -889,6 +895,9 @@ projection_api:
         - total_completion_tokens
         - total_tokens
         - total_estimated_cost_usd
+        # OMN-20717 (migration 0062): the total covers priced calls only and is
+        # NULL when none was priced; the unpriced calls are counted beside it.
+        - unpriced_call_count
         - provenance_summary
         - by_model
         - captured_at

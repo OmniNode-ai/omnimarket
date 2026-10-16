@@ -76,6 +76,11 @@ requirements:
     acceptance:
       - id: "AC13"
         statement: "AC13: check_run_create validates name, head_sha, status, conclusion and output title/summary, posts the recorded request shape, returns check_run_id, html_url and head_sha on the completed topic, and retains dry-run, quota, failure and in-process replay behavior -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py tests/test_golden_chain_github_repo_write_effect.py -q -k check_run_create fails at the merge base"
+  - id: "req-sibling-gate-follows-dev-tags"
+    statement: "Operator RULING 2026-10-16T09:35:49Z: in the lab, tags replace releases. The Sibling Release Compatibility Gate (sibling-release-compat) accepts a sibling pin that is a PyPI release or a uv.lock git source pinned to a dev-<UTC YYYYMMDDHHMMSS>-<sha12> tag of that sibling, still checks out and installs the exact pinned commit and runs the same compatibility checks, and keeps accepting any other uv.lock git source of that sibling locked to one commit (RULING 2026-10-16T07:34:18Z)."
+    acceptance:
+      - id: "AC14"
+        statement: "AC14: the gate's pins step resolves a uv.lock git source ?tag=dev-<14 digits>-<sha12>#<sha> of omnibase_infra or omnibase_core to the pinned sha, still resolves a PyPI pin to v<version>, resolves any other git source of https://github.com/OmniNode-ai/<sibling>.git locked to one commit to that commit, and refuses a dev tag whose sha12 is not the pinned commit, a malformed dev tag, another repository, a fork, a subdirectory, directory and editable source; its tag step fails for a pin to a nonexistent tag and for a tag that names another commit -- falsifier: uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py -q -n 0 fails at the merge base, where the pins step accepts only the PyPI registry"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -318,3 +323,18 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py -q"
     binds_ac: ["AC13"]
+  - id: "dod-omn19998-sibling-gate-dev-tag"
+    description: "The sibling gate dev-tag tests pass at the head, including the nonexistent-tag negative control; at the merge base the pins step has no dev-tag outputs and no tag step, and the tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py -q -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC14"]
+  - id: "dod-omn19998-sibling-gate-dev-tag-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this commit and requires the dev-tag verification step and the pinned-revision checkout of the sibling-release-compat job; the base has neither and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/Every dev-tag pin names the commit it pins/{a=1} /ref: \$\{\{ steps.pins.outputs.infra_ref \}\}/{b=1} END{exit !(a&&b)}'

@@ -102,7 +102,9 @@ class HandlerProjectionMeteringSummary:
                     top_models=max(1, len(selected)),
                 )
             )
-            payload = summary.model_dump(mode="json")
+            # Individual figures are for the run projection, not a copy of every
+            # run embedded in each aggregate window or in onex metering's JSON.
+            payload = summary.model_dump(mode="json", exclude={"by_run"})
             rows.append(
                 ModelMeteringSummaryRow(
                     tenant_id=request.tenant_id,

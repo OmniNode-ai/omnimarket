@@ -2262,12 +2262,18 @@ jobs:
 
   # ============================================================================
   # SIBLING RELEASE COMPATIBILITY GATE (OMN-20381)
-  # OMN-19998: a uv.lock git source locked to one commit is accepted as the pin and checked out at that commit; no release wait.
   # Twice a merge needed unreleased infra: node_projection_delegation/0052
   # columns were written before their migration shipped, and dev changes broke
   # `onex delegate` for a new developer installing released packages. Test THIS
-  # head against its uv.lock releases, never a sibling's live dev. Refuse with
+  # head against its uv.lock pins, never a sibling's live dev. Refuse with
   # the missing release named; no breaking change without downstream notice.
+  # A pin is a PyPI release, or (OMN-19998, RULING 2026-10-16T09:35:49Z: in the
+  # lab, tags replace releases) a uv.lock git source pinned to one of the
+  # sibling's dev-<UTC>-<sha12> tags (each sibling's dev-merge-tag.yml tags every
+  # dev push). The tag must exist on the sibling and name the pinned commit.
+  # Any other uv.lock git source of the sibling locked to one commit is a pin
+  # too (OMN-19998, RULING 2026-10-16T07:34:18Z), checked out at that commit;
+  # another repository, a fork or a non-git source is refused as before.
   # Required via the ci-summary aggregator.
   # ============================================================================
   sibling-release-compat:
@@ -2293,7 +2299,7 @@ jobs:
           set -euo pipefail
           uv python install 3.12
       - id: pins
-        name: Read the sibling release pins from this head's uv.lock
+        name: Read the sibling pins from this head's uv.lock
         shell: bash
         run: |
           set -euo pipefail
@@ -2302,38 +2308,115 @@ jobs:
           import re
           import tomllib
 
+          SIBLINGS = (
+              ("omnibase-infra", "infra", "OmniNode-ai/omnibase_infra"),
+              ("omnibase-core", "core", "OmniNode-ai/omnibase_core"),
+          )
+          PYPI = {"registry": "https://pypi.org/simple"}
+          DEV_TAG = re.compile(r"^dev-[0-9]{14}-(?P<sha12>[0-9a-f]{12})$")
+          GIT_SOURCE = re.compile(
+              r"^https://github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?"
+              r"\?tag=(?P<tag>[^#&?]+)#(?P<sha>[0-9a-f]{40})$"
+          )
+
           with open("uv.lock", "rb") as lock_file:
               packages = tomllib.load(lock_file).get("package", [])
           pins = {}
           failed = False
-          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+          for name, key, repo in SIBLINGS:
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              source = sources[0] if len(entries) == 1 else None
-              ref = None
-              if source == {"registry": "https://pypi.org/simple"}:
-                  ref = f"v{entries[0]['version']}"
-              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
-              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
-                  repository, _, commit = source["git"].partition("#")
-                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
-                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
-                      ref = commit
-              if ref is None:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
+              if len(entries) != 1:
+                  print(f"::error::{name}: entries={len(entries)}, sources={sources!r}; exactly one pin is required.")
                   failed = True
                   continue
-              pins[output] = entries[0]["version"]
-              pins[output.replace("_version", "_ref")] = ref
+              source = sources[0]
+              version = entries[0]["version"]
+              if source == PYPI:
+                  pins.update({
+                      f"{key}_version": version,
+                      f"{key}_ref": f"v{version}",
+                      f"{key}_ref_name": f"v{version}",
+                      f"{key}_dev_tag": "",
+                      f"{key}_spec": f"{name}=={version}",
+                  })
+                  continue
+              git = source.get("git") if isinstance(source, dict) and set(source) == {"git"} else None
+              source_match = GIT_SOURCE.match(git) if isinstance(git, str) else None
+              tag_match = DEV_TAG.match(source_match["tag"]) if source_match else None
+              dev_tag = ""
+              commit = None
+              if (
+                  source_match is not None
+                  and source_match["repo"] == repo
+                  and tag_match is not None
+                  and source_match["sha"].startswith(tag_match["sha12"])
+              ):
+                  dev_tag = source_match["tag"]
+                  commit = source_match["sha"]
+              # OMN-19998 (RULING 2026-10-16T07:34:18Z): any other git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(git, str) and not (source_match and source_match["tag"].startswith("dev-")):
+                  repository, _, locked = git.partition("#")
+                  if repository.split("?", 1)[0] == f"https://github.com/{repo}.git" and re.fullmatch(r"[0-9a-f]{40}", locked):
+                      commit = locked
+              if commit is None:
+                  print(f"::error::{name}: source={source!r}, entries={len(entries)}; a released or commit-pinned source is required: a PyPI release, a git source of https://github.com/{repo}.git locked to one commit, or a dev-<UTC>-<sha12> tag of {repo} whose sha12 is the pinned commit (a sibling's moving dev branch is never an integration target).")
+                  failed = True
+                  continue
+              pins.update({
+                  f"{key}_version": version,
+                  f"{key}_ref": commit,
+                  f"{key}_ref_name": dev_tag or commit,
+                  f"{key}_dev_tag": dev_tag,
+                  f"{key}_spec": f"{name} @ git+https://github.com/{repo}.git@{commit}",
+              })
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
-              for key, version in pins.items():
-                  line = f"{key}={version}"
+              for key, value in pins.items():
+                  line = f"{key}={value}"
                   print(line)
                   print(line, file=output_file)
           PY
-      - name: Checkout the pinned omnibase_infra release
+      - id: tags
+        name: Every dev-tag pin names the commit it pins
+        shell: bash
+        env:
+          INFRA_TAG: ${{ steps.pins.outputs.infra_dev_tag }}
+          INFRA_SHA: ${{ steps.pins.outputs.infra_ref }}
+          CORE_TAG: ${{ steps.pins.outputs.core_dev_tag }}
+          CORE_SHA: ${{ steps.pins.outputs.core_ref }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for sibling in infra:omnibase_infra core:omnibase_core; do
+            key=${sibling%%:*}
+            repo=${sibling#*:}
+            tag_var=${key^^}_TAG
+            sha_var=${key^^}_SHA
+            tag=${!tag_var}
+            sha=${!sha_var}
+            if [[ -z "$tag" ]]; then
+              echo "OK: $repo is pinned to a PyPI release or a commit; no dev tag to verify."
+              continue
+            fi
+            remote=$(git ls-remote --tags "https://github.com/OmniNode-ai/$repo.git" "refs/tags/$tag" "refs/tags/$tag^{}")
+            resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<< "$remote")
+            if [[ -z "$resolved" ]]; then
+              resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<< "$remote")
+            fi
+            if [[ -z "$resolved" ]]; then
+              echo "::error::uv.lock pins $repo to the dev tag $tag, and $repo has no such tag (missing sibling tag: $repo dev-merge-tag.yml tags every dev push; pin a tag that exists)."
+              failed=1
+            elif [[ "$resolved" != "$sha" ]]; then
+              echo "::error::uv.lock pins $repo to the dev tag $tag at $sha, but the tag names $resolved; re-lock against the tag."
+              failed=1
+            else
+              echo "OK: $repo dev tag $tag names the pinned commit $sha"
+            fi
+          done
+          exit "$failed"
+      - name: Checkout the pinned omnibase_infra revision (release tag or dev-tag commit)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           repository: OmniNode-ai/omnibase_infra
@@ -2352,6 +2435,7 @@ jobs:
           INFRA_DIR: .sibling/omnibase_infra
           INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
           INFRA_REF: ${{ steps.pins.outputs.infra_ref }}
+          INFRA_REF_NAME: ${{ steps.pins.outputs.infra_ref_name }}
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
@@ -2369,7 +2453,7 @@ jobs:
           fi
           tags=$(git -C "$INFRA_DIR" tag --list 'v[0-9]*' --sort=v:refname)
           {
-            echo "| file | pinned v$INFRA_VERSION | first release carrying it |"
+            echo "| file | pinned $INFRA_REF_NAME | first release carrying it |"
             echo "| --- | --- | --- |"
           } >> "$GITHUB_STEP_SUMMARY"
           failed=0
@@ -2381,13 +2465,13 @@ jobs:
             want=$(git show "$HEAD_SHA:$file" | git hash-object --stdin)
             have=$(git -C "$INFRA_DIR" ls-tree "$INFRA_REF" -- "$vendored" | awk '{print $3}')
             if [[ "$have" == "$want" ]]; then
-              echo "OK: $file is byte-identical in omnibase_infra v$INFRA_VERSION"
-              echo "| $file | byte-identical | v$INFRA_VERSION (already pinned) |" >> "$GITHUB_STEP_SUMMARY"
+              echo "OK: $file is byte-identical in omnibase_infra $INFRA_REF_NAME"
+              echo "| $file | byte-identical | $INFRA_REF_NAME (already pinned) |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
             first_release=""
             while IFS= read -r tag; do
-              [[ -n "$tag" && "$tag" != "v$INFRA_VERSION" ]] || continue
+              [[ -n "$tag" && "$tag" != "$INFRA_REF_NAME" ]] || continue
               oldest=$(printf '%s\n' "v$INFRA_VERSION" "$tag" | sort -V | head -n 1)
               [[ "$oldest" == "v$INFRA_VERSION" ]] || continue
               blob=$(git -C "$INFRA_DIR" ls-tree "$tag" -- "$vendored" | awk '{print $3}')
@@ -2403,9 +2487,9 @@ jobs:
               status="different bytes"
             fi
             if [[ -n "$first_release" ]]; then
-              echo "::error::$file $relation the pinned omnibase_infra release v$INFRA_VERSION (omnibase-infra==$INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."
+              echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."
             else
-              echo "::error::$file $relation the pinned omnibase_infra release v$INFRA_VERSION (omnibase-infra==$INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."
+              echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."
             fi
             echo "| $file | $status | ${first_release:-not released} |" >> "$GITHUB_STEP_SUMMARY"
             failed=1
@@ -2414,20 +2498,26 @@ jobs:
       # The checks below still run when the migration check refuses, so one
       # red names every missing sibling release at once.
       - name: Build this head's wheel
-        if: ${{ !cancelled() && steps.pins.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.pins.outcome == 'success' && steps.tags.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           uv build --wheel --out-dir "$RUNNER_TEMP/dist"
       - id: install
-        name: Install the wheel against the pinned sibling releases
-        if: ${{ !cancelled() && steps.pins.outcome == 'success' }}
+        name: Install the wheel against the pinned sibling releases and dev-tag commits
+        if: ${{ !cancelled() && steps.pins.outcome == 'success' && steps.tags.outcome == 'success' }}
         shell: bash
         env:
           INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
-          INFRA_REF: ${{ steps.pins.outputs.infra_ref }}
           CORE_VERSION: ${{ steps.pins.outputs.core_version }}
-          CORE_REF: ${{ steps.pins.outputs.core_ref }}
+          INFRA_SPEC: ${{ steps.pins.outputs.infra_spec }}
+          CORE_SPEC: ${{ steps.pins.outputs.core_spec }}
+          INFRA_REF_NAME: ${{ steps.pins.outputs.infra_ref_name }}
+          CORE_REF_NAME: ${{ steps.pins.outputs.core_ref_name }}
+          INFRA_DEV_TAG: ${{ steps.pins.outputs.infra_dev_tag }}
+          CORE_DEV_TAG: ${{ steps.pins.outputs.core_dev_tag }}
+          INFRA_SHA: ${{ steps.pins.outputs.infra_ref }}
+          CORE_SHA: ${{ steps.pins.outputs.core_ref }}
         run: |
           set -euo pipefail
           # Outside the checkout and with --no-config: this repo's [tool.uv]
@@ -2436,33 +2526,33 @@ jobs:
           wheel=$(ls "$RUNNER_TEMP"/dist/omnimarket-*.whl)
           cd "$RUNNER_TEMP"
           uv venv --no-config --python 3.12 "$RUNNER_TEMP/pinned-venv"
-          if [[ "$INFRA_REF" == "v$INFRA_VERSION" ]]; then
-            infra_requirement="omnibase-infra==$INFRA_VERSION"
-          else
-            infra_requirement="omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@$INFRA_REF"
-          fi
-          if [[ "$CORE_REF" == "v$CORE_VERSION" ]]; then
-            core_requirement="omnibase-core==$CORE_VERSION"
-          else
-            core_requirement="omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@$CORE_REF"
-          fi
           if ! uv pip install --no-config --python "$RUNNER_TEMP/pinned-venv/bin/python" \
-            "$wheel" "$infra_requirement" "$core_requirement"; then
-            echo "::error::this head does not install against the released omnibase-infra==$INFRA_VERSION and omnibase-core==$CORE_VERSION its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"
+            "$wheel" "$INFRA_SPEC" "$CORE_SPEC"; then
+            echo "::error::this head does not install against the omnibase-infra $INFRA_REF_NAME and omnibase-core $CORE_REF_NAME its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"
             exit 1
           fi
           "$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'
           import importlib.metadata
+          import json
           import os
           from pathlib import Path
           import sysconfig
 
           import omnimarket
 
-          for package, key in (("omnibase-infra", "INFRA_VERSION"), ("omnibase-core", "CORE_VERSION")):
+          for package, key, tag_key, sha_key in (
+              ("omnibase-infra", "INFRA_VERSION", "INFRA_DEV_TAG", "INFRA_SHA"),
+              ("omnibase-core", "CORE_VERSION", "CORE_DEV_TAG", "CORE_SHA"),
+          ):
               installed = importlib.metadata.version(package)
               assert installed == os.environ[key], f"{package}: installed {installed}, pinned {os.environ[key]}"
-              print(f"OK: {package}=={installed}")
+              if os.environ[sha_key] != f"v{installed}":
+                  direct_url = json.loads(importlib.metadata.distribution(package).read_text("direct_url.json"))
+                  commit = direct_url.get("vcs_info", {}).get("commit_id")
+                  assert commit == os.environ[sha_key], f"{package}: installed commit {commit}, pinned {os.environ[sha_key]} ({os.environ[tag_key]})"
+                  print(f"OK: {package}=={installed} at {os.environ[tag_key] or 'commit'} ({commit})")
+              else:
+                  print(f"OK: {package}=={installed}")
           location = Path(omnimarket.__file__).resolve()
           site_packages = Path(sysconfig.get_path("purelib")).resolve()
           venv = (Path(os.environ["RUNNER_TEMP"]) / "pinned-venv").resolve()

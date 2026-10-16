@@ -6,7 +6,7 @@ Tests: InmemoryDatabaseAdapter that records rows for assertion.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
@@ -14,6 +14,10 @@ from typing import Protocol, runtime_checkable
 from omnibase_core.models.projection.model_upsert_plan import (
     SQL_EXPRESSION_SENTINEL_PREFIX,
     build_upsert_plan,
+)
+
+from omnimarket.handlers.handler_projection_derived_write import (
+    HandlerProjectionDerivedWrite,
 )
 
 
@@ -106,6 +110,9 @@ class ProtocolProjectionAttestedWrite(Protocol):
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, object]]:
         """UPSERT a row and return the rows the database actually stored.
 
@@ -203,6 +210,9 @@ class InmemoryDatabaseAdapter:
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, object]]:
         """OMN-18159. The double reproduces the REFUSALS, not only the merge.
 
@@ -224,7 +234,16 @@ class InmemoryDatabaseAdapter:
             sql_expression_columns=sql_expression_columns,
             returning=returning,
         )
+        derivation = HandlerProjectionDerivedWrite.prepare(
+            plan,
+            row=row,
+            derive=derive,
+            input_columns=input_columns,
+            derived_columns=derived_columns,
+            insert_only_columns=insert_only_columns,
+        )
         rows = self.tables.setdefault(table, [])
+        previous = [dict(record) for record in rows] if derivation is not None else []
 
         # OMN-18159. An IDENTITY this fixture cannot evaluate is recorded as
         # an unmistakable sentinel rather than a plausible value: a double
@@ -275,6 +294,15 @@ class InmemoryDatabaseAdapter:
             stored = {**row, **stamped}
             rows.append(stored)
 
+        if derivation is not None:
+            try:
+                derived = HandlerProjectionDerivedWrite.derived_values(
+                    derivation, stored
+                )
+                stored.update(derived)
+            except BaseException:
+                self.tables[table] = previous
+                raise
         self.upsert_count += 1
         if not plan.returning:
             return []

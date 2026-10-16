@@ -390,6 +390,8 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
 
         sql = str(_insert_calls(mock_db)[-1].args[0])
         insert_half, update_half = sql.split("ON CONFLICT", 1)
+        # RETURNING reads columns; it does not overwrite them.
+        update_half = update_half.split(" RETURNING ", 1)[0]
         assert "timestamp" in insert_half
         assert "timestamp" not in update_half
 
