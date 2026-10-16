@@ -12,10 +12,9 @@
 # OMN-20073 (OCC retirement S6 preparation): the pinned reusable no longer runs
 # the change-control preflight as a nested job, and the scan no longer waits on
 # it (omniclaude#2540). This caller therefore stops producing
-# `call-reject-skip-token / occ-preflight / eligibility`; the change-control
-# verdict stays enforced by the standalone `occ-preflight / eligibility` context
-# (call-occ-preflight.yml) until the cut-over, and the scan stays enforced
-# through CI Summary.
+# `call-reject-skip-token / occ-preflight / eligibility`. PR admission is the
+# `repo-evidence / dod-verify` context (the standalone change-control preflight
+# caller is deleted), and the scan stays enforced through CI Summary.
 # Wire via: Settings → Branches → main → Require status checks → add the check name above.
 
 name: Reject skip-gate bypass tokens

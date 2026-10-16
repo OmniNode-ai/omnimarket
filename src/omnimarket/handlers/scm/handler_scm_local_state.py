@@ -37,14 +37,14 @@ from typing import Final, Literal
 from pydantic import JsonValue
 
 from omnimarket.handlers.scm.handler_scm_local_git import HandlerScmLocalGit
+from omnimarket.models.model_github_gateway_io import (
+    ModelPrHead,
+    ModelPrHeadsResult,
+)
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     ModelScmLocalReadRequest,
     ModelScmLocalReadResult,
-)
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
-    ModelPrHead,
-    ModelPrHeadsResult,
 )
 
 logger = logging.getLogger(__name__)

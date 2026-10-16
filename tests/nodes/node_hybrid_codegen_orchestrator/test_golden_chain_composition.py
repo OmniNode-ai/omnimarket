@@ -61,6 +61,7 @@ from omnimarket.codegen.models import (
     ModelMypyCheckResult,
 )
 from omnimarket.contract_assembly.models import (
+    EnumLintStatus,
     ModelContractAssemblyRequest,
     ModelContractDocument,
 )
@@ -266,8 +267,21 @@ class _RealFactory:
     logic is entirely in the real handlers.
     """
 
-    def __init__(self, bus: EventBusInmemory, llm_response: str) -> None:
+    def __init__(
+        self,
+        bus: EventBusInmemory,
+        llm_response: str,
+        serialize_verdict: ModelContractDocument | None = None,
+    ) -> None:
         self._bus = bus
+        # OMN-21151 test seam: the serialize leg's published verdict may be
+        # pinned. The real serializer's own assembly path cannot emit a failing
+        # lint (its document model always carries the required sections), so a
+        # failing-lint run pins the exact wire verdict the serialize node
+        # publishes when its lint gate trips, and proves the downstream factory
+        # (reducer -> orchestrator -> file writer) stops. Everything else runs
+        # real.
+        self._serialize_verdict = serialize_verdict
         self.orchestrator = HandlerHybridCodegenOrchestrator()
         self.llm = HandlerLlmCodegen(_StubInference(llm_response))
         self.validator = _Spy(HandlerGeneratedCodeValidator())
@@ -354,8 +368,14 @@ class _RealFactory:
 
     async def _on_serialize(self, message: object) -> None:
         env = _decode(message)
-        request = ModelContractAssemblyRequest.model_validate(env.payload)
-        verdict = self.serialize.handle(request)
+        if self._serialize_verdict is not None:
+            # Correlation echo, exactly as the real handler does for the join.
+            verdict = self._serialize_verdict.model_copy(
+                update={"correlation_id": str(env.correlation_id)}
+            )
+        else:
+            request = ModelContractAssemblyRequest.model_validate(env.payload)
+            verdict = self.serialize.handle(request)
         await self._publish(verdict, _T_SERIALIZE_COMPLETED, env.correlation_id)
 
     async def _on_file_write(self, message: object) -> None:
@@ -424,15 +444,31 @@ async def test_real_factory_produces_compliant_node(
     # reducer: 1 seed + 3 verdict joins = 4 invocations.
     assert factory.reducer.calls == 4, factory.reducer.calls
 
-    # A compliant node landed on disk via the real file-writer effect.
+    # A compliant node landed on disk as a CANONICAL node package (OMN-21152):
+    # <target>/omnimarket/nodes/node_<x>/{__init__.py, contract.yaml,
+    # metadata.yaml, handlers/{__init__.py, handler_<x>.py},
+    # .rsd_provenance.json}.
+    pkg_dir = target_root / "omnimarket" / "nodes" / "node_greeter_compute"
     assert (
-        target_root / "handler.py"
-    ).read_text().strip() == _GENERATED_NODE_SOURCE.strip()
-    # The contract.yaml came from the REAL serializer — non-empty and carrying the
-    # serializer's own header (the fabricated double emitted a 2-line stub).
-    contract_text = (target_root / "contract.yaml").read_text()
+        pkg_dir / "handlers" / "handler_greeter_compute.py"
+    ).read_text().strip() == (_GENERATED_NODE_SOURCE.strip())
+    # The contract.yaml carries the REAL serializer's lint-passed body plus the
+    # canonical envelope, and its handler_routing names the generated class
+    # (OMN-21152).
+    contract_text = (pkg_dir / "contract.yaml").read_text()
     assert contract_text.strip(), "real serializer produced empty contract.yaml"
-    assert (target_root / "metadata.yaml").exists()
+    contract = yaml.safe_load(contract_text)
+    assert contract["name"] == "node_greeter_compute"
+    routing = contract["handler_routing"]
+    assert routing["handlers"][0]["handler"]["name"] == "NodeGreeterCompute"
+    assert (
+        routing["handlers"][0]["handler"]["module"]
+        == "omnimarket.nodes.node_greeter_compute.handlers.handler_greeter_compute"
+    )
+    assert (pkg_dir / "metadata.yaml").exists()
+    assert (pkg_dir / "__init__.py").exists()
+    assert (pkg_dir / "handlers" / "__init__.py").exists()
+    assert (pkg_dir / ".rsd_provenance.json").exists()
 
     await factory.close()
     await event_bus.close()
@@ -526,6 +562,89 @@ async def test_type_error_rejected_by_real_mypy(
     # Serialize is never reached on a type-check rejection.
     assert factory.serialize.calls == 0
     assert not target_root.exists()
+
+    await factory.close()
+    await event_bus.close()
+
+
+_LINT_FAIL_VERDICT = ModelContractDocument(
+    contract_yaml="metadata: 5\n",
+    contract_sha256="deadbeef",
+    subcontracts_rendered=(),
+    lint_status=EnumLintStatus.FAIL,
+    lint_messages=("metadata section is not a mapping",),
+)
+
+
+@pytest.mark.asyncio
+async def test_contract_lint_failure_writes_no_file(
+    event_bus: EventBusInmemory, tmp_path: Path
+) -> None:
+    """A run whose generated contract fails its lint writes no file (OMN-21151).
+
+    RED-then-GREEN: before the fix ModelCodegenSerializeOutcome carried only
+    state, so _on_serialize_outcome wrote files whatever the lint said and this
+    run COMPLETED with an unlintable contract.yaml on disk. The serialize leg's
+    published verdict is pinned to the exact wire shape the serialize node
+    emits when its lint gate trips (a real ModelContractDocument with
+    lint_status FAIL); the reducer, orchestrator and file writer all run real.
+    """
+    await event_bus.start()
+    target_root = tmp_path / "node_greeter_compute"
+    factory = _RealFactory(
+        event_bus, _FENCED_LLM_RESPONSE, serialize_verdict=_LINT_FAIL_VERDICT
+    )
+    await factory.wire()
+    await factory.drive(_spec("NodeGreeterCompute", target_root))
+
+    assert len(factory.completed) == 1
+    assert factory.completed[0].status is EnumCodegenStatus.REJECTED_CONTRACT_LINT, (
+        factory.completed[0]
+    )
+    assert factory.completed[0].issues == ("metadata section is not a mapping",)
+    # The full prefix ran real: llm -> validator -> mypy -> serialize verdict
+    # joined by the reducer; only the file-write leg is never reached.
+    assert factory.validator.calls == 1
+    assert factory.mypy.calls == 1
+    assert factory.reducer.calls == 4, factory.reducer.calls
+    assert not target_root.exists()
+
+    await factory.close()
+    await event_bus.close()
+
+
+@pytest.mark.asyncio
+async def test_contract_lint_pass_still_writes_files(
+    event_bus: EventBusInmemory, tmp_path: Path
+) -> None:
+    """The companion passing case: a lint-passing contract still writes its files.
+
+    Same harness, same pinned-verdict path, lint PASS: the orchestrator emits
+    the file-write command and the real file writer lands every generated file.
+    """
+    await event_bus.start()
+    target_root = tmp_path / "node_greeter_compute"
+    verdict = _LINT_FAIL_VERDICT.model_copy(
+        update={
+            "contract_yaml": "name: node_greeter_compute\n",
+            "lint_status": EnumLintStatus.PASS,
+            "lint_messages": (),
+        }
+    )
+    factory = _RealFactory(event_bus, _FENCED_LLM_RESPONSE, serialize_verdict=verdict)
+    await factory.wire()
+    await factory.drive(_spec("NodeGreeterCompute", target_root))
+
+    assert len(factory.completed) == 1
+    assert factory.completed[0].status is EnumCodegenStatus.COMPLETED, (
+        factory.completed[0]
+    )
+    # OMN-21152: the files land as the canonical node package.
+    pkg = target_root / "omnimarket" / "nodes" / "node_greeter_compute"
+    assert (pkg / "handlers" / "handler_greeter_compute.py").exists()
+    assert (pkg / "contract.yaml").exists()
+    assert (pkg / "metadata.yaml").exists()
+    assert (pkg / ".rsd_provenance.json").exists()
 
     await factory.close()
     await event_bus.close()

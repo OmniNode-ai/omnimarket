@@ -31,7 +31,7 @@ evidence_requirements:
     description: "Fourteen OCC-only gate inputs whose decisions were recorded at 3fe55c842, before the change, replay to identical decisions through the changed gate."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k replay"
   - kind: "tests"
-    description: "node_dod_verify's file set is unchanged and the repo-first resolution lives in the existing gate service and model modules."
+    description: "The repo-first names are defined only in node_dod_verify's existing gate service and model modules, no other module of the node defines one, and no file of the node is in the canonical-file-shape baseline."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_gate_repo_first_omn_20071.py -q -k no_module"
 emergency_bypass:
   enabled: false
@@ -63,7 +63,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-durable-gate-no-new-module"
-    description: "The change stays in node_dod_verify's existing gate modules; no module is added."
+    description: "The change stays in node_dod_verify's existing gate modules; no module defines a repo-first name outside them and no node file is in the file-shape baseline."
     source: "manual"
     checks:
       - check_type: "test_passes"

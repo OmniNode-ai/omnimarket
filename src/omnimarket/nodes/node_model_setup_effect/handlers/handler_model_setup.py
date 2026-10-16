@@ -33,6 +33,7 @@ from typing import get_args
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError, resolve_setting
 from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
@@ -63,6 +64,13 @@ _KEY_PREFIXES: tuple[tuple[str, str], ...] = (
     ("AIza", "gemini"),
     ("sk-", "openai"),
 )
+
+#: The node whose overlay (``<root>/node_model_setup_effect/overlay.yaml``) declares
+#: the model onboarding registers (OMN-20844). No model id is written in code: the
+#: value is a deployment fact, read from the environment variable, else the overlay.
+DEFAULT_MODEL_NODE = "node_model_setup_effect"
+_DEFAULT_MODEL_ENV: dict[str, str] = {"openrouter": "ONEX_OPENROUTER_DEFAULT_MODEL"}
+_DEFAULT_MODEL_FIELDS = frozenset(f"{p}_default_model" for p in _DEFAULT_MODEL_ENV)
 
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300
@@ -176,6 +184,8 @@ class HandlerModelSetup:
             )
         if request.operation in ("add_models", "reorder", "remove_model"):
             return self._edit_models(request)
+        if request.operation == "default_model":
+            return self._default_model(request)
         if request.operation == "forget":
             if request.provider is not None:
                 self._forget(request.provider)
@@ -188,6 +198,31 @@ class HandlerModelSetup:
         return ModelModelSetupResult(
             operation="test", tests=tuple(self._test(p) for p in providers)
         )
+
+    # -- the model onboarding registers ------------------------------------
+
+    def _default_model(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
+        """The provider's default model from the deployment overlay; stores nothing."""
+        provider = request.provider
+        if provider not in _DEFAULT_MODEL_ENV:
+            raise ModelSetupRefusedError(
+                "only a provider where you choose the model has a default declared "
+                f"({', '.join(sorted(_DEFAULT_MODEL_ENV))}); name one of them"
+            )
+        setting = f"{provider}_default_model"
+        try:
+            model = resolve_setting(
+                DEFAULT_MODEL_NODE,
+                setting,
+                fields=_DEFAULT_MODEL_FIELDS,
+                env_vars=(_DEFAULT_MODEL_ENV[provider],),
+            )
+        except NodeOverlayError as error:
+            raise ModelSetupRefusedError(
+                f"{error}. To choose a model yourself: onex models add {provider} "
+                "--model <model id>"
+            ) from None
+        return ModelModelSetupResult(operation="default_model", models=(model,))
 
     # -- the ordered models of a stored key --------------------------------
 
