@@ -1,0 +1,78 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21153"
+title: "The generator emits one test per generated handler and accepts the handler only through its must-fail control"
+summary: >-
+  The codegen factory accepted a generated handler on validation, type-check and contract
+  lint alone; a behaviorally broken handler passed all three and was written. The spec now
+  carries one test per generated handler (handler_test_source), a new factory EFFECT
+  (node_codegen_handler_test_effect) runs that test against the handler and against a
+  stubbed mutant of it (the handler method body replaced by a raise) and grades the pair
+  with the delegated test loop's computes (digest_pytest_run and grade_control, the same
+  objects delegated_test_loop/must_fail_control.py uses), and the orchestrator writes files
+  only when the control accepts: the test passed the real handler and failed the mutant
+  headline-grade. Otherwise the run ends with the new status rejected_handler_test and
+  nothing is written. The generated package ships the accepting test under
+  node_<x>/tests/test_handler_<x>.py.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-handler-test-acceptance"
+    statement: "A generated handler is accepted only when its generated test passes the handler and fails a stubbed mutant of it."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a pipeline run whose handler is behaviorally broken (passes validation,
+          type-check and lint) ends rejected_handler_test with no file written, and the
+          same run with the real handler ends completed with the package written including
+          the per-handler test -- falsifier: the golden-chain pinned pair drives the real
+          factory with a stub-mutant handler source and the real handler source against the
+          same pinned test, asserting rejection with no files and acceptance with files
+  - id: "req-control-grades-via-delegated-loop"
+    statement: "The acceptance control grades its runs with the delegated test loop's must-fail computes."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: the control's verdict vocabulary is the delegated test loop's: a real
+          handler whose test fails the stub mutant grades accepted_call, a vacuous test
+          that passes the mutant grades control_did_not_fail and rejects, and a broken
+          handler whose test fails on the handler itself rejects -- falsifier: effect unit
+          tests pinning the three outcomes assert grade_status accepted_call /
+          control_did_not_fail / rejection with the real run failed
+evidence_requirements:
+  - kind: "tests"
+    description: "The effect unit tests pinning the three control outcomes, and the golden-chain pinned pair (stub mutant rejected with no files, real handler accepted and written)."
+    command: "uv run pytest tests/nodes/node_codegen_handler_test_effect/test_handler_codegen_handler_test.py tests/nodes/node_hybrid_codegen_orchestrator -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21153-ac1-pinned-pair"
+    description: "AC1: the stub-mutant pinned run (behaviorally broken handler that passes validator, mypy and lint) ends rejected_handler_test with no file under the target root, and the real-handler pinned run ends completed with the package written including tests/test_handler_greeter_compute.py. Both fail at the merge base with ImportError: the models, effect and status do not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_stub_mutant_handler_rejected_by_handler_test tests/nodes/node_hybrid_codegen_orchestrator/test_golden_chain_composition.py::test_real_handler_accepted_and_written -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21153-ac2-control-outcomes"
+    description: "AC2: the effect's pinned sources show real handler accepted (grade accepted_call, mutant failed_call), vacuous test rejected (control_did_not_fail), broken handler rejected (real run failed_call), and a missing test source rejected."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_codegen_handler_test_effect/test_handler_codegen_handler_test.py -q"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21153-regressions"
+    description: "The orchestrator, reducer, file-writer, validator and mypy-effect suites still pass with the new phase wired end to end, including the runtime boot through wire_from_manifest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hybrid_codegen_orchestrator tests/nodes/node_codegen_handler_test_effect/test_handler_codegen_handler_test.py tests/nodes/node_codegen_outcome_reducer tests/nodes/node_codegen_file_writer_effect tests/nodes/node_generated_code_validator tests/nodes/node_mypy_check_effect -q"
+  - id: "dod-omn21153-deploy-handler-acceptance"
+    description: "Deploy probe: read the orchestrator source at the checked-out commit from GitHub and require both contract-lint rejection and handler-test acceptance before writing. The base lacks the handler-test stage and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hybrid_codegen_orchestrator/handlers/handler_hybrid_codegen_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; s = sys.stdin.read(); assert "REJECTED_CONTRACT_LINT" in s; assert "return ModelCodegenHandlerTestCommand(state=outcome.state)" in s; assert "REJECTED_HANDLER_TEST" in s; assert "if not result.accepted:" in s'
