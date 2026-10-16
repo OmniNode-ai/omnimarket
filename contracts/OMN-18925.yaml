@@ -14,6 +14,13 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: blank or whitespace-only provider output with no error_message ends as an unscored non-success outcome and never reaches the quality gate -- falsifier: uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q
+  - id: "req-schema-invalid-terminal-never-passes"
+    statement: |-
+      A terminal that is structurally invalid against its declared response contract is never quality-passing, and the check proving it is a pre-merge gate.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a response that does not satisfy the declared response contract ends as a failed schema-rejected unusable terminal with quality_passed false, and the lint job plus a pre-commit hook run that check and fail if either is removed -- falsifier: uv run pytest tests/unit/delegation/test_schema_invalid_terminal_never_passes_omn18925.py tests/ci/test_schema_invalid_terminal_gate_wiring_omn18925.py -q -p no:randomly --no-cov fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The blank-provider-output regression file passes at the PR head."
@@ -49,4 +56,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_operational_outcome_content_verdict_omn18925.py -q -p no:randomly -k \"remote_completion_without_artifact_is_not_a_quality_score or remote_no_response_preserves_prior_gate_evidence\""
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn18925-schema-invalid-terminal-gate"
+    description: "A structurally invalid response ends failed, schema-rejected and unusable with quality_passed false, and the check is wired as a lint-job step and a pre-commit hook that a wiring test pins."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_schema_invalid_terminal_never_passes_omn18925.py tests/ci/test_schema_invalid_terminal_gate_wiring_omn18925.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"

@@ -632,6 +632,11 @@ jobs:
       # OMN-18932: keep the release bar paired with its pre-commit hook.
       - name: D1 output-only release acceptance (OMN-18932)
         run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+      # OMN-18925 AC-2: a terminal structurally invalid against its declared response contract is never
+      # quality-passing. Paired with the schema-invalid-terminal-never-passes pre-commit hook; the wiring
+      # test also runs in the sharded test job, so removing this step is a red build there.
+      - name: Schema-invalid terminal never quality-passing (OMN-18925)
+        run: uv run --frozen pytest tests/unit/delegation/test_schema_invalid_terminal_never_passes_omn18925.py tests/ci/test_schema_invalid_terminal_gate_wiring_omn18925.py -q -p no:randomly --no-cov
       # OMN-20780: RULING 2026-10-14T18:17:30Z, a delegated answer is gated by an independent judge for the
       # text classes and by its own named tests for the code classes (OMN-20489). Paired with the
       # delegation-answer-gate pre-commit hook; named by repo path so the ruling audit finds the gate.
