@@ -8660,12 +8660,14 @@
       ],
       "indexes": [
         "idx_usage_by_model_day_day_model",
-        "idx_usage_by_model_day_projection_cursor"
+        "idx_usage_by_model_day_projection_cursor",
+        "usage_by_model_day_tier_key"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
         "PRIMARY KEY (tenant_id, usage_day, model_id)",
-        "UNIQUE INDEX idx_usage_by_model_day_projection_cursor"
+        "UNIQUE INDEX idx_usage_by_model_day_projection_cursor",
+        "UNIQUE INDEX usage_by_model_day_tier_key"
       ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
