@@ -20,6 +20,9 @@ from omnibase_infra.event_bus.models import ModelEventHeaders, ModelPublishRecei
 from omnimarket.events.github import ModelPrMergedEvent, pr_merged_event_id
 from omnimarket.nodes.node_event_emit_effect import KafkaEventPublisher
 from omnimarket.nodes.node_git_query_mirror_effect import NodeGitQueryMirrorEffect
+from omnimarket.nodes.node_git_query_mirror_effect.handlers import (
+    handler_git_query_mirror,
+)
 from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror import (
     ModelGitQueryRequest,
     ModelGitQueryResponse,
@@ -35,8 +38,12 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.mark.parametrize("fail_first", [False, True], ids=["publish", "restart"])
+@pytest.mark.parametrize("default_adapter", [False, True], ids=["injected", "default"])
 async def test_git_merge_outbox_to_bus_and_projection_payload(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_first: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fail_first: bool,
+    default_adapter: bool,
 ) -> None:
     monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path / "mirrors"))
     upstream = Upstream(tmp_path)
@@ -64,16 +71,32 @@ async def test_git_merge_outbox_to_bus_and_projection_payload(
             return receipt
 
     bus = ControlledBus()
+    created: list[tuple[str, str]] = []
+
+    def publisher(bootstrap_servers: str, *, source: str) -> KafkaEventPublisher:
+        created.append((bootstrap_servers, source))
+        return KafkaEventPublisher(
+            bootstrap_servers, source=source, bus_factory=lambda: bus
+        )
+
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "mirror-proof.invalid:9092")
+    monkeypatch.setattr(handler_git_query_mirror, "KafkaEventPublisher", publisher)
 
     def node() -> NodeGitQueryMirrorEffect:
         return NodeGitQueryMirrorEffect(
             remote_url_for=lambda _repo: str(upstream.path),
             reference_clone_for=lambda _repo: None,
             gh_runner=gh,
-            publish_adapter=KafkaEventPublisher(
-                "unused:9092",
-                source="node_git_query_mirror_effect",
-                bus_factory=lambda: bus,
+            **(
+                {}
+                if default_adapter
+                else {
+                    "publish_adapter": KafkaEventPublisher(
+                        "unused:9092",
+                        source="node_git_query_mirror_effect",
+                        bus_factory=lambda: bus,
+                    )
+                }
             ),
         )
 
@@ -119,3 +142,9 @@ async def test_git_merge_outbox_to_bus_and_projection_payload(
     await node().handle(request)
     assert len(await bus.get_event_history(topic=topic)) == 1
     assert gh.calls == []
+    assert created == (
+        [("mirror-proof.invalid:9092", "node_git_query_mirror_effect")]
+        * (2 if fail_first else 1)
+        if default_adapter
+        else []
+    )
