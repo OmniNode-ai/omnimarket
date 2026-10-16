@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
+from omnibase_core.nodes.node_orchestrator import NodeOrchestrator
+from pydantic import ValidationError
 
+from omnimarket.delegated_test_loop.loop_ports import DelegatedTestLoopPorts
+from omnimarket.nodes.node_delegated_test_loop_orchestrator import (
+    NodeDelegatedTestLoopOrchestrator,
+)
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.handler_delegated_test_loop_orchestrator import (
     MAX_HOST_BUSY_TRIES,
     HandlerDelegatedTestLoopOrchestrator,
@@ -20,6 +26,7 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.replay impo
 )
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop import (
     MAX_RESULT_BYTES,
+    MAX_TEST_PATH_CHARS,
     EnumLoopStatus,
     ModelControlVerdict,
     ModelDelegatedTestLoopRequest,
@@ -263,6 +270,59 @@ def test_infra_error_is_never_accepted(where: str) -> None:
     assert result.headline is False
 
 
+@pytest.mark.parametrize("where", ["fixed", "prefix", "mutation"])
+@pytest.mark.parametrize("junit_xml", ["", " \n"], ids=["missing", "empty"])
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_missing_junit_is_never_accepted(
+    tmp_path: Path, where: str, junit_xml: str, exit_code: int
+) -> None:
+    """Use the real digest seam for a fake child with no junit artifact."""
+    real_ports = DelegatedTestLoopPorts(
+        onex=tmp_path / "unused-onex",
+        state_root=tmp_path,
+        source_clone=tmp_path,
+        test_path=_request().test_path,
+        run_focused=lambda _request: pytest.fail("no lab child should run"),
+    )
+
+    class MissingJUnitPorts(FakePorts):
+        def run(
+            self,
+            request: ModelDelegatedTestLoopRequest,
+            ref: str,
+            ref_role: Literal["fixed", "prefix", "mutation"],
+            attempt: int,
+            test_source: str,
+        ) -> ModelRunReceipt:
+            receipt = super().run(request, ref, ref_role, attempt, test_source)
+            if ref_role == where:
+                return receipt.model_copy(
+                    update={"junit_xml": junit_xml, "exit_code": exit_code}
+                )
+            return receipt
+
+        def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
+            if receipt.receipt_id.startswith(where + "-"):
+                return real_ports.digest(receipt)
+            return super().digest(receipt)
+
+    ports = MissingJUnitPorts(
+        {
+            "fixed": ["passed"],
+            "prefix": ["failed_collection"],
+            "mutation": ["failed_call"],
+        }
+    )
+    result = _run(
+        ports, mutations=(ModelLoopMutation(path="src/a.py", find="x", replace="y"),)
+    )
+    assert result.status is EnumLoopStatus.INFRA_ERROR
+    assert result.headline is False
+    assert ports.delegate_calls == 1
+    assert ports.run_calls[-1][0] == where
+    assert replay_loop_receipt(ports.written[CORRELATION]) is result.status
+
+
 def test_an_infra_error_receipt_is_never_accepted() -> None:
     result = _run(FakePorts({"fixed": ["passed"]}, receipt_status="infra_error"))
     assert result.status is EnumLoopStatus.INFRA_ERROR
@@ -309,7 +369,64 @@ def test_the_result_carries_no_test_source_and_stays_under_4kb() -> None:
     assert "def test_x" not in json.dumps(result.model_dump(mode="json"))
 
 
-def test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status() -> None:
+@pytest.mark.parametrize(
+    "text", ["x" * 6000, "😀" * 500, "\\" * 2000], ids=["ascii", "unicode", "escaped"]
+)
+def test_oversized_diagnostics_are_compact_and_retained_in_the_receipt(
+    text: str,
+) -> None:
+    class LargeDigestPorts(FakePorts):
+        def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
+            return _digest(
+                "failed_call",
+                "fp" + receipt.receipt_id,
+                message=text[:500],
+                exception_type=text,
+                top_frame=text,
+            )
+
+    ports = LargeDigestPorts({"fixed": ["failed_call"] * 3})
+    result = _run(ports)
+    assert result.status is EnumLoopStatus.FAILED
+    assert result_json_bytes(result) < MAX_RESULT_BYTES
+    assert len(result.model_dump_json().encode("utf-8")) < MAX_RESULT_BYTES
+    assert result.attempts == ports.delegate_calls == 3
+    recorded = ports.written[CORRELATION]["result"]
+    assert recorded["final_digest"]["exception_type"] == text
+    assert recorded["final_digest"]["top_frame"] == text
+    assert recorded["delegate_run_ids"] == list(result.delegate_run_ids)
+    assert recorded["run_receipt_ids"] == list(result.run_receipt_ids)
+    assert replay_loop_receipt(ports.written[CORRELATION]) is result.status
+
+
+def test_the_longest_allowed_test_path_still_compacts_under_budget() -> None:
+    class LargeDigestPorts(FakePorts):
+        def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
+            return _digest(
+                "failed_call",
+                "fp" + receipt.receipt_id,
+                message="m" * 500,
+                exception_type="E" * 4000,
+                top_frame="t" * 4000,
+            )
+
+    ports = LargeDigestPorts({"fixed": ["failed_call"] * 3})
+    path = "tests/" + "x" * (MAX_TEST_PATH_CHARS - len("tests/.py")) + ".py"
+    assert len(path) == MAX_TEST_PATH_CHARS
+    result = _run(ports, test_path=path)
+    assert result.test_path == path
+    assert result_json_bytes(result) < MAX_RESULT_BYTES
+
+
+def test_a_test_path_beyond_the_cap_is_refused_at_the_request() -> None:
+    path = "tests/" + "x" * MAX_TEST_PATH_CHARS + ".py"
+    with pytest.raises(ValidationError):
+        _request(test_path=path)
+
+
+def test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status(
+    tmp_path: Path,
+) -> None:
     ports = FakePorts(
         {
             "fixed": ["failed_call", "passed"],
@@ -325,8 +442,11 @@ def test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status() -> 
     assert receipt["delegate_run_ids"] == ["run-1", "run-2"]
     assert receipt["run_receipt_ids"] == list(result.run_receipt_ids)
     assert len(result.run_receipt_ids) == 4  # fixed x2, prefix, mutation
+    receipt_path = tmp_path / "runs" / CORRELATION / "loop_receipt.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text(json.dumps(receipt))
     assert (
-        replay_loop_receipt(receipt)
+        replay_loop_receipt(json.loads(receipt_path.read_text()))
         is result.status
         is EnumLoopStatus.ACCEPTED_MUTATION
     )
@@ -335,6 +455,15 @@ def test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status() -> 
 def test_an_unbound_handler_refuses_to_run() -> None:
     with pytest.raises(RuntimeError, match="no loop ports"):
         HandlerDelegatedTestLoopOrchestrator().run(_request())
+
+
+def test_the_registered_node_is_a_declarative_orchestrator() -> None:
+    assert issubclass(NodeDelegatedTestLoopOrchestrator, NodeOrchestrator)
+    assert not issubclass(
+        NodeDelegatedTestLoopOrchestrator, HandlerDelegatedTestLoopOrchestrator
+    )
+    assert "handle" not in NodeDelegatedTestLoopOrchestrator.__dict__
+    assert "run" not in NodeDelegatedTestLoopOrchestrator.__dict__
 
 
 def test_the_node_declares_no_plugin_class_and_no_envelope() -> None:

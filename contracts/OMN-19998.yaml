@@ -31,6 +31,11 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "AC5: given repo_status facts, a repository with two open PRs red on the same check and no cause lease is shared_red_unowned with a MISSING repo-status line naming one cause lane, a base_blocked ejection is merge_queue_ejecting, an open unit with the same verdict emits no event, and the verdicts ride the node's result over the in-memory bus -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q fails at the merge base"
+  - id: "req-expired-dep-health-allowlist-row-removed"
+    statement: "The committed dep-health allowlist carries no row past its expires_at: the task-delegated legacy compat row expired 2026-10-15 and is removed, so the allowlist expiry test passes on dev and in every shard that runs it."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: src/dep_health_allowlist.yaml carries no row for onex.evt.omniclaude.task-delegated.v1, test_this_repo_allowlist_has_no_expired_entries passes, and the dependency health sweep reports no finding for that topic -- falsifier: uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries fails at the merge base once the UTC date is past 2026-10-15"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -38,6 +43,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A reviewer red rerun at its head gets a worker or an escalation, never pending."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -q"
+  - kind: "tests"
+    description: "The committed dep-health allowlist has no expired row."
+    command: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -114,3 +122,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def check_repo_status('
+  - id: "dod-omn19998-expired-allowlist-row-removed"
+    description: "The allowlist expiry test passes at the head and fails at the merge base, where the task-delegated row is past its expires_at of 2026-10-15."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k 'test_this_repo_allowlist_has_no_expired_entries or test_this_repo_allowlist_has_no_task_delegated_row'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn19998-expired-allowlist-deploy-probe"
+    description: "Hosted-runner probe reads the dep-health allowlist at this commit and requires the diagnostic row to remain and the task-delegated row to be gone; the base still carries the expired row and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/dep_health_allowlist.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/onex.evt.diagnostic.daemon-health.v1/{a=1} /onex.evt.omniclaude.task-delegated.v1/{b=1} END{exit !(a&&!b)}'
