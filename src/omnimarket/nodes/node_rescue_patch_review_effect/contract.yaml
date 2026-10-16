@@ -33,7 +33,7 @@ descriptor:
     - git reads of the registry clones with a scratch index, nothing checked out or fetched
     - one VERDICT.json per unreviewed saved patch directory, never overwriting an existing one
     - the heartbeat last-run.json in the state directory
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
 
 terminal_event: onex.evt.omnimarket.rescue-patch-scan-completed.v1
 

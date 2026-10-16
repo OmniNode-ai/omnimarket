@@ -395,3 +395,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rescue_patch_review_effect/handlers/handler_rescue_patch_scan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchScan'
+  - id: "dod-omn19998-rescue-patch-effects-runtime"
+    description: "The command-consuming rescue-patch scan declares the effects runtime profile and retains its verdict and heartbeat behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py tests/test_golden_chain_rescue_patch_review_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC14"]
+  - id: "dod-omn19998-rescue-patch-effects-deploy-probe"
+    description: "Hosted-runner source probe requires the rescue-patch scan contract to declare effects runtime ownership; the dispatch head declares main and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_rescue_patch_review_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]'
