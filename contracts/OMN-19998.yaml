@@ -319,7 +319,7 @@ dod_evidence:
         check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py -q -k test_effectful_command_consumers_declare_effects_runtime_profile"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC14"]
-  - id: "dod-omn19998-prrp-snapshot-effects-runtime-deploy-probe"
+  - id: "dod-omn19998-prrp-effects-runtime-deploy-probe"
     description: "Hosted-runner probe reads the publisher contract at this commit and refuses any runtime owner other than effects."
     source: "manual"
     checks:
