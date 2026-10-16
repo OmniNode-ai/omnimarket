@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Falsifiers for the release-staleness gate moved from OCC (OMN-18010, S8)."""
+"""Falsifiers for the release-staleness check moved from OCC (OMN-18010, S8).
+
+OMN-19998: the check runs and reports on every PR, and CI Summary no longer
+gates on it (operator ruling 2026-10-16T07:34:18Z: no release wait).
+"""
 
 from __future__ import annotations
 
@@ -157,7 +161,7 @@ def test_absent_or_conditional_job_is_refused() -> None:
     assert "continue-on-error" not in job
 
 
-def test_missing_or_skippable_ci_summary_registration_is_refused() -> None:
+def _load_gate() -> Any:
     spec = importlib.util.spec_from_file_location(
         "release_staleness_summary", CI_SUMMARY_GATE
     )
@@ -167,21 +171,89 @@ def test_missing_or_skippable_ci_summary_registration_is_refused() -> None:
     sys.modules[spec.name] = gate
     try:
         spec.loader.exec_module(gate)
-        _assert_strict_registration(gate.STRICT_GATE_JOBS, gate.SKIPPABLE_GATE_JOBS)
     finally:
         sys.modules.pop(spec.name, None)
+    return gate
 
 
-def _assert_strict_registration(
-    strict_jobs: tuple[str, ...], skippable_jobs: tuple[str, ...]
-) -> None:
-    assert JOB_DISPLAY_NAME in strict_jobs
-    assert CANONICAL_FILE_SHAPE_DISPLAY_NAME in strict_jobs
-    assert strict_jobs.index(CANONICAL_FILE_SHAPE_DISPLAY_NAME) < strict_jobs.index(
-        JOB_DISPLAY_NAME
+def test_release_staleness_is_advisory_under_ci_summary() -> None:
+    gate = _load_gate()
+    _assert_advisory_registration(
+        gate.STRICT_GATE_JOBS, gate.SKIPPABLE_GATE_JOBS, gate.SOFT_ALLOWLIST
     )
-    assert strict_jobs.count(JOB_DISPLAY_NAME) == 1
+
+
+def _assert_advisory_registration(
+    strict_jobs: tuple[str, ...],
+    skippable_jobs: tuple[str, ...],
+    allowlist: frozenset[str],
+) -> None:
+    # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): no release wait while
+    # there are no external users, so the measurement runs and reports but
+    # never gates CI Summary.
+    assert JOB_DISPLAY_NAME in allowlist
+    assert JOB_DISPLAY_NAME not in strict_jobs
     assert JOB_DISPLAY_NAME not in skippable_jobs
+    assert CANONICAL_FILE_SHAPE_DISPLAY_NAME in strict_jobs
+
+
+def _summary_jobs(gate: Any, staleness: str | None) -> list[dict[str, object]]:
+    jobs: list[dict[str, object]] = [
+        {"name": name, "status": "completed", "conclusion": "success"}
+        for name in (*gate.STRICT_GATE_JOBS, *gate.SKIPPABLE_GATE_JOBS)
+        if name != JOB_DISPLAY_NAME
+    ]
+    jobs.append(
+        {"name": "Tests (Split 1/1)", "status": "completed", "conclusion": "success"}
+    )
+    jobs.append({"name": gate.SELF_JOB_NAME, "status": "in_progress"})
+    if staleness is not None:
+        jobs.append(
+            {"name": JOB_DISPLAY_NAME, "status": "completed", "conclusion": staleness}
+        )
+    return jobs
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", None])
+def test_stale_or_absent_release_staleness_cannot_fail_ci_summary(
+    conclusion: str | None,
+) -> None:
+    gate = _load_gate()
+    code, report = gate.evaluate(_summary_jobs(gate, conclusion), run_attempt=1)
+    assert code == gate.EXIT_SUCCESS, report
+
+
+def test_running_release_staleness_cannot_hold_ci_summary() -> None:
+    gate = _load_gate()
+    jobs = _summary_jobs(gate, None)
+    jobs.append({"name": JOB_DISPLAY_NAME, "status": "in_progress"})
+    code, report = gate.evaluate(jobs, run_attempt=1)
+    assert code == gate.EXIT_SUCCESS, report
+
+
+def test_other_failed_job_still_fails_ci_summary_positive_control() -> None:
+    gate = _load_gate()
+    jobs = _summary_jobs(gate, "failure")
+    jobs.append(
+        {
+            "name": "Some Unregistered Job",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+    )
+    code, report = gate.evaluate(jobs, run_attempt=1)
+    assert code == gate.EXIT_FAILURE, report
+
+
+def test_release_staleness_failure_fails_a_strict_registration_control() -> None:
+    gate = _load_gate()
+    code, report = gate.evaluate(
+        _summary_jobs(gate, "failure"),
+        run_attempt=1,
+        strict_gates=(*gate.STRICT_GATE_JOBS, JOB_DISPLAY_NAME),
+        allowlist=frozenset(),
+    )
+    assert code == gate.EXIT_FAILURE, report
 
 
 def test_added_gates_do_not_displace_release_staleness_checks(
@@ -210,7 +282,7 @@ def test_added_gates_do_not_displace_release_staleness_checks(
         encoding="utf-8",
     )
     monkeypatch.setattr(sys.modules[__name__], "CI_SUMMARY_GATE", summary_path)
-    test_missing_or_skippable_ci_summary_registration_is_refused()
+    test_release_staleness_is_advisory_under_ci_summary()
 
 
 @pytest.mark.parametrize("field", ["if", "needs", "continue-on-error"])
@@ -242,37 +314,36 @@ def test_release_gate_refuses_conditional_or_tolerated_steps(
 
 
 @pytest.mark.parametrize(
-    ("strict_jobs", "skippable_jobs"),
+    ("strict_jobs", "skippable_jobs", "allowlist"),
     [
-        ((CANONICAL_FILE_SHAPE_DISPLAY_NAME, "Another gate"), ()),
-        (
-            (
-                CANONICAL_FILE_SHAPE_DISPLAY_NAME,
-                JOB_DISPLAY_NAME,
-                JOB_DISPLAY_NAME,
-            ),
-            (),
-        ),
+        ((CANONICAL_FILE_SHAPE_DISPLAY_NAME,), (), frozenset()),
         (
             (CANONICAL_FILE_SHAPE_DISPLAY_NAME, JOB_DISPLAY_NAME),
-            (JOB_DISPLAY_NAME,),
+            (),
+            frozenset({JOB_DISPLAY_NAME}),
         ),
-        ((JOB_DISPLAY_NAME, CANONICAL_FILE_SHAPE_DISPLAY_NAME), ()),
+        (
+            (CANONICAL_FILE_SHAPE_DISPLAY_NAME,),
+            (JOB_DISPLAY_NAME,),
+            frozenset({JOB_DISPLAY_NAME}),
+        ),
+        ((), (), frozenset({JOB_DISPLAY_NAME})),
     ],
 )
-def test_registration_refuses_missing_duplicate_skippable_or_reordered_gate(
-    strict_jobs: tuple[str, ...], skippable_jobs: tuple[str, ...]
+def test_registration_refuses_gating_or_missing_release_staleness(
+    strict_jobs: tuple[str, ...],
+    skippable_jobs: tuple[str, ...],
+    allowlist: frozenset[str],
 ) -> None:
     with pytest.raises(AssertionError):
-        _assert_strict_registration(strict_jobs, skippable_jobs)
+        _assert_advisory_registration(strict_jobs, skippable_jobs, allowlist)
 
 
-def test_registration_accepts_unrelated_strict_gates_around_it() -> None:
-    _assert_strict_registration(
-        ("Another gate", CANONICAL_FILE_SHAPE_DISPLAY_NAME, JOB_DISPLAY_NAME), ()
-    )
-    _assert_strict_registration(
-        (CANONICAL_FILE_SHAPE_DISPLAY_NAME, JOB_DISPLAY_NAME, "Another gate"), ()
+def test_registration_accepts_unrelated_gates_around_it() -> None:
+    _assert_advisory_registration(
+        ("Another gate", CANONICAL_FILE_SHAPE_DISPLAY_NAME),
+        ("Skippable gate",),
+        frozenset({JOB_DISPLAY_NAME, "Another advisory"}),
     )
 
 
