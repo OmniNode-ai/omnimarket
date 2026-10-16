@@ -43,6 +43,13 @@ This is the mechanical form of the consumer-first rule -- a consumer able to
 accept the new shape must be RELEASED before the producer that emits it -- which
 until now existed only as intent.
 
+PINNED CONSUMER (OMN-19998)
+
+Omniclaude pins omnimarket by commit and the lab venvs track dev, so CI passes
+the commit omniclaude pins with ``--consumer-ref``. That commit is graded
+instead of the last tag. A pin older than the last tag is graded as-is because
+it is what runs; no release is needed to advance the consumer on dev.
+
 WHAT IT DELIBERATELY DOES NOT DO
 
 **It does not grade values, only keys.** Every key in the replay payload carries
@@ -497,6 +504,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Commit whose reachable release tags count as published.",
     )
     parser.add_argument(
+        "--consumer-ref",
+        default=None,
+        help="Consumer commit-ish to grade instead of the last release tag.",
+    )
+    parser.add_argument(
+        "--consumer-label",
+        default="pinned consumer",
+        help="Display label for --consumer-ref (messages only).",
+    )
+    parser.add_argument(
         "--wire-root",
         action="append",
         default=None,
@@ -519,10 +536,27 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
-        released_tag, released_version = resolve_released_tag(root, args.tag_anchor)
+        if args.consumer_ref is not None:
+            try:
+                released_ref = _git(
+                    ["rev-parse", "--verify", f"{args.consumer_ref}^{{commit}}"],
+                    cwd=root,
+                )
+            except ValueError as exc:
+                raise GateError(
+                    OUTCOME_RELEASE_UNRESOLVABLE,
+                    f"git could not resolve consumer ref {args.consumer_ref!r} "
+                    f"({exc}); the pinned consumer model cannot be resolved, "
+                    "so wire compatibility is UNPROVEN rather than proven",
+                ) from exc
+            released_tag = f"{args.consumer_label} {released_ref[:12]}"
+            released_version = None
+        else:
+            released_tag, released_version = resolve_released_tag(root, args.tag_anchor)
+            released_ref = released_tag
         with tempfile.TemporaryDirectory(prefix="wire-compat-") as raw:
             workdir = Path(raw)
-            released_src = materialise_release(root, released_tag, workdir / "release")
+            released_src = materialise_release(root, released_ref, workdir / "release")
             findings, notes = evaluate(
                 root=root,
                 tree_src=root / SRC_DIR,
@@ -540,28 +574,49 @@ def main(argv: list[str] | None = None) -> int:
         print(f"note: {note}")
 
     if findings:
-        print(
-            f"{OUTCOME_REFUSED}: the last released consumer ({released_tag}, "
-            f"version {released_version}) cannot decode this tree's wire "
-            f"payloads.",
-            file=sys.stderr,
-        )
+        if args.consumer_ref is not None:
+            print(
+                f"{OUTCOME_REFUSED}: {released_tag} cannot decode this tree's "
+                "wire payloads.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"{OUTCOME_REFUSED}: the last released consumer ({released_tag}, "
+                f"version {released_version}) cannot decode this tree's wire "
+                f"payloads.",
+                file=sys.stderr,
+            )
         for finding in findings:
             print(finding.render(released_tag), file=sys.stderr)
-        print(
-            "\nConsumer-first is the remedy, not a waiver: release a consumer "
-            "that accepts the new shape BEFORE merging the producer that emits "
-            "it. Until that release exists, every deployed consumer running "
-            f"{released_tag} dead-letters this payload at its decode boundary, "
-            "which is OMN-18852 verbatim.",
-            file=sys.stderr,
-        )
+        if args.consumer_ref is not None:
+            print(
+                "\nConsumer-first is the remedy, not a waiver: land a consumer "
+                "that accepts the new shape on dev first, then the consumer's "
+                "pin advances to it (no release is needed).",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "\nConsumer-first is the remedy, not a waiver: release a consumer "
+                "that accepts the new shape BEFORE merging the producer that emits "
+                "it. Until that release exists, every deployed consumer running "
+                f"{released_tag} dead-letters this payload at its decode boundary, "
+                "which is OMN-18852 verbatim.",
+                file=sys.stderr,
+            )
         return 1
 
-    print(
-        f"{OUTCOME_PASS}: released consumer {released_tag} decodes every wire "
-        f"payload emitted by {graded}."
-    )
+    if args.consumer_ref is not None:
+        print(
+            f"{OUTCOME_PASS}: {released_tag} decodes every wire "
+            f"payload emitted by {graded}."
+        )
+    else:
+        print(
+            f"{OUTCOME_PASS}: released consumer {released_tag} decodes every wire "
+            f"payload emitted by {graded}."
+        )
     return 0
 
 

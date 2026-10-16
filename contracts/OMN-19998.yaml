@@ -46,6 +46,11 @@ requirements:
     acceptance:
       - id: "AC8"
         statement: "AC8: node_capture_item_identity_effect resolves a content record id, claims one event id shared by the two hooks of a call in either order, issues 1,000 gap-free sequence numbers to eight concurrent writers, declares its topics in its contract, loads by file path with standard-library imports only, and the owner redaction contract keeps content_record_id, producer_seq, stream and the barrier fields verbatim -- falsifier: uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q fails at the merge base"
+  - id: "req-release-gates-accept-git-pin"
+    statement: "omnimarket's release-gated checks grade the commit a consumer pins instead of waiting for a release: the Wire Compatibility Gate replays against the omnimarket commit omniclaude dev's uv.lock pins, the sibling pins steps accept a uv.lock git source locked to one commit and check omnibase_infra out at it, and a dev merge dispatches omnimarket-dev-moved to omniclaude."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: check_wire_compatibility.py --consumer-ref grades the pinned commit and fails closed on an unresolvable ref, the gate step passes omniclaude's pin, every pins step accepts a commit-locked git source and refuses a moving one, and runtime-rebuild-trigger.yml dispatches omnimarket-dev-moved on a dev merge -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_sibling_pins_omn20001.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -177,3 +182,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_capture_item_identity_effect/handlers/handler_item_identity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^def claim_event_id('
+  - id: "dod-omn19998-release-gates-accept-git-pin"
+    description: "The pinned-consumer wire replay, the commit-pin acceptance of every sibling pins step and the omniclaude dispatch pass at the head; at the merge base the new tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_sibling_pins_omn20001.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn19998-release-gates-accept-git-pin-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this commit and requires the wire gate to pass omniclaude's pin as --consumer-ref; the base has no such line and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c -- '--consumer-ref "$pin"'
