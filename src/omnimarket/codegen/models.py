@@ -38,6 +38,7 @@ class EnumCodegenStatus(StrEnum):
     REJECTED_VALIDATION = "rejected_validation"
     REJECTED_TYPECHECK = "rejected_typecheck"
     REJECTED_CONTRACT_LINT = "rejected_contract_lint"
+    REJECTED_HANDLER_TEST = "rejected_handler_test"
 
 
 class ModelCodegenSpec(BaseModel):
@@ -66,6 +67,18 @@ class ModelCodegenSpec(BaseModel):
         description=(
             "Run identity copied from the dispatch envelope at the def-B boundary "
             "so the envelope-free orchestrator can seed reducer state."
+        ),
+    )
+    handler_test_source: str = Field(
+        default="",
+        description=(
+            "One test per generated handler (OMN-21153): a pytest module "
+            "exercising the generated class. The factory's acceptance control "
+            "runs it against the generated handler and against a stubbed "
+            "mutant of it, and accepts the handler only when the test passes "
+            "the real handler and fails the mutant. It imports the generated "
+            "handler from the top-level package the control lays out "
+            "(node_<stem>.handlers.handler_<stem>)."
         ),
     )
 
@@ -258,19 +271,41 @@ class ModelCodegenTypecheckOutcome(BaseModel):
 
 
 class ModelCodegenSerializeOutcome(BaseModel):
-    """Contract-serialize outcome — state.contract_yaml populated (via reducer).
-
-    OMN-21151: carries the serialize node's lint verdict. A failed lint must
-    end the run (rejected_contract_lint) before any file is written, so the
-    outcome states the verdict explicitly instead of letting the orchestrator
-    guess from the presence of contract_yaml.
-    """
+    """Contract-serialize outcome — state.contract_yaml populated (via reducer)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     state: ModelCodegenPipelineState
     lint_passed: bool
     lint_messages: tuple[str, ...] = ()
+
+
+class ModelCodegenHandlerTestCommand(BaseModel):
+    """Command to the factory's own handler-test EFFECT (carries state)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ModelCodegenPipelineState
+
+
+class ModelCodegenHandlerTestResult(BaseModel):
+    """handler-test EFFECT output: the must-fail acceptance verdict (OMN-21153).
+
+    ``real_outcome`` / ``mutant_outcome`` are the pytest failure digest's
+    outcome strings for the generated test run against the generated handler
+    and against its stubbed mutant; ``grade_status`` is the delegated-test-loop
+    control grade. ``accepted`` is true only when the test passed the real
+    handler and the control graded the mutant failure headline-grade.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ModelCodegenPipelineState
+    real_outcome: str
+    mutant_outcome: str
+    grade_status: str
+    accepted: bool
+    reason: str = ""
 
 
 class ModelFileWriteCommand(BaseModel):
@@ -358,6 +393,8 @@ class ModelMypyCheckResult(BaseModel):
 __all__ = [
     "EnumCodegenStatus",
     "ModelCodegenCompleted",
+    "ModelCodegenHandlerTestCommand",
+    "ModelCodegenHandlerTestResult",
     "ModelCodegenPipelineState",
     "ModelCodegenSerializeOutcome",
     "ModelCodegenSpec",

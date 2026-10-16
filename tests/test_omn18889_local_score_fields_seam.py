@@ -294,9 +294,9 @@ class TestTheTerminalProjectionModelDeclaresBothFields:
     def test_an_unscored_payload_is_none_not_the_quality_score_default(
         self,
     ) -> None:
-        """``quality_score`` defaults to 0.0; the projection must not read it."""
+        """An unscored payload leaves both ``quality_score`` and ``actual_score`` None."""
         terminal = ModelDelegateSkillTerminalProjection.from_payload(self._BASE)
-        assert terminal.quality_score == 0.0
+        assert terminal.quality_score is None
         assert terminal.actual_score is None
         assert terminal.required_bar is None
 

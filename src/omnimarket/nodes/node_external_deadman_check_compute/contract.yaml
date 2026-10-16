@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The external dead-man's check (OMN-20808, plan 4.8). A scheduled workflow on a GitHub-hosted
+# runner hands this node the two watchdog legs' mirror variables, the open issues and the clock;
+# the node says whether to raise, which issue to refresh and whether to post to Slack. Pure: the
+# caller reads the variables and the open issues and hands them in; the workflow opens or edits
+# the issue and posts through its own Slack secret.
+name: external_deadman_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Reads the primary and dead-man legs' mirror variables and raises when both are stale or
+  unreadable, when a fresh mirror reports an episode undelivered or unrecorded past its
+  delivery-due time plus the escalation bound, or when the day's canary episode is past its
+  receipt deadline and lacks its delivered or recorded event. It keeps one issue: the first alarm
+  opens it, later runs refresh it, and a healthy run leaves it alone.
+
+input_model: omnimarket.nodes.node_external_deadman_check_compute.models.model_external_deadman_check_request.ModelExternalDeadmanCheckRequest
+output_model: omnimarket.nodes.node_external_deadman_check_compute.models.model_external_deadman_check_result.ModelExternalDeadmanCheckResult
+handler:
+  module: omnimarket.nodes.node_external_deadman_check_compute.handlers.handler_external_deadman_check
+  class: HandlerExternalDeadmanCheck
+  input_model: omnimarket.nodes.node_external_deadman_check_compute.models.model_external_deadman_check_request.ModelExternalDeadmanCheckRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_mirrors
+      handler:
+        name: HandlerExternalDeadmanCheck
+        module: omnimarket.nodes.node_external_deadman_check_compute.handlers.handler_external_deadman_check
+      input_model: omnimarket.nodes.node_external_deadman_check_compute.models.model_external_deadman_check_request.ModelExternalDeadmanCheckRequest
+      output_model: omnimarket.nodes.node_external_deadman_check_compute.models.model_external_deadman_check_result.ModelExternalDeadmanCheckResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.external-deadman-check-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.external-deadman-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.external-deadman-check-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.external-deadman-check-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.external-deadman-check-completed.v1
+
+metadata:
+  ticket: OMN-20808
+  transport_type: kafka

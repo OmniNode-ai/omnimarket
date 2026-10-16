@@ -40,10 +40,14 @@ Flow (event-driven, no in-process loop):
      invalid -> terminal ``ModelCodegenCompleted`` (REJECTED_VALIDATION).
   4. ``ModelCodegenTypecheckOutcome``: clean -> ``ModelContractAssemblyRequestSeam``;
      errors -> terminal ``ModelCodegenCompleted`` (REJECTED_TYPECHECK).
-  5. ``ModelCodegenSerializeOutcome``: lint passed -> emit
-     ``ModelFileWriteCommand``; lint failed -> terminal
-     ``ModelCodegenCompleted`` (REJECTED_CONTRACT_LINT) (OMN-21151).
-  6. ``ModelFileWriteResult`` -> terminal ``ModelCodegenCompleted`` (COMPLETED).
+  5. ``ModelCodegenSerializeOutcome``: lint failed -> terminal
+     ``ModelCodegenCompleted`` (REJECTED_CONTRACT_LINT) (OMN-21151);
+     lint passed -> emit ``ModelCodegenHandlerTestCommand``.
+  6. ``ModelCodegenHandlerTestResult``: accepted (the generated test passed the
+     real handler and failed its stubbed mutant, OMN-21153) -> emit
+     ``ModelFileWriteCommand``; not accepted -> terminal
+     ``ModelCodegenCompleted`` (REJECTED_HANDLER_TEST).
+  7. ``ModelFileWriteResult`` -> terminal ``ModelCodegenCompleted`` (COMPLETED).
 """
 
 from __future__ import annotations
@@ -58,6 +62,8 @@ import yaml
 from omnimarket.codegen.models import (
     EnumCodegenStatus,
     ModelCodegenCompleted,
+    ModelCodegenHandlerTestCommand,
+    ModelCodegenHandlerTestResult,
     ModelCodegenPipelineState,
     ModelCodegenSerializeOutcome,
     ModelCodegenSpec,
@@ -107,6 +113,7 @@ CodegenOrchestratorInput = (
     | ModelCodegenValidationOutcome
     | ModelCodegenTypecheckOutcome
     | ModelCodegenSerializeOutcome
+    | ModelCodegenHandlerTestResult
     | ModelFileWriteResult
 )
 
@@ -118,6 +125,7 @@ CodegenOrchestratorOutput = (
     | ModelValidatorRequestSeam
     | ModelMypyRequestSeam
     | ModelContractAssemblyRequestSeam
+    | ModelCodegenHandlerTestCommand
     | ModelFileWriteCommand
     | ModelCodegenCompleted
 )
@@ -261,6 +269,11 @@ def _generated_files(
         "metadata.yaml": metadata_yaml,
         "handlers/__init__.py": handlers_init,
         f"handlers/handler_{stem}.py": state.source_text,
+        # OMN-21153: one test per generated handler ships in the package; the
+        # acceptance control ran it against the handler and its stubbed mutant
+        # before anything was written.
+        "tests/__init__.py": "",
+        f"tests/test_handler_{stem}.py": spec.handler_test_source,
     }
     # The package-root __init__ files make the emitted tree a drop-in for a
     # checkout's ``src/`` tree (both levels are regular packages there), so a
@@ -300,6 +313,8 @@ class HandlerHybridCodegenOrchestrator:
                 return self._on_typecheck_outcome(request)
             case ModelCodegenSerializeOutcome():
                 return self._on_serialize_outcome(request)
+            case ModelCodegenHandlerTestResult():
+                return self._on_handler_test_result(request)
             case ModelFileWriteResult():
                 return self._on_files_written(request)
             case _:
@@ -359,17 +374,30 @@ class HandlerHybridCodegenOrchestrator:
         self, outcome: ModelCodegenSerializeOutcome
     ) -> CodegenOrchestratorOutput:
         if not outcome.lint_passed:
-            # OMN-21151: a contract that failed its lint is never written —
-            # the run ends rejected_contract_lint carrying the gate's messages.
+            # OMN-21151: reject the contract before testing or writing the handler.
             return self._completed(
                 outcome.state,
                 EnumCodegenStatus.REJECTED_CONTRACT_LINT,
                 issues=outcome.lint_messages,
             )
+        return ModelCodegenHandlerTestCommand(state=outcome.state)
+
+    def _on_handler_test_result(
+        self, result: ModelCodegenHandlerTestResult
+    ) -> CodegenOrchestratorOutput:
+        if not result.accepted:
+            # OMN-21153: a handler whose test did not pass it, or whose test
+            # also passes a stubbed mutant, is not accepted — nothing is
+            # written.
+            return self._completed(
+                result.state,
+                EnumCodegenStatus.REJECTED_HANDLER_TEST,
+                issues=(result.reason,),
+            )
         return ModelFileWriteCommand(
-            state=outcome.state,
-            target_root=outcome.state.spec.target_root,
-            files=_generated_files(outcome.state),
+            state=result.state,
+            target_root=result.state.spec.target_root,
+            files=_generated_files(result.state),
         )
 
     def _on_files_written(

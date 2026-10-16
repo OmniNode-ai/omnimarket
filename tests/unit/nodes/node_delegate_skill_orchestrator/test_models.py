@@ -439,7 +439,8 @@ def test_response_defaults() -> None:
     assert resp.model_name == ""
     assert resp.prompt_text == ""
     assert resp.quality_gate_passed is False
-    assert resp.quality_score == 0.0
+    # OMN-19013: an unscored terminal carries None, not a graded zero.
+    assert resp.quality_score is None
     assert resp.metrics.cost_usd == 0.0
     assert resp.metrics.total_tokens == 0
     assert resp.metrics.tokens_to_compliance == 0

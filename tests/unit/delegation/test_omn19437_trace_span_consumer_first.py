@@ -7,8 +7,10 @@ the producers (the CLI, then the handler) stamp them. The Wire Compatibility
 Gate (OMN-18868) wants a consumer able to decode a new key to be RELEASED before
 any producer emits it, so this release decodes both keys on the delegate-skill
 request and on the terminal and drops them, as the other forthcoming keys are.
-The field declarations and the handler's copy are the second half and are not
-in this change. Every other unknown key is still refused with ``extra_forbidden``.
+The field declarations and the handler's copy are the second half
+(tests/test_omn19437_terminal_trace_span.py); this file keeps proving that a
+payload carrying the ids decodes and that every other unknown key is still
+refused with ``extra_forbidden``.
 """
 
 from __future__ import annotations
@@ -55,7 +57,7 @@ def test_the_request_decodes_a_trace_or_span_id(key: str) -> None:
     payload = {**_request_payload(), key: str(uuid4())}
     request = ModelDelegateSkillRequest.model_validate(payload)
     assert request.prompt == "summarise the log"
-    assert key not in request.model_dump()
+    assert getattr(request, key) is not None
 
 
 def test_the_request_decodes_both_ids_together() -> None:
@@ -66,7 +68,8 @@ def test_the_request_decodes_both_ids_together() -> None:
         "span_id": str(uuid4()),
     }
     request = ModelDelegateSkillRequest.model_validate(payload)
-    assert not set(_TRACE_KEYS) & set(request.model_dump())
+    assert request.trace_id is not None
+    assert request.span_id is not None
 
 
 @pytest.mark.parametrize("key", _TRACE_KEYS)
@@ -81,7 +84,7 @@ def test_the_terminal_decodes_a_trace_or_span_id(
     if model is ModelDelegateSkillFailed:
         payload["status"] = "failed"
     terminal = model.model_validate(payload)
-    assert key not in terminal.model_dump()
+    assert getattr(terminal, key) is not None
 
 
 def test_the_completed_terminal_decodes_both_ids() -> None:
@@ -94,7 +97,8 @@ def test_the_completed_terminal_decodes_both_ids() -> None:
         "span_id": str(uuid4()),
     }
     terminal = ModelDelegateSkillCompleted.model_validate(payload)
-    assert not set(_TRACE_KEYS) & set(terminal.model_dump())
+    assert terminal.trace_id is not None
+    assert terminal.span_id is not None
 
 
 def test_legacy_payloads_without_the_ids_still_decode() -> None:

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_capture_item_identity_effect
+version: 1.0.0
+description: Shared item identity, producer sequence and barrier fields for the
+  two Claude Code capture streams.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Capture Item Identity Effect
+entry_points:
+  onex.nodes:
+    node_capture_item_identity_effect: omnimarket.nodes.node_capture_item_identity_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- effect
+- hooks
+- capture

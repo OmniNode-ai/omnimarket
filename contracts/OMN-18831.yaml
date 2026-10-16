@@ -12,10 +12,15 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: identical failed blocking rule names across the attempted ladder terminate the workflow -- falsifier: uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py -q"
+  - id: "req-escalation-skips-attempted-backend"
+    statement: "A quality escalation never climbs to a rung that declares the backend whose answer the gate just rejected."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: after the gate rejects an answer on one rung, the next-tier probe and the routing intent exclude that rung's backend, so a later tier label naming the same backend is not climbed to -- falsifier: uv run pytest tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py -q fails at the merge base, where the probe and the intent carry only transport-failed backends"
 evidence_requirements:
   - kind: "tests"
-    description: "Run the repeated deterministic floor tests."
-    command: "uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py -q"
+    description: "Run the repeated deterministic floor tests and the attempted-backend escalation tests."
+    command: "uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,3 +34,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn18831-ac2-attempted-backend"
+    description: "AC2 hosted probe. A quality escalation excludes the rejected backend from the next-tier probe and the routing intent, and the exclusion survives a state roundtrip."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py" | grep -F "quality_rejected_backend_refs"'
+    binds_ac: ["AC2"]

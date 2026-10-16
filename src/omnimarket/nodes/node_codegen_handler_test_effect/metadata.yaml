@@ -1,0 +1,20 @@
+name: node_codegen_handler_test_effect
+version: "1.0.0"
+description: "Codegen factory handler-test step — an EFFECT running the must-fail acceptance control for each generated handler"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_codegen_handler_test_effect: "omnimarket.nodes.node_codegen_handler_test_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  side_effect_class: subprocess
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "codegen", "factory", "test"]
+pack: "core"
+display_name: "Codegen Handler Test Effect"
+node_role: "effect"
