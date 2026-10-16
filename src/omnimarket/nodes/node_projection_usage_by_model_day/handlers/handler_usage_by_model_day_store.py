@@ -16,6 +16,10 @@ AGGREGATE_TABLE = "usage_by_model_day"
 AGGREGATE_KEY = "tenant_id,usage_day,model_id,cost_tier_name"
 
 
+class UsageCallReadBackError(RuntimeError):
+    """The store did not read back a call it was just given, so no share can be counted from it."""
+
+
 def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
     """Persist a new call and recount its key; a replay performs no writes.
 
@@ -48,6 +52,12 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
         },
     )
     calls = db.query(CALLS_TABLE, key)
+    if not calls:
+        # The call was just written under `key`, so an empty read means the store lost the write. Refuse rather than
+        # count a share from a day with no calls in it (a division by zero) or store an aggregate it never kept.
+        raise UsageCallReadBackError(
+            f"call {delta.call_id} was written under {key} but not read back"
+        )
     # Only a measured cost is a measurement. A call stored before usage_source
     # existed carries none, so it is counted as unmeasured, never as measured.
     measured = [
@@ -97,4 +107,10 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
     return True
 
 
-__all__ = ["AGGREGATE_KEY", "AGGREGATE_TABLE", "CALLS_TABLE", "apply_usage_call"]
+__all__ = [
+    "AGGREGATE_KEY",
+    "AGGREGATE_TABLE",
+    "CALLS_TABLE",
+    "UsageCallReadBackError",
+    "apply_usage_call",
+]

@@ -17,6 +17,8 @@ U8  a local store written before this change loses its rows or its cursor order 
     kept rows' shares are not set by the day's next call.
 U9  the deployed writer locks one model's key instead of the tenant's day, recounts without the tier, or
     republishes only the recounted row.
+U10 a store that does not read back the call it was just given divides the day's share by zero, or
+    writes an aggregate row from a count it never stored.
 """
 
 from __future__ import annotations
@@ -47,6 +49,8 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers import (
     HandlerProjectionUsageByModelDay,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
+    CALLS_TABLE,
+    UsageCallReadBackError,
     apply_usage_call,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
@@ -326,3 +330,20 @@ async def test_u9_the_writer_locks_the_tenants_day_recounts_the_tier_and_republi
         for c in writer.publish_snapshot_delta.await_args_list
     ]
     assert published == [("qwen", "local"), ("gemini", "cheap_cloud")]
+
+
+class _LosesCallWrites(SqliteDatabaseAdapter):
+    """A store that acknowledges a call row and never keeps it: the read-after-write miss of U10."""
+
+    def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
+        if table == CALLS_TABLE:
+            return True
+        return super().upsert(table, conflict_key, row)
+
+
+def test_u10_a_lost_call_write_is_refused_not_divided_by_zero(tmp_path: Path) -> None:
+    db = _LosesCallWrites(tmp_path / "delegation.sqlite")
+    with pytest.raises(UsageCallReadBackError):
+        _apply(db, _call("c1", "qwen", "local"))
+    # No aggregate row is written from a count the store never kept.
+    assert _rows(db) == {}

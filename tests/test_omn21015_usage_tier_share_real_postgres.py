@@ -25,6 +25,8 @@ P5  a row whose share moved keeps its cursor, so a reader walking by cursor neve
 P8  0003 leaves the writer role without DELETE, so removing the folded row after the switch is refused;
 P9  the contract migration commits between the writer's key check and its recount, so the write follows a key
     no longer in force and raises.
+P10 a day whose rows count no calls is reshared by dividing by zero (the Postgres twin of the store's U10), or
+    has its shares rewritten from a count of nothing.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
     HandlerProjectionUsageByModelDay,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
+    _RESHARE_DAY,
     write_usage_call,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
@@ -405,5 +408,28 @@ async def test_real_postgres_the_contract_migration_waits_for_a_write_that_has_r
         }
     finally:
         await other.close()
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_a_day_with_no_counted_calls_is_not_reshared() -> None:
+    conn = await _connect_or_skip()
+    try:
+        await _fresh(conn)
+        await _write(conn, "c1", "qwen", "local")
+        before = await _day(conn)
+        # P10: the day's only row now counts no calls, so its denominator is zero.
+        await conn.execute(f"UPDATE {_SCHEMA}.usage_by_model_day SET call_count = 0")
+        reshared = await conn.fetch(
+            _scoped(_RESHARE_DAY), "t", date.fromisoformat("2026-10-14")
+        )
+        assert reshared == []
+        after = await _day(conn)
+        assert (
+            after[("qwen", "not_tier_routed")]["call_share"]
+            == (before[("qwen", "not_tier_routed")]["call_share"])
+        )
+    finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
