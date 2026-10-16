@@ -125,6 +125,7 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
@@ -280,6 +281,11 @@ _DETERMINISTIC_SCORE_SOURCE = SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 # passes_existing_tests with no run is a deterministic FAILURE carrying the
 # INSUFFICIENT prefix: no tests named means the answer is not checked, and an
 # answer that is not checked is never accepted.
+#
+# OMN-17427: only when the request NAMED tests (``named_tests_requested``) and
+# none ran. A request that named none skips the check as any other class does,
+# and the answer gate records the answer as UNTESTED: no rung can be tested on
+# tests nobody named, so refusing it only climbed the ladder on correct answers.
 _NO_NAMED_TEST_RUN_REASON = NO_NAMED_TEST_RUN_REASON
 
 # OMN-13470: when an LLM-judge adequacy score is combined with the deterministic
@@ -1026,6 +1032,18 @@ def _check_semantic_adequacy(
     if stripped[-1] in _TRUNCATION_TRAILING_TOKENS:
         return "WEAK_OUTPUT: response truncated mid-token, fails semantic_adequacy"
 
+    # An unfinished YAML flow collection is incomplete even when its last
+    # character is an ordinary word. Research's optional prose rules must not
+    # be the only reason a truncated configuration block is refused.
+    structured = re.sub(r"\A### ANSWER\s*\n", "", stripped, flags=re.IGNORECASE)
+    if re.match(r"[A-Za-z_][\w.-]*:\s*[\[{]", structured):
+        try:
+            yaml.compose(structured, Loader=yaml.SafeLoader)
+        except yaml.YAMLError:
+            return (
+                "WEAK_OUTPUT: malformed YAML flow collection, fails semantic_adequacy"
+            )
+
     # A complete structured / code artifact is a complete answer regardless of
     # prose sentence shape.
     if _extract_fenced_code_blocks(content) or '"""' in stripped or "'''" in stripped:
@@ -1063,13 +1081,43 @@ def _check_semantic_adequacy(
     #
     # OMN-13967: a request that asked for one word never reaches this rule. Its
     # declared shape replaces this check with ``short_form_adequacy``.
-    if len(words) < 2:
+    #
+    # OMN-21088: a short direct question ("what is 2+2") is answered whole by one
+    # token ("4"). The prompt is the grounding source, so this is the request
+    # declaring its own short shape, not the content guessing one.
+    if len(words) < 2 and not _is_short_direct_question(grounding_source):
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
         )
 
     return None
+
+
+#: OMN-21088: the words a short direct question opens with. ``how`` counts only
+#: with a quantity word after it: "how many" asks for a number, "how does X
+#: work" asks for an explanation.
+_DIRECT_QUESTION_RE = re.compile(
+    r"^(?:what|who|whom|whose|when|where|which|is|are|was|were|do|does|did|"
+    r"can|could|will|would|should|how (?:many|much|old|long|far|big))\b",
+    re.IGNORECASE,
+)
+
+#: A one-line question longer than this is a request for more than one token.
+#: Measured 2026-10-15 on the branch: "If a train leaves at 3pm and travels for
+#: 2 hours, what time does it arrive?" (16 words) was answered "5pm" and refused
+#: at a 12-word bound.
+_DIRECT_QUESTION_MAX_WORDS: int = 30
+
+
+def _is_short_direct_question(prompt: str | None) -> bool:
+    """Whether ``prompt`` is one short line asking a direct question (OMN-21088)."""
+    if not prompt:
+        return False
+    stripped = prompt.strip()
+    if "\n" in stripped or len(stripped.split()) > _DIRECT_QUESTION_MAX_WORDS:
+        return False
+    return bool(_DIRECT_QUESTION_RE.match(stripped)) or stripped.endswith("?")
 
 
 def _check_short_form_adequacy(
@@ -1948,6 +1996,7 @@ def _evaluate_deterministic_checks(
     grounding_source: str | None = None,
     named_test_run: ModelNamedTestRun | None = None,
     require_executed_tests: bool = False,
+    untested_code_class: bool = False,
 ) -> tuple[list[str], list[str], list[ModelQualityRuleEvaluation]]:
     """Run all deterministic DoD checks.
 
@@ -1961,6 +2010,12 @@ def _evaluate_deterministic_checks(
         run an INSUFFICIENT failure. A skipped check produces
         neither a pass nor a failure and is excluded from the deterministic
         passed/total fraction by the caller.
+
+        ``untested_code_class`` (OMN-17427) is a code class whose request named
+        no tests: the check is skipped as above AND recorded as a scored
+        evaluation that did not pass, carrying the UNTESTED reason, so the
+        acceptance predicate and the receipt can tell "nobody named tests" from
+        "a gate that never evaluated the check".
 
         ``evaluations`` (OMN-18295) is the per-check record for the receipt,
         built HERE because this is the only place that knows which check
@@ -1992,6 +2047,15 @@ def _evaluate_deterministic_checks(
                 reason = _NO_NAMED_TEST_RUN_REASON
             else:
                 skipped.append(check)
+                if untested_code_class:
+                    evaluations.append(
+                        ModelQualityRuleEvaluation(
+                            rule=check,
+                            enforcement="scored",
+                            passed=False,
+                            detail=NO_NAMED_TESTS_UNTESTED_REASON,
+                        )
+                    )
                 continue
         elif check == "output_parses":
             reason = _check_output_parses(content)
@@ -2501,6 +2565,7 @@ def _run_contract_checks(
     grounding_source: str | None = None,
     named_test_run: ModelNamedTestRun | None = None,
     require_executed_tests: bool = False,
+    untested_code_class: bool = False,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -2521,6 +2586,7 @@ def _run_contract_checks(
             grounding_source=grounding_source,
             named_test_run=named_test_run,
             require_executed_tests=require_executed_tests,
+            untested_code_class=untested_code_class,
         )
     )
     (
@@ -3361,6 +3427,7 @@ def delta(
     named_test_run: ModelNamedTestRun | None = None,
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     reasoning_stripped_chars: int = 0,
+    named_tests_requested: bool = False,
 ) -> ModelQualityGateResult:
     """Refuse leaked reasoning at the deterministic floor, then grade clean output.
 
@@ -3468,6 +3535,7 @@ def delta(
             response_contract=response_contract,
             grounding_source=grounding_source,
             named_test_run=named_test_run,
+            named_tests_requested=named_tests_requested,
         )
     return result.model_copy(
         update={
@@ -3486,6 +3554,7 @@ def _delta_over_answer_segment(
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
     named_test_run: ModelNamedTestRun | None = None,
+    named_tests_requested: bool = False,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -3553,8 +3622,10 @@ def _delta_over_answer_segment(
         named_test_run: Optional outcome of named tests run upstream against the
             delegated code. ``None`` leaves ``passes_existing_tests`` skipped,
             excluded from the scored total, and never counted as a pass -- or,
-            for a code class (``execution_required``), an INSUFFICIENT
-            deterministic failure (OMN-21077).
+            for a code class (``execution_required``) whose request named
+            tests, an INSUFFICIENT deterministic failure (OMN-21077).
+        named_tests_requested: Whether the request named tests (OMN-17427).
+            A code class with no tests named keeps the check skipped.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -3581,6 +3652,7 @@ def _delta_over_answer_segment(
         return _run_legacy_checks(gate_input)
 
     content = _strip_thinking_traces(gate_input.llm_response_content)
+    code_class = resolve_task_class_execution_required(gate_input.task_type)
     outcome = _run_contract_checks(
         content,
         dod_deterministic,
@@ -3588,9 +3660,10 @@ def _delta_over_answer_segment(
         grounding_source=grounding_source,
         named_test_run=named_test_run,
         # OMN-21077: a code class is judged by tests run against its answer.
-        require_executed_tests=resolve_task_class_execution_required(
-            gate_input.task_type
-        ),
+        # OMN-17427: refused for a missing run only when tests were named; a
+        # code class that named none is recorded UNTESTED.
+        require_executed_tests=named_tests_requested and code_class,
+        untested_code_class=code_class and not named_tests_requested,
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic

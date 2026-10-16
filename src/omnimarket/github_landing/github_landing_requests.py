@@ -289,6 +289,21 @@ def pull_request_request(
     )
 
 
+def commit_check_runs_request(
+    repository: str,
+    head_sha: str,
+    *,
+    per_page: int,
+    check_name: str | None = None,
+) -> ModelGithubHttpRequest:
+    """GET the latest check runs on a commit, optionally by name (OMN-21146)."""
+    query = _query({"check_name": check_name, "filter": "latest", "per_page": per_page})
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/commits/{head_sha}/check-runs?{query}",
+    )
+
+
 def head_check_runs_request(
     repository: str, head_sha: str, *, etag: str | None = None, page: int = 1
 ) -> ModelGithubHttpRequest:
@@ -543,6 +558,7 @@ __all__: list[str] = [
     "branch_request",
     "branch_rules_request",
     "cancel_run_request",
+    "commit_check_runs_request",
     "compare_request",
     "convert_to_draft_request",
     "create_commit_request",

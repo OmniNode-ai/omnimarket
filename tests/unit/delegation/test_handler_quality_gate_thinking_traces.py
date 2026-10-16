@@ -204,8 +204,8 @@ def test_quality_gate_passes_existing_tests_missing_run_never_phantom_pass() -> 
     Before OMN-13850 this check was aliased to ``_check_response_non_empty``, so a
     clean-but-non-empty answer whose ONLY declared deterministic check was
     ``passes_existing_tests`` returned ``passed=True`` while executing zero tests.
-    Without execution evidence the check now fails deterministically, so a clean
-    answer cannot pass on a check that ran no tests.
+    When tests were named, missing execution evidence fails deterministically,
+    so a clean answer cannot pass on a check that ran no tests.
     """
     gate_input = ModelQualityGateInput(
         correlation_id=uuid4(),
@@ -214,7 +214,7 @@ def test_quality_gate_passes_existing_tests_missing_run_never_phantom_pass() -> 
         dod_deterministic=("passes_existing_tests",),
         dod_heuristic=(),
     )
-    result = delta(gate_input)
+    result = delta(gate_input, named_tests_requested=True)
     assert result.passed is False
     # OMN-21077: a missing named run is a deterministic refusal, never a skip.
     assert result.fail_category == "fail_deterministic"

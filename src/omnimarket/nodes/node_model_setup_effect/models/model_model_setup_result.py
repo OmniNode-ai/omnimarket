@@ -39,16 +39,28 @@ class ModelModelStatus(BaseModel):
     provider: ModelProvider
     set_up: bool
     last_test: ModelModelTestResult | None = None
+    models: tuple[str, ...] = ()
 
 
 class ModelModelSetupResult(BaseModel):
-    """``tests`` for a ``test`` request, ``providers`` for ``status``."""
+    """``tests`` for a ``test`` request, ``providers`` for ``status``, and the
+    key's ordered ``models`` after an ``add_models``, ``reorder`` or
+    ``remove_model``; a ``default_model`` carries the one overlay-declared model."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["status", "test", "forget"]
+    operation: Literal[
+        "status",
+        "test",
+        "forget",
+        "add_models",
+        "reorder",
+        "remove_model",
+        "default_model",
+    ]
     tests: tuple[ModelModelTestResult, ...] = ()
     providers: tuple[ModelModelStatus, ...] = ()
+    models: tuple[str, ...] = ()
 
 
 __all__ = ["ModelModelSetupResult", "ModelModelStatus", "ModelModelTestResult"]

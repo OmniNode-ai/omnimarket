@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# OMN-21146: completion returns a zero-flip alert event; N is contract data.
 name: node_dod_closeout_sweep_compute
 version: "1.0.0"
 description: Deterministic decisions of the DoD closeout sweep (idempotency precheck, live sprint resolution, scope classification and chunk plan, binding refusal, identity separation, candidate rotation, per-ticket Done decision, run completion rows and the morning health row)

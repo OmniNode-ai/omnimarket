@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20201"
+title: "The contract overlay boundary check runs on every contract a change touches"
+summary: >-
+  scripts/validation/validate_contract_overlay_boundary.py refuses a node contract.yaml
+  that carries a model id, a model key, a model-env default or an endpoint literal, but
+  it was wired nowhere. It now scans only the contracts it is handed (pre-commit passes
+  the staged ones) or the contracts changed since a git ref (--changed-since), and it is
+  wired as the pre-commit hook contract-overlay-boundary and as a lint step in ci.yml
+  against the pull request base. The contracts that already carry findings are not
+  scanned unless a change touches them, so no new debt enters while they are migrated.
+  This covers the wiring half of M47 for this script; the other three scripts and the
+  17 findings still in the tree are not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-overlay-boundary-runs-on-changed-contracts"
+    statement: "A changed node contract that carries a model or endpoint literal fails the check in both pre-commit and CI; a contract the change does not touch is not scanned."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2 (M47, overlay boundary script): the contract overlay boundary check scans
+          the contracts a change touches and refuses a planted model literal in one, while
+          a contract that already carries a finding but is not touched passes -- falsifier:
+          the focused tests plant a violation in a touched contract and require exit 1,
+          and require exit 0 for an untouched dirty contract beside a clean touched one
+evidence_requirements:
+  - kind: "tests"
+    description: "Scoped scan, positional paths, --changed-since in a real git repository (untouched debt passes, a new or touched dirty contract fails, an unknown ref exits 2), and the pre-commit to CI backstop pin."
+    command: "uv run pytest tests/validation/test_contract_overlay_boundary.py tests/ci/test_precommit_ci_backstops_omn19612.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20201-ac2-overlay-boundary-wired"
+    description: "AC2: the scoped and changed-since scans pass and fail in both directions, and the hook has its CI counterpart in the lint job. The scoped tests fail at the merge base, where the script takes no paths and has no --changed-since."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_contract_overlay_boundary.py tests/ci/test_precommit_ci_backstops_omn19612.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20201-overlay-boundary-hook-serial"
+    description: "The contract-overlay-boundary hook declares require_serial: true, so its focused test and the pre-commit serial-execution policy test pass; both fail while the hook lacks the key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_contract_overlay_boundary_hook_serial.py tests/unit/test_precommit_hooks_require_serial.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

@@ -3,8 +3,8 @@
 name: node_dod_closeout_sweep_compute
 node_type: compute
 runtime_profiles: [main]
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: "1.0.0"
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: "1.1.0"
 description: >-
   Definition-B deterministic decisions of the DoD closeout sweep (OMN-20675), the decisions the
   dod-closeout-sweep workflow left to agents. precheck says whether a date's sweep is already
@@ -22,8 +22,9 @@ description: >-
   chunks, decide_ticket says whether one adjudicated ticket is Done or stays open and renders the
   comment an open ticket receives. completion reads the closer's completed-run receipts from the
   ledger rows given (a run key counts once), counts the zero-flip streak and the top deferral
-  reason, and renders the rows that complete the run: a FRICTION row on the third consecutive
-  zero-flip run and every later one, then the TERMINAL that names it. ground_state renders the
+  reason, and renders the rows that complete the run: a FRICTION row and a zero-flip alert event
+  (while tickets are deferred) once the zero-flip streak reaches the zero_flip_threshold_runs input (default 3, declared here),
+  and on every later zero-flip run, then the TERMINAL that names it. ground_state renders the
   closer's GREEN, RED or UNKNOWN row for the morning report. Performs no read, has no clock and
   writes nothing: the caller reads the ledger, Linear, GitHub and the report file and passes what
   it saw.
@@ -101,6 +102,7 @@ inputs:
   max_candidates: {type: int, required: false}
   run_summary: {type: object, required: false, description: "completion: the closer's run summary, verbatim; fields it does not count are ignored."}
   report_ref: {type: str, required: false, description: "completion: the report path the TERMINAL cites; empty when no report was written."}
+  zero_flip_threshold_runs: {type: int, required: false, default: 3, description: "completion, ground_state: N consecutive zero-flip runs that raise the FRICTION row, RED health and, while tickets are deferred, the zero-flip alert event (OMN-21146)."}
 outputs:
   kind: {type: str}
   verdict: {type: str, enum: [already-delivered, peer-owned, run]}
@@ -148,6 +150,7 @@ outputs:
   comment_text: {type: str}
   completion_rows: {type: list}
   zero_flip_streak: {type: int}
+  zero_flip_alert: {type: object, description: "completion: the zero-flip alert event, carried on terminal_event (OMN-21146); absent below the threshold or with no deferred ticket."}
   top_deferral_reason: {type: str}
   health: {type: str, enum: [GREEN, RED, UNKNOWN]}
   ground_state_row: {type: str}

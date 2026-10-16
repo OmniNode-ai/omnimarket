@@ -15,6 +15,7 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
     SCORE_VERIFYING_CHECKS,
+    UNTESTED_VERDICT_PREFIX,
     ModelQualityGateResult,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
@@ -65,11 +66,19 @@ def passes_executed_checks(
     score-verifying check (``passes_existing_tests``) has an executed, passing
     evaluation on the result. A verifying check that was skipped, or a result
     from a gate that never evaluated it, is not a pass. The score is not read.
+
+    OMN-17427: a verifying check the gate recorded as UNTESTED (the request
+    named no tests) does not block. No rung can be tested on tests nobody
+    named, so refusing it only climbed the ladder on correct answers; the
+    answer is decided by its deterministic checks and stays recorded untested.
     """
     if result.fail_category == "fail_deterministic" or not result.passed:
         return False
     executed_passes = {
-        evaluation.rule for evaluation in result.rule_evaluations if evaluation.passed
+        evaluation.rule
+        for evaluation in result.rule_evaluations
+        if evaluation.passed
+        or (evaluation.detail or "").startswith(f"{UNTESTED_VERDICT_PREFIX}:")
     }
     return all(
         check in executed_passes

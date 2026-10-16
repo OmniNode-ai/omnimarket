@@ -1,0 +1,23 @@
+name: node_automation_liveness_watchdog_effect
+version: "1.0.0"
+description: "Automation-liveness watchdog effect: durable outbox, alarm delivery with episode-id reconciliation, due-time retry and escalation (OMN-20806)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_automation_liveness_watchdog_effect: "omnimarket.nodes.node_automation_liveness_watchdog_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["liveness", "watchdog", "effect", "OMN-20806"]
+pack: "liveness"
+display_name: "Automation Liveness Watchdog Effect"
+node_role: "effect"

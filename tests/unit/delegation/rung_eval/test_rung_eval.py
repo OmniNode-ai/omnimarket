@@ -235,3 +235,51 @@ def test_unset_api_key_is_unresolved_not_an_error(
     monkeypatch.delenv("K_KEY", raising=False)
     with pytest.raises(RungUnresolvedError, match="K_KEY"):
         OpenAIChatTransport().complete(rung, "hi")
+
+
+def test_unresolved_rung_is_reported_not_counted_as_a_row(tmp_path: Path) -> None:
+    """AC1/AC3: a placeholder row for a rung that was never called is a gap.
+
+    A night where a configured rung only produced `unresolved` rows (its
+    environment unset) pinned no case to that rung, so the missing-night report
+    must name it the next morning instead of reading as a complete night.
+    """
+    from omnimarket.delegation.rung_eval.missing_nights import format_report
+
+    cases = load_cases()
+    rungs = [_spec("a"), _spec("b")]
+    t = _Transport({"a": ""}, unresolved={"b"}, broken=set())
+    write_night(tmp_path, NIGHT, run_night(NIGHT, rungs, cases, t))
+    gaps = detect_missing_nights(
+        read_rows(tmp_path), rungs, cases, through=NIGHT, window_days=1
+    )
+    assert {(g.rung_id, g.case_id) for g in gaps} == {("b", c.case_id) for c in cases}
+    assert all(g.reason.startswith("unresolved: ") for g in gaps)
+    assert "b endpoint env unset" in gaps[0].reason
+    lines = format_report(gaps).splitlines()
+    assert len(lines) == len(cases)
+    assert all(line.startswith("MISSING 2026-09-28 | b | ") for line in lines)
+
+
+def test_error_row_is_a_row_not_a_gap(tmp_path: Path) -> None:
+    """A rung that was called and failed is evidence, so it is not a gap."""
+    cases = load_cases()
+    rungs = [_spec("c")]
+    t = _Transport({}, unresolved=set(), broken={"c"})
+    write_night(tmp_path, NIGHT, run_night(NIGHT, rungs, cases, t))
+    assert (
+        detect_missing_nights(
+            read_rows(tmp_path), rungs, cases, through=NIGHT, window_days=1
+        )
+        == []
+    )
+
+
+def test_absent_cell_keeps_the_bare_report_line(tmp_path: Path) -> None:
+    from omnimarket.delegation.rung_eval.missing_nights import format_report
+
+    cases = load_cases()
+    gaps = detect_missing_nights([], [_spec("a")], cases, through=NIGHT, window_days=1)
+    assert gaps
+    assert all(g.reason == "no row" for g in gaps)
+    assert all(len(line.split(" | ")) == 4 for line in format_report(gaps).splitlines())

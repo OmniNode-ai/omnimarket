@@ -14,9 +14,11 @@ node_version:
 description: Host observer for automatic processes that cannot emit. Each poll
   reads the evidence the automation-liveness overlay names for this host's
   observer entries (a receipts file, a cron completion log line, launchd run
-  state), journals one run event per run, notes a run left open past its
-  runtime bound as OVERRUN, and reports every unit of ours with no entry as
-  UNDECLARED. Events are written to an on-disk journal before they are sent
+  state, a worker-progress state file, a bus consumer group), journals one run
+  event per run, notes a run left open past its runtime bound as OVERRUN,
+  journals a daemon's worker-loop progress and demand as a heartbeat and
+  reports OVERRUN when progress stalls with demand waiting, and reports every
+  unit of ours with no entry as UNDECLARED. Events are written to an on-disk journal before they are sent
   and sent oldest first, so a broker outage delays events and loses none. The
   overlay is the only source of deployment facts; the evidence sources plug in
   through ProtocolRunEvidenceSource.

@@ -32,6 +32,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
+from urllib.parse import urlparse
 
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
@@ -46,11 +47,14 @@ from omnimarket.delegation.rubric.tool_use_transcript import (
     declared_tools_from_schemas,
     recorded_calls_request,
 )
+from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
+    DelegatePinViolationError,
     LoopReceiptExistsError,
     ModelCheckResult,
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
+    ModelDelegatePin,
     ModelTurnReply,
     ResumeRefusedError,
     WorkspacePathError,
@@ -66,6 +70,7 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
 )
 
 _DELEGATE_TIMEOUT_SECONDS = 900
+PRE_RUN_SCHEMA = "delegated-code-edit-pre-run.v1"
 _MAX_MANIFEST_FILES = 50_000
 _MAX_COUNTED_BYTES = 1_000_000
 _MAX_GREP_LINES = 200
@@ -87,6 +92,37 @@ IN_PROCESS_DELEGATE_FLAGS: tuple[str, ...] = (
 def deployed_lane_delegate_flags(lane: str) -> tuple[str, ...]:
     """Delegate turns go over the bus to the lane's deployed orchestrator."""
     return ("--bus", "kafka", "--lane", lane, "--locus", "deployed-lane")
+
+
+class DelegatePinUnresolvedError(ValueError):
+    """A pinned backend id names no backend with a usable endpoint (OMN-20514)."""
+
+
+def resolve_delegate_pin(backend_id: str) -> ModelDelegatePin:
+    """The pin for ``backend_id``, resolved from the routing contract and overlay.
+
+    Raises :class:`DelegatePinUnresolvedError` for an unknown backend, or one
+    with no endpoint URL or no host in it, so no model turn is sent before the
+    host a turn will use is known.
+    """
+    backend = resolve_bifrost_backend(backend_id)
+    if backend is None:
+        raise DelegatePinUnresolvedError(
+            f"backend {backend_id!r} is not in the routing contract"
+        )
+    endpoint = (backend.endpoint_url or "").strip()
+    host = urlparse(endpoint).hostname or ""
+    if not host:
+        raise DelegatePinUnresolvedError(
+            f"backend {backend_id!r} has no endpoint host to pin "
+            f"(endpoint_url={endpoint or 'null'})"
+        )
+    return ModelDelegatePin(
+        backend_id=backend_id,
+        host=host,
+        endpoint_url=endpoint,
+        model_name=(backend.model_name or "").strip(),
+    )
 
 
 def _git_env() -> dict[str, str]:
@@ -120,6 +156,51 @@ def check_fingerprint(exit_code: int | None, output: str) -> str:
     return hashlib.sha256(
         f"{exit_code}\0{_VOLATILE.sub('', output)}".encode()
     ).hexdigest()
+
+
+def pin_violation(receipt_path: Path, pin: ModelDelegatePin) -> str:
+    """Why a finished turn was not served by ``pin``'s backend and host, or "".
+
+    Reads the delegate receipt: the run's resolved backend, its own pin
+    verdict, and the backend and host of every attempt. A turn whose receipt
+    cannot be read, or names no backend, is unverifiable and counts as a
+    violation, because the pin is only worth what the receipt can prove.
+    """
+    try:
+        raw = json.loads(receipt_path.read_text())
+    except (OSError, ValueError, UnicodeError, RecursionError):
+        return f"the delegate receipt {receipt_path} is unreadable"
+    if not isinstance(raw, dict):
+        return f"the delegate receipt {receipt_path} is not an object"
+    receipt = cast("dict[str, object]", raw)
+    problems: list[str] = []
+    if receipt.get("backend_pin_honoured") is False:
+        problems.append("the delegate reported its backend pin not honoured")
+    backend_id = receipt.get("backend_id")
+    if not backend_id:
+        problems.append("the receipt names no backend")
+    elif backend_id != pin.backend_id:
+        problems.append(f"backend {backend_id!r}")
+    for attempt in _attempts(receipt):
+        attempt_backend = attempt.get("backend_id")
+        attempt_host = attempt.get("host")
+        if attempt_backend and attempt_backend != pin.backend_id:
+            problems.append(f"an attempt on backend {attempt_backend!r}")
+        if attempt_host and attempt_host != pin.host:
+            problems.append(f"an attempt on host {attempt_host}")
+    return "; ".join(dict.fromkeys(problems))
+
+
+def _attempts(receipt: dict[str, object]) -> list[dict[str, object]]:
+    inner = receipt.get("receipt")
+    result = inner.get("result") if isinstance(inner, dict) else None
+    terminal = result.get("terminal_payload") if isinstance(result, dict) else None
+    payload = terminal.get("payload") if isinstance(terminal, dict) else None
+    for holder in (payload, result):
+        attempts = holder.get("attempts") if isinstance(holder, dict) else None
+        if isinstance(attempts, list):
+            return [a for a in attempts if isinstance(a, dict)]
+    return []
 
 
 @dataclass(frozen=True)
@@ -186,10 +267,12 @@ class DelegatedCodeEditPorts:
         run_delegate: Callable[[list[str]], subprocess.CompletedProcess[str]]
         | None = None,
         max_tokens: int | None = None,
+        pin: ModelDelegatePin | None = None,
     ) -> None:
         self._onex = onex
         self._state_root = state_root
         self._delegate_flags = delegate_flags
+        self._pin = pin
         self._run_delegate = run_delegate or _run_subprocess
         self._max_tokens = max_tokens
 
@@ -248,15 +331,39 @@ class DelegatedCodeEditPorts:
             except Exception:
                 claim.unlink(missing_ok=True)
                 raise
+            self._write_pre_run(loop_dir, loop_run_id)
             return
         if receipt.exists():
             claim.unlink(missing_ok=True)
             raise LoopReceiptExistsError(
                 f"loop {loop_run_id} is already claimed and has a receipt"
             )
+        self._write_pre_run(loop_dir, loop_run_id)
+
+    def _pre_run_record(self, loop_run_id: str) -> dict[str, object]:
+        return {
+            "schema": PRE_RUN_SCHEMA,
+            "loop_run_id": loop_run_id,
+            "delegate_flags": list(self._delegate_flags),
+            "delegate_pin": self._pin.model_dump(mode="json") if self._pin else None,
+        }
+
+    def _write_pre_run(self, loop_dir: Path, loop_run_id: str) -> None:
+        """Record the pin before the first model turn, in ``pre_run.json``.
+
+        An unpinned run records ``delegate_pin: null``: its host is routing's
+        choice and is visible only afterwards, in each turn's receipt.
+        """
+        (loop_dir / "pre_run.json").write_text(
+            json.dumps(self._pre_run_record(loop_run_id), indent=1, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
 
     def write_loop_receipt(self, loop_run_id: str, payload: dict[str, object]) -> None:
         path = self._loop_dir(loop_run_id) / "loop_receipt.json"
+        if self._pin is not None:
+            payload = {**payload, "delegate_pin": self._pin.model_dump(mode="json")}
         temporary: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -558,6 +665,8 @@ class DelegatedCodeEditPorts:
             "--state-root",
             str(self._state_root),
         ]
+        if self._pin is not None:
+            argv += ["--backend-id", self._pin.backend_id]
         if self._max_tokens is not None:
             argv += ["--max-tokens", str(self._max_tokens)]
         if request.caller_lane:
@@ -586,6 +695,20 @@ class DelegatedCodeEditPorts:
             run_id = match.group(1) if match else ""
         text = ""
         run_dir = self._state_root / "runs" / run_id
+        if self._pin is not None and (
+            result.returncode == 0 or (run_dir / "receipt.json").is_file()
+        ):
+            violation = (
+                pin_violation(run_dir / "receipt.json", self._pin)
+                if run_id
+                else "the delegate printed no run id to verify"
+            )
+            if violation:
+                raise DelegatePinViolationError(
+                    f"turn pinned to backend {self._pin.backend_id!r} on host "
+                    f"{self._pin.host} was not served there: {violation} "
+                    f"(delegate run {run_id or '?'})"
+                )
         if run_id and (run_dir / "result.txt").is_file():
             text = (run_dir / "result.txt").read_text()
         receipt = (

@@ -834,7 +834,7 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
-    ("validator-runtime-profiles.yml", "occ-preflight"): (
+    ("validator-runtime-profiles.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),

@@ -11,7 +11,10 @@ for code classes.
   producer's AND that judge accepted the content. No judge verdict, an
   unparseable one, or a same-family judge is a refusal, never a pass.
 - code class (``execution_required``): accepted only when the contract checks
-  passed AND the named tests ran against the answer and passed.
+  passed AND the named tests ran against the answer and passed. A request that
+  named no tests has nothing to run: its answer is decided by the contract
+  checks and recorded UNTESTED, never refused as INSUFFICIENT and never
+  recorded as tested (OMN-17427).
 - any other class keeps its contract verdict.
 
 A rejection recommends fallback, so the escalation ladder climbs exactly as it
@@ -29,10 +32,12 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.wire.model_answer_gate_request import (
     EnumAnswerGateKind,
     EnumIndependentJudgeVerdict,
+    EnumNamedTestVerdict,
     ModelAnswerGateRequest,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
@@ -140,12 +145,23 @@ class HandlerDelegationAnswerGate:
         run = request.named_test_run
         tests_passed = run is not None and run.passed
 
+        if run is not None:
+            verdict = (
+                EnumNamedTestVerdict.PASSED
+                if run.passed
+                else EnumNamedTestVerdict.FAILED
+            )
+        elif request.named_tests_requested:
+            verdict = EnumNamedTestVerdict.NOT_RUN
+        else:
+            verdict = EnumNamedTestVerdict.UNTESTED
+
         reasons: tuple[str, ...] = ()
         if not contract.passed:
             reasons = contract.failure_reasons
-        elif run is None:
+        elif verdict is EnumNamedTestVerdict.NOT_RUN:
             reasons = (NO_NAMED_TEST_RUN_REASON,)
-        elif not run.passed:
+        elif run is not None and not run.passed:
             failed = ", ".join(run.failed_test_ids) or f"exit code {run.exit_code}"
             reasons = (f"{TESTS_FAILED_PREFIX}: named tests failed: {failed}",)
 
@@ -157,6 +173,7 @@ class HandlerDelegationAnswerGate:
             accepted=accepted,
             contract_passed=contract.passed,
             tests_passed=tests_passed,
+            tests_verdict=verdict,
             rejection_reasons=reasons,
             fallback_recommended=(
                 contract.fallback_recommended if not contract.passed else not accepted
@@ -183,12 +200,22 @@ def gate_as_quality_gate_result(
         rule = f"{INDEPENDENT_JUDGE_RULE}:{backend}"
     else:
         rule = NAMED_TESTS_RULE
-    evaluation = ModelQualityRuleEvaluation(
-        rule=rule,
-        enforcement="blocking",
-        passed=gate.accepted,
-        detail=None if gate.accepted else gate.rejection_reasons[0],
-    )
+    if gate.tests_verdict is EnumNamedTestVerdict.UNTESTED:
+        # OMN-17427: recorded as a scored rule that did not pass, so the receipt
+        # says the code was not run, while the contract verdict stands.
+        evaluation = ModelQualityRuleEvaluation(
+            rule=rule,
+            enforcement="scored",
+            passed=False,
+            detail=NO_NAMED_TESTS_UNTESTED_REASON,
+        )
+    else:
+        evaluation = ModelQualityRuleEvaluation(
+            rule=rule,
+            enforcement="blocking",
+            passed=gate.accepted,
+            detail=None if gate.accepted else gate.rejection_reasons[0],
+        )
     update: dict[str, object] = {
         "rule_evaluations": (*contract.rule_evaluations, evaluation)
     }

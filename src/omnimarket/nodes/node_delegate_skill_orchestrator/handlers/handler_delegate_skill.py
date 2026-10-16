@@ -35,6 +35,11 @@ from omnibase_infra.runtime.dispatch_envelope_context import (
 from pydantic import ValidationError
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.declared_outputs_contract import (
+    build_declared_outputs_response_contract,
+    render_declared_outputs_instruction,
+)
+from omnimarket.delegation.deliverable_extraction import final_answer_text
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -81,6 +86,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
 )
+from omnimarket.models.delegation.wire.model_delegation_output_files import (
+    ModelDeclaredOutputs,
+)
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
@@ -110,6 +118,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_cla
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
+)
+from omnimarket.nodes.node_delegation_output_extract_compute import (
+    ModelDelegationOutputExtractRequest,
+    extract_declared_outputs,
 )
 from omnimarket.pricing import (
     build_premium_counterfactual,
@@ -1067,6 +1079,31 @@ def _response_from_result(
     else:
         cost_savings_usd = 0.0
     manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
+    final_answer, response_reasoning = final_answer_text(str(result.get("content", "")))
+    if (
+        response_reasoning
+        and deciding_attempt is not None
+        and response_reasoning not in deciding_attempt.reasoning_preamble
+    ):
+        # Keep the removed text on the existing wire evidence of the rung
+        # that supplied it; older consumers cannot decode a new terminal key.
+        updated_attempt = deciding_attempt.model_copy(
+            update={
+                "reasoning_preamble": "\n\n".join(
+                    part
+                    for part in (
+                        deciding_attempt.reasoning_preamble,
+                        response_reasoning,
+                    )
+                    if part
+                )
+            }
+        )
+        attempts = [
+            updated_attempt if attempt is deciding_attempt else attempt
+            for attempt in attempts
+        ]
+        deciding_attempt = updated_attempt
     return ModelDelegateSkillResponse(
         status=status_value,
         finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
@@ -1114,7 +1151,9 @@ def _response_from_result(
             else manifest_version
         ),
         prompt_text=request.prompt,
-        response=str(result.get("content", "")),
+        # OMN-21088: the caller receives the final answer only. Reasoning the
+        # provider returned with it is kept locally and in the attempt evidence.
+        response=final_answer,
         quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
@@ -1164,6 +1203,53 @@ def _response_from_result(
         # which is the only party that knows when it picked the record up.
         queue_wait_ms=queue_wait_ms,
         execution_duration_ms=execution_duration_ms,
+    ).retain_response_reasoning(response_reasoning)
+
+
+def _request_with_declared_outputs_contract(
+    request: ModelDelegateSkillRequest, declared: ModelDeclaredOutputs
+) -> ModelDelegateSkillRequest:
+    """Ask for the declared files through the request's existing contract seam.
+
+    OMN-19599: the schema rides as ``response_contract``, so the quality gate
+    already refuses a reply that is not the declared files before anything is
+    accepted; the instruction tells the model the same thing in words. The
+    request model refuses a caller contract beside ``declared_outputs``, so this
+    never overwrites one.
+    """
+    return request.model_copy(
+        update={
+            "prompt": (
+                f"{request.prompt}\n\n{render_declared_outputs_instruction(declared)}"
+            ),
+            "response_contract": build_declared_outputs_response_contract(declared),
+        }
+    )
+
+
+def _terminal_with_output_files(
+    terminal: ModelDelegateSkillCompleted | ModelDelegateSkillFailed,
+    declared: ModelDeclaredOutputs,
+) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
+    """Stamp the accepted files and their manifest on a completed terminal.
+
+    A failed terminal accepted no reply, so it names no files. The extract
+    compute never raises on model output: every unsafe, undeclared, oversize
+    or missing file is a typed refusal inside the manifest, so a completed
+    terminal whose files do not match the declaration says so by name.
+    """
+    if not isinstance(terminal, ModelDelegateSkillCompleted):
+        return terminal
+    extracted = extract_declared_outputs(
+        ModelDelegationOutputExtractRequest(
+            response_text=terminal.response, declared_outputs=declared
+        )
+    )
+    return terminal.model_copy(
+        update={
+            "output_manifest": extracted.manifest,
+            "output_files": extracted.files,
+        }
     )
 
 
@@ -1223,7 +1309,14 @@ class HandlerDelegateSkill:
         correlation yield terminals that differ in it. No bound delivery (a
         direct call) leaves it absent rather than substituting another id.
         """
-        terminal = await self._dispatch_and_build_untagged_terminal(request)
+        declared = request.declared_outputs
+        terminal = await self._dispatch_and_build_untagged_terminal(
+            request
+            if declared is None
+            else _request_with_declared_outputs_contract(request, declared)
+        )
+        if declared is not None:
+            terminal = _terminal_with_output_files(terminal, declared)
         delivery = current_dispatch_envelope()
         attribution: dict[str, object] = {
             key: value

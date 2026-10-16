@@ -134,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
             base=args.base,
             max_age_s=args.max_age,
             allow_gh_fallback=not args.no_gh_fallback,
+            # The CLI publishes nothing, so it must not move the merge-scan watermark.
+            detect_merges=False,
         )
         result = mirror.query(request)
         all_ok = all_ok and result.ok

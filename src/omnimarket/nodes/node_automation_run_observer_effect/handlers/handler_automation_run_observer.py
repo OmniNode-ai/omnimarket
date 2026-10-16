@@ -11,8 +11,13 @@ appended to the on-disk journal before it is sent, and sent oldest first, so a
 broker outage delays events and loses none.
 
 Evidence sources plug in through ``ProtocolRunEvidenceSource``; this module
-registers the receipts-file, log-line and launchd-state sources. An entry whose
-evidence source has no reader here is reported UNOBSERVABLE, not skipped.
+registers the receipts-file, log-line and launchd-state sources for discrete runs
+and the worker-progress and consumer-group sources for daemons. A daemon's
+progress is its worker loop's counter (or its completed handlers), never a live
+process or a beating advertiser: each poll journals a heartbeat carrying that
+counter and the demand waiting, and a counter that has not moved past
+``max_silence_seconds`` with demand waiting is OVERRUN. An entry whose evidence
+source has no reader here is reported UNOBSERVABLE, not skipped.
 """
 
 import logging
@@ -66,10 +71,17 @@ from omnimarket.nodes.node_automation_run_observer_effect.sources.host_command_r
     ProtocolHostCommandRunner,
     SubprocessHostCommand,
 )
+from omnimarket.nodes.node_automation_run_observer_effect.sources.kafka_consumer_group_reader import (
+    KafkaConsumerGroupReader,
+)
 from omnimarket.nodes.node_automation_run_observer_effect.sources.protocol_run_evidence_source import (
+    ModelDaemonProgress,
     ModelEvidenceReadContext,
     ModelObservedRun,
     ProtocolRunEvidenceSource,
+)
+from omnimarket.nodes.node_automation_run_observer_effect.sources.source_consumer_group import (
+    SourceConsumerGroup,
 )
 from omnimarket.nodes.node_automation_run_observer_effect.sources.source_launchd_state import (
     SourceLaunchdState,
@@ -79,6 +91,9 @@ from omnimarket.nodes.node_automation_run_observer_effect.sources.source_log_lin
 )
 from omnimarket.nodes.node_automation_run_observer_effect.sources.source_receipts_file import (
     SourceReceiptsFile,
+)
+from omnimarket.nodes.node_automation_run_observer_effect.sources.source_worker_progress import (
+    SourceWorkerProgress,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,6 +123,8 @@ class HandlerAutomationRunObserver:
             SourceReceiptsFile(),
             SourceLogLine(),
             SourceLaunchdState(self._runner),
+            SourceWorkerProgress(),
+            SourceConsumerGroup(KafkaConsumerGroupReader()),
         )
         self._sources = {source.source: source for source in chosen}
         self._sink = sink
@@ -177,6 +194,7 @@ class HandlerAutomationRunObserver:
         digest = entry.digest()
         source = self._sources.get(entry.evidence.source) if entry.evidence else None
         unreadable: str | None
+        progress: ModelDaemonProgress | None = None
         if source is None:
             unreadable = (
                 "no reader for evidence source "
@@ -192,12 +210,14 @@ class HandlerAutomationRunObserver:
                         cursor=cursor,
                         now=request.now,
                         launchd_domain=request.launchd_domain,
+                        consumer_bootstrap=request.consumer_bootstrap,
                     )
                 )
             except Exception as exc:
                 unreadable, runs = f"{type(exc).__name__}: {exc}", ()
             else:
                 unreadable, runs = result.unreadable, result.runs
+                progress = result.progress
                 if unreadable is None:
                     cursor = result.cursor
                     state.cursors[entry.process_id] = cursor
@@ -219,7 +239,97 @@ class HandlerAutomationRunObserver:
         cursor.unreadable_reported = None
         emitted, unseen = self._emit_runs(entry, runs, cursor, request, digest, pending)
         self._report_overruns(entry, cursor, request, digest, pending, findings)
+        if progress is not None:
+            self._observe_progress(
+                entry, progress, cursor, request, digest, pending, findings
+            )
         return emitted, unseen
+
+    def _observe_progress(
+        self,
+        entry: ModelAutomationLivenessEntry,
+        progress: ModelDaemonProgress,
+        cursor: ModelProcessCursor,
+        request: ModelAutomationRunObserverRequest,
+        digest: str,
+        pending: list[_Pending],
+        findings: list[ModelObserverFinding],
+    ) -> None:
+        now = request.now
+        if cursor.first_read_at is None:
+            cursor.first_read_at = now
+        # a lower counter is a worker that restarted; it moved too
+        if cursor.progress_counter != progress.progress_counter:
+            cursor.progress_counter = progress.progress_counter
+            cursor.last_progress_at = progress.last_progress_at or now
+            cursor.stall_reported = False
+        elif cursor.last_progress_at is None:
+            cursor.last_progress_at = progress.last_progress_at or now
+        assert cursor.last_progress_at is not None
+        beat = ModelAutomationHeartbeat(
+            process_id=entry.process_id,
+            host=entry.host,
+            process_started_at=progress.process_started_at or cursor.first_read_at,
+            progress_counter=progress.progress_counter,
+            last_progress_at=cursor.last_progress_at,
+            demand_count=progress.demand_count,
+            emitted_at=now,
+        )
+        pending.append(
+            self._pending(EnumAutomationLivenessEvent.HEARTBEAT, entry.process_id, beat)
+        )
+        if entry.declares_demand and progress.demand_count is None:
+            if not cursor.demand_unreadable_reported:
+                cursor.demand_unreadable_reported = True
+                self._report(
+                    entry,
+                    _V.UNOBSERVABLE,
+                    _R.DEMAND_UNREADABLE,
+                    now,
+                    now,
+                    f"demand {entry.demand!r} has no readable count in the evidence",
+                    digest,
+                    pending,
+                    findings,
+                )
+            return
+        cursor.demand_unreadable_reported = False
+        silence = entry.max_silence_seconds
+        if silence is None or cursor.stall_reported:
+            return
+        stalled_since = cursor.last_progress_at + timedelta(seconds=silence)
+        if now <= stalled_since:
+            return
+        demand = progress.demand_count or 0
+        if entry.declares_demand and demand == 0:
+            return
+        cursor.stall_reported = True
+        if entry.declares_demand:
+            self._report(
+                entry,
+                _V.OVERRUN,
+                _R.PROGRESS_STALLED_WITH_DEMAND,
+                stalled_since,
+                now,
+                f"progress counter still at {progress.progress_counter} since "
+                f"{cursor.last_progress_at.isoformat()} with demand {demand}",
+                digest,
+                pending,
+                findings,
+            )
+        else:
+            self._report(
+                entry,
+                _V.MISSED,
+                _R.NO_RUN_IN_MAX_SILENCE,
+                stalled_since,
+                now,
+                f"progress counter still at {progress.progress_counter} since "
+                f"{cursor.last_progress_at.isoformat()}",
+                digest,
+                pending,
+                findings,
+            )
 
     def _emit_runs(
         self,

@@ -124,6 +124,8 @@ not_routing_resolution_sites:
     reason: the runtime host a sweep probes; a probe target, not a route for delegated work
   - site: "src/omnimarket/nodes/node_database_sweep/handlers/handler_database_sweep.py:resolve_setting(_NODE_NAME)"
     reason: the runtime host a sweep probes; a probe target, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:resolve_setting(DEFAULT_MODEL_NODE)"
+    reason: the model onboarding offers to register on a customer's own key; it is checked against the key's list and stored as the customer's choice, and the stored model, not this value, selects the delegation route
   - site: "src/omnimarket/nodes/node_integration_sweep_orchestrator/handlers/handler_integration_sweep_orchestrator.py:load_node_overlay(_NODE_NAME)"
     reason: hosts and URLs a sweep probes; probe targets, not routes for delegated work
 not_routing_configs:
@@ -149,6 +151,8 @@ not_routing_configs:
     reason: evaluation rung list in which every endpoint and model is an environment variable name
   - path: src/omnimarket/configs/inference_protocols.v1.yaml
     reason: provider protocol directives keyed by model pattern; they shape a request and select no route
+  - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
+    reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
   - path: src/omnimarket/configs/seams.v1.yaml
     reason: seam declarations
   - path: src/omnimarket/configs/service_endpoints.yaml

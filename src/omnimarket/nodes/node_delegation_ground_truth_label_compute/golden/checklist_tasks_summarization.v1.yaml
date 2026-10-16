@@ -1,0 +1,135 @@
+# Summarization tasks for the delegation ground-truth measurement.
+# Each prompt carries the only facts the answer may use. Each checklist item is
+# a yes-or-no question scored by a model other than the delegated one; an answer
+# is adequate only when every item is met. Several items test a trap: a fact the
+# table deliberately leaves out, or a unit or default that is easy to assume.
+schema_version: 1
+task_class: summarization
+tasks:
+  - id: summary_queue_pause
+    prompt: |
+      Summarize these fictional dispatch log lines for the next operator. Use exactly three bullets, with at most 18 words per bullet. Preserve the event order and distinguish the service state from any customer outcome.
+      Facts:
+      - 08:10: the dispatch queue paused after its storage allocation filled.
+      - 08:14: an operator removed expired temporary bundles, freeing 240 MB.
+      - 08:17: the queue resumed and accepted new work.
+      - The log contains no count of delayed jobs and no statement about lost jobs.
+      Use only these facts. Do not add a cause for the filled allocation, a job count, or a claim about data loss that the facts do not state.
+    checklist:
+      - {id: three_short_bullets, text: "Does the answer contain exactly three bullets, each with at most 18 words?"}
+      - {id: pause_first, text: "Does the first bullet say the queue paused at 08:10 because its storage allocation filled?"}
+      - {id: cleanup_second, text: "Does the second bullet say expired temporary bundles were removed at 08:14, freeing 240 MB?"}
+      - {id: resume_third, text: "Does the third bullet say the queue resumed at 08:17 and accepted new work?"}
+      - {id: no_invented_outcomes, text: "Is the answer free of invented job counts, data-loss outcomes, and explanations for why the allocation filled?"}
+  - id: summary_preview_timeout
+    prompt: |
+      Turn this fictional incident note into one paragraph of 45 to 65 words for a shift handoff. Report the final setting clearly and separate confirmed recovery from anything still unknown.
+      Facts:
+      - A preview generator stopped completing requests during a test session.
+      - An initial note proposed a timeout of 30 seconds, but that proposal was withdrawn.
+      - The applied timeout was 300 milliseconds.
+      - A replay completed 12 preview requests after the change.
+      - The root cause was not established, and no production traffic was tested.
+      Use only these facts. Do not add a root cause, a production recovery claim, or a setting the facts do not state.
+    checklist:
+      - {id: paragraph_length, text: "Is the answer one paragraph of 45 to 65 words?"}
+      - {id: final_timeout, text: "Does the answer identify 300 milliseconds as the applied timeout and avoid presenting 30 seconds as applied?"}
+      - {id: replay_count, text: "Does the answer say the replay completed 12 preview requests?"}
+      - {id: limits_explicit, text: "Does the answer say the root cause was not established and production traffic was not tested?"}
+      - {id: no_invented_recovery, text: "Is the answer free of invented causes, settings, and production recovery claims?"}
+  - id: summary_caption_change
+    prompt: |
+      Summarize this fictional pull request description for a reviewer. Write exactly two bullets labeled Change and Limits, with a combined length of 40 to 60 words. Keep the distinction between display behavior and stored values explicit.
+      Facts:
+      - The change displays an empty caption as an em dash in the gallery view.
+      - Captions stored in the catalog remain unchanged, including empty strings.
+      - Search results do not use the new display rule.
+      - The description reports checks on six gallery cards.
+      - No accessibility audit or performance measurement is described.
+      Use only these facts. Do not add implementation details, test coverage, or benefits that the facts do not state.
+    checklist:
+      - {id: two_labeled_bullets, text: "Does the answer use exactly two bullets labeled Change and Limits, totaling 40 to 60 words?"}
+      - {id: display_storage, text: "Does the answer say empty gallery captions display as an em dash while stored captions remain unchanged?"}
+      - {id: search_excluded, text: "Does the answer say search results do not use the new display rule?"}
+      - {id: checks_and_limits, text: "Does the answer report checks on six gallery cards and state that no accessibility audit or performance measurement is described?"}
+      - {id: no_invented_benefits, text: "Is the answer free of invented implementation details, coverage, and measured benefits?"}
+  - id: summary_freezer_alert
+    prompt: |
+      Condense these fictional cold-room incident notes into exactly three numbered sentences totaling 45 to 70 words. Keep the observation, instrument finding, and remaining uncertainty separate, in that order.
+      Facts:
+      - At 06:20, a wall display showed minus 4 degrees Celsius and raised an alert.
+      - At 06:25, a separate reference probe read minus 18 degrees Celsius.
+      - Inspection found the wall display sensor detached from its mounting point.
+      - The notes do not establish the temperature of any stored package.
+      - No package disposal decision was recorded.
+      Use only these facts. Do not infer package damage, safe storage, or disposal actions from readings that the facts do not connect to packages.
+    checklist:
+      - {id: three_numbered_sentences, text: "Does the answer contain exactly three numbered sentences totaling 45 to 70 words?"}
+      - {id: wall_reading, text: "Does the first sentence report the 06:20 alert and wall reading of minus 4 degrees Celsius?"}
+      - {id: reference_and_sensor, text: "Does the second sentence report the 06:25 reference reading of minus 18 degrees Celsius and the detached wall sensor?"}
+      - {id: uncertainty_last, text: "Does the third sentence say package temperatures were not established and no disposal decision was recorded?"}
+      - {id: no_invented_package_status, text: "Is the answer free of invented package damage, package safety conclusions, and disposal actions?"}
+  - id: summary_export_release
+    prompt: |
+      Write a release handoff from this fictional pull request description. Use exactly three bullets headed Added, Unchanged, and Evidence, with a total of 45 to 65 words. Preserve the exact number in the observed check.
+      Facts:
+      - A new button exports the rows currently visible in the stock table as plain text.
+      - Hidden rows are not included in that export.
+      - The existing spreadsheet export is unchanged.
+      - A manual check exported 17 visible rows from one table containing 23 rows.
+      - The description gives no file encoding or maximum export size.
+      Use only these facts. Do not add supported formats, encoding defaults, or size limits that the facts do not state.
+    checklist:
+      - {id: three_headed_bullets, text: "Does the answer use exactly the three bullets Added, Unchanged, and Evidence, totaling 45 to 65 words?"}
+      - {id: visible_plain_text, text: "Does the answer say the new button exports visible stock-table rows as plain text and excludes hidden rows?"}
+      - {id: spreadsheet_unchanged, text: "Does the answer say the existing spreadsheet export is unchanged?"}
+      - {id: exact_check, text: "Does the answer report 17 exported visible rows from a table of 23 rows?"}
+      - {id: no_invented_export_details, text: "Is the answer free of invented encoding defaults, export limits, and additional supported formats?"}
+  - id: summary_audio_reconnect
+    prompt: |
+      Summarize these fictional rehearsal log lines in one paragraph of 40 to 60 words for an audio operator. Preserve the sequence and make clear which evidence concerns the connection rather than the recorded content.
+      Facts:
+      - 14:02: the microphone connection disconnected during rehearsal.
+      - 14:03: the operator reconnected the cable without restarting the recorder.
+      - 14:04: the connection monitor reported a stable link.
+      - Nobody listened to the recorded segment during this check.
+      - The notes contain no measured duration for any gap in the recording.
+      Use only these facts. Do not claim intact audio, a silent interval, or a recorder restart that the facts do not state.
+    checklist:
+      - {id: single_short_paragraph, text: "Is the answer one paragraph of 40 to 60 words?"}
+      - {id: sequence, text: "Does the answer place disconnection at 14:02, cable reconnection at 14:03, and a stable link at 14:04?"}
+      - {id: no_restart, text: "Does the answer say the recorder was not restarted?"}
+      - {id: recording_unchecked, text: "Does the answer say the recorded segment was not listened to and any recording gap duration is unknown?"}
+      - {id: no_invented_audio_result, text: "Is the answer free of invented audio integrity claims, silent intervals, and recorder restarts?"}
+  - id: summary_seed_counter
+    prompt: |
+      Produce a compact incident summary from these fictional packing notes. Use exactly two sentences totaling 40 to 60 words. The first sentence should describe the corrected observation; the second should state the operational action and remaining unknown.
+      Facts:
+      - A handwritten note first listed 90 seed packets in a tray.
+      - A verified recount superseded that note and recorded 96 packets.
+      - The operator replaced the tray label with the verified count.
+      - The notes do not explain the counting discrepancy.
+      - There is no record of packets being added or removed.
+      Use only these facts. Do not turn a corrected count into a claim of inventory movement or an explanation the facts do not state.
+    checklist:
+      - {id: two_sentences_length, text: "Does the answer contain exactly two sentences totaling 40 to 60 words?"}
+      - {id: verified_count, text: "Does the first sentence identify 96 as the verified count superseding the handwritten 90?"}
+      - {id: label_action, text: "Does the second sentence say the tray label was replaced with the verified count?"}
+      - {id: cause_unknown, text: "Does the second sentence state that the discrepancy is unexplained?"}
+      - {id: no_invented_inventory_movement, text: "Is the answer free of invented packet additions, packet removals, and causes of the discrepancy?"}
+  - id: summary_draft_privacy
+    prompt: |
+      Summarize this fictional pull request description for an editor in exactly three bullets totaling 45 to 65 words. Cover the changed default, its scope, and the reported check, in that order.
+      Facts:
+      - Newly created drafts now start with sharing disabled.
+      - A writer can enable sharing for an individual new draft.
+      - Existing drafts retain their current sharing settings.
+      - A local check created four drafts and found sharing disabled on all four.
+      - No claim is made about encryption or permission enforcement elsewhere.
+      Use only these facts. Do not describe existing drafts as migrated or add security guarantees, deployment status, or testing that the facts do not state.
+    checklist:
+      - {id: three_bullets_length, text: "Does the answer contain exactly three bullets totaling 45 to 65 words?"}
+      - {id: default_and_override, text: "Does the first bullet say new drafts start with sharing disabled and writers can enable sharing individually?"}
+      - {id: existing_unchanged, text: "Does the second bullet say existing drafts retain their sharing settings?"}
+      - {id: local_four, text: "Does the third bullet report a local check in which all four new drafts had sharing disabled?"}
+      - {id: no_invented_security, text: "Is the answer free of invented migrations, security guarantees, deployment status, and additional testing?"}
