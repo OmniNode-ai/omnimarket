@@ -15,6 +15,8 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,6 +28,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 
 from omnimarket.events.github import pr_merged_event_id
 from omnimarket.events.topics import PR_MERGED_TOPIC_V1
+from omnimarket.nodes.node_event_emit_effect import KafkaEventPublisher
 from omnimarket.nodes.node_git_query_mirror_effect.git_mirror import GitQueryMirror
 from omnimarket.nodes.node_git_query_mirror_effect.handlers.handler_git_query_mirror import (
     HandlerGitQueryMirrorEffect,
@@ -149,6 +152,8 @@ def test_squash_merge_yields_one_mirror_event_and_second_sync_none(
     assert event.event_id == pr_merged_event_id(REPO, 7, merge_sha)
     assert event.head_sha == pr_head
 
+    m.mark_merge_published(event)
+
     second = m.sync(REPO)
     assert second.ok, second.error
     assert second.merged_prs == []
@@ -215,7 +220,10 @@ def test_force_push_of_the_base_branch_resets_the_baseline(
     m = make_mirror(tmp_path, upstream)
     assert m.sync(REPO).ok
     upstream.squash_merge("omn-2-x", "x (#2)")
-    assert m.sync(REPO).ok
+    detected = m.sync(REPO)
+    assert detected.ok
+    for event in detected.merged_prs or []:
+        m.mark_merge_published(event)
     git(upstream.path, "reset", "-q", "--hard", "HEAD~1")
     upstream.commit("y.txt", "y\n", "rewritten (#3)")
     result = m.sync(REPO)
@@ -305,6 +313,7 @@ def test_default_ledger_remembers_what_the_mirror_published(
     first = m.sync(REPO)
     assert first.merged_prs is not None
     assert [e.pr_number for e in first.merged_prs] == [40]
+    m.mark_merge_published(first.merged_prs[0])
     assert m.is_merge_published(REPO, 40)
 
     watermark = m.mirror_path(REPO) / "onex_query_watermark.json"
@@ -317,13 +326,304 @@ def test_default_ledger_remembers_what_the_mirror_published(
 # --- handler and contract wiring ----------------------------------------------
 
 
+def test_detected_merge_stays_pending_until_publish_ack_and_survives_restart(
+    tmp_path: Path, upstream: Upstream
+) -> None:
+    upstream.open_pr(60, "omn-60-pending", "p60.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-60-pending", "pending (#60)")
+    first = mirror.sync(REPO)
+    assert first.merged_prs is not None
+    (event,) = first.merged_prs
+    assert not mirror.is_merge_published(REPO, 60)
+
+    restarted = make_mirror(tmp_path, upstream)
+    assert restarted.sync(REPO).merged_prs == [event]
+    restarted.mark_merge_published(event)
+    assert restarted.is_merge_published(REPO, 60)
+    assert make_mirror(tmp_path, upstream).sync(REPO).merged_prs == []
+
+
+def test_publish_failure_replays_pending_after_handler_restart(
+    tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path / "mirrors"))
+    upstream.open_pr(61, "omn-61-retry", "p61.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-61-retry", "retry (#61)")
+
+    class Broker:
+        fail = True
+        attempts: list[dict[str, object]] = []
+
+        def publish(self, topic: str, payload: object, **kwargs: object) -> None:
+            assert topic == PR_MERGED_TOPIC_V1
+            assert isinstance(payload, dict)
+            assert not make_mirror(tmp_path, upstream).is_merge_published(REPO, 61)
+            self.attempts.append(payload)
+            if self.fail:
+                raise ConnectionError("broker unavailable")
+
+    broker = Broker()
+
+    def handler() -> HandlerGitQueryMirrorEffect:
+        return HandlerGitQueryMirrorEffect(
+            remote_url_for=lambda _repo: str(upstream.path),
+            gh_runner=TripwireGh(),
+            publish_adapter=broker,
+        )
+
+    request = ModelGitQueryRequest(operation=EnumGitQueryOperation.SYNC, repo=REPO)
+    with pytest.raises(ConnectionError, match="broker unavailable"):
+        asyncio.run(handler().handle(request))
+    assert broker.attempts
+    assert not mirror.is_merge_published(REPO, 61)
+    (pending,) = mirror.pending_merges(REPO)
+    broker.fail = False
+    output = asyncio.run(handler().handle(request))
+    assert all(isinstance(e, ModelGitQueryResponse) for e in output.events)
+    assert mirror.is_merge_published(REPO, 61)
+    assert mirror.pending_merges(REPO) == []
+    assert {p["event_id"] for p in broker.attempts} == {str(pending.event_id)}
+    assert {p["merge_sha"] for p in broker.attempts} == {pending.merge_sha}
+    attempts = len(broker.attempts)
+    asyncio.run(handler().handle(request))
+    assert len(broker.attempts) == attempts
+
+
+def test_spooled_merge_survives_crash_before_scan_watermark_write(
+    tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    upstream.open_pr(62, "omn-62-crash", "p62.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-62-crash", "crash (#62)")
+
+    def crash(path: Path, data: dict[str, object]) -> None:
+        raise OSError("crash before watermark")
+
+    monkeypatch.setattr(mirror, "_write_json", crash)
+    with pytest.raises(OSError, match="crash before watermark"):
+        mirror.sync(REPO)
+    (pending,) = mirror.pending_merges(REPO)
+    replay = make_mirror(tmp_path, upstream).sync(REPO)
+    assert replay.merged_prs == [pending]
+    assert not mirror.is_merge_published(REPO, 62)
+    assert (
+        len(list((mirror.mirror_path(REPO) / "onex_merge_outbox").glob("*.json"))) == 1
+    )
+
+
+def test_full_outbox_does_not_advance_scan_watermark(
+    tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_event_emit_effect import SpoolOutbox
+
+    upstream.open_pr(63, "omn-63-full", "p63.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    watermark = mirror.mirror_path(REPO) / "onex_query_watermark.json"
+    before = json.loads(watermark.read_text())["merge_scan_sha"]
+    upstream.squash_merge("omn-63-full", "full (#63)")
+
+    def full(self: SpoolOutbox, record: object) -> None:
+        raise OSError("disk full")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SpoolOutbox, "append", full)
+        with pytest.raises(OSError, match="disk full"):
+            mirror.sync(REPO)
+    assert json.loads(watermark.read_text())["merge_scan_sha"] == before
+    result = mirror.sync(REPO)
+    assert [e.pr_number for e in result.merged_prs or []] == [63]
+
+
+@pytest.mark.asyncio
+async def test_real_kafka_adapter_waits_for_ack_before_marking_published(
+    tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path / "mirrors"))
+    upstream.open_pr(64, "omn-64-ack", "p64.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-64-ack", "ack (#64)")
+    entered = threading.Event()
+    release = threading.Event()
+
+    class Bus:
+        async def start(self) -> None:
+            pass
+
+        async def publish(self, **kwargs: object) -> None:
+            entered.set()
+            assert await asyncio.to_thread(release.wait, 5)
+
+        async def close(self) -> None:
+            pass
+
+    handler = HandlerGitQueryMirrorEffect(
+        remote_url_for=lambda _repo: str(upstream.path),
+        gh_runner=TripwireGh(),
+        publish_adapter=KafkaEventPublisher("unused:9092", bus_factory=Bus),
+    )
+    request = ModelGitQueryRequest(operation=EnumGitQueryOperation.SYNC, repo=REPO)
+    task = asyncio.create_task(handler.handle(request))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        assert mirror.pending_merges(REPO)
+        assert not mirror.is_merge_published(REPO, 64)
+        assert not task.done()
+    finally:
+        release.set()
+        await task
+    assert mirror.is_merge_published(REPO, 64)
+    assert mirror.pending_merges(REPO) == []
+
+
+def test_partial_batch_ack_retries_only_the_unacknowledged_merge(
+    tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path / "mirrors"))
+    upstream.open_pr(65, "omn-65-first", "p65.txt")
+    upstream.open_pr(66, "omn-66-second", "p66.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-65-first", "first (#65)")
+    upstream.squash_merge("omn-66-second", "second (#66)")
+
+    class Broker:
+        fail = True
+
+        def __init__(self) -> None:
+            self.attempts: list[int] = []
+
+        def publish(self, topic: str, payload: object, **kwargs: object) -> None:
+            event = ModelMirrorPrMerged.model_validate(payload)
+            self.attempts.append(event.pr_number)
+            if event.pr_number == 66 and self.fail:
+                raise ConnectionError("second publish failed")
+
+    broker = Broker()
+
+    def invoke() -> None:
+        handler = HandlerGitQueryMirrorEffect(
+            remote_url_for=lambda _repo: str(upstream.path),
+            gh_runner=TripwireGh(),
+            publish_adapter=broker,
+        )
+        asyncio.run(handler.handle(ModelGitQueryRequest(operation="sync", repo=REPO)))
+
+    with pytest.raises(ConnectionError, match="second publish failed"):
+        invoke()
+    assert mirror.is_merge_published(REPO, 65)
+    assert not mirror.is_merge_published(REPO, 66)
+    assert [e.pr_number for e in mirror.pending_merges(REPO)] == [66]
+    broker.fail = False
+    invoke()
+    assert broker.attempts == [65, 66, 66]
+    assert mirror.pending_merges(REPO) == []
+
+
+def test_restart_in_another_process_republishes_pending_payload(
+    tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path / "mirrors"))
+    upstream.open_pr(67, "omn-67-process", "p67.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-67-process", "restart (#67)")
+    (event,) = mirror.sync(REPO).merged_prs or []
+    code = """
+import asyncio, json, sys
+from omnimarket.nodes.node_git_query_mirror_effect import NodeGitQueryMirrorEffect
+from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror import ModelGitQueryRequest
+class Broker:
+    def publish(self, topic, payload, **kwargs):
+        print(json.dumps(payload))
+asyncio.run(NodeGitQueryMirrorEffect(publish_adapter=Broker()).handle(
+    ModelGitQueryRequest(operation="status", repo=sys.argv[1])
+))
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", code, REPO],
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == event.model_dump(mode="json")
+    assert mirror.is_merge_published(REPO, 67)
+    assert mirror.pending_merges(REPO) == []
+
+
+@pytest.mark.parametrize("boundary", ["before_marker", "after_marker"])
+def test_publish_ack_crash_boundaries(
+    tmp_path: Path,
+    upstream: Upstream,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+) -> None:
+    from omnimarket.nodes.node_event_emit_effect import SpoolOutbox
+
+    upstream.open_pr(68, "omn-68-record", "p68.txt")
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    upstream.squash_merge("omn-68-record", "record (#68)")
+    (event,) = mirror.sync(REPO).merged_prs or []
+
+    def fail(*args: object) -> None:
+        raise OSError("ack crash")
+
+    with monkeypatch.context() as patch:
+        if boundary == "before_marker":
+            patch.setattr(mirror, "_write_json", fail)
+        else:
+            patch.setattr(SpoolOutbox, "ack", fail)
+        with pytest.raises(OSError, match="ack crash"):
+            mirror.mark_merge_published(event)
+    restarted = make_mirror(tmp_path, upstream)
+    assert restarted.is_merge_published(REPO, 68) == (boundary == "after_marker")
+    assert restarted.pending_merges(REPO) == (
+        [] if boundary == "after_marker" else [event]
+    )
+    restarted.mark_merge_published(event)
+    assert restarted.is_merge_published(REPO, 68)
+    assert restarted.pending_merges(REPO) == []
+
+
+def test_corrupt_pending_payload_refuses_to_advance_scan(
+    tmp_path: Path, upstream: Upstream
+) -> None:
+    mirror = make_mirror(tmp_path, upstream)
+    assert mirror.sync(REPO).ok
+    watermark = mirror.mirror_path(REPO) / "onex_query_watermark.json"
+    before = watermark.read_text()
+    spool = mirror.mirror_path(REPO) / "onex_merge_outbox"
+    (spool / "corrupt.json").write_text("truncated")
+    with pytest.raises(ValueError, match="unreadable mirror merge outbox"):
+        mirror.sync(REPO)
+    assert watermark.read_text() == before
+
+
 def test_handler_emits_a_pr_merged_event_per_merge_after_the_response(
     tmp_path: Path, upstream: Upstream, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path / "mirrors"))
     upstream.open_pr(50, "omn-50-handler", "h50.txt")
+    published: list[ModelMirrorPrMerged] = []
+
+    class Broker:
+        def publish(self, topic: str, payload: object, **kwargs: object) -> None:
+            assert topic == PR_MERGED_TOPIC_V1
+            published.append(ModelMirrorPrMerged.model_validate(payload))
+
     handler = HandlerGitQueryMirrorEffect(
-        remote_url_for=lambda _repo: str(upstream.path), gh_runner=TripwireGh()
+        remote_url_for=lambda _repo: str(upstream.path),
+        gh_runner=TripwireGh(),
+        publish_adapter=Broker(),
     )
 
     def sync() -> tuple[object, ...]:
@@ -332,12 +632,14 @@ def test_handler_emits_a_pr_merged_event_per_merge_after_the_response(
 
     sync()
     upstream.squash_merge("omn-50-handler", "handler (#50)")
-    response, merged = sync()
+    (response,) = sync()
+    (merged,) = published
     assert isinstance(response, ModelGitQueryResponse)
     assert isinstance(merged, ModelMirrorPrMerged)
     assert merged.pr_number == 50
     assert merged.source == "mirror"
     assert len(sync()) == 1  # only the response; nothing new merged
+    assert len(published) == 1
 
 
 def test_contract_declares_the_pr_merged_topic_it_publishes() -> None:

@@ -42,6 +42,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.events.github import pr_merged_event_id
+from omnimarket.nodes.node_event_emit_effect import (
+    EnumDurabilityTier,
+    SpoolFile,
+    SpoolOutbox,
+    SpoolRecord,
+)
 from omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror import (
     MAX_DIFF_CHARS,
     PR_SCOPED_OPERATIONS,
@@ -267,7 +273,8 @@ class GitQueryMirror:
 
         With ``detect_merges`` the result's ``merged_prs`` lists the squash merges
         that landed on the default branch since the previous detecting sync; the
-        caller owns publishing them, because the scan watermark has moved on.
+        events are durably pending before the scan watermark moves. Only an
+        acknowledged publish may move an event to the published set.
         """
         mirror = self.mirror_path(repo)
         merged: list[ModelMirrorPrMerged] | None = None
@@ -300,7 +307,7 @@ class GitQueryMirror:
                             "last_attempt_at": _iso(now),
                         }
                     )
-                    (mirror / WATERMARK_FILE).write_text(json.dumps(prior, indent=2))
+                    self._write_json(mirror / WATERMARK_FILE, prior)
                     return self._result_err(
                         EnumGitQueryOperation.SYNC,
                         repo,
@@ -315,6 +322,7 @@ class GitQueryMirror:
                     merged, scan = self._scan_merges(
                         repo, mirror, prior, heads_before, now
                     )
+                    merged = self._queue_merges(mirror, merged or [])
                 wm = {
                     **scan,
                     "repo": repo,
@@ -325,7 +333,7 @@ class GitQueryMirror:
                     "head_refs": heads,
                     "last_attempt_at": _iso(now),
                 }
-                (mirror / WATERMARK_FILE).write_text(json.dumps(wm, indent=2))
+                self._write_json(mirror / WATERMARK_FILE, wm)
         except TimeoutError as exc:
             return self._result_err(
                 EnumGitQueryOperation.SYNC, repo, None, mirror, str(exc)
@@ -360,15 +368,118 @@ class GitQueryMirror:
                 shas[name] = sha
         return shas
 
+    @staticmethod
+    def _write_json(path: Path, data: dict[str, object]) -> None:
+        """Persist before advancing the scan or acknowledging delivery.
+
+        Like the emit node's spool, replace a complete file atomically. Sync
+        both the file and directory so a host restart preserves the ordering.
+        """
+        fd, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w") as stream:
+                json.dump(data, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(name, path)
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            Path(name).unlink(missing_ok=True)
+
     def _published_merge_numbers(self, mirror: Path) -> set[int]:
+        """Read the legacy published set; fail closed on corruption."""
         try:
             data = json.loads((mirror / PUBLISHED_MERGES_FILE).read_text())
-        except (OSError, ValueError):
+        except FileNotFoundError:
             return set()
-        prs = data.get("prs") if isinstance(data, dict) else None
-        return (
-            {n for n in prs if isinstance(n, int)} if isinstance(prs, list) else set()
-        )
+        if not isinstance(data, dict) or not isinstance(data.get("prs"), list):
+            raise ValueError("invalid mirror merge outbox")
+        prs = data["prs"]
+        if any(type(n) is not int for n in prs):
+            raise ValueError("invalid mirror merge outbox")
+        return set(prs)
+
+    def _merge_spool(self, mirror: Path) -> SpoolOutbox:
+        return SpoolOutbox(mirror / "onex_merge_outbox")
+
+    def _pending_files(self, mirror: Path) -> list[SpoolFile]:
+        spool = self._merge_spool(mirror)
+        files = spool.list_pending()
+        if len(files) != spool.pending_count():
+            raise ValueError("unreadable mirror merge outbox record")
+        return files
+
+    def _queue_merges(
+        self, mirror: Path, events: list[ModelMirrorPrMerged]
+    ) -> list[ModelMirrorPrMerged]:
+        """Caller holds the mirror lock; save the payload before moving the watermark."""
+        published = self._published_merge_numbers(mirror)
+        pending = self._pending_merges(mirror)
+        seen = published | {e.pr_number for e in pending}
+        spool = self._merge_spool(mirror)
+        for event in events:
+            if event.pr_number not in seen:
+                spool.append(
+                    SpoolRecord(
+                        event_id=str(event.event_id),
+                        event_type="MirrorPrMerged",
+                        topic=event.topic,
+                        tier=EnumDurabilityTier.DUTY_CRITICAL,
+                        payload=event.model_dump(mode="json"),
+                        partition_key=event.repo,
+                        correlation_id=None,
+                        queued_at=datetime.fromtimestamp(self.clock(), tz=UTC),
+                    )
+                )
+                pending.append(event)
+                seen.add(event.pr_number)
+        return pending
+
+    def pending_merges(self, repo: str) -> list[ModelMirrorPrMerged]:
+        """Payloads owed to the bus, including those left by a previous process."""
+        mirror = self.mirror_path(repo)
+        if not (mirror / "HEAD").exists():
+            return []
+        return self._pending_merges(mirror)
+
+    def _pending_merges(self, mirror: Path) -> list[ModelMirrorPrMerged]:
+        published = self._published_merge_numbers(mirror)
+        return [
+            event
+            for file in self._pending_files(mirror)
+            if (
+                event := ModelMirrorPrMerged.model_validate(file.record.payload)
+            ).pr_number
+            not in published
+        ]
+
+    def mark_merge_published(self, event: ModelMirrorPrMerged) -> None:
+        """Acknowledge one exact pending event, only after the publisher returns success."""
+        mirror = self.mirror_path(event.repo)
+        with self._lock(mirror):
+            published = self._published_merge_numbers(mirror)
+            matching = [
+                file
+                for file in self._pending_files(mirror)
+                if file.record.event_id == str(event.event_id)
+            ]
+            if event.pr_number not in published and not matching:
+                raise ValueError(
+                    "cannot acknowledge an event absent from the mirror outbox"
+                )
+            # Persist the published marker before deleting the spool record.
+            # A crash between them leaves an already-published file, never an
+            # unrecorded loss. The pending reader filters that file on restart.
+            self._write_json(
+                mirror / PUBLISHED_MERGES_FILE,
+                {"prs": sorted(published | {event.pr_number})},
+            )
+            for file in matching:
+                self._merge_spool(mirror).ack(file.path)
 
     def is_merge_published(self, repo: str, pr_number: int) -> bool:
         """True when the injected lookup or this mirror's own ledger holds the PR."""
@@ -442,10 +553,6 @@ class GitQueryMirror:
                 )
             )
             published.add(number)
-        if events:
-            (mirror / PUBLISHED_MERGES_FILE).write_text(
-                json.dumps({"prs": sorted(published)})
-            )
         return events, fresh
 
     def _merge_event(

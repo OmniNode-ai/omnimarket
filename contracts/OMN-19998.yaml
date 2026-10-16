@@ -61,6 +61,11 @@ requirements:
     acceptance:
       - id: "AC11"
         statement: "AC11: .github/workflows/dev-merge-tag.yml triggers only on push to dev, and its tag step, run against a throwaway repository with a +05:30 committer date, pushes one lightweight tag named dev-<committer time in UTC>-<sha12> at the commit, pushes nothing on a second run or when a dev tag for that sha already exists, pushes nothing in a dry run, and refuses a value that is not a full sha -- falsifier: uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py -q fails at the merge base, where the workflow does not exist"
+  - id: "req-mirror-durable-merge-outbox"
+    statement: "The git query mirror persists merge payloads before moving its scan watermark and marks a PR published only after its Kafka adapter returns from the broker acknowledgement; a restarted handler republishes pending payloads with their original event IDs."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: publish failure leaves the merge pending and unpublished, a new process republishes the saved payload, the Kafka adapter waits for acknowledgement before the published marker is written, partial batches retry only unacknowledged merges, and failures before the scan or published-marker write retain recoverable state -- falsifier: uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q fails with the mirror and handler at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -76,6 +81,24 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19998-mirror-durable-outbox"
+    description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_golden_chain_git_query_mirror_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn19998-mirror-outbox-deploy-probe"
+    description: "Hosted-runner source probe requires the mirror's publication path to await adapter.publish before mark_merge_published; the base has no such path and fails. This source probe does not claim successful live broker delivery."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'import ast; from pathlib import Path; p=Path("src/omnimarket/nodes/node_git_query_mirror_effect/handlers/handler_git_query_mirror.py"); t=ast.parse(p.read_text()); f=next(n for n in ast.walk(t) if isinstance(n,ast.AsyncFunctionDef) and n.name=="_publish_pending"); a=[n for n in ast.walk(f) if isinstance(n,ast.Await)]; publish=next(n.lineno for n in a if "adapter.publish" in ast.unparse(n)); ack=next(n.lineno for n in a if "mirror.mark_merge_published" in ast.unparse(n)); assert publish < ack'
   - id: "dod-omn19998-construction-consumer-first"
     description: "The consumer JSON decode and terminal conversion tests preserve the gate fact and null score, retain the declared construction-result fields, and refuse contradictory evidence and unknown keys."
     source: "manual"
