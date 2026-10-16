@@ -2330,6 +2330,13 @@ class DelegationWorkflowState:
     # probes exclude the accumulated set. A renamed/reordered tier can therefore
     # never turn one exhausted quota/failure domain into apparent new capacity.
     transport_failed_backend_refs: tuple[str, ...] = ()
+    # OMN-18831: the concrete backends whose answer the quality gate rejected on
+    # a rung the workflow then escalated off. A later tier label that declares
+    # the same backend serves the same model, so climbing to it re-asks the
+    # question just failed at a higher rate; routing intents and next-tier
+    # probes exclude the set, kept apart from the transport memory above because
+    # a same-tier sibling hop and the local re-draft read that one.
+    quality_rejected_backend_refs: tuple[str, ...] = ()
     # OMN-20154: what the provider answered on the attempt in flight, stamped
     # onto that attempt's escalation_history row when it is recorded.
     current_attempt_provider: _AttemptProviderFacts | None = None
@@ -2364,6 +2371,23 @@ def _pinned_backend_ref(workflow: DelegationWorkflowState) -> str | None:
         return None
     backend_id = workflow.request.backend_id
     return backend_id if isinstance(backend_id, str) and backend_id else None
+
+
+def _escalation_excluded_refs(
+    workflow: DelegationWorkflowState, *, rejected_ref: str = ""
+) -> frozenset[str]:
+    """Backends a next-tier probe or routing intent must not resolve (OMN-18831).
+
+    The transport-failed backends, the backends whose answer the gate already
+    rejected on an earlier rung, and ``rejected_ref`` for the rung being left
+    now: two tier labels that declare one backend are one failure domain, not
+    a second chance.
+    """
+    refs = {*workflow.transport_failed_backend_refs}
+    refs.update(workflow.quality_rejected_backend_refs)
+    if rejected_ref:
+        refs.add(rejected_ref)
+    return frozenset(refs)
 
 
 class HandlerDelegationWorkflow:
@@ -3383,7 +3407,7 @@ class HandlerDelegationWorkflow:
                 error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
-                excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
+                excluded_backend_refs=_escalation_excluded_refs(workflow),
             )
             terminal_failure_reason = decision.terminal_failure_reason
             next_tier = decision.next_tier_name
@@ -3427,7 +3451,7 @@ class HandlerDelegationWorkflow:
                         payload=workflow.request,
                         min_tier_name=next_tier,
                         excluded_backend_refs=tuple(
-                            sorted(workflow.transport_failed_backend_refs)
+                            sorted(_escalation_excluded_refs(workflow))
                         ),
                     ),
                     escalation_event,
@@ -3858,6 +3882,9 @@ class HandlerDelegationWorkflow:
         # (below), the spend is banked into the cumulative totals; if this is the
         # terminal attempt, ``_emit_terminal`` re-prices it from the same
         # current-tier tokens, so it is NOT double-counted.
+        rejected_backend_ref = (
+            workflow.routing_decision.selected_backend_ref or ""
+        ).strip()
         rejected_attempt_cost_usd = self._record_escalation_attempt(
             workflow,
             ModelDelegationEscalationAttempt(
@@ -3946,13 +3973,22 @@ class HandlerDelegationWorkflow:
                 else "non_retryable_quality_result"
             ),
             task_type=workflow.request.task_type,
-            excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
+            excluded_backend_refs=_escalation_excluded_refs(
+                workflow, rejected_ref=rejected_backend_ref
+            ),
         )
         terminal_failure_reason = decision.terminal_failure_reason
         next_tier = decision.next_tier_name
 
         if decision.can_escalate:
             assert next_tier is not None
+            if rejected_backend_ref and (
+                rejected_backend_ref not in workflow.quality_rejected_backend_refs
+            ):
+                workflow.quality_rejected_backend_refs = (
+                    *workflow.quality_rejected_backend_refs,
+                    rejected_backend_ref,
+                )
             # OMN-13140: build the terminal escalation proof BEFORE the inference
             # state reset below clears inference_model_used. The quality gate
             # recommended fallback and a routable next tier exists — this is the
@@ -4000,7 +4036,7 @@ class HandlerDelegationWorkflow:
                     payload=workflow.request,
                     min_tier_name=next_tier,
                     excluded_backend_refs=tuple(
-                        sorted(workflow.transport_failed_backend_refs)
+                        sorted(_escalation_excluded_refs(workflow))
                     ),
                 ),
                 escalation_event,
