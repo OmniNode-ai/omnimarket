@@ -40,7 +40,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from pathlib import Path
@@ -52,6 +52,13 @@ from omnibase_infra.adapters.project_tracker.linear_graphql_project_tracker_adap
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.handlers.handler_lane_intake import (
+    ModelLaneIntakePolicy,
+    declared_lane,
+    read_lane_intake_policy,
+    resolve_label_id,
+    stamp_description,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.nodes.contract_topics import contract_secret_ref
 
@@ -128,14 +135,15 @@ query GetIssueByIdentifier($identifier: String!) {
 """
 
 _ISSUE_CREATE_MUTATION = """
-mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String, $assigneeId: String) {
+mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String, $assigneeId: String, $labelIds: [String!]) {
   issueCreate(input: {
     teamId: $teamId,
     title: $title,
     description: $description,
     parentId: $parentId,
     stateId: $stateId,
-    assigneeId: $assigneeId
+    assigneeId: $assigneeId,
+    labelIds: $labelIds
   }) {
     issue { identifier url }
   }
@@ -418,17 +426,25 @@ class InstalledPluginTicketGuard:
     own convention).
     """
 
-    def __init__(self, guard_path: Path) -> None:
+    def __init__(self, guard_path: Path, lane: str = "", record: bool = True) -> None:
         self.guard_path = guard_path
         self.interpreter = sys.executable
+        self.lane = lane
+        self.record = record
 
     def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
         payload = json.dumps(
             {"tool_name": "mcp__linear-server__save_issue", "tool_input": tool_input}
         )
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        if self.lane:
+            env["ONEX_LANE"] = self.lane
+        # --node: this caller is a node, so the guard judges the create as a lane
+        # create whatever the environment says (OMN-17942). --no-record: a dry
+        # run spends none of the day's intake budget.
+        flags = ["--node", *([] if self.record else ["--no-record"])]
         done = subprocess.run(
-            [self.interpreter, str(self.guard_path)],
+            [self.interpreter, str(self.guard_path), *flags],
             input=payload,
             capture_output=True,
             text=True,
@@ -530,8 +546,11 @@ class LinearTicketClientProtocol(Protocol):
         team: str,
         parent: str | None,
         assignee_id: str | None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         """Create a Linear issue and return ``(ticket_id, ticket_url)``.
+
+        ``label_names`` are applied at creation (the lane-intake label).
 
         ``assignee_id`` is a Linear user id; ``None`` assigns the API key's own user (the creator).
         """
@@ -597,6 +616,7 @@ class LinearTicketHttpGateway:
         team: str,
         parent: str | None,
         assignee_id: str | None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         """Create a new Linear issue and return ``(identifier, url)``."""
         team_data = self._post(_TEAM_QUERY, {"name": team})
@@ -633,6 +653,10 @@ class LinearTicketHttpGateway:
                     "Linear viewer id unavailable; cannot assign the creator"
                 )
         variables["assigneeId"] = assignee_id
+        if label_names:
+            variables["labelIds"] = [
+                resolve_label_id(self._post, name, team_id) for name in label_names
+            ]
         if parent:
             parent_data = self._post(_ISSUE_BY_IDENTIFIER_QUERY, {"identifier": parent})
             parent_uuid = parent_data.get("data", {}).get("issue", {}).get("id", "")
@@ -682,7 +706,9 @@ class HandlerCreateTicket:
         tracker: TicketTrackerProtocol | None = None,
         ticket_guard: TicketGuardProtocol | None = None,
         state_resolver: TicketStateResolverProtocol | None = None,
+        lane_intake_policy: ModelLaneIntakePolicy | None = None,
     ) -> None:
+        self._injectable_lane_intake_policy = lane_intake_policy
         self._injectable_client = linear_client
         self._pillar_owners_path = pillar_owners_path
         self._injectable_tracker = tracker
@@ -716,10 +742,15 @@ class HandlerCreateTicket:
             return self._injectable_state_resolver
         return LinearTicketHttpGateway(self._linear_api_key())
 
-    def _get_guard(self) -> TicketGuardProtocol:
+    def _get_guard(self, lane: str = "", record: bool = True) -> TicketGuardProtocol:
         if self._injectable_guard is not None:
             return self._injectable_guard
-        return InstalledPluginTicketGuard(locate_ticket_guard())
+        return InstalledPluginTicketGuard(locate_ticket_guard(), lane, record)
+
+    def _get_lane_intake_policy(self) -> ModelLaneIntakePolicy:
+        if self._injectable_lane_intake_policy is not None:
+            return self._injectable_lane_intake_policy
+        return read_lane_intake_policy(locate_ticket_guard())
 
     def handle(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
         """Process one create, read or comment request."""
@@ -860,15 +891,26 @@ class HandlerCreateTicket:
 
         # The ticket-creation guard (OMN-17942) judges the exact payload this
         # node files: Backlog, no project, the caller's description unchanged.
+        # Every item this node opens is lane-created (OMN-17942): it carries the
+        # lane-intake label and a first-line stamp naming its lane, and the guard
+        # refuses a create with no lane identity or past the day's intake budget.
+        lane = declared_lane()
+        intake = self._get_lane_intake_policy()
+        description = (
+            stamp_description(request.description, intake, lane)
+            if lane
+            else request.description
+        )
         tool_input: dict[str, object] = {
             "team": request.team,
             "title": request.title,
-            "description": request.description,
+            "description": description,
             "state": "Backlog",
+            "labels": [intake.label],
         }
         if request.parent:
             tool_input["parentId"] = request.parent
-        decision = self._get_guard().check(tool_input)
+        decision = self._get_guard(lane, record=not request.dry_run).check(tool_input)
         if not decision.admitted:
             raise TicketGuardRefusedError(
                 "node_create_ticket: the ticket-creation guard refused this create "
@@ -881,7 +923,7 @@ class HandlerCreateTicket:
                 title=request.title,
                 team=request.team,
                 guard_path=decision.guard_path,
-                description_body=request.description,
+                description_body=description,
                 dry_run=True,
             )
 
@@ -898,10 +940,11 @@ class HandlerCreateTicket:
         client = self._get_client()
         ticket_id, ticket_url = client.create_ticket(
             title=request.title,
-            description=request.description,
+            description=description,
             team=request.team,
             parent=request.parent,
             assignee_id=assignee_id,
+            label_names=[intake.label],
         )
 
         # Fail-closed (OMN-14547): a "created" result with no id is a lie —
@@ -924,7 +967,7 @@ class HandlerCreateTicket:
             is_seam_ticket=is_seam,
             interfaces_touched=interfaces,
             contract_completeness=contract_completeness,
-            description_body=request.description,
+            description_body=description,
             dry_run=False,
         )
 
