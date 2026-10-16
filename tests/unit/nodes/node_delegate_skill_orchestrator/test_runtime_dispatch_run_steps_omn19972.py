@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -37,11 +38,19 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     run_step_topic,
 )
+from omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_trace import (
+    HandlerProjectionRunTrace,
+)
+from omnimarket.nodes.node_projection_run_trace.handlers.handler_run_trace_store import (
+    RUN_TRACE_TABLE,
+    apply_run_step,
+)
 from omnimarket.nodes.node_projection_run_trace.models import ModelDelegationRunStep
 from omnimarket.projection.envelope import (
     strip_runner_injected_keys,
     unwrap_envelope,
 )
+from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 _LADDER: tuple[dict[str, object], ...] = (
     {
@@ -296,3 +305,25 @@ async def test_a_run_with_no_tenant_anywhere_publishes_no_step() -> None:
 
     assert result["status"] == "timeout"
     assert steps == []
+
+
+@pytest.mark.unit
+async def test_a_deployed_runs_published_steps_fold_into_run_trace_rows(
+    tmp_path: Path,
+) -> None:
+    # The run-trace writer's fold, fed what the deployed port published,
+    # delivered reversed: the rows come back in the port's step order.
+    def build(cid: UUID) -> ModelDelegationTerminalCompletedV2:
+        return ModelDelegationTerminalCompletedV2(
+            **_common(cid, outcome="completed"), **_routed(), quality_passed=True
+        )
+
+    correlation_id, _, steps = await _run(build)
+    db = SqliteDatabaseAdapter(tmp_path / "trace.sqlite")
+    fold = HandlerProjectionRunTrace()
+    assert all(apply_run_step(fold.handle(step), db) for step in reversed(steps))
+
+    rows = db.query(RUN_TRACE_TABLE, order_by="step_sequence")
+    assert len(rows) == 7
+    assert {row["correlation_id"] for row in rows} == {str(correlation_id)}
+    assert [row["step_kind"] for row in rows] == [s.step_kind.value for s in steps]
