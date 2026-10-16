@@ -164,3 +164,67 @@ def test_core_construction_terminal_survives_a_canonical_json_round_trip() -> No
         assert restored == terminal
         assert restored.quality_passed is passed
         assert restored.quality_score is None
+
+
+@pytest.mark.unit
+def test_installed_core_pair_is_the_pair_the_market_receiver_accepts() -> None:
+    """The Market receiver takes the pair Core reserves, field for field.
+
+    The terminal is built by the installed Core release and its pair is handed to
+    the Market response model unchanged. A receiver that does not declare the pair
+    refuses the fields, so this fails wherever the Market side is missing.
+    """
+    from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+        ModelDelegateSkillResponse,
+    )
+
+    core = _failed_terminal()
+    received = ModelDelegateSkillResponse.model_validate(
+        {
+            "status": "failed",
+            "correlation_id": core.correlation_id,
+            "task_type": core.task_type,
+            "operational_outcome": core.operational_outcome.value,
+            "content_verdict": core.content_verdict.value,
+            "terminal_failure_reason": core.terminal_failure_reason,
+            "quality_gate_passed": core.quality_passed,
+        }
+    )
+    assert received.operational_outcome is core.operational_outcome
+    assert received.content_verdict is core.content_verdict
+    assert received.terminal_failure_reason == core.terminal_failure_reason
+    assert received.quality_gate_passed is core.quality_passed
+    assert received.quality_score is None
+
+
+@pytest.mark.unit
+def test_migration_0045_pair_is_the_pair_the_projection_writer_leaves_unscored() -> (
+    None
+):
+    """The pair the migration filters on is the pair the writer stores without a score."""
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+        _canonical_result_to_task_delegated_payload,
+    )
+
+    sql = (
+        _ROOT
+        / "src/omnimarket/nodes/node_projection_delegation/migrations"
+        / "0045_terminal_construction_outcome_metrics.sql"
+    ).read_text(encoding="utf-8")
+    match = re.search(r"\('(\w+)', '(\w+)'\)", sql)
+    assert match is not None
+    outcome, verdict = match.groups()
+
+    row = _canonical_result_to_task_delegated_payload(
+        {
+            "correlation_id": str(uuid4()),
+            "quality_passed": True,
+            "operational_outcome": outcome,
+            "content_verdict": verdict,
+            "quality_score": None,
+            "actual_score": 0.9,
+        }
+    )
+    assert row["operational_outcome"] == outcome
+    assert row["content_verdict"] == verdict
+    assert row["actual_score"] is None
