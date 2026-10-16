@@ -28,8 +28,8 @@ name: Precommit Fail-Loud Gate
 #   * NO `needs:` — the prior `needs: occ-preflight` was the exact
 #     skip-then-vacuous-green vector the OMN-14666 canary (omnimarket#1783)
 #     surfaced: an occ-preflight failure SKIPPED the byte-match proof, and only a
-#     manual rerun made it fire. OCC receipt eligibility is already enforced by
-#     the independent `occ-preflight` job in ci.yml, so this coupling was
+#     manual rerun made it fire. PR admission is already enforced by the
+#     independent `repo-evidence-preflight` job in ci.yml, so this coupling was
 #     redundant as well as harmful. The gate now passes/fails purely on its own
 #     byte-match evidence, never conditioned on another job's result.
 #   * NO `paths:` filter — fires on EVERY PR to main/dev. A path-filtered

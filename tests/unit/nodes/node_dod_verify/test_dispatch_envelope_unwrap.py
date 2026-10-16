@@ -118,12 +118,19 @@ def _event_model_from_contract() -> ModelHandlerRef:
     """
     contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
     handlers = contract["handler_routing"]["handlers"]
-    assert len(handlers) == 1, (
-        "node_dod_verify must declare exactly one operation_match handler; the "
-        "dead runtime_sha_verify operation (only ever invoked in-process) must "
-        "not be on this command topic."
+    # OMN-21146: the merge event has its own entry on its own topic; the
+    # command topic still has exactly one.
+    on_command_topic = [
+        h
+        for h in handlers
+        if h.get("topic") == "onex.cmd.omnimarket.dod-verify-start.v1"
+    ]
+    assert len(on_command_topic) == 1, (
+        "node_dod_verify must declare exactly one handler on its command topic; "
+        "the dead runtime_sha_verify operation (only ever invoked in-process) "
+        "must not be on this command topic."
     )
-    event_model = handlers[0]["event_model"]
+    event_model = on_command_topic[0]["event_model"]
     return ModelHandlerRef(
         name=event_model["name"],
         module=event_model["module"],
@@ -135,7 +142,7 @@ class TestDispatchEnvelopeUnwrap:
     """OMN-12420 — runtime dispatch must unwrap the envelope and produce a result."""
 
     def test_contract_declares_event_model(self) -> None:
-        """The contract's single handler entry declares the typed event_model.
+        """The command topic's handler entry declares the typed event_model.
 
         Without this declaration the runtime passes the raw envelope dict to the
         handler (Defect 1). The model must be ModelDodVerifyStartCommand.
