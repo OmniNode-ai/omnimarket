@@ -270,8 +270,19 @@ class SpoolOutbox:
         filename = f"{_next_monotonic_seq():020d}_{record.event_id}.json"
         path = self._spool_dir / filename
         tmp_path = path.with_suffix(f".tmp-{os.getpid()}-{_next_monotonic_seq()}")
-        tmp_path.write_text(body, encoding="utf-8")
-        os.replace(tmp_path, path)
+        try:
+            with tmp_path.open("w", encoding="utf-8") as stream:
+                stream.write(body)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(tmp_path, path)
+            directory = os.open(self._spool_dir, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            tmp_path.unlink(missing_ok=True)
         return path
 
     def _append_duty_critical(self, record: SpoolRecord) -> AppendOutcome:

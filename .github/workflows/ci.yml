@@ -2010,15 +2010,30 @@ jobs:
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
         run: uv sync --locked
-      - name: Every changed wire payload must decode on the last release (OMN-18868)
+      - name: Every changed wire payload must decode on omniclaude's pinned omnimarket commit (OMN-18868, OMN-19998)
+        # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): omniclaude consumes
+        # omnimarket by a git pin on a dev commit, not by a release, so the
+        # deployed consumer is the commit omniclaude's uv.lock pins on its dev
+        # branch. That commit is graded instead of the last release tag. An
+        # unreadable pin fails closed; it never falls back to a tag.
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
         run: |
           set -euo pipefail
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
+          lock="$(curl -fsSL --retry 3 https://raw.githubusercontent.com/OmniNode-ai/omniclaude/dev/uv.lock)"
+          pin="$(printf '%s\n' "$lock" | grep -oE 'omnimarket\.git\?rev=[0-9a-f]{40}' | head -1 | sed 's/.*rev=//')"
+          if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::WIRE_COMPAT_RELEASE_UNRESOLVABLE: no omnimarket commit pin found in omniclaude dev's uv.lock; the deployed consumer is unknown, so wire compatibility is unproven"
+            exit 1
+          fi
+          git cat-file -e "${pin}^{commit}" || git fetch --quiet origin "$pin"
+          echo "Consumer: omniclaude dev pins omnimarket at $pin"
           uv run python scripts/ci/check_wire_compatibility.py \
-            --base "origin/${BASE}"
+            --base "origin/${BASE}" \
+            --consumer-ref "$pin" \
+            --consumer-label "omniclaude's pinned omnimarket"
       - name: The two real-history controls must EXECUTE here (OMN-18868)
         # These two replay the OMN-18852 incident against this repository's
         # own tags, and they need what only this job's checkout has. The
@@ -2247,6 +2262,7 @@ jobs:
 
   # ============================================================================
   # SIBLING RELEASE COMPATIBILITY GATE (OMN-20381)
+  # OMN-19998: a uv.lock git source locked to one commit is accepted as the pin and checked out at that commit; no release wait.
   # Twice a merge needed unreleased infra: node_projection_delegation/0052
   # columns were written before their migration shipped, and dev changes broke
   # `onex delegate` for a new developer installing released packages. Test THIS
@@ -2283,6 +2299,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import os
+          import re
           import tomllib
 
           with open("uv.lock", "rb") as lock_file:
@@ -2292,11 +2309,22 @@ jobs:
           for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
                   failed = True
                   continue
               pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
@@ -2309,7 +2337,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v${{ steps.pins.outputs.infra_version }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: .sibling/omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           fetch-depth: 0
@@ -2323,6 +2351,7 @@ jobs:
         env:
           INFRA_DIR: .sibling/omnibase_infra
           INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          INFRA_REF: ${{ steps.pins.outputs.infra_ref }}
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
@@ -2350,7 +2379,7 @@ jobs:
             name=${file##*/}
             vendored="docker/migrations/forward/nodes/$node/$name"
             want=$(git show "$HEAD_SHA:$file" | git hash-object --stdin)
-            have=$(git -C "$INFRA_DIR" ls-tree "v$INFRA_VERSION" -- "$vendored" | awk '{print $3}')
+            have=$(git -C "$INFRA_DIR" ls-tree "$INFRA_REF" -- "$vendored" | awk '{print $3}')
             if [[ "$have" == "$want" ]]; then
               echo "OK: $file is byte-identical in omnibase_infra v$INFRA_VERSION"
               echo "| $file | byte-identical | v$INFRA_VERSION (already pinned) |" >> "$GITHUB_STEP_SUMMARY"
@@ -2396,7 +2425,9 @@ jobs:
         shell: bash
         env:
           INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          INFRA_REF: ${{ steps.pins.outputs.infra_ref }}
           CORE_VERSION: ${{ steps.pins.outputs.core_version }}
+          CORE_REF: ${{ steps.pins.outputs.core_ref }}
         run: |
           set -euo pipefail
           # Outside the checkout and with --no-config: this repo's [tool.uv]
@@ -2405,8 +2436,18 @@ jobs:
           wheel=$(ls "$RUNNER_TEMP"/dist/omnimarket-*.whl)
           cd "$RUNNER_TEMP"
           uv venv --no-config --python 3.12 "$RUNNER_TEMP/pinned-venv"
+          if [[ "$INFRA_REF" == "v$INFRA_VERSION" ]]; then
+            infra_requirement="omnibase-infra==$INFRA_VERSION"
+          else
+            infra_requirement="omnibase-infra @ git+https://github.com/OmniNode-ai/omnibase_infra.git@$INFRA_REF"
+          fi
+          if [[ "$CORE_REF" == "v$CORE_VERSION" ]]; then
+            core_requirement="omnibase-core==$CORE_VERSION"
+          else
+            core_requirement="omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@$CORE_REF"
+          fi
           if ! uv pip install --no-config --python "$RUNNER_TEMP/pinned-venv/bin/python" \
-            "$wheel" "omnibase-infra==$INFRA_VERSION" "omnibase-core==$CORE_VERSION"; then
+            "$wheel" "$infra_requirement" "$core_requirement"; then
             echo "::error::this head does not install against the released omnibase-infra==$INFRA_VERSION and omnibase-core==$CORE_VERSION its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"
             exit 1
           fi
@@ -3273,6 +3314,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import os
+          import re
           import tomllib
 
           with open("uv.lock", "rb") as lock_file:
@@ -3282,11 +3324,22 @@ jobs:
           for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
                   failed = True
                   continue
               pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
@@ -3299,7 +3352,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v${{ steps.pins.outputs.infra_version }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python

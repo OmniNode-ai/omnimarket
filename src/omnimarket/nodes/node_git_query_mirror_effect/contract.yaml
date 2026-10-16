@@ -29,6 +29,13 @@ description: >
   watermark age. A stale mirror refreshes the one PR ref by git fetch before
   answering; only a failed fetch falls back to the GitHub API, for head_sha,
   changed_files and diff.
+  Detecting syncs append each merge to the event emit node's duty-critical
+  spool before advancing the scan watermark. The handler uses that node's
+  acknowledged Kafka adapter to publish pending payloads and only then records
+  the PR as published. Every invocation drains pending payloads before fetching,
+  including after restart. A crash after broker acceptance can replay the same
+  event_id; delivery is at least once. The handler returns only the query
+  response so the runtime does not publish the merge a second time.
 input_model:
   name: "ModelGitQueryRequest"
   module: "omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror"
@@ -65,14 +72,18 @@ event_bus:
 published_events:
   - topic: "onex.evt.github.pr-merged.v1"
     event_type: "MirrorPrMerged"
-    description: "A squash merge found on the default branch by a sync of the git mirror (OMN-19834), source mirror, with the shared UUIDv5 event_id of (repo, pr_number, merge sha); a PR already published by another producer is skipped."
+    description: "A squash merge with source mirror and the shared UUIDv5 event_id of (repo, pr_number, merge sha), durably pending before the scan advances and recorded published only after broker acknowledgement."
+env_dependencies:
+  KAFKA_BOOTSTRAP_SERVERS:
+    required: true
+    description: "Lab/runtime Kafka target, resolved through ModelKafkaEventBusConfig when pending merges need publication."
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.git-query-mirror-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.git-query-mirror-completed.v1"
     failure: "onex.evt.omnimarket.git-query-mirror-failed.v1"
 metadata:
-  transport_type: inmemory
+  transport_type: kafka
   description: "Clone query layer: PR reads from a fetch-only git mirror instead of the GitHub API"
   author: "OmniNode Team"
   created: "2026-09-25"
@@ -80,4 +91,4 @@ metadata:
     - "effect"
     - "git"
     - "github-quota"
-    - "read-only"
+    - "outbox"
