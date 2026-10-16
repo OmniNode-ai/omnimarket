@@ -61,6 +61,11 @@ requirements:
     acceptance:
       - id: "AC11"
         statement: "AC11: .github/workflows/dev-merge-tag.yml triggers only on push to dev, and its tag step, run against a throwaway repository with a +05:30 committer date, pushes one lightweight tag named dev-<committer time in UTC>-<sha12> at the commit, pushes nothing on a second run or when a dev tag for that sha already exists, pushes nothing in a dry run, and refuses a value that is not a full sha -- falsifier: uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py -q fails at the merge base, where the workflow does not exist"
+  - id: "req-prrp-snapshot-publish-node-in-omnimarket"
+    statement: "The placement gate's Actions-variables snapshot publish (one gate read per registry repository merged into one dated file, complete or nothing, copied and read back on every available host, with a heartbeat and a failure record) is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract and the host list handed in by the caller."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: node_prrp_snapshot_publish_effect publishes no file when one repository's gate read fails, dates the merged snapshot by its oldest read, writes each available host and skips an unavailable one, fails the run on a copy that does not read back identical while the other hosts still get the file, writes heartbeat.json only on a complete run and failure.json otherwise, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/test_golden_chain_prrp_snapshot_publish_effect.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -237,3 +242,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/dev-merge-tag.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/branches: \[dev\]/{a=1} /git push origin "refs\/tags\//{b=1} END{exit !(a&&b)}'
+  - id: "dod-omn19998-prrp-snapshot-publish-node"
+    description: "The publisher and golden-chain tests pass at the head; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/test_golden_chain_prrp_snapshot_publish_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
+  - id: "dod-omn19998-prrp-snapshot-publish-deploy-probe"
+    description: "Hosted-runner probe reads the snapshot publisher at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prrp_snapshot_publish_effect/handlers/handler_prrp_snapshot_publish.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerPrrpSnapshotPublish'
