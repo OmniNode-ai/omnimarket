@@ -822,3 +822,140 @@ def test_an_undeclared_gate_is_caught(undeclare: Any) -> None:
 
 def _gate_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return next(row for row in rows if row.get("name") == GATE_JOB_NAME)
+
+
+def _commit_consumer(repo: Path, *, fields: str, extra: str) -> str:
+    """Commit a consumer without a release tag and return its full SHA."""
+    _write(repo, FIXTURE_MODULE_PATH, _model_source(fields=fields, extra=extra))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "commit pinned consumer")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.mark.unit
+def test_the_pinned_consumer_is_graded_not_the_newest_release(
+    wire_repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An older pin still refuses a shape that the newest release accepts."""
+    old_sha = _commit_consumer(wire_repo, fields="    prompt: str\n", extra="forbid")
+    _release(
+        wire_repo,
+        tag="v1.0.0",
+        fields="    prompt: str\n    published_at: str | None = None\n",
+        extra="forbid",
+    )
+    _producer(
+        wire_repo,
+        fields="    prompt: str\n    published_at: str | None = None\n",
+        extra="forbid",
+    )
+
+    assert (
+        main(
+            [
+                "--repo-root",
+                str(wire_repo),
+                "--changed-file",
+                FIXTURE_MODULE_PATH,
+                "--wire-root",
+                FIXTURE_WIRE_ROOT,
+                "--consumer-ref",
+                old_sha,
+            ]
+        )
+        == 1
+    )
+    refused = capsys.readouterr().err
+    assert OUTCOME_REFUSED in refused
+    assert "published_at" in refused
+    assert (
+        f"pinned consumer {old_sha[:12]} cannot decode this tree's wire payloads."
+        in refused
+    )
+    assert (
+        "land a consumer that accepts the new shape on dev first, then the "
+        "consumer's pin advances to it (no release is needed)" in refused
+    )
+    assert "release a consumer" not in refused
+
+    assert _run(wire_repo) == 0
+    assert OUTCOME_PASS in capsys.readouterr().out
+
+
+@pytest.mark.unit
+def test_a_pinned_consumer_ahead_of_every_release_passes_without_a_release(
+    wire_repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A consumer on dev can accept the new shape before any release does."""
+    _release(wire_repo, tag="v1.0.0", fields="    prompt: str\n", extra="forbid")
+    new_sha = _commit_consumer(
+        wire_repo,
+        fields="    prompt: str\n    published_at: str | None = None\n",
+        extra="forbid",
+    )
+    _producer(
+        wire_repo,
+        fields="    prompt: str\n    published_at: str | None = None\n",
+        extra="forbid",
+    )
+
+    assert (
+        main(
+            [
+                "--repo-root",
+                str(wire_repo),
+                "--changed-file",
+                FIXTURE_MODULE_PATH,
+                "--wire-root",
+                FIXTURE_WIRE_ROOT,
+                "--consumer-ref",
+                new_sha,
+                "--consumer-label",
+                "omniclaude pin",
+                "--tag-anchor",
+                "nonexistent-tag-anchor",
+            ]
+        )
+        == 0
+    )
+    passed = capsys.readouterr().out
+    assert OUTCOME_PASS in passed
+    assert f"omniclaude pin {new_sha[:12]}" in passed
+
+    assert _run(wire_repo) == 1
+    assert OUTCOME_REFUSED in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_an_unresolvable_consumer_ref_fails_closed(
+    wire_repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing pin cannot fall back to a release or claim compatibility."""
+    _release(wire_repo, tag="v1.0.0", fields="    prompt: str\n", extra="forbid")
+    _producer(
+        wire_repo,
+        fields="    prompt: str\n    published_at: str | None = None\n",
+        extra="forbid",
+    )
+    missing_sha = "0" * 40
+
+    assert (
+        main(
+            [
+                "--repo-root",
+                str(wire_repo),
+                "--changed-file",
+                FIXTURE_MODULE_PATH,
+                "--wire-root",
+                FIXTURE_WIRE_ROOT,
+                "--consumer-ref",
+                missing_sha,
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert OUTCOME_RELEASE_UNRESOLVABLE in captured.err
+    assert missing_sha in captured.err
+    assert "wire compatibility is UNPROVEN rather than proven" in captured.err
+    assert OUTCOME_PASS not in captured.out

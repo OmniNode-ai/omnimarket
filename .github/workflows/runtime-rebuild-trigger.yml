@@ -293,3 +293,44 @@ jobs:
       # non-delivery this ticket exists to remove.
       ONEXBOT_OCC_APP_ID: ${{ secrets.ONEXBOT_OCC_APP_ID }}
       ONEXBOT_OCC_PRIVATE_KEY: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+
+  # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): omniclaude consumes
+  # omnimarket by a git pin on a dev commit, never by waiting for a release.
+  # Its sibling-lock-refresh.yml advances that pin to omnimarket dev's head
+  # (forward only) and moves one rolling bot PR; this job tells it dev moved,
+  # so the pin follows each merge instead of a daily schedule. omniclaude's
+  # hourly schedule is the fallback when this dispatch is lost. A fork's
+  # merge has no secrets, so it is left to that schedule.
+  notify-omniclaude-pin:
+    name: Tell omniclaude omnimarket dev moved
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'dev' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # repository_dispatch needs Contents:write on the TARGET repository, so
+      # the org App mints a token scoped to omniclaude alone.
+      - name: Mint onexbot-occ-writer app token
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: omniclaude
+          permission-contents: write
+
+      - name: Dispatch omnimarket-dev-moved to omniclaude
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SOURCE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST repos/OmniNode-ai/omniclaude/dispatches \
+            -f event_type=omnimarket-dev-moved \
+            -f "client_payload[source_sha]=${SOURCE_SHA}"
+          echo "Dispatched omnimarket-dev-moved to omniclaude for ${SOURCE_SHA}"
