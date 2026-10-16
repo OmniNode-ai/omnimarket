@@ -50,7 +50,7 @@ requirements:
     statement: "omnimarket's release-gated checks grade the commit a consumer pins instead of waiting for a release: the Wire Compatibility Gate replays against the omnimarket commit omniclaude dev's uv.lock pins, the sibling pins steps accept a uv.lock git source locked to one commit and check omnibase_infra out at it, and a dev merge dispatches omnimarket-dev-moved to omniclaude."
     acceptance:
       - id: "AC9"
-        statement: "AC9: check_wire_compatibility.py --consumer-ref grades the pinned commit and fails closed on an unresolvable ref, the gate step passes omniclaude's pin, every pins step accepts a commit-locked git source and refuses a moving one, and runtime-rebuild-trigger.yml dispatches omnimarket-dev-moved on a dev merge -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_sibling_pins_omn20001.py -q fails at the merge base"
+        statement: "AC9: check_wire_compatibility.py --consumer-ref grades the pinned commit and fails closed on an unresolvable ref, the gate step passes omniclaude's pin, every pins step accepts a commit-locked git source and refuses a moving one, and runtime-rebuild-trigger.yml dispatches omnimarket-dev-moved on a dev merge -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q, uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -k 'pinned_consumer or unresolvable_consumer_ref' and uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k commit_pin fail at the merge base"
   - id: "req-release-staleness-advisory"
     statement: "Operator RULING 2026-10-16T07:34:18Z (no release wait; no users yet): Release Staleness (OMN-18010) keeps running unconditionally in ci.yml and keeps its 24-hour STALE measurement, but CI Summary lists it in SOFT_ALLOWLIST instead of STRICT_GATE_JOBS, so a stale, failed, absent or running Release Staleness job never fails or holds CI Summary, while any other failed job still fails it."
     acceptance:
@@ -192,7 +192,13 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_sibling_pins_omn20001.py -q"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -k 'pinned_consumer or unresolvable_consumer_ref'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k commit_pin"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
   - id: "dod-omn19998-git-pin-gates-deploy-probe"
