@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import StrEnum, unique
 
-MODEL_REGISTRY_VERSION = "1.4.0"
+MODEL_REGISTRY_VERSION = "1.5.0"
 PRICING_MANIFEST_VERSION = "2026-06-11-gemini-25-flash-lite"
 REGISTRY_OBSERVED_AT = "2026-06-11T00:00:00Z"
 GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)
@@ -24,6 +24,7 @@ class EnumLogicalModelKey(StrEnum):
     GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
     LLAMA_3_3_70B_FREE = "llama-3.3-70b-free"
     OPENROUTER_NEMOTRON_ULTRA = "openrouter-nemotron-ultra"
+    OPENROUTER_ONBOARDING_DEFAULT = "openrouter-onboarding-default"
     QWEN3_CODER_30B = "qwen3-coder-30b"
     VERTEX_GEMINI_FLASH = "vertex-gemini-flash"
 

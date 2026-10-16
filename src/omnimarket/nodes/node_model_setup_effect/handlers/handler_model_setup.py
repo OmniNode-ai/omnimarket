@@ -33,12 +33,17 @@ from typing import get_args
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError, resolve_setting
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_node_overlay,
+    resolve_setting,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
 )
+from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
     ModelProvider,
@@ -67,7 +72,8 @@ _KEY_PREFIXES: tuple[tuple[str, str], ...] = (
 
 #: The node whose overlay (``<root>/node_model_setup_effect/overlay.yaml``) declares
 #: the model onboarding registers (OMN-20844). No model id is written in code: the
-#: value is a deployment fact, read from the environment variable, else the overlay.
+#: value is read from the environment variable, else the overlay, else the default
+#: this node's contract ships, so a first run needs no private overlay.
 DEFAULT_MODEL_NODE = "node_model_setup_effect"
 _DEFAULT_MODEL_ENV: dict[str, str] = {"openrouter": "ONEX_OPENROUTER_DEFAULT_MODEL"}
 _DEFAULT_MODEL_FIELDS = frozenset(f"{p}_default_model" for p in _DEFAULT_MODEL_ENV)
@@ -75,6 +81,29 @@ _DEFAULT_MODEL_FIELDS = frozenset(f"{p}_default_model" for p in _DEFAULT_MODEL_E
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300
 _MODEL_CONFIG = Path(__file__).resolve().parents[3] / "configs/bifrost_delegation.yaml"
+_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def packaged_default(setting: str) -> str:
+    """The model the registry entry named by ``config.<setting>.registry_model`` serves.
+
+    The contract names a registry entry rather than a model: model ids live only
+    in the model registry. ``""`` when either is missing.
+    """
+    try:
+        contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return ""
+    entry = (contract.get("config") or {}).get(setting) or {}
+    key = entry.get("registry_model") if isinstance(entry, dict) else None
+    if not isinstance(key, str) or not key.strip():
+        return ""
+    try:
+        profile = ModelLlmModelRegistryLoader().load().get_model(key.strip())
+    except (KeyError, OSError, ValueError):
+        return ""
+    return (profile.model_name or "").strip()
+
 
 #: (backend id) -> (exit code, stdout, stderr) of one pinned ``onex delegate``.
 DelegateRunner = Callable[[str], tuple[int, str, str]]
@@ -202,7 +231,7 @@ class HandlerModelSetup:
     # -- the model onboarding registers ------------------------------------
 
     def _default_model(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
-        """The provider's default model from the deployment overlay; stores nothing."""
+        """The provider's default model: environment, overlay, else the contract's; stores nothing."""
         provider = request.provider
         if provider not in _DEFAULT_MODEL_ENV:
             raise ModelSetupRefusedError(
@@ -218,10 +247,19 @@ class HandlerModelSetup:
                 env_vars=(_DEFAULT_MODEL_ENV[provider],),
             )
         except NodeOverlayError as error:
-            raise ModelSetupRefusedError(
+            refusal = ModelSetupRefusedError(
                 f"{error}. To choose a model yourself: onex models add {provider} "
                 "--model <model id>"
-            ) from None
+            )
+            # Only an absent value falls back to the packaged default: an overlay
+            # that is present but broken is refused, never read as absent.
+            try:
+                load_node_overlay(DEFAULT_MODEL_NODE, fields=_DEFAULT_MODEL_FIELDS)
+            except NodeOverlayError:
+                raise refusal from None
+            model = packaged_default(setting)
+            if not model:
+                raise refusal from None
         return ModelModelSetupResult(operation="default_model", models=(model,))
 
     # -- the ordered models of a stored key --------------------------------
