@@ -68,13 +68,6 @@ backends:
     # fabricated citation; this budget is the coarse pre-emptive bound that keeps
     # an oversized prompt off a rung that cannot hold it.
     max_grounded_input_tokens: 8000
-    # OMN-20486 -- the code_generation class (the delegated code-edit loop's
-    # task type) carries its own budget: a loop turn holds the task, the file
-    # views and the check output, so the summary-class bound above refused it.
-    # Readback taken 2026-10-15 on local-coder (same served endpoint as local-heavy-reasoning).
-    # OMN-20486 measured readback: tokens 20079 run_id c5508479-74f7-4812-9417-862489e42f2c, tokens 31705 run_id a7ff4981-58f8-4973-a4a3-f4fa9c50b987, both grounded; tokens 32080 refused by this value.
-    max_grounded_input_tokens_by_task_class:
-      code_generation: 32000
     capabilities:
       - code_generation
       - refactoring
@@ -133,13 +126,6 @@ backends:
     # fabricated citation; this budget is the coarse pre-emptive bound that keeps
     # an oversized prompt off a rung that cannot hold it.
     max_grounded_input_tokens: 8000
-    # OMN-20486 -- the code_generation class (the delegated code-edit loop's
-    # task type) carries its own budget: a loop turn holds the task, the file
-    # views and the check output, so the summary-class bound above refused it.
-    # Readback taken 2026-10-15 on local-coder (same served endpoint as local-heavy-reasoning).
-    # OMN-20486 measured readback: tokens 20079 run_id c5508479-74f7-4812-9417-862489e42f2c, tokens 31705 run_id a7ff4981-58f8-4973-a4a3-f4fa9c50b987, both grounded; tokens 32080 refused by this value.
-    max_grounded_input_tokens_by_task_class:
-      code_generation: 32000
     capabilities:
       - deep_reasoning
       - reasoning

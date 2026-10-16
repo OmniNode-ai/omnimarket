@@ -43,6 +43,7 @@ Related:
 from __future__ import annotations
 
 import importlib
+import importlib.resources
 import logging
 import os
 import re
@@ -96,6 +97,9 @@ from omnimarket.models.delegation.model_entry_tier_share import (
     entry_share_draw,
     entry_share_from_contract_entry,
     validate_entry_share,
+)
+from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
+    ModelGroundingBudgetByTaskClass,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -2001,8 +2005,8 @@ def resolve_backend_grounding_budget(
 ) -> int | None:
     """Return the contract-declared input budget for ``backend_id``.
 
-    OMN-18297. OMN-20486: a ``task_type`` the backend names in
-    ``max_grounded_input_tokens_by_task_class`` gets that class's value; any
+    OMN-18297. OMN-20486: a ``task_type`` named for the backend in
+    ``configs/grounding_budget_by_task_class.yaml`` gets that class's value; any
     other class, and a call with no ``task_type``, gets the backend default.
     ``None`` means the backend declares no budget -- NOT DECLARED,
     never "unlimited by policy". Reading it here keeps the bifrost contract the
@@ -2025,13 +2029,23 @@ def resolve_backend_grounding_budget(
     for backend in config.backends:
         if backend.backend_id == backend_id:
             if task_type is not None:
-                class_budget = backend.max_grounded_input_tokens_by_task_class.get(
-                    task_type
+                class_budget = _load_grounding_budget_by_task_class().budget_for(
+                    backend_id, task_type
                 )
                 if class_budget is not None:
                     return class_budget
             return backend.max_grounded_input_tokens
     return None
+
+
+@lru_cache(maxsize=1)
+def _load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
+    """Load the packaged per-task-class grounded input budgets (OMN-20486)."""
+    resource = importlib.resources.files("omnimarket").joinpath(
+        "configs/grounding_budget_by_task_class.yaml"
+    )
+    data = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+    return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
 def backend_id_for_tier(

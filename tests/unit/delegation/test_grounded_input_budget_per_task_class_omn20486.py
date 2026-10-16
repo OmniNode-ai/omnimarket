@@ -4,9 +4,9 @@
 
 The local rung refused any code-edit loop turn above 8,000 input tokens before
 a model call, because the one budget value on the backend was set for an
-identifier-grounding failure on a summary task. The routing contract now
-declares the budget per task class: a code-generation turn has its own value,
-and every other class keeps the backend's default.
+identifier-grounding failure on a summary task. The packaged
+per-task-class budget config gives a code-generation turn its own value, and
+every other class keeps the backend's default from the routing contract.
 """
 
 from __future__ import annotations
@@ -213,15 +213,15 @@ def test_budget_resolves_per_task_class_grounded_input_budget(
     assert code >= 20000
 
 
-def test_code_class_budget_cites_a_measured_readback_grounded_input_budget(
-    packaged_base: Path,
-) -> None:
+def test_code_class_budget_cites_a_measured_readback_grounded_input_budget() -> None:
     """The comment above each code-class value names a token count and a run id."""
-    text = packaged_base.read_text(encoding="utf-8")
+    text = (
+        importlib.resources.files("omnimarket")
+        .joinpath("configs/grounding_budget_by_task_class.yaml")
+        .read_text(encoding="utf-8")
+    )
     declared = yaml.safe_load(text)["backends"]
-    with_class = [
-        b for b in declared if b.get("max_grounded_input_tokens_by_task_class")
-    ]
+    with_class = [b for b, classes in declared.items() if classes]
     assert with_class
     marker = "OMN-20486 measured readback:"
     assert text.count(marker) == len(with_class)
@@ -229,3 +229,11 @@ def test_code_class_budget_cites_a_measured_readback_grounded_input_budget(
         if marker in line:
             assert "run_id" in line, line
             assert "tokens" in line, line
+
+
+def test_bifrost_wire_contract_carries_no_class_budget_key_grounded_input_budget(
+    packaged_base: Path,
+) -> None:
+    """The released bifrost wire model refuses unknown keys (OMN-18868)."""
+    declared = yaml.safe_load(packaged_base.read_text(encoding="utf-8"))["backends"]
+    assert all("max_grounded_input_tokens_by_task_class" not in b for b in declared)

@@ -266,19 +266,6 @@ class ModelDelegationBackendConfig(BaseModel):
             "budget nobody measured."
         ),
     )
-    max_grounded_input_tokens_by_task_class: dict[str, int] = Field(
-        default_factory=dict,
-        description=(
-            "OMN-20486 -- per-task-class override of ``max_grounded_input_tokens``. "
-            "A task class named here uses its own input budget on this backend; "
-            "every other class keeps ``max_grounded_input_tokens``. The default "
-            "bound was set for an identifier-grounding failure on a summary task "
-            "and was not measured for a code-edit loop turn, which re-reads the "
-            "file it edits. Each value must cite its measured readback in the "
-            "contract comment above it. Empty means no class overrides the "
-            "backend default."
-        ),
-    )
     inline_reasoning_terminator: str | None = Field(
         default=None,
         min_length=1,
