@@ -41,8 +41,8 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 10000
-  runtime_profiles:
-    - effects
+  # In-process only: no runtime attaches it, so it claims no runtime profile.
+  runtime_profiles: []
 
 # Publishes nothing: the value is written to the store and never becomes an
 # event, which is the ruling's "ciphertext never on the bus".
