@@ -36,6 +36,11 @@ requirements:
     acceptance:
       - id: "AC6"
         statement: "AC6: src/dep_health_allowlist.yaml carries no row for onex.evt.omniclaude.task-delegated.v1, test_this_repo_allowlist_has_no_expired_entries passes, and the dependency health sweep reports no finding for that topic -- falsifier: uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries fails at the merge base once the UTC date is past 2026-10-15"
+  - id: "req-construction-terminal-consumer-first"
+    statement: "The released delegate-skill consumer accepts construction-result keys before the producer declares them, preserving a null score and the gate's own flag without emitting the new keys."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: response and failed-topic JSON decode construction failure with either gate flag and a null score; conversion retains the distinction, contradictory evidence and unknown keys are refused, legacy defaults stay intact, and the four forthcoming keys are absent from serialization -- falsifier: uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -51,6 +56,21 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19998-construction-consumer-first"
+    description: "The consumer JSON decode and terminal conversion tests reject the base's extra-key and null-score refusals, preserve the gate fact, and keep the forthcoming producer fields off the wire."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn19998-construction-consumer-deploy-probe"
+    description: "Hosted-runner decode through the consumer's JSON API at this head accepts an unscored construction failure while retaining the gate flag and emitting none of its forthcoming fields; the base rejects that payload."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import json; from omnimarket.models.delegation.wire.model_delegate_skill_response import ModelDelegateSkillFailed; p={"correlation_id":"4d97ece9-97cc-4837-9f67-fc0c29bc53ef","task_type":"document","status":"failed","quality_gate_passed":True,"quality_score":None,"operational_outcome":"terminal_construction_failed","content_verdict":"undetermined","terminal_failure_reason":"terminal_construction_failed","rule_evaluations":[]}; r=ModelDelegateSkillFailed.model_validate_json(json.dumps(p)); assert r.quality_gate_passed is True and r.quality_score is None; assert not {"operational_outcome","content_verdict","terminal_failure_reason","rule_evaluations"}.intersection(r.model_dump())'
   - id: "dod-omn19998-repo-contracts-bind-pytest-evidence"
     description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-20074.yaml binds AC10 to a command-only deploy probe."
     source: "manual"
