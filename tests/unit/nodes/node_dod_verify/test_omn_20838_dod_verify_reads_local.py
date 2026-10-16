@@ -223,15 +223,23 @@ def test_read_layer_resolves_with_gh_absent_from_path(
     assert got["checks_green"].checks_green is True, got["checks_green"].detail
 
 
-def test_required_context_set_unreadable_with_gh_absent_fails_closed(
+def test_required_context_set_unreadable_with_gh_absent_rests_on_the_merge_event(
     world: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Positive control for the test above: with no gh and no cached set, the
-    one kept read fails, and the rollup fails closed rather than passing."""
+    """With no gh and no cached set the one kept read fails. A PR the clone
+    proves merged on its base branch then rests on the merge event (OMN-20768);
+    a PR no local source holds fails closed rather than passing."""
     monkeypatch.setenv("PATH", _path_without_gh(tmp_path, None))
     got = _all_operations(world, monkeypatch)
-    assert got["checks_green"].checks_green is False
+    assert got["checks_green"].checks_green is True
+    assert "merge event" in (got["checks_green"].detail or "")
     assert got["merge_state"].merged is True
+    unknown = _run(
+        EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+        repo=_REPO,
+        pr_number=_PR + 1,
+    )
+    assert unknown.checks_green is False
 
 
 def test_guard_read_layer_spawns_gh_only_for_the_required_context_set(

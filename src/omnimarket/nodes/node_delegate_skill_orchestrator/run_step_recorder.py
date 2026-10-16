@@ -95,6 +95,8 @@ class RunStepRecorder:
         correlation_id: UUID,
         publisher: ProtocolRunStepPublisher | None,
         store: DatabaseAdapter | None,
+        started_at: datetime | None = None,
+        started_monotonic: float | None = None,
     ) -> None:
         self._tenant_id = tenant_id
         self._correlation_id = correlation_id
@@ -103,8 +105,13 @@ class RunStepRecorder:
         self._topic = run_step_topic() if publisher is not None else None
         self._next_sequence = 1
         self._calls = 0
-        self._started_at = datetime.now(UTC)
-        self._started = time.monotonic()
+        # A recorder built after the run (the bus path numbers its steps from the
+        # terminal) is given the moment the run began, so the request and the
+        # terminal's duration are timed from the run, not from the recorder.
+        self._started_at = started_at or datetime.now(UTC)
+        self._started = (
+            time.monotonic() if started_monotonic is None else started_monotonic
+        )
         self._routed_backend_id: str | None = None
         self._last_failed_sequence: int | None = None
         self._last_failure_cause: str | None = None

@@ -9,6 +9,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Self
 from uuid import UUID
 
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
@@ -18,6 +24,9 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
+)
+from omnibase_core.models.delegation.wire.model_quality_gate import (
+    ModelQualityRuleEvaluation,
 )
 from pydantic import (
     BaseModel,
@@ -110,12 +119,23 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # longer listed here: the set holds only terminal keys still awaiting their own
 # declared field.
 #
-# OMN-19437 AC1, consumer half: the terminal will carry the trace and span ids of
-# the command that produced it. This release decodes and drops them; the field
-# declarations and the handler's copy follow once a release carrying this is out.
+# OMN-19437 AC1 declared ``trace_id`` and ``span_id`` as real terminal fields
+# below, so they are no longer listed here either.
 #
 # Response-source provenance is declared after its consumer-first release.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
+# Accept the next receiver's keys without declaring producer fields. Keep the
+# construction-failure distinction privately: its failed topic can preserve a
+# true gate flag, and its absent score must not become a measured zero.
+_FORTHCOMING_CONSTRUCTION_KEYS: frozenset[str] = frozenset(
+    {
+        "operational_outcome",
+        "content_verdict",
+        "terminal_failure_reason",
+        "rule_evaluations",
+    }
+)
+_CONSTRUCTION_FAILED = "terminal_construction_failed"
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -403,8 +423,24 @@ class ModelDelegateSkillResponse(BaseModel):
     """Typed delegation result returned to requesting adapters."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+    _terminal_construction_failed: bool = PrivateAttr(default=False)
+
+    @property
+    def terminal_construction_failed(self) -> bool:
+        """Decoded failure evidence, private to this consumer release."""
+        return self._terminal_construction_failed
+
+    def retain_terminal_construction_failure(self, failed: bool) -> Self:
+        """Keep decode evidence without adding a producer field."""
+        self._terminal_construction_failed = failed
+        return self
 
     status: Literal["completed", "failed", "timeout"] = Field(...)
+    # OMN-19013: the typed pair Core reserves for a terminal whose carrier failed
+    # validation. Declared together or not at all; see the validator below.
+    operational_outcome: EnumDelegationOperationalOutcome | None = Field(default=None)
+    content_verdict: EnumDelegationContentVerdict | None = Field(default=None)
+    terminal_failure_reason: str | None = Field(default=None)
     correlation_id: UUID = Field(...)
     task_type: str = Field(...)
     # string-id-ok: tenant_id is a named tenant identifier (slug), not a UUID.
@@ -504,7 +540,10 @@ class ModelDelegateSkillResponse(BaseModel):
         ).retain_response_reasoning(reasoning)
 
     quality_gate_passed: bool = Field(default=False)
-    quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    # None means the terminal was never scored. A terminal whose construction
+    # failed carries None on purpose: a graded zero would read as a measured
+    # failing score (OMN-19013).
+    quality_score: float | None = Field(default=None, ge=0.0, le=1.0)
     required_quality_bar: float | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -521,6 +560,11 @@ class ModelDelegateSkillResponse(BaseModel):
         default=(),
         exclude_if=lambda value: not value,
         description="Authoritative quality-gate criteria that rejected this result.",
+    )
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...] = Field(
+        default=(),
+        exclude_if=lambda value: not value,
+        description="Authoritative per-rule quality-gate evaluations.",
     )
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
         default=None,
@@ -737,6 +781,26 @@ class ModelDelegateSkillResponse(BaseModel):
         ),
     )
 
+    # OMN-19437 AC1: the trace and span ids of the command that produced the
+    # terminal, copied by the handler from the command. Absent means the command
+    # carried none; an id is never minted here.
+    trace_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Trace id of the command the terminal answers. Absent means the "
+            "command carried none."
+        ),
+    )
+    span_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Span id of the command the terminal answers. Absent means the "
+            "command carried none."
+        ),
+    )
+
     @field_validator("session_id", mode="before")
     @classmethod
     def _canonical_session_id(cls, value: object) -> str | None:
@@ -931,6 +995,53 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
         return self
 
+    def _validate_construction_failure_pair(self) -> None:
+        """Hold the OMN-19013 construction-failure invariants.
+
+        A terminal whose carrier failed validation is the one pair
+        ``TERMINAL_CONSTRUCTION_FAILED`` / ``UNDETERMINED``, with the stable
+        reason, and carries no quality evidence: the content was never graded by
+        a terminal that survived construction. ``quality_gate_passed`` is the one
+        quality fact it keeps, because that is the gate's own earlier decision
+        and the failed topic must not rewrite it.
+        """
+        if (self.operational_outcome is None) != (self.content_verdict is None):
+            msg = "operational_outcome and content_verdict must be provided together"
+            raise ValueError(msg)
+        construction_failed = (
+            self.operational_outcome
+            is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        )
+        undetermined = self.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+        if undetermined and not construction_failed:
+            msg = "undetermined content verdict requires construction failure outcome"
+            raise ValueError(msg)
+        if not construction_failed:
+            return
+        if not undetermined:
+            msg = "construction failure requires undetermined content verdict"
+            raise ValueError(msg)
+        if self.status == "completed":
+            msg = "construction failure must not use completed status"
+            raise ValueError(msg)
+        if self.terminal_failure_reason != "terminal_construction_failed":
+            msg = "construction failure requires stable terminal_failure_reason"
+            raise ValueError(msg)
+        if self.quality_score is not None or self.required_quality_bar is not None:
+            msg = "construction failure cannot carry quality score evidence"
+            raise ValueError(msg)
+        if (
+            self.score_vs_required_bar is not None
+            or self.failed_acceptance_criteria
+            or self.rule_evaluations
+            or self.quality_gates_failed
+        ):
+            msg = "construction failure cannot carry quality evidence"
+            raise ValueError(msg)
+        if self.terminal_failure_cause is not None:
+            msg = "construction failure cannot claim provider failure cause"
+            raise ValueError(msg)
+
     @model_validator(mode="after")
     def validate_structured_terminal_evidence(self) -> Self:
         """Preserve the canonical Core terminal-evidence invariants.
@@ -953,6 +1064,8 @@ class ModelDelegateSkillResponse(BaseModel):
             msg = "budget_evidence and budget_refusal are mutually exclusive"
             raise ValueError(msg)
 
+        self._validate_construction_failure_pair()
+
         required_bar = self.required_quality_bar
         comparison = self.score_vs_required_bar
         if (required_bar is None) != (comparison is None):
@@ -963,6 +1076,9 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
 
         if required_bar is not None and comparison is not None:
+            if self.quality_score is None:
+                msg = "quality-bar evidence requires quality_score"
+                raise ValueError(msg)
             expected = (
                 EnumQualityScoreComparison.BELOW_BAR
                 if self.quality_score < required_bar
@@ -1078,6 +1194,73 @@ class ModelDelegateSkillResponse(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def accept_construction_keys_without_emitting_them(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        """Consumer first: validate the failure before dropping its new keys.
+
+        Wrap the base validators so the private distinction is retained before
+        the failed-topic subclass checks whether the gate flag implies success.
+        Once a subclass declares the keys, leave those declared fields intact.
+        """
+        if not isinstance(data, Mapping):
+            return handler(data)
+        outcome = data.get("operational_outcome")
+        verdict = data.get("content_verdict")
+        if (outcome is None) != (verdict is None):
+            raise ValueError(
+                "operational_outcome and content_verdict must be provided together"
+            )
+        construction_failed = outcome == _CONSTRUCTION_FAILED
+        if verdict == "undetermined" and not construction_failed:
+            raise ValueError(
+                "undetermined content verdict requires construction failure outcome"
+            )
+        if construction_failed and verdict != "undetermined":
+            raise ValueError(
+                "construction failure requires undetermined content verdict"
+            )
+        if construction_failed:
+            if data.get("status") == "completed":
+                raise ValueError("construction failure must not use completed status")
+            if data.get("terminal_failure_reason") != _CONSTRUCTION_FAILED:
+                raise ValueError(
+                    "construction failure requires stable terminal_failure_reason"
+                )
+            if (
+                data.get("quality_score") is not None
+                or data.get("required_quality_bar") is not None
+            ):
+                raise ValueError(
+                    "construction failure cannot carry quality score evidence"
+                )
+            if any(
+                data.get(key)
+                for key in (
+                    "score_vs_required_bar",
+                    "failed_acceptance_criteria",
+                    "rule_evaluations",
+                    "quality_gates_failed",
+                )
+            ):
+                raise ValueError("construction failure cannot carry quality evidence")
+            if data.get("terminal_failure_cause") is not None:
+                raise ValueError(
+                    "construction failure cannot claim provider failure cause"
+                )
+        decoded = {
+            key: value
+            for key, value in data.items()
+            if key not in _FORTHCOMING_CONSTRUCTION_KEYS or key in cls.model_fields
+        }
+        if construction_failed:
+            decoded.setdefault("quality_score", None)
+        return handler(decoded).retain_terminal_construction_failure(
+            construction_failed
+        )
 
 
 # Provider status classes as they appear in raw refusal text. Matched only as a
@@ -1299,7 +1482,12 @@ def _authoritative_attempt_ladder_verdict(
 
 def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
     """Status-independent success evidence for validating failed terminals."""
-    if response.terminal_failure_cause is not None:
+    if (
+        response.operational_outcome
+        is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        or response.terminal_construction_failed
+        or response.terminal_failure_cause is not None
+    ):
         return False
     attempt_verdict = _authoritative_attempt_ladder_verdict(response)
     if attempt_verdict is not None:
@@ -1333,6 +1521,11 @@ def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
     terminal are OMN-15464's seam, not this one.
     """
     if response.status != "completed":
+        return False
+    if (
+        response.operational_outcome
+        is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+    ):
         return False
     if response.terminal_failure_cause is not None:
         return False
@@ -1411,6 +1604,14 @@ def delegate_skill_terminal_from_response(
             response.model_dump(mode="python")
         )
     data = response.model_dump(mode="python")
+    if response.terminal_construction_failed:
+        # Internal conversion must retain the decoded distinction even though
+        # this consumer release does not publish the forthcoming wire keys.
+        data.update(
+            operational_outcome=_CONSTRUCTION_FAILED,
+            content_verdict="undetermined",
+            terminal_failure_reason=_CONSTRUCTION_FAILED,
+        )
     if data.get("status") == "completed":
         data["status"] = "failed"
         data["quality_gate_passed"] = False

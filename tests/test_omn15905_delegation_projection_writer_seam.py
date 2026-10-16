@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -301,6 +301,56 @@ class TestDelegationCompletedTerminalWriterParity:
         assert not any(
             str(call.args[0]).strip().startswith("INSERT INTO delegation_events")
             for call in mock_db.execute.await_args_list
+        )
+
+    def test_construction_terminal_writes_pair_without_rewriting_gate_fact(
+        self,
+    ) -> None:
+        """A failed carrier preserves the source gate fact and typed pair (OMN-19013).
+
+        This drives the async canonical terminal path to its captured SQL
+        upsert, rather than only asserting the sync converter payload.
+        """
+        runner = DelegationProjectionRunner()
+        mock_db = _mock_db()
+        cast(Any, runner)._db = mock_db
+        topic = runner._topic_delegation_failed
+        assert topic
+        data = _real_delegation_completed_payload(
+            correlation_id=_CORRELATION_ID, tenant_id=_TENANT
+        )
+        data.update(
+            {
+                "operational_outcome": "terminal_construction_failed",
+                "content_verdict": "undetermined",
+                "terminal_failure_reason": "terminal_construction_failed",
+                "quality_score": None,
+                "actual_score": 0.9,
+            }
+        )
+
+        ok = asyncio.run(
+            runner.project_event(
+                topic,
+                data,
+                MessageMeta(partition=0, offset=2, fallback_id=_CORRELATION_ID),
+            )
+        )
+
+        assert ok is True
+        insert_calls = [
+            call
+            for call in mock_db.execute.await_args_list
+            if str(call.args[0]).strip().startswith("INSERT INTO delegation_events")
+        ]
+        assert len(insert_calls) == 1
+        by_column = _param_by_column(insert_calls[0].args)
+        assert by_column["quality_gate_passed"] is True
+        assert by_column["operational_outcome"] == "terminal_construction_failed"
+        assert by_column["content_verdict"] == "undetermined"
+        assert by_column["actual_score"] is None, (
+            "the construction pair carries no score, so a stale actual_score on "
+            "the payload must not reach the row"
         )
 
 

@@ -148,7 +148,8 @@ def test_census_stays_a_strict_gate() -> None:
     assert GATE_NAME in ci_summary_gate.STRICT_GATE_JOBS
     assert GATE_NAME not in ci_summary_gate.SKIPPABLE_GATE_JOBS
     assert GATE_NAME in ci_summary_gate.DOCS_ONLY_SKIPPABLE_GATE_JOBS
-    assert frozenset() == ci_summary_gate.SOFT_ALLOWLIST
+    assert GATE_NAME not in ci_summary_gate.SOFT_ALLOWLIST
+    assert "Coverage Aggregate (shadow)" not in ci_summary_gate.SOFT_ALLOWLIST
 
 
 def _checkouts(job: dict[str, Any]) -> list[dict[str, Any]]:

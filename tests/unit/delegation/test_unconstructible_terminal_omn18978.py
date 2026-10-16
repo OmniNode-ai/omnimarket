@@ -51,6 +51,10 @@ from omnibase_core.models.delegation.wire.model_quality_gate import (
     ModelQualityRuleEvaluation,
 )
 
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+    delegate_skill_succeeded,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     TERMINAL_CONSTRUCTION_FAILED_REASON,
     HandlerDelegationWorkflow,
@@ -198,21 +202,137 @@ class TestARejectedTerminalStillTerminates:
             "receipt and unparseable in a log line"
         )
 
-    def test_a_decided_pass_degrades_to_failed_rather_than_claiming_a_pass(
+    def test_a_decided_pass_degrades_to_failed_while_preserving_gate_fact(
         self,
     ) -> None:
-        """The honest half of the degradation.
+        """The honest half of the degradation (OMN-19013).
 
-        A terminal whose evidence fields could not be constructed cannot claim
-        it was graded and passed, so the guard reports FAILED even where the
-        run had been decided COMPLETED. The answer itself still rides along.
+        The failed topic reports the construction failure even where the gate
+        accepted the content. The answer and the original gate fact still ride
+        along; the typed pair, not a rewritten flag, says the content was never
+        graded by a terminal that survived construction.
         """
         terminal = HandlerDelegationWorkflow(workflows={})._emit_terminal(
             _inputs(uuid4(), completed=True)
         )[0]
 
         assert isinstance(terminal, ModelDelegationFailed)
+        assert terminal.quality_passed is True
+        assert (
+            terminal.operational_outcome
+            is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+        assert terminal.quality_score is None
+        assert terminal.required_quality_bar is None
+        assert terminal.score_vs_required_bar is None
+        assert terminal.failed_acceptance_criteria == ()
+        assert terminal.rule_evaluations == ()
+        assert terminal.terminal_failure_cause is None
+        assert terminal.terminal_failure_reason == TERMINAL_CONSTRUCTION_FAILED_REASON
+
+    def test_a_rejected_gate_fact_is_preserved_too(self) -> None:
+        terminal = HandlerDelegationWorkflow(workflows={})._emit_terminal(
+            _inputs(uuid4(), completed=False)
+        )[0]
+
+        assert isinstance(terminal, ModelDelegationFailed)
         assert terminal.quality_passed is False
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+        assert terminal.quality_score is None
+
+    def test_the_degraded_terminal_survives_a_canonical_json_round_trip(
+        self,
+    ) -> None:
+        """The failed topic carries JSON, so the pair and the kept flag must too."""
+        terminal = HandlerDelegationWorkflow(workflows={})._emit_terminal(
+            _inputs(uuid4(), completed=True)
+        )[0]
+
+        restored = ModelDelegationFailed.model_validate_json(terminal.model_dump_json())
+
+        assert restored == terminal
+        assert restored.quality_passed is True
+        assert (
+            restored.operational_outcome
+            is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        )
+
+
+class TestTheConsumerHoldsTheConstructionInvariants:
+    """The Market receiver refuses a construction failure that lies (OMN-19013)."""
+
+    def _failed(self, **overrides: object) -> ModelDelegateSkillResponse:
+        fields: dict[str, object] = {
+            "status": "failed",
+            "correlation_id": uuid4(),
+            "task_type": "test",
+            "operational_outcome": "terminal_construction_failed",
+            "content_verdict": "undetermined",
+            "terminal_failure_reason": "terminal_construction_failed",
+        }
+        fields.update(overrides)
+        return ModelDelegateSkillResponse.model_validate(fields)
+
+    def test_the_exact_pair_is_accepted_and_round_trips(self) -> None:
+        response = self._failed()
+
+        restored = ModelDelegateSkillResponse.model_validate_json(
+            response.model_dump_json()
+        )
+
+        assert restored == response
+        assert restored.quality_score is None
+        assert restored.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+
+    def test_consumer_rejects_nonundetermined_construction_failure(self) -> None:
+        with pytest.raises(ValueError, match="requires undetermined"):
+            self._failed(content_verdict="usable")
+
+    def test_consumer_rejects_undetermined_without_construction_failure(
+        self,
+    ) -> None:
+        with pytest.raises(ValueError, match="requires construction failure"):
+            self._failed(operational_outcome="inference_failed")
+
+    def test_consumer_rejects_a_construction_failure_on_a_completed_status(
+        self,
+    ) -> None:
+        with pytest.raises(ValueError, match="must not use completed status"):
+            self._failed(status="completed")
+
+    def test_consumer_rejects_an_unstable_reason(self) -> None:
+        with pytest.raises(ValueError, match="stable terminal_failure_reason"):
+            self._failed(terminal_failure_reason="something else")
+
+    def test_consumer_rejects_a_half_declared_pair(self) -> None:
+        with pytest.raises(ValueError, match="provided together"):
+            self._failed(content_verdict=None)
+
+    def test_consumer_rejects_a_score_on_construction_failure(self) -> None:
+        with pytest.raises(ValueError, match="cannot carry quality score evidence"):
+            self._failed(quality_score=0.9)
+
+    @pytest.mark.parametrize(
+        "quality_evidence",
+        [
+            {"rule_evaluations": (_duplicated_rule_evaluations()[0],)},
+            {"quality_gates_failed": ["covers_edge_cases"]},
+            {"failed_acceptance_criteria": ("covers_edge_cases",)},
+        ],
+    )
+    def test_consumer_rejects_structured_quality_evidence_on_construction_failure(
+        self, quality_evidence: dict[str, object]
+    ) -> None:
+        with pytest.raises(ValueError, match="cannot carry quality evidence"):
+            self._failed(**quality_evidence)
+
+    def test_consumer_rejects_a_provider_cause_on_construction_failure(self) -> None:
+        with pytest.raises(ValueError, match="cannot claim provider failure cause"):
+            self._failed(terminal_failure_cause="provider_error")
+
+    def test_a_construction_failure_is_never_a_success(self) -> None:
+        assert delegate_skill_succeeded(self._failed()) is False
 
 
 class TestTheGuardDoesNotFireOnAValidTerminal:

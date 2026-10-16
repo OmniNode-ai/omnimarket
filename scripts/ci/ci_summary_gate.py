@@ -319,12 +319,6 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # default-deny sweep, and this row makes a skipped or absent conclusion fail
     # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Canonical File Shape (OMN-20304)",  # canonical-file-shape
-    # OMN-18010: release staleness moved from OCC under retirement plan S8,
-    # option (b) of addendum section 11 question 2 (B3). Registered on the
-    # same terms: a FAILURE already fails CI Summary through the default-deny
-    # sweep, and this row makes a skipped or absent conclusion fail closed too.
-    # Unconditional in ci.yml (no needs/if), so a skip is anomalous.
-    "Release Staleness (OMN-18010)",  # release-staleness
     # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
     # change to the generic test job's selection cannot drop them. Registered
     # on the same terms as the rows above; unconditional in ci.yml.
@@ -435,10 +429,16 @@ GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 # already non-blocking. Keep this list SMALL and only add jobs that genuinely
 # already exist in ci.yml as non-gating.
 SOFT_ALLOWLIST: frozenset[str] = frozenset(
-    # Empty since OMN-18556: its only entry, "Coverage Aggregate (shadow)", was
-    # removed from ci.yml when that aggregate became the required census inside
-    # ``Coverage Sweep Gate``. The mechanism stays (``evaluate(allowlist=...)``)
-    # and is exercised by test_allowlisted_shadow_failure_is_tolerated.
+    {
+        # OMN-19998: release staleness (OMN-18010) stays an unconditional job in
+        # ci.yml that measures dev against the newest release tag and reports
+        # STALE, but it no longer gates CI Summary. Operator ruling
+        # 2026-10-16T07:34:18Z: "There's no reason we need to wait for a
+        # release." and "have no users right now." Consumers take omnimarket
+        # by branch or tag pin, so release debt is visible on the check-run and
+        # never holds a PR or dev. Its 24-hour threshold is unchanged.
+        "Release Staleness (OMN-18010)",  # release-staleness
+    }
 )
 
 # L4: contexts produced by OTHER workflow files (separate runs the in-run
