@@ -21,6 +21,7 @@ from uuid import uuid4
 from omnibase_core.models.delegation.wire import ModelQualityGateIntent
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -85,7 +86,25 @@ class HandlerQualityGateIntent:
             if intent.payload.response_contract is not None
             else resolve_task_class_response_contract(intent.payload.task_type)
         )
-        result = quality_gate_delta(intent.payload, response_contract=response_contract)
+        # OMN-17427: the orchestrator ran the request's named tests and carried
+        # the run on the intent; the gate judges the answer on it. An intent
+        # that carries neither is gated as before.
+        carried_run = intent.payload.named_test_run
+        if carried_run is None and not intent.payload.named_tests_requested:
+            result = quality_gate_delta(
+                intent.payload, response_contract=response_contract
+            )
+        else:
+            result = quality_gate_delta(
+                intent.payload,
+                response_contract=response_contract,
+                named_test_run=(
+                    None
+                    if carried_run is None
+                    else ModelNamedTestRun.model_validate(carried_run.model_dump())
+                ),
+                named_tests_requested=intent.payload.named_tests_requested,
+            )
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f "
             "score_verified=%s unverified_because=%s correlation_id=%s",
