@@ -3688,8 +3688,11 @@ jobs:
           -q -p no:randomly
 
   # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
-  # option (b) of the addendum's section 11 question 2 (B3): enforce release
-  # debt only on the repository it measures, under its required CI Summary.
+  # option (b) of the addendum's section 11 question 2 (B3): measure release
+  # debt only on the repository it measures.
+  # OMN-19998: advisory, not gating. CI Summary lists it in SOFT_ALLOWLIST
+  # (scripts/ci/ci_summary_gate.py) under operator ruling 2026-10-16T07:34:18Z
+  # (no release wait; no users yet), so a STALE red shows here and holds no PR.
   # Unconditional: no `if:`, no `needs:`. Controls prove stale source is refused
   # and old docs are accepted before measuring origin/dev, never the PR head.
   # When red, dispatch the Release Cut workflow (.github/workflows/release-cut.yml).
