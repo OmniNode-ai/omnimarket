@@ -391,7 +391,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rescue_patch_review_compute/handlers/handler_rescue_patch_review.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchReview'
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/rescue_patch_review/handler_rescue_patch_review.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchReview'
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rescue_patch_review_effect/handlers/handler_rescue_patch_scan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchScan'
