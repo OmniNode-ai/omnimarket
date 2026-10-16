@@ -19,7 +19,9 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
+import omnimarket.nodes.node_prrp_snapshot_publish_effect as publish_node
 from omnimarket.nodes.node_prrp_snapshot_publish_effect import __main__ as publish_cli
 from omnimarket.nodes.node_prrp_snapshot_publish_effect.handlers import (
     handler_prrp_snapshot_publish as publish,
@@ -357,3 +359,9 @@ def test_module_cli_refuses_missing_hosts_file_with_exit_two(
     assert "missing-hosts.yaml" in done.stderr
     assert "Traceback" not in done.stderr
     assert not (tmp_path / "gate-calls").exists()
+
+
+def test_the_effects_runtime_owns_the_publisher_command_subscription() -> None:
+    contract_path = Path(publish_node.__file__).parent / "contract.yaml"
+    contract = yaml.safe_load(contract_path.read_text())
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]

@@ -16,6 +16,7 @@ class ModelUsageCallDelta(BaseModel):
     tenant_id: str = Field(min_length=1)
     usage_day: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     model_id: str = Field(min_length=1)
+    cost_tier_name: str = Field(min_length=1)
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     cost_usd: Decimal = Field(ge=0)

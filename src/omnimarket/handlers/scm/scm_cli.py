@@ -19,8 +19,8 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, branch-protection, run-list, run-view,
   job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  workflow-run) publish node_github_repo_write_effect's typed request. Its
-  guards apply: quota floor, expected head, idempotency, and the claim pr-close
+  workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready and pr-close take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
@@ -490,9 +490,16 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_close": ("run", "claims_dir"),
     "pr_comment": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
+    "check_run_create": (
+        "name",
+        "status",
+        "conclusion",
+        "output_title",
+        "output_summary",
+    ),
 }
 _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
-    {"pr_create", "workflow_dispatch"}
+    {"pr_create", "workflow_dispatch", "check_run_create"}
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
     {"pr_edit", "pr_ready", "pr_close"}
@@ -501,6 +508,29 @@ _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
 _OPTION_DECORATORS: Final[
     dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
 ] = {
+    "name": click.option("--name", required=True, help="The check run's name."),
+    "status": click.option(
+        "--status",
+        required=True,
+        type=click.Choice(["queued", "in_progress", "completed"]),
+    ),
+    "conclusion": click.option(
+        "--conclusion",
+        default=None,
+        type=click.Choice(
+            [
+                "action_required",
+                "cancelled",
+                "failure",
+                "neutral",
+                "success",
+                "skipped",
+                "timed_out",
+            ]
+        ),
+    ),
+    "output_title": click.option("--output-title", default=None),
+    "output_summary": click.option("--output-summary", default=None),
     "head": click.option("--head", required=True, help="The PR's head branch."),
     "base": click.option("--base", default=None, help="The base branch."),
     "title": click.option("--title", default=None),
@@ -614,6 +644,13 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             for name, value in fields.items()
             if value is not None and isinstance(value, (str, bool))
         }
+        if spec.operation == EnumRepoWriteOperation.CHECK_RUN_CREATE:
+            given["head_sha"] = head_sha
+            head_sha = None
+            output_title = given.pop("output_title", None)
+            output_summary = given.pop("output_summary", None)
+            if output_title is not None or output_summary is not None:
+                given["output"] = {"title": output_title, "summary": output_summary}
         if body is not None:
             given["body"] = body
         if run is not None:
@@ -669,7 +706,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
     decorated = click.option(
         "--head-sha",
         default=None,
-        help="The head this write expects; a moved head is refused.",
+        help="check-run-create: the commit to report on; other writes: the expected head.",
     )(decorated)
     decorated = click.option(
         "--lane",

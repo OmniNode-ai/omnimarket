@@ -9,7 +9,7 @@ import json
 import logging
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -18,12 +18,16 @@ from typing import Any, Final
 from uuid import UUID, uuid4
 
 import yaml
+from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from pydantic import ValidationError
 
 from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.handlers.handler_projection_derived_write import (
+    HandlerProjectionDerivedWrite,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -32,6 +36,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegationEventProjectionRow,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
 )
@@ -66,7 +71,13 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _stamp_terminal_stop_reason,
     _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
+    _unpriced_cost_as_null,
     compute_generation_proof_fields,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.handler_run_savings import (
+    RUN_SAVINGS_DERIVED_COLUMNS,
+    RUN_SAVINGS_INPUT_COLUMNS,
+    modelled_run_savings_columns,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
@@ -228,6 +239,10 @@ SNAPSHOT_AGGREGATE_KEY = (SNAPSHOT_GRAIN_COLUMN, SNAPSHOT_TENANT_COLUMN)
 #: two rows onto one cache entry or leave a superseded row that compaction can
 #: never reclaim.
 _DELEGATION_ROW_KEY: Final[str] = "correlation_id"
+
+_DELEGATION_MONEY_COLUMNS: Final[frozenset[str]] = frozenset(
+    {"cost_usd", "cost_savings_usd", "budget_headroom_consumed_usd"}
+)
 
 # OMN-18140: the closed set of SQL expressions a write-attestation column may
 # be stamped with. These strings reach the composed statement UNCAST and
@@ -549,7 +564,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         written = await self._dynamic_upsert(
             table=self._table_delegation,
             conflict_key=_DELEGATION_ROW_KEY,
-            row=row,
+            row=_unpriced_cost_as_null(row),
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
             returning=tuple(
@@ -559,6 +574,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                     for column in exposure.columns
                 )
             ),
+            derive=modelled_run_savings_columns,
+            input_columns=RUN_SAVINGS_INPUT_COLUMNS,
+            derived_columns=RUN_SAVINGS_DERIVED_COLUMNS,
         )
         await self._publish_row_snapshot(written, meta)
 
@@ -1263,11 +1281,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # stops a verdict from re-attributing a delegation row a terminal event
         # already recorded.
         row["tenant_id"] = write_tenant
-        await self._dynamic_upsert(
-            table=self._table_delegation,
-            conflict_key="correlation_id",
-            row=row,
-            tenant=write_tenant,
+        await self._write_delegation_row(
+            row,
+            meta,
             # OMN-15583: ``timestamp`` joins ``tenant_id`` as insert-only for
             # the same reason -- the verdict names it so its own INSERT row is
             # valid, and must never re-time a delegation row a terminal event
@@ -1356,6 +1372,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, Any]]:
         """Async targeted-column UPSERT (OMN-15905 port).
 
@@ -1414,6 +1433,28 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # the house tenant and refuse against the row's real tenant. Callers
         # that DO put ``tenant_id`` on the row keep the OMN-15919 behaviour
         # unchanged: one resolver, both halves of the policy comparison.
+        if derive is None and (input_columns or derived_columns):
+            raise ValueError("derive is required when derived columns are declared")
+        derived_write: ModelProjectionDerivedWrite | None = None
+        if derive is not None:
+            plan = build_upsert_plan(
+                table=table,
+                conflict_key=conflict_key,
+                row=row,
+                insert_only_columns=insert_only_columns,
+                sql_expression_columns=sql_expression_columns,
+                returning=returning,
+            )
+            derived_write = HandlerProjectionDerivedWrite.prepare(
+                plan,
+                row=row,
+                derive=derive,
+                input_columns=input_columns,
+                derived_columns=derived_columns,
+                insert_only_columns=insert_only_columns,
+            )
+            assert derived_write is not None
+            returning = derived_write.readback_columns
         tenant = tenant or resolve_write_tenant(row.get("tenant_id"), table=table)
         conflict_keys = [k.strip() for k in conflict_key.split(",") if k.strip()]
         if not conflict_keys:
@@ -1452,6 +1493,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         placeholders: list[str] = []
         for i, col in enumerate(columns, start=1):
             value = row[col]
+            if (
+                table == self._table_delegation
+                and col in _DELEGATION_MONEY_COLUMNS
+                and isinstance(value, float)
+            ):
+                value = Decimal(str(value))
             if isinstance(value, list | dict):
                 values.append(json.dumps(value, default=str))
                 placeholders.append(f"${i}::jsonb")
@@ -1505,9 +1552,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
             f"{returning_clause}"
         )
-        written = await self.db_for(table, operation="write").execute(
-            query, *values, tenant=tenant
-        )
+        database = self.db_for(table, operation="write")
+        if derived_write is None:
+            written = await database.execute(query, *values, tenant=tenant)
+        else:
+            written = await database.execute(
+                query, *values, tenant=tenant, derived_write=derived_write
+            )
         if table == self._table_delegation:
             self._delegation_writes += 1
             # OMN-18139: recorded here, beside the counter the aggregate

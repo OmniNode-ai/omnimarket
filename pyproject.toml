@@ -234,7 +234,11 @@ dependencies = [
     # Sibling Release Compatibility Gate finds it in the pinned release. 0.38.72
     # declares the same omnibase-compat, omnibase-core and omnibase-spi bounds as
     # 0.38.71, so this bump cascades nothing.
-    "omnibase-infra>=0.38.72,<0.39.0",
+    # OMN-19438: floor raised to 0.38.74, the first omnibase_infra release that
+    # vendors the savings_estimates 095 house-tenant rebackfill node migration
+    # byte-identical, so the Sibling Release Compatibility Gate finds it in the
+    # pinned release.
+    "omnibase-infra>=0.38.74,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -334,6 +338,7 @@ node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_capture_item_identity_effect = "omnimarket.nodes.node_capture_item_identity_effect"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
+node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
 node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
 node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"
 node_automation_run_observer_effect = "omnimarket.nodes.node_automation_run_observer_effect"
@@ -1182,7 +1187,11 @@ override-dependencies = [
     # Sibling Release Compatibility Gate finds it in the pinned release. 0.38.72
     # declares the same omnibase-compat, omnibase-core and omnibase-spi bounds as
     # 0.38.71, so this bump cascades nothing.
-    "omnibase-infra>=0.38.72,<0.39.0",
+    # OMN-19438: floor raised to 0.38.74, the first omnibase_infra release that
+    # vendors the savings_estimates 095 house-tenant rebackfill node migration
+    # byte-identical, so the Sibling Release Compatibility Gate finds it in the
+    # pinned release.
+    "omnibase-infra>=0.38.74,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

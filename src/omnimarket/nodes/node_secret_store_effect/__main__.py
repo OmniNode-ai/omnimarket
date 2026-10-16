@@ -17,11 +17,11 @@ from __future__ import annotations
 import asyncio
 import sys
 
+from omnimarket.models.secret_store.model_secret_store_request import (
+    ModelSecretStoreRequest,
+)
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
-)
-from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request import (
-    ModelSecretStoreRequest,
 )
 
 _EXIT_NOT_OK = 3

@@ -1939,6 +1939,8 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
+                        # OMN-20717: whether this rung's cost was measured.
+                        "usage_source": transport_result.usage_source.value,
                         "failure_class": (
                             transport_failure_class.value
                             if transport_failure_class is not None
@@ -2259,6 +2261,8 @@ class LocalDelegationDispatchPort:
                     "quality_score": gate_result.quality_score,
                     "error_message": "; ".join(gate_result.failure_reasons),
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-20717: whether this rung's cost was measured.
+                    "usage_source": result.usage_source.value,
                     # OMN-20154: the provider answered; a rung the gate did not
                     # accept is a quality-gate failure, typed as one.
                     "provider_id": _attempt_provider_id(backend.endpoint_ref),
@@ -4223,11 +4227,18 @@ class LocalDelegationDispatchPort:
         measured zero. Counting escalated-from attempts' tokens belongs in the
         metering summary, so the CLI and the page move together.
 
+        Every call carries the run's tier, read from the delegation row the
+        terminal has just written (OMN-20755's rule), so the tier joins the
+        usage row key and one run never splits across tiers (OMN-21015 AC4,
+        per the 2026-10-14 ruling). A row with no tier, or a failed read,
+        books the calls under not_tier_routed, never under a guessed tier.
+
         Dated by the terminal's own emitted_at, so its UTC day is the
         delegation row's. Each call has its own guard: a failed usage write
         must neither break the response nor take the call-metrics row, or
         another attempt's usage, down with it.
         """
+        run_cost_tier_name = self._recorded_run_tier(correlation_id)
         deciding = len(attempt_usage) - 1
         calls = [
             (index == deciding, usage)
@@ -4249,6 +4260,7 @@ class LocalDelegationDispatchPort:
                     completion_tokens=usage.tokens_out if is_deciding else 0,
                     estimated_cost_usd=float(usage.cost_usd),
                     usage_source=usage.usage_source,
+                    cost_tier_name=run_cost_tier_name,
                     timestamp=emitted_at,
                 )
                 apply_usage_call(
@@ -4263,6 +4275,22 @@ class LocalDelegationDispatchPort:
                     call_id,
                     exc_info=True,
                 )
+
+    def _recorded_run_tier(self, correlation_id: UUID) -> str:
+        """The routing tier the run's delegation row records, "" when it has none."""
+        try:
+            rows = self._evidence_db.query(
+                _DELEGATION_EVENTS_TABLE, {"correlation_id": str(correlation_id)}
+            )
+        except Exception:
+            logger.warning(
+                "Failed to read the routing tier for correlation_id=%s",
+                correlation_id,
+                exc_info=True,
+            )
+            return ""
+        tier = rows[0].get("cost_tier_name") if rows else None
+        return tier if isinstance(tier, str) else ""
 
     def _refresh_metering_summary(
         self, *, correlation_id: UUID, tenant_id: str, terminal_at: datetime

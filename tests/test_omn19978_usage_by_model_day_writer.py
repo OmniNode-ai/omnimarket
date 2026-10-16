@@ -69,6 +69,8 @@ def writer_boundary() -> tuple[UsageByModelDayProjectionWriter, MagicMock, Magic
     db.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
     conn.execute = AsyncMock()
     conn.fetch = AsyncMock()
+    # OMN-21015: the key-in-force check; False is the three-column key 0003 keeps.
+    conn.fetchval = AsyncMock(return_value=False)
     writer._db = db
     writer.publish_snapshot_delta = AsyncMock()
     return writer, db, conn
@@ -86,10 +88,12 @@ async def test_publishes_database_row_only_after_transaction_commit(
         "tenant_id": "tenant-1",
         "usage_day": date(2026, 9, 29),
         "model_id": "model-1",
+        "cost_tier_name": "not_tier_routed",
         "input_tokens": 120,
         "output_tokens": 30,
         "cost_usd": Decimal("0.01000000"),
         "call_count": 10,
+        "call_share": 1.0,
         "updated_at": datetime(2026, 9, 30, tzinfo=UTC),
         "projection_cursor": 42,
     }
@@ -124,6 +128,8 @@ async def test_publishes_database_row_only_after_transaction_commit(
         3,
         Decimal("0.001"),
         datetime(2026, 9, 29, 3, 30, tzinfo=UTC),
+        # OMN-21015: a payload that names no tier is stored under not_tier_routed.
+        "not_tier_routed",
         # OMN-20006: a payload that never says how its cost was obtained is stored
         # as unknown, so the recount keeps it out of measured_cost_usd.
         "unknown",

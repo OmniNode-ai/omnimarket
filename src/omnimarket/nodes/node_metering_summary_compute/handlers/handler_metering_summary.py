@@ -45,6 +45,7 @@ from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summar
     ModelCounterfactualBaseline,
     ModelMeteringModelRow,
     ModelMeteringReconciliation,
+    ModelMeteringRunRow,
     ModelMeteringSummary,
     ModelMeteringSummaryRequest,
 )
@@ -101,8 +102,9 @@ class HandlerMeteringSummary:
         recorded_savings_runs = 0
 
         per_model: dict[str, _ModelAccumulator] = defaultdict(_ModelAccumulator)
+        run_savings: list[Decimal | None] = [None] * len(payload.records)
 
-        for record in payload.records:
+        for index, record in enumerate(payload.records):
             bucket = per_model[record.model or "(unrecorded)"]
             bucket.runs += 1
 
@@ -143,7 +145,9 @@ class HandlerMeteringSummary:
                     baseline=baseline, tokens_in=tokens_in, tokens_out=tokens_out
                 )
                 counterfactual_total += run_counterfactual
-                bucket.savings += run_counterfactual - spend
+                saving = run_counterfactual - spend
+                bucket.savings += saving
+                run_savings[index] = saving
 
         has_measured = runs_measured > 0
         spend_usd = spend_total if has_measured else None
@@ -178,6 +182,18 @@ class HandlerMeteringSummary:
             ),
             by_model=self._top_models(
                 per_model, payload.top_models, baselined=baseline is not None
+            ),
+            by_run=tuple(
+                ModelMeteringRunRow(
+                    correlation_id=record.correlation_id,
+                    measurement=record.measurement,
+                    savings_usd=run_savings[index],
+                    baseline_model=baseline.model if baseline else None,
+                    pricing_manifest_version=baseline.pricing_manifest_version
+                    if baseline
+                    else None,
+                )
+                for index, record in enumerate(payload.records)
             ),
         )
 

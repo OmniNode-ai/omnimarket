@@ -187,8 +187,11 @@ class TestOmn12492RegistryInvariants:
             )
 
     def test_registry_version_bumped(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """Registry retirement updates the catalog version without changing prices."""
-        assert registry.model_registry_version == "1.4.0"
+        """Catalog changes bump the version without changing existing prices.
+
+        1.5.0 adds the OpenRouter onboarding default (a customer's model on the
+        customer's key, not a delegation rung)."""
+        assert registry.model_registry_version == "1.5.0"
 
     def test_pricing_manifest_version_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
         assert registry.pricing_manifest_version == "2026-06-11-gemini-25-flash-lite"

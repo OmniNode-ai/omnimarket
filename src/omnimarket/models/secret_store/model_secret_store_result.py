@@ -15,7 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request import (
+from omnimarket.models.secret_store.model_secret_store_request import (
     EnumSecretStoreOperation,
 )
 

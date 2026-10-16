@@ -50,6 +50,7 @@ from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptK
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
@@ -100,17 +101,9 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # as a weighted spread draw. The producer and the declared field land in the
 # change after the release that carries this consumer.
 #
-# OMN-20717 adds ``usage_source``: the measurement provenance the transport
-# reported for the attempt's cost, so an unpriced call can be stored as a null
-# cost rather than 0. Its producer and declared field land after the release
-# that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"backend_pinned", "usage_source"}
-)
-# OMN-20717: ``cost_measured`` on the metrics says whether any attempt's cost
-# was measured, so a zero ``cost_usd`` can be told apart from an unpriced one.
-# Same consumer-first order as the attempt key above.
-_FORTHCOMING_METRICS_KEYS: frozenset[str] = frozenset({"cost_measured"})
+# OMN-20717 declared ``usage_source`` on the attempt and ``cost_measured`` on
+# the metrics below, after the release that carried their consumer-first keys.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -177,6 +170,10 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     quality_gate_passed: bool = Field(...)
     quality_score: float | None = Field(default=None)
     cost_usd: float = Field(default=0.0, ge=0.0)
+    # OMN-20717: whether this rung's cost was measured, estimated or unknown,
+    # as the transport reported it. None when no source reached this record
+    # (a skipped rung, or a producer that does not report one).
+    usage_source: EnumUsageSource | None = Field(default=None)
     # OMN-19436: retain the provider's stop reason on each rung.
     finish_reason: EnumProviderFinishReason | None = Field(
         default=None,
@@ -401,6 +398,16 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     tokens_to_compliance: int = Field(default=0, ge=0)
     compliance_attempts: int = Field(default=0, ge=0)
     cost_usd: float = Field(default=0.0, ge=0.0)
+    cost_measured: bool | None = Field(
+        default=None,
+        description=(
+            "OMN-20717: whether cost_usd was measured. True when at least one "
+            "attempt's cost was measured, False when attempts reported a usage "
+            "source and none was measured (the call was not priced, so a zero "
+            "cost_usd means unknown, not free). None when no attempt reported a "
+            "source; cost_usd is then taken as given."
+        ),
+    )
     cost_savings_usd: float | None = Field(default=None, ge=0.0)
     frontier_costs_usd: dict[str, float] = Field(default_factory=dict)
     premium_counterfactual: ModelPremiumCounterfactual | None = Field(
@@ -411,12 +418,6 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
         ),
     )
     latency_ms: int = Field(default=0, ge=0)
-
-    @model_validator(mode="before")
-    @classmethod
-    def accept_forthcoming_keys(cls, data: Any) -> Any:
-        """Decode metrics from a producer one release ahead (OMN-20717)."""
-        return _without_forthcoming_keys(data, _FORTHCOMING_METRICS_KEYS)
 
 
 class ModelDelegateSkillResponse(BaseModel):

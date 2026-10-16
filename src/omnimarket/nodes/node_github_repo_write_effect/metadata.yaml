@@ -1,6 +1,6 @@
 name: node_github_repo_write_effect
-version: "1.0.0"
-description: "Typed GitHub PR authoring writes — pr_create, pr_edit, pr_ready, pr_close, pr_comment, workflow_dispatch — with quota-floor, expected-head, idempotency and claim guards, and the omnibase_spi ProtocolSourceControl adapter on the same transport (EFFECT)"
+version: "1.1.0"
+description: "Typed GitHub PR authoring writes — pr_create, pr_edit, pr_ready, pr_close, pr_comment, workflow_dispatch, check_run_create — with quota-floor, expected-head, idempotency and claim guards, and the omnibase_spi ProtocolSourceControl adapter on the same transport (EFFECT)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

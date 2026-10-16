@@ -278,11 +278,10 @@ class TestDelegationHandler:
         args = write_calls[-1].args
         assert "pricing_manifest_version" in args[0]
         assert "corr-pricing-proof" in args
-        # OMN-15905: the ported write path stores the measured actual cost as
-        # a native float/Decimal param (matching the sync project() path),
-        # not a pre-stringified value the old async-only converter produced.
+        # NUMERIC money binds the exact reported decimal, avoiding both a
+        # binary-float expansion and the old pre-stringified parameter.
         by_column = _param_by_column(args)
-        assert by_column["cost_savings_usd"] == 0.00525
+        assert by_column["cost_savings_usd"] == Decimal("0.00525")
         assert by_column["pricing_manifest_version"] == 1
 
     @pytest.mark.asyncio

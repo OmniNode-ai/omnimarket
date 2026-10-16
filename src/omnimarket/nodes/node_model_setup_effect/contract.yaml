@@ -20,10 +20,11 @@ description: >
   reason, and the time. Storing a key is not this node's work: the `onex models`
   shim stores it through node_local_secret_store_effect first. No request,
   result or record carries a key. It also reports the model onboarding registers
-  for OpenRouter (`default_model`), read from this node's deployment overlay
-  (`<root>/node_model_setup_effect/overlay.yaml`, field `openrouter_default_model`)
-  and never from code; the customer changes it with `onex models add openrouter
-  --model <id>`.
+  for OpenRouter (`default_model`): ONEX_OPENROUTER_DEFAULT_MODEL, else this node's
+  deployment overlay (`<root>/node_model_setup_effect/overlay.yaml`, field
+  `openrouter_default_model`), else the model registry entry this contract names
+  under `config`, so a first run needs no private overlay. Never from code; the
+  customer changes it with `onex models add openrouter --model <id>`.
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 
@@ -42,6 +43,15 @@ descriptor:
   timeout_ms: 1200000  # up to four test delegations, each bounded at 300 s
   runtime_profiles:
     - effects
+
+# The packaged default: what a developer with no overlay gets on a first run. The
+# model id lives in the model registry (the one source of model ids); this names
+# the registry entry. A deployment overrides it with its overlay or the
+# environment variable; an overlay that is present but broken is refused.
+config:
+  openrouter_default_model:
+    description: "The model registry entry whose model_name onboarding registers when neither ONEX_OPENROUTER_DEFAULT_MODEL nor an overlay names a model."
+    registry_model: "openrouter-onboarding-default"
 
 # The node publishes nothing: the test delegation writes its own record, and the
 # result is returned to the shim that asked.

@@ -362,6 +362,11 @@ _USAGE_MEASURED_MIGRATION = (
     _NODES
     / "node_projection_usage_by_model_day/migrations/0002_usage_by_model_day_measured_cost.sql"
 )
+# OMN-21015: the tier key and the per-day share column.
+_USAGE_TIER_MIGRATION = (
+    _NODES
+    / "node_projection_usage_by_model_day/migrations/0003_usage_by_model_day_tier_share.sql"
+)
 _METERING_MIGRATIONS = (
     _NODES
     / "node_projection_metering_summary/migrations/0000_create_metering_summary.sql",
@@ -484,7 +489,7 @@ _STORE_CASES: dict[str, tuple[tuple[Path, ...], Any, tuple[str, ...]]] = {
         ("run_trace",),
     ),
     "usage_by_model_day": (
-        (_USAGE_MIGRATION, _USAGE_MEASURED_MIGRATION),
+        (_USAGE_MIGRATION, _USAGE_MEASURED_MIGRATION, _USAGE_TIER_MIGRATION),
         _write_usage,
         ("usage_by_model_day_calls", "usage_by_model_day"),
     ),

@@ -27,7 +27,7 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     TicketGuardUnavailableError,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("lane_create_context")]
 
 _CONTRACT = (
     Path(__file__).resolve().parents[3]

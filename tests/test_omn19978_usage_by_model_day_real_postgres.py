@@ -10,7 +10,6 @@ uses its own throwaway schema, like the topic-activity and hook-event proofs.
 from __future__ import annotations
 
 import os
-from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -22,8 +21,7 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
     HandlerProjectionUsageByModelDay,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
-    _INSERT_CALL,
-    _RECOUNT_AGGREGATE,
+    write_usage_call,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
     ModelUsageCallDelta,
@@ -38,6 +36,8 @@ _MIGRATIONS = tuple(
     for name in (
         "0000_create_usage_by_model_day.sql",
         "0002_usage_by_model_day_measured_cost.sql",
+        # OMN-21015: the tier joins the key; the writer's statements bind it.
+        "0003_usage_by_model_day_tier_share.sql",
     )
 )
 _SCHEMA = "omn19978_usage_by_model_day_test"
@@ -71,23 +71,8 @@ async def _apply_all(conn: asyncpg.Connection) -> None:
     fold = HandlerProjectionUsageByModelDay()
     for call in CALLS:
         delta = fold.handle(_event(call))
-        day = date.fromisoformat(delta.usage_day)
-        inserted = await conn.fetch(
-            _scoped(_INSERT_CALL),
-            delta.call_id,
-            delta.tenant_id,
-            day,
-            delta.model_id,
-            delta.input_tokens,
-            delta.output_tokens,
-            delta.cost_usd,
-            delta.occurred_at,
-            delta.usage_source.value,
-        )
-        if inserted:
-            await conn.fetch(
-                _scoped(_RECOUNT_AGGREGATE), delta.tenant_id, day, delta.model_id
-            )
+        async with conn.transaction():
+            await write_usage_call(conn, delta, schema=_SCHEMA)
 
 
 @pytest.mark.integration
@@ -132,7 +117,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.execute(f"CREATE SCHEMA {schema}")
-        base, measured = (m.read_text(encoding="utf-8") for m in _MIGRATIONS)
+        base, measured, tiered = (m.read_text(encoding="utf-8") for m in _MIGRATIONS)
         await conn.execute(base.replace("public.", f"{schema}."))
         # A row written before 0002 exists: the migration must keep it, as
         # unknown / NULL / 0, and be re-runnable.
@@ -143,6 +128,7 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
         )
         for _ in range(2):
             await conn.execute(measured.replace("public.", f"{schema}."))
+        await conn.execute(tiered.replace("public.", f"{schema}."))
         old = await conn.fetchrow(
             f"SELECT usage_source FROM {schema}.usage_by_model_day_calls"
         )
@@ -173,25 +159,8 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
             ("u1", "2026-09-29", 4.0, "unknown"),
         ):
             delta = _event_of(call_id, day, cost, source)
-            usage_day = date.fromisoformat(delta.usage_day)
-            await conn.fetch(
-                _INSERT_CALL.replace("public.", f"{schema}."),
-                delta.call_id,
-                delta.tenant_id,
-                usage_day,
-                delta.model_id,
-                delta.input_tokens,
-                delta.output_tokens,
-                delta.cost_usd,
-                delta.occurred_at,
-                delta.usage_source.value,
-            )
-            await conn.fetch(
-                _RECOUNT_AGGREGATE.replace("public.", f"{schema}."),
-                delta.tenant_id,
-                usage_day,
-                delta.model_id,
-            )
+            async with conn.transaction():
+                await write_usage_call(conn, delta, schema=schema)
         rows = {
             str(r["usage_day"]): r
             for r in await conn.fetch(

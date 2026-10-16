@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20717: the wire models accept ``usage_source`` and ``cost_measured`` first.
+"""OMN-20717: ``usage_source`` and ``cost_measured`` are declared, not dropped.
 
-An unpriced delegation call must be stored as a null cost, never 0. The
-delegate-skill terminal carries no pricing source, so the producer will mark
-each attempt with the usage source its transport reported and the metrics
-with whether any cost was measured. Both models are ``extra="forbid"``: a
-released consumer must decode those keys before the producer may emit them
-(the wire-compatibility gate). Until the fields are declared, the keys are
-dropped; every other unknown key is still refused.
+The consumer-first release decoded both keys and threw them away, so a
+producer could emit them before every consumer knew them. With the fields
+declared, a key still on a forthcoming list would be stripped by the
+before-validator and the field would always read its default: an unpriced
+call would look like one whose provenance was never reported. These tests
+fail if either key is dropped on decode.
 """
 
 from __future__ import annotations
@@ -34,29 +33,25 @@ _ATTEMPT = {
 }
 
 
-@pytest.mark.parametrize("value", ["measured", "estimated", "unknown", None])
-def test_an_attempt_carrying_usage_source_decodes(value: str | None) -> None:
+@pytest.mark.parametrize("value", ["measured", "estimated", "unknown"])
+def test_an_attempt_keeps_the_usage_source_it_was_sent(value: str) -> None:
     record = ModelDelegateSkillAttemptRecord.model_validate(
         _ATTEMPT | {"usage_source": value}
     )
-    assert record.backend_id == "openrouter-nemotron-ultra"
-    assert "usage_source" not in record.model_dump(mode="json")
+    assert record.model_dump(mode="json")["usage_source"] == value
 
 
-@pytest.mark.parametrize("value", [True, False, None])
-def test_metrics_carrying_cost_measured_decode(value: bool | None) -> None:
+@pytest.mark.parametrize("value", [True, False])
+def test_metrics_keep_the_cost_measured_they_were_sent(value: bool) -> None:
     metrics = ModelDelegateSkillResponseMetrics.model_validate(
         {"cost_usd": 0.0, "cost_measured": value}
     )
-    assert metrics.cost_usd == 0.0
-    assert "cost_measured" not in metrics.model_dump(mode="json")
+    assert metrics.cost_measured is value
 
 
-def test_both_keys_are_forthcoming_only() -> None:
-    assert "usage_source" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
-    assert "usage_source" not in ModelDelegateSkillAttemptRecord.model_fields
-    assert "cost_measured" in model_delegate_skill_response._FORTHCOMING_METRICS_KEYS
-    assert "cost_measured" not in ModelDelegateSkillResponseMetrics.model_fields
+def test_neither_key_is_on_a_forthcoming_list() -> None:
+    assert "usage_source" not in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert not hasattr(model_delegate_skill_response, "_FORTHCOMING_METRICS_KEYS")
 
 
 def test_any_other_unknown_key_is_still_refused() -> None:
