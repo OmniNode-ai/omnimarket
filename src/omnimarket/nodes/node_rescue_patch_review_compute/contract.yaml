@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: rescue_patch_review_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Decide discard or needs-read for one saved rescue patch from its text and two git facts about the base.
+
+input_model: omnimarket.models.rescue_patch_review.model_rescue_patch_review_request.ModelRescuePatchReviewRequest
+output_model: omnimarket.models.rescue_patch_review.model_rescue_patch_review_result.ModelRescuePatchReviewResult
+handler:
+  module: omnimarket.handlers.rescue_patch_review.handler_rescue_patch_review
+  class: HandlerRescuePatchReview
+  input_model: omnimarket.models.rescue_patch_review.model_rescue_patch_review_request.ModelRescuePatchReviewRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: review_rescue_patch
+      handler:
+        name: HandlerRescuePatchReview
+        module: omnimarket.handlers.rescue_patch_review.handler_rescue_patch_review
+      input_model: omnimarket.models.rescue_patch_review.model_rescue_patch_review_request.ModelRescuePatchReviewRequest
+      output_model: omnimarket.models.rescue_patch_review.model_rescue_patch_review_result.ModelRescuePatchReviewResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.rescue-patch-review-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.rescue-patch-review-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.rescue-patch-review-decided.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.rescue-patch-review-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.rescue-patch-review-decided.v1
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

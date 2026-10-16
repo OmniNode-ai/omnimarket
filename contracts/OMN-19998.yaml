@@ -91,6 +91,11 @@ requirements:
     acceptance:
       - id: "AC16"
         statement: "AC16: the pr-create, pr-edit, pr-ready, pr-close, pr-comment and workflow-run envelopes the onex scm command publishes carry no check_run_create field and validate against the contract 1.2.0 request fields with extra inputs forbidden, while check-run-create still carries its fields -- falsifier: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -k 'deployed_contract or check_run' fails with the request model at the merge base"
+  - id: "req-rescue-patch-review-nodes-in-omnimarket"
+    statement: "The automatic review of saved rescue patches (a pure verdict per patch and a tick that writes VERDICT.json and a heartbeat) is a pair of omnimarket nodes in canonical shape (contract, node, handler) with their topics declared in their contracts."
+    acceptance:
+      - id: "AC17"
+        statement: "AC17: node_rescue_patch_review_compute discards an empty, already-on-base, junk-only or whitespace-only patch and leaves any other change for a read, node_rescue_patch_review_effect writes one VERDICT.json per unreviewed patch, never rewrites one, counts a patch whose clone or base is missing as unjudgeable and writes last-run.json on every run, and both declare their command and event topics in their contracts -- falsifier: uv run pytest tests/nodes/node_rescue_patch_review_compute/test_rescue_patch_review.py tests/test_golden_chain_rescue_patch_review_compute.py tests/test_golden_chain_rescue_patch_review_effect.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -372,3 +377,21 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -k 'deployed_contract or check_run'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
+  - id: "dod-omn19998-rescue-patch-review-nodes"
+    description: "The verdict, scan, CLI and golden-chain tests pass at the head; at the merge base the node packages do not exist and the tests fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_rescue_patch_review_compute/test_rescue_patch_review.py tests/test_golden_chain_rescue_patch_review_compute.py tests/test_golden_chain_rescue_patch_review_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn19998-rescue-patch-review-deploy-probe"
+    description: "Hosted-runner probes read both handlers at this commit and require their handler classes; the base has neither file and the probes find no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rescue_patch_review_compute/handlers/handler_rescue_patch_review.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchReview'
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rescue_patch_review_effect/handlers/handler_rescue_patch_scan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchScan'
