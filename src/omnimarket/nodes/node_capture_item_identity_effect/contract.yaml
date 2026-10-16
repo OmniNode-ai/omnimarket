@@ -18,7 +18,9 @@ description: Shared item identity, per-session per-stream producer sequence and
   per-session item state under a file lock; a producer sequence is issued from
   a lock-guarded counter. The callers' hooks load the handler module by file
   path, because a per-tool-call hook cannot pay a package import or a bus
-  round-trip; the module level imports the standard library only.
+  round-trip; the module level imports the standard library only. Three
+  composite operations, stamp_lineage_event,
+  stamp_content_records and session_barrier, let each hook make one call.
 input_model: omnimarket.nodes.node_capture_item_identity_effect.models.ModelCaptureItemIdentityRequest
 output_model: omnimarket.nodes.node_capture_item_identity_effect.models.ModelCaptureItemIdentityResult
 handler:
@@ -58,7 +60,7 @@ inputs:
     type: string
     required: true
     description: One of content_record_id, claim_event_id, next_producer_seq,
-      high_water.
+      high_water, stamp_lineage_event, stamp_content_records, session_barrier.
   item_dir:
     type: string
     required: false
@@ -97,6 +99,42 @@ inputs:
     type: string
     required: false
     description: The lineage field name; read by content_record_id.
+  journal_dir:
+    type: string
+    required: false
+    description: The capture journal directory; the item state is its sibling.
+      Read by stamp_lineage_event, stamp_content_records and session_barrier.
+  hook_input:
+    type: object
+    required: false
+    description: The hook's stdin object, from which the item discriminator is
+      read; read by stamp_lineage_event and stamp_content_records.
+  payload:
+    type: object
+    required: false
+    description: The mapped hook.event payload; read by stamp_lineage_event.
+  records:
+    type: array
+    required: false
+    description: The content records of one hook call in journal order, each
+      with its content_kind; read by stamp_content_records.
+  streams:
+    type: array
+    required: false
+    description: The streams whose producer is on; read by session_barrier.
+  content_capture_enabled:
+    type: boolean
+    required: false
+    description: Whether content capture is enabled; read by session_barrier.
+  barrier_id:
+    type: string
+    required: false
+    description: The barrier's id, minted when absent; read by session_barrier.
+  emitted_at:
+    type: string
+    required: false
+    description: The barrier's timestamp, now when absent; read by
+      session_barrier.
 outputs:
   event_id:
     type: string
@@ -109,3 +147,12 @@ outputs:
     type: integer
     description: The issued sequence number, or the stream's high-water
       (next_producer_seq, high_water).
+  payload:
+    type: object
+    description: The lineage event with its settled event id, rebound content
+      references, stream and producer_seq (stamp_lineage_event).
+  records:
+    type: array
+    description: The content records with content_record_id, stream and
+      producer_seq (stamp_content_records), or one barrier per stream
+      (session_barrier).

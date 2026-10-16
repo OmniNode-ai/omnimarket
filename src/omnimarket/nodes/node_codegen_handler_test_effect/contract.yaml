@@ -1,0 +1,53 @@
+---
+name: node_codegen_handler_test_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.codegen.models.ModelCodegenHandlerTestCommand
+
+description: >
+  Codegen factory handler-test step (OMN-21153). An EFFECT that owns the
+  subprocess and filesystem I/O of the factory's must-fail acceptance control:
+  it runs the spec's generated test against the generated handler and against
+  a stubbed mutant of it (the handler method body replaced by a raise), grades
+  the pair with the delegated test loop's computes re-used from
+  delegated_test_loop.must_fail_control, and reports the verdict. The handler
+  is accepted only when the test passed the real handler and failed the mutant
+  headline-grade.
+
+handler:
+  module: omnimarket.nodes.node_codegen_handler_test_effect.handlers.handler_codegen_handler_test
+  class: HandlerCodegenHandlerTest
+  input_model: omnimarket.codegen.models.ModelCodegenHandlerTestCommand
+  output_model: omnimarket.codegen.models.ModelCodegenHandlerTestResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: codegen_handler_test
+      handler:
+        name: HandlerCodegenHandlerTest
+        module: omnimarket.nodes.node_codegen_handler_test_effect.handlers.handler_codegen_handler_test
+      event_model:
+        name: ModelCodegenHandlerTestCommand
+        module: omnimarket.codegen.models
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.codegen-handler-test-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.codegen-handler-test-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.codegen-handler-test-completed.v1
+
+metadata:
+  transport_type: kafka

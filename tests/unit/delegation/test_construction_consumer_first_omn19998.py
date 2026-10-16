@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Decode the next construction terminal without publishing its new keys."""
+"""Decode the construction terminal and round-trip its declared keys."""
 
 from __future__ import annotations
 
@@ -56,8 +56,11 @@ def test_real_construction_payload_decodes_without_changing_the_gate_fact(
     assert terminal.quality_gate_passed is passed
     assert terminal.quality_score is None
     assert not delegate_skill_succeeded(terminal)
-    assert not _KEYS.intersection(terminal.model_dump(mode="json"))
-    assert not _KEYS.intersection(model.model_fields)
+    # OMN-19013: the receiver now declares the keys and round-trips them.
+    assert set(model.model_fields) >= _KEYS
+    dumped = terminal.model_dump(mode="json")
+    assert dumped["operational_outcome"] == "terminal_construction_failed"
+    assert dumped["content_verdict"] == "undetermined"
 
 
 def test_response_to_terminal_conversion_keeps_the_construction_failure() -> None:
@@ -66,7 +69,7 @@ def test_response_to_terminal_conversion_keeps_the_construction_failure() -> Non
     assert isinstance(terminal, ModelDelegateSkillFailed)
     assert terminal.quality_gate_passed is True
     assert terminal.quality_score is None
-    assert not _KEYS.intersection(terminal.model_dump(mode="json"))
+    assert terminal.terminal_failure_reason == "terminal_construction_failed"
 
 
 def test_ordinary_completed_payload_accepts_the_forthcoming_keys() -> None:
@@ -80,7 +83,7 @@ def test_ordinary_completed_payload_accepts_the_forthcoming_keys() -> None:
     terminal = ModelDelegateSkillCompleted.model_validate_json(json.dumps(payload))
     assert delegate_skill_succeeded(terminal)
     assert terminal.quality_score == 1.0
-    assert not _KEYS.intersection(terminal.model_dump(mode="json"))
+    assert terminal.model_dump(mode="json")["content_verdict"] == "usable"
 
 
 @pytest.mark.parametrize(
@@ -127,9 +130,27 @@ def test_unscored_quality_bar_is_refused_as_validation_error() -> None:
         )
 
 
-def test_legacy_terminal_keeps_its_score_default_and_unknown_key_policy() -> None:
+def test_legacy_terminal_is_unscored_by_default() -> None:
     terminal = ModelDelegateSkillResponse.model_validate(
         {"correlation_id": str(uuid4()), "task_type": "document", "status": "completed"}
     )
-    assert terminal.quality_score == 0.0
+    # OMN-19013: an unscored terminal carries None, not a measured zero.
+    assert terminal.quality_score is None
     assert delegate_skill_succeeded(terminal)
+
+
+@pytest.mark.parametrize(
+    "model", [ModelDelegateSkillResponse, ModelDelegateSkillFailed]
+)
+def test_declared_construction_fields_round_trip_through_json(
+    model: type[ModelDelegateSkillResponse],
+) -> None:
+    payload = _construction()
+    terminal = model.model_validate_json(json.dumps(payload))
+    dumped = terminal.model_dump(mode="json")
+    for key in ("operational_outcome", "content_verdict", "terminal_failure_reason"):
+        assert dumped[key] == payload[key]
+    assert terminal.rule_evaluations == ()
+    assert "rule_evaluations" not in dumped
+    again = model.model_validate_json(terminal.model_dump_json())
+    assert again.model_dump(mode="json") == dumped

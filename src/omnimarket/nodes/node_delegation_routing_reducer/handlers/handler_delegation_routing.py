@@ -1983,6 +1983,20 @@ def tier_for_backend(backend_id: str) -> str | None:
     return None
 
 
+def tiers_declaring_backend(backend_ref: str) -> tuple[str, ...]:
+    """Return the NAMES of every routing tier that declares ``backend_ref``.
+
+    More than one name means two tier labels share one concrete backend, so the
+    later label is not an independent rung for a caller that already failed on
+    the first (OMN-18831).
+    """
+    names: list[str] = []
+    for tier in _get_config().tiers:
+        if any(model.backend_ref == backend_ref for model in tier.models):
+            names.append(tier.name)
+    return tuple(names)
+
+
 # OMN-18297: the divisor of the character-based input measurement. It is the
 # repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
 # _compute) and it UNDER-counts: the recorded 57,120-character prompt of

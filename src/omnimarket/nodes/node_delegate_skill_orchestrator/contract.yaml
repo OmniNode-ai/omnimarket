@@ -216,6 +216,19 @@ inputs:
       measure queue wait (publish -> pickup), because a definition-B handler
       receives the typed request and never the broker record. Omit it and the
       terminal reports queue wait as NOT MEASURED rather than as zero.
+  trace_id:
+    type: uuid
+    required: false
+    description: >
+      OMN-19437. Trace the command belongs to, stamped by the producer. The
+      handler copies it onto every terminal it builds; a command that carries
+      none yields a terminal that carries none.
+  span_id:
+    type: uuid
+    required: false
+    description: >
+      OMN-19437. Span of the command within trace_id, stamped by the producer
+      and copied onto the terminal the same way.
   metadata:
     type: object
     required: false

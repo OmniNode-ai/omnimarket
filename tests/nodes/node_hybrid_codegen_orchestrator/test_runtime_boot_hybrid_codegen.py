@@ -55,6 +55,7 @@ FACTORY_NODES = (
     "node_generated_code_validator",
     "node_mypy_check_effect",
     "node_contract_serialize_compute",
+    "node_codegen_handler_test_effect",
     "node_codegen_file_writer_effect",
 )
 
@@ -72,6 +73,8 @@ T_PROBED = (
     "onex.cmd.omnimarket.contract-serialize-requested.v1",
     "onex.evt.omnimarket.contract-serialize-completed.v1",
     "onex.evt.omnimarket.codegen-serialize-outcome.v1",
+    "onex.cmd.omnimarket.codegen-handler-test-requested.v1",
+    "onex.evt.omnimarket.codegen-handler-test-completed.v1",
     "onex.cmd.omnimarket.codegen-file-write.v1",
     "onex.evt.omnimarket.codegen-files-written.v1",
     T_COMPLETED,
@@ -134,6 +137,17 @@ class _FixedInference(ModelInferenceAdapter):
         return self._source_text
 
 
+_HANDLER_TEST_SOURCE = """\
+from node_upper_case_text.handlers.handler_upper_case_text import (
+    UpperCaseText,
+)
+
+
+def test_handle_upper_cases():
+    assert UpperCaseText().handle("hi") == "HI"
+"""
+
+
 def _spec(target_root: Path, correlation_id: str) -> ModelCodegenSpec:
     return ModelCodegenSpec(
         node_name="UpperCaseText",
@@ -145,6 +159,7 @@ def _spec(target_root: Path, correlation_id: str) -> ModelCodegenSpec:
         prompt_hint="Return the input text upper-cased.",
         target_root=str(target_root),
         correlation_id=correlation_id,
+        handler_test_source=_HANDLER_TEST_SOURCE,
     )
 
 
@@ -256,6 +271,8 @@ async def test_start_command_reaches_completed_with_files_on_disk(
         "omnimarket/nodes/node_upper_case_text/metadata.yaml",
         "omnimarket/nodes/node_upper_case_text/handlers/__init__.py",
         "omnimarket/nodes/node_upper_case_text/handlers/handler_upper_case_text.py",
+        "omnimarket/nodes/node_upper_case_text/tests/__init__.py",
+        "omnimarket/nodes/node_upper_case_text/tests/test_handler_upper_case_text.py",
         "omnimarket/nodes/node_upper_case_text/.rsd_provenance.json",
     }
     assert all(p.is_file() and target in p.parents for p in written)
