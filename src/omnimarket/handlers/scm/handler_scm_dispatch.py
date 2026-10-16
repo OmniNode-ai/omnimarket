@@ -161,6 +161,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="workflow_dispatch",
         replaces="gh workflow run",
     ),
+    ModelScmVerb(
+        verb="check-run-create",
+        node=_W,
+        operation="check_run_create",
+        replaces="gh api --method POST /repos/{o}/{r}/check-runs",
+    ),
 )
 
 #: Verbs no node contract has an operation for: answered from the canonical

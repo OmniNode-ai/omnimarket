@@ -10,6 +10,7 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 - pr_ready replaces ``gh pr ready`` with GraphQL markPullRequestReadyForReview.
 - pr_close replaces ``gh pr close`` with PATCH /pulls/{n} state=closed.
 - pr_comment replaces ``gh pr comment`` with POST /issues/{n}/comments.
+- check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
 """
@@ -48,6 +49,7 @@ class EnumRepoWriteOperation(StrEnum):
     PR_CLOSE = "pr_close"
     PR_COMMENT = "pr_comment"
     WORKFLOW_DISPATCH = "workflow_dispatch"
+    CHECK_RUN_CREATE = "check_run_create"
 
 
 class EnumRepoWriteMode(StrEnum):
@@ -135,6 +137,15 @@ class ModelRepoWriteClaim(BaseModel):
         return max(stamps)
 
 
+class ModelCheckRunOutput(BaseModel):
+    """GitHub check output; both title and Markdown summary are required."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1)
+    summary: str = Field(max_length=MAX_BODY_CHARS)
+
+
 class ModelRepoWriteRequest(BaseModel):
     """One write operation against one repository."""
 
@@ -187,6 +198,26 @@ class ModelRepoWriteRequest(BaseModel):
         default=None, pattern=_REF, description="workflow_dispatch: the ref to run."
     )
     inputs: dict[str, str] = Field(default_factory=dict)
+    name: str | None = Field(
+        default=None, min_length=1, description="check_run_create: check name."
+    )
+    head_sha: str | None = Field(
+        default=None, pattern=_SHA, description="check_run_create: commit to report on."
+    )
+    status: Literal["queued", "in_progress", "completed"] | None = None
+    conclusion: (
+        Literal[
+            "action_required",
+            "cancelled",
+            "failure",
+            "neutral",
+            "success",
+            "skipped",
+            "timed_out",
+        ]
+        | None
+    ) = None
+    output: ModelCheckRunOutput | None = None
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -226,6 +257,27 @@ class ModelRepoWriteRequest(BaseModel):
                 for n, v in (("workflow", self.workflow), ("ref", self.ref))
                 if v is None
             ]
+        check_fields = {
+            "name": self.name,
+            "head_sha": self.head_sha,
+            "status": self.status,
+            "conclusion": self.conclusion,
+            "output": self.output,
+        }
+        if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
+            missing += [
+                n for n in ("name", "head_sha", "status") if check_fields[n] is None
+            ]
+            if self.status == "completed" and self.conclusion is None:
+                missing.append("conclusion")
+            if self.conclusion is not None and self.status != "completed":
+                raise ValueError(
+                    "check_run_create conclusion requires status completed"
+                )
+        elif any(v is not None for v in check_fields.values()):
+            raise ValueError(
+                "name, head_sha, status, conclusion and output are read only by check_run_create"
+            )
         if missing:
             raise ValueError(f"operation {op.value!r} requires {', '.join(missing)}")
         if op is EnumRepoWriteOperation.PR_EDIT and all(
@@ -277,6 +329,7 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     html_url: str | None = None
     head_sha: str | None = None
     comment_id: int | None = None
+    check_run_id: int | None = Field(default=None, gt=0)
 
 
 class ModelRepoWriteFailed(_ModelRepoWriteResultBase):
@@ -315,6 +368,7 @@ __all__: list[str] = [
     "EnumRepoWriteMode",
     "EnumRepoWriteOperation",
     "EnumRepoWriteRefusal",
+    "ModelCheckRunOutput",
     "ModelRepoWriteClaim",
     "ModelRepoWriteCompleted",
     "ModelRepoWriteFailed",

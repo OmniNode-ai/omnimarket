@@ -9,9 +9,9 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 3, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -35,6 +35,10 @@ description: >
   the branch head and checked through node_dod_verify's static prerequisites.
   Missing or invalid evidence is refused with contract_required, naming the
   contract file. A moved head during preflight is refused with head_moved.
+  check_run_create posts a check name, immutable head_sha, status, optional
+  conclusion and typed output (title and summary) through the same transport.
+  completed requires conclusion; queued and in_progress omit it. Its replay
+  record is in-process only, so a retry after restart can create another run.
 
 input_model:
   name: ModelRepoWriteRequest
@@ -64,6 +68,9 @@ operations:
     transport: rest
   - name: workflow_dispatch
     description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh workflow run. POST /repos/{o}/{r}/actions/workflows/{w}/dispatches."
+    transport: rest
+  - name: check_run_create
+    description: "Request ModelRepoWriteRequest with name, head_sha, status (queued, in_progress, completed), optional conclusion and output (title, summary); replaces gh api --method POST /repos/{o}/{r}/check-runs. Result ModelRepoWriteCompleted with check_run_id, html_url and head_sha or ModelRepoWriteFailed. POST /repos/{o}/{r}/check-runs via the existing GitHub transport and auth. Requires checks write permission; replay protection is in-process only."
     transport: rest
 
 modes:
