@@ -238,6 +238,13 @@ requirements:
         statement: "AC42: the named-test runner preserves the source workspace, scrubs parent secrets, bounds resources and output, kills timed-out process groups, and refuses writes through escaping symlinks -- falsifier: the focused runner module fails at the merge base."
       - id: "AC43"
         statement: "AC43: the deployed orchestrator runs the named tests a bus request carries in the sandbox runner before its gate intent leaves, the gate reducer judges the answer on that run, a request naming none stays UNTESTED, and named tests no runner ran are refused as INSUFFICIENT -- falsifier: the four deployed-chain cases fail at the merge base."
+  - id: "req-declared-table-retention"
+    statement: "The retention node prunes every registered lab table to its declared window in bounded, committed batches on the runtime tick, and never touches a ledger, credential, tenant registry or migration history table."
+    acceptance:
+      - id: "AC44"
+        statement: "AC44: node_retention_cleanup registers omninode_internal.consumer_flow_windows, deletes a batched target in bounded batches with one committed transaction each and the tenant GUC first, isolates a failing target, refuses a protected table at load, and runs once per declared interval on the runtime tick -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q fails at the merge base"
+      - id: "AC45"
+        statement: "AC45: the consumer-flow projection declares an index leading with window_start, built concurrently -- falsifier: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0006_add_window_start_index.sql is absent at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -713,3 +720,26 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_with_named_test_run", "asyncio.to_thread", "named_tests_requested")); print("deployed named-tests deploy probe: PASS")'
+  - id: "dod-omn17427-ac44-declared-table-retention"
+    description: "The retention node's batched, scheduled, protected-table tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py tests/nodes/test_omn15797_retention_cleanup_tenant_seam.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC44"]
+  - id: "dod-omn17427-ac45-window-start-index"
+    description: "The consumer-flow projection ships the window_start index migration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_consumer_flow_windows_window_start' src/omnimarket/nodes/node_projection_consumer_flow/migrations/0006_add_window_start_index.sql"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC45"]
+  - id: "dod-omn17427-declared-table-retention-deploy-probe"
+    description: "Deploy probe. GitHub serves the retention handler and contract at the checked-out HEAD with batched deletes, the protected-table refusal and the consumer_flow_windows target. It fails at the merge base, which has none of them, and needs no lab network on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_retention_cleanup/handlers/handler_retention_cleanup.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_run_batched", "_PROTECTED_MARKERS", "ModelRuntimeTick", "batch_order_column")); print("declared table retention deploy probe: PASS")'
