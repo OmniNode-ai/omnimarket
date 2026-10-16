@@ -20,6 +20,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -62,6 +63,8 @@ from omnibase_core.models.delegation.wire import (
     EnumQualityScoreComparison,
     ModelDelegationContractEvidence,
     ModelDelegationDeliverableEvidence,
+    ModelDelegationNamedTestRun,
+    ModelDelegationNamedTests,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
@@ -149,6 +152,9 @@ from omnimarket.inference.provider_quota_state import (
 from omnimarket.inference.provider_response_error import (
     provider_failure_class_from_error_message,
 )
+from omnimarket.inference.task_class_authority import (
+    resolve_task_class_execution_required,
+)
 from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -156,7 +162,17 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestFile,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_test_run import (
+    HandlerNamedTestRun,
+)
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
 )
@@ -2400,7 +2416,20 @@ class HandlerDelegationWorkflow:
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
         *,
         quota_reader: ProtocolProviderQuotaReader | None = None,
+        named_test_runner: Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
+        | None = None,
     ) -> None:
+        # OMN-17427: runs the tests a code-class request names against the
+        # answer, before its gate intent leaves this node. None takes the
+        # sandboxed runner the in-process port uses, so the deployed lane
+        # grades code on the same evidence.
+        self._named_test_runner: Callable[
+            [ModelNamedTestRunRequest], ModelNamedTestRunResult
+        ] = (
+            named_test_runner
+            if named_test_runner is not None
+            else HandlerNamedTestRun().handle
+        )
         # OMN-20154: the escalation decision reads provider quota state from
         # the durable projection (the orchestrator owns the routing-contract
         # I/O). Resolved lazily so construction does no I/O.
@@ -5530,7 +5559,77 @@ class HandlerDelegationWorkflow:
         if handler is None:
             msg = f"Unsupported delegation workflow payload: {type(request).__name__}"
             raise ValueError(msg)
-        return list(handler(request))
+        events = list(handler(request))
+        if isinstance(request, ModelInferenceResponseData):
+            events = await self._with_named_test_run(request.correlation_id, events)
+        return events
+
+    async def _with_named_test_run(
+        self, correlation_id: UUID, events: list[BaseModel]
+    ) -> list[BaseModel]:
+        """Run the request's named tests against the answer a gate intent carries.
+
+        OMN-17427: the deployed lane graded code with no tests, because the bus
+        request had nowhere to carry them and no run reached the gate. The
+        request now carries them inline; this runs them in the sandbox, off the
+        event loop, and folds the run into the gate intent the workflow just
+        emitted, so the gate reducer judges the answer on tests that ran. A
+        refused run leaves the intent with no run and ``named_tests_requested``
+        set, which the gate refuses as INSUFFICIENT; it is never a pass.
+        """
+        workflow = self._workflows.get(correlation_id)
+        request = None if workflow is None else workflow.request
+        named_tests = None if request is None else request.named_tests
+        if named_tests is None:
+            return events
+        out: list[BaseModel] = []
+        for event in events:
+            if isinstance(event, ModelQualityGateIntent):
+                event = await self._gate_intent_with_named_tests(event, named_tests)
+            out.append(event)
+        return out
+
+    async def _gate_intent_with_named_tests(
+        self, intent: ModelQualityGateIntent, named_tests: ModelDelegationNamedTests
+    ) -> ModelQualityGateIntent:
+        payload = intent.payload
+        if not resolve_task_class_execution_required(payload.task_type):
+            return intent
+        run: ModelDelegationNamedTestRun | None = None
+        if payload.llm_response_content.strip():
+            spec = ModelNamedTestSpec.model_validate(
+                {
+                    "answer_path": named_tests.answer_path,
+                    "test_ids": named_tests.test_ids,
+                    "test_files": tuple(
+                        ModelNamedTestFile(path=f.path, content=f.content)
+                        for f in named_tests.test_files
+                    ),
+                }
+            )
+            outcome = await asyncio.to_thread(
+                self._named_test_runner,
+                ModelNamedTestRunRequest(
+                    spec=spec, answer_content=payload.llm_response_content
+                ),
+            )
+            _logger.info(
+                "HandlerDelegationWorkflow: named test run status=%s correlation=%s %s",
+                outcome.status.value,
+                payload.correlation_id,
+                outcome.detail.splitlines()[0] if outcome.detail else "",
+            )
+            if outcome.status is EnumNamedTestRunStatus.COMPLETED and outcome.run:
+                run = ModelDelegationNamedTestRun.model_validate(
+                    outcome.run.model_dump()
+                )
+        return intent.model_copy(
+            update={
+                "payload": payload.model_copy(
+                    update={"named_test_run": run, "named_tests_requested": True}
+                )
+            }
+        )
 
     def _resolve_per_step_handler(
         self, payload_type: type
