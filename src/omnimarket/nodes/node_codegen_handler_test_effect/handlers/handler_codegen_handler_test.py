@@ -11,7 +11,10 @@ control:
   (``node_<stem>/handlers/handler_<stem>.py``) with the spec's test module
   beside it, and runs pytest over the test;
 * it derives a stubbed mutant of the handler (the handler method's body
-  replaced by ``raise NotImplementedError``) and runs the SAME test against it;
+  replaced by ``raise NotImplementedError``) and runs the SAME test against it,
+  in a scratch directory of its own so nothing the real run wrote can reach it;
+* the generated code is untrusted: each run gets a minimal environment, never
+  this process's, so no credential in it reaches the generated handler or test;
 * it grades the pair with the same computes the delegated test loop's
   must-fail control uses (``delegated_test_loop/must_fail_control.py``,
   OMN-19361): the run classification is ``digest_pytest_run`` and the verdict
@@ -62,6 +65,9 @@ RunOutcome = Literal[
 
 _TIMEOUT_SECONDS = 120
 
+#: The only variables a run inherits from this process.
+_INHERITED_ENV: tuple[str, ...] = ("PATH", "LANG", "LC_ALL", "SYSTEMROOT")
+
 #: The pytest failure digest's closed outcome vocabulary, as control literals.
 _RUN_OUTCOMES: tuple[RunOutcome, ...] = (
     "passed",
@@ -111,10 +117,24 @@ def _layout(
     return root, test_path
 
 
+def _run_env(root: Path) -> dict[str, str]:
+    """A minimal environment for running generated code: no inherited secrets."""
+    env = {key: os.environ[key] for key in _INHERITED_ENV if key in os.environ}
+    env.update(
+        {
+            "HOME": str(root),
+            "PYTHONPATH": str(root),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONNOUSERSITE": "1",
+        }
+    )
+    return env
+
+
 def _run_pytest(root: Path, test_path: Path) -> str:
     """Run the test module once; return the digest outcome string."""
     junit = root / "junit.xml"
-    env = {**os.environ, "PYTHONPATH": str(root)}
+    env = _run_env(root)
     try:
         completed = subprocess.run(
             [
@@ -123,6 +143,8 @@ def _run_pytest(root: Path, test_path: Path) -> str:
                 "pytest",
                 str(test_path),
                 "-q",
+                "-p",
+                "no:cacheprovider",
                 f"--junitxml={junit}",
             ],
             cwd=str(root),
@@ -150,7 +172,10 @@ def _stub_mutant(source: str, class_name: str, method: str) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == class_name:
             for item in node.body:
-                if isinstance(item, ast.FunctionDef) and item.name == method:
+                if (
+                    isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and item.name == method
+                ):
                     item.body = [
                         ast.Raise(
                             exc=ast.Call(
@@ -211,7 +236,8 @@ def evaluate_handler_test(
                     f"{spec.handler_method!r} on class {spec.node_name!r}"
                 ),
             )
-        mutant_root = root / "mutant"
+    with tempfile.TemporaryDirectory(prefix="codegen_handler_mutant_") as tmp:
+        mutant_root = Path(tmp)
         _, mutant_test = _layout(mutant_root, stem, mutant, spec.handler_test_source)
         mutant_outcome = _run_pytest(mutant_root, mutant_test)
 
