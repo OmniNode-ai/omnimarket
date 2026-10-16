@@ -69,3 +69,13 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_unconstructible_terminal_omn18978.py tests/test_omn15905_delegation_projection_writer_seam.py -q -k 'gate_fact or construction_terminal'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn19013-pr-3981-deploy-probe"
+    description: "PR #3981 on OmniNode-ai/omnimarket: the two runtime handlers this PR changes, read from GitHub at the PR commit 0a4c43ed8, keep the gate flag on the degraded terminal and drop the score for the construction pair. Both strings are absent on dev before this PR, so either probe fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=0a4c43ed88d5cfb092b7899638dd4b2a02c0b018 --jq .content | base64 -d | grep -c 'OMN-19013: this is the original gate fact'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py?ref=0a4c43ed88d5cfb092b7899638dd4b2a02c0b018 --jq .content | base64 -d | grep -c 'if construction_failed'"
+        cwd: "${OMNI_HOME}/omnimarket"
