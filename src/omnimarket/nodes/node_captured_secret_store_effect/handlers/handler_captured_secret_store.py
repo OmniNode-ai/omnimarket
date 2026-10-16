@@ -66,6 +66,12 @@ from omnimarket.models.captured_secret.model_captured_secret_store_overlay impor
     CAPTURED_SECRET_STORE_BLOCK,
     load_captured_secret_store_overlay,
 )
+from omnimarket.models.secret_store import (
+    EnumSecretStoreOperation,
+    EnumSecretStoreOutcome,
+    ModelSecretStoreOverlay,
+    ModelSecretStoreRequest,
+)
 from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
     ModelCapturedSecretStoreRequest,
 )
@@ -78,12 +84,6 @@ from omnimarket.nodes.node_event_emit_effect.redaction import (
     load_contract,
 )
 from omnimarket.nodes.node_secret_store_effect import HandlerSecretStore
-from omnimarket.nodes.node_secret_store_effect.models import (
-    EnumSecretStoreOperation,
-    EnumSecretStoreOutcome,
-    ModelSecretStoreOverlay,
-    ModelSecretStoreRequest,
-)
 
 logger = logging.getLogger(__name__)
 

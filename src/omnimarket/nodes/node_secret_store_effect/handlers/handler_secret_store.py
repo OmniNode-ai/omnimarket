@@ -45,19 +45,19 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
-from omnimarket.nodes.node_secret_store_effect.adapters import secret_store_for
-from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_overlay import (
+from omnimarket.models.secret_store.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
     load_secret_store_overlay,
 )
-from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request import (
+from omnimarket.models.secret_store.model_secret_store_request import (
     EnumSecretStoreOperation,
     ModelSecretStoreRequest,
 )
-from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_result import (
+from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
     ModelSecretStoreResult,
 )
+from omnimarket.nodes.node_secret_store_effect.adapters import secret_store_for
 
 if TYPE_CHECKING:
     from omnibase_infra.cli.store_onex_home_files import StoreOnexHomeFiles

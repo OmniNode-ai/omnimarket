@@ -40,6 +40,9 @@ dod_evidence:
     description: "The writer module carries no store REST path of its own; the merge base carries the private client, so the count there is nonzero."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py::test_the_writer_module_carries_no_store_client_of_its_own -q"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "test \"$(grep -c 'universal-auth' src/omnimarket/nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py)\" = 0"
         cwd: "${OMNI_HOME}/omnimarket"

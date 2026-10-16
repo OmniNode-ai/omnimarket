@@ -365,6 +365,25 @@ def test_a_reference_is_set_if_and_only_if_the_store_holds_it() -> None:
         ModelCapturedSecretStoreResult(outcome=EnumCapturedSecretStoreOutcome.STORED)
 
 
+def test_the_writer_module_carries_no_store_client_of_its_own() -> None:
+    import omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store as writer
+
+    source = Path(writer.__file__).read_text(encoding="utf-8")
+    for private_client in (
+        "universal-auth",
+        "/api/v",
+        "urllib.request",
+        "import httpx",
+        "class ProtocolCreateOnlySecretStore",
+        "class InfisicalCreateOnlySecretStore",
+    ):
+        assert private_client not in source, private_client
+    assert (
+        "from omnimarket.nodes.node_secret_store_effect import HandlerSecretStore"
+        in source
+    )
+
+
 # ---------------------------------------------------------------------------
 # the real transport, against a local server
 # ---------------------------------------------------------------------------

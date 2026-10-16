@@ -13,12 +13,12 @@ from __future__ import annotations
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
 from omnimarket.nodes.node_secret_store_effect.adapters import handler_infisical_http
 from omnimarket.nodes.node_secret_store_effect.adapters.http_exchange import (
     HttpExchange,
-)
-from omnimarket.nodes.node_secret_store_effect.models.model_secret_store_overlay import (
-    ModelSecretStoreOverlay,
 )
 
 
