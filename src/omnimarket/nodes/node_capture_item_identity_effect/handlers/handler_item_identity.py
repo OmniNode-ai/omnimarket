@@ -42,6 +42,20 @@ when its projection has applied every number from 1 to that high-water.
 The lineage stream's barrier also says whether content capture is enabled; when
 the operator turned it off, the content stream journals nothing at all.
 
+Composite operations
+--------------------
+Each hook makes one call. ``stamp_lineage_event`` takes the lineage hook's
+mapped payload, settles its event id with the content hook (rebinding every
+content reference's ``content_record_id`` to the settled id) and stamps the
+lineage sequence. ``stamp_content_records`` takes every record the content hook
+is about to journal, settles the lineage event id each one fulfils and stamps
+its ``content_record_id`` and a content sequence number issued in one block.
+``session_barrier_payloads`` builds one barrier per stream from one read of the
+session's high-waters. The fields they stamp are the ones the owner redaction
+contract (``node_event_emit_effect``'s ``capture_redaction.yaml``) declares
+``capture_verbatim``, so the emit path passes them through unhashed; a test
+pins the two together.
+
 Where it is loaded from
 -----------------------
 The hooks load this file BY PATH, not through the ``omnimarket.nodes`` package:
@@ -54,6 +68,7 @@ only the runtime calls. A test pins that module-level import set.
 
 from __future__ import annotations
 
+import copy
 import fcntl
 import hashlib
 import json
@@ -61,7 +76,8 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -121,6 +137,11 @@ FULL_CAPTURE_BY_KIND: dict[str, tuple[str, str]] = {
 
 #: Lineage hooks whose full-capture references a content record fulfils.
 LINEAGE_FULL_CAPTURE_HOOKS = frozenset(h for h, _ in FULL_CAPTURE_BY_KIND.values())
+
+#: The fields each composite stamps on a record, each declared
+#: ``capture_verbatim`` on its topic by the owner redaction contract.
+LINEAGE_STAMP_FIELDS = ("stream", "producer_seq")
+CONTENT_STAMP_FIELDS = ("content_record_id", "stream", "producer_seq")
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
@@ -273,15 +294,27 @@ def claim_event_id(
 
 def next_producer_seq(item_dir: Path, session_id: str, stream: str) -> int:
     """Issue the next sequence number of ``stream`` for the session (1, 2, 3 ...)."""
+    return next_producer_seqs(item_dir, session_id, stream, 1)[0]
+
+
+def next_producer_seqs(
+    item_dir: Path, session_id: str, stream: str, count: int
+) -> list[int]:
+    """Issue ``count`` consecutive sequence numbers of ``stream`` under one lock."""
     if stream not in STREAMS:
         raise ValueError(f"unknown stream {stream!r}")
+    if count < 0:
+        raise ValueError(f"count must not be negative, got {count}")
+    if count == 0:
+        return []
 
-    def update(state: dict[str, Any]) -> int:
-        issued = int(state.get(stream, 0)) + 1
-        state[stream] = issued
-        return issued
+    def update(state: dict[str, Any]) -> list[int]:
+        first = int(state.get(stream, 0)) + 1
+        state[stream] = first + count - 1
+        return list(range(first, first + count))
 
-    return int(_locked_json(_state_path(item_dir, session_id, "seq"), update))
+    issued: list[int] = _locked_json(_state_path(item_dir, session_id, "seq"), update)
+    return issued
 
 
 def high_water(item_dir: Path, session_id: str, stream: str) -> int:
@@ -325,8 +358,152 @@ def build_barrier_payload(
     return payload
 
 
+def _rebind_record_ids(node: Any, minted: uuid.UUID, settled: uuid.UUID) -> None:
+    """Point every content reference derived from ``minted`` at ``settled``."""
+    if isinstance(node, dict):
+        field = node.get("field")
+        if isinstance(field, str) and str(node.get("content_record_id")) == str(
+            content_record_id(minted, field)
+        ):
+            node["content_record_id"] = str(content_record_id(settled, field))
+        for value in node.values():
+            _rebind_record_ids(value, minted, settled)
+    elif isinstance(node, list):
+        for value in node:
+            _rebind_record_ids(value, minted, settled)
+
+
+def stamp_lineage_event(
+    journal_dir: Path, payload: Mapping[str, Any], hook_input: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The lineage hook's one call: shared event id, sequence, stamped fields.
+
+    ``payload`` is the mapped ``hook.event`` (``model_dump(mode="json")``). For a
+    hook whose content the content hook also records, the event id is settled
+    with that hook, and when the partner's id wins, the payload's ``event_id``
+    and every content reference that was derived from the minted id are
+    rebound to it. Then the lineage sequence number is issued and stamped.
+    Returns a new payload; ``payload`` is not changed.
+    """
+    stamped = copy.deepcopy(dict(payload))
+    lineage = stamped.get("lineage")
+    session_id = lineage.get("session_id") if isinstance(lineage, dict) else None
+    hook_event_name = stamped.get("hook_event_name")
+    if not isinstance(session_id, str) or not session_id:
+        raise ValueError("stamp_lineage_event needs payload.lineage.session_id")
+    if not isinstance(hook_event_name, str):
+        raise ValueError("stamp_lineage_event needs payload.hook_event_name")
+    item_dir = item_dir_for(journal_dir)
+    if hook_event_name in LINEAGE_FULL_CAPTURE_HOOKS:
+        minted = uuid.UUID(str(stamped.get("event_id")))
+        agent_id = lineage.get("agent_id") if isinstance(lineage, dict) else None
+        settled = claim_event_id(
+            item_dir,
+            session_id=session_id,
+            agent_id=agent_id if isinstance(agent_id, str) else None,
+            hook_event_name=hook_event_name,
+            discriminator=item_discriminator(hook_event_name, hook_input),
+            stream=STREAM_LINEAGE,
+            minted=minted,
+        )
+        if settled != minted:
+            stamped["event_id"] = str(settled)
+            _rebind_record_ids(stamped, minted, settled)
+    stamped["stream"] = STREAM_LINEAGE
+    stamped["producer_seq"] = next_producer_seq(item_dir, session_id, STREAM_LINEAGE)
+    return stamped
+
+
+def stamp_content_records(
+    journal_dir: Path,
+    *,
+    session_id: str,
+    agent_id: str | None,
+    hook_input: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """The content hook's one call: ids and sequence numbers for every record.
+
+    ``records`` are the chunks the hook journals for one hook call, in journal
+    order, each carrying its ``content_kind``. A record of a full-capture kind
+    gets the ``content_record_id`` of the lineage reference it fulfils (the
+    lineage event id is settled once per lineage hook); every record gets
+    ``stream`` and a content sequence number, issued as one block. The caller
+    journals every record it gets back, in order, or the block leaves a gap.
+    Returns new records; ``records`` are not changed.
+    """
+    item_dir = item_dir_for(journal_dir)
+    event_ids: dict[str, uuid.UUID] = {}
+    stamped: list[dict[str, Any]] = []
+    for record in records:
+        out = dict(record)
+        fulfils = FULL_CAPTURE_BY_KIND.get(str(record.get("content_kind")))
+        if fulfils is not None:
+            lineage_hook, field = fulfils
+            if lineage_hook not in event_ids:
+                event_ids[lineage_hook] = claim_event_id(
+                    item_dir,
+                    session_id=session_id,
+                    agent_id=agent_id,
+                    hook_event_name=lineage_hook,
+                    discriminator=item_discriminator(lineage_hook, hook_input),
+                    stream=STREAM_CONTENT,
+                    minted=uuid.uuid4(),
+                )
+            out["content_record_id"] = str(
+                content_record_id(event_ids[lineage_hook], field)
+            )
+        out["stream"] = STREAM_CONTENT
+        stamped.append(out)
+    seqs = next_producer_seqs(item_dir, session_id, STREAM_CONTENT, len(stamped))
+    for out, seq in zip(stamped, seqs, strict=True):
+        out["producer_seq"] = seq
+    return stamped
+
+
+def session_barrier_payloads(
+    journal_dir: Path,
+    *,
+    session_id: str,
+    streams: Sequence[str],
+    content_capture_enabled: bool,
+    barrier_id: str | None = None,
+    emitted_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """The barrier call: one barrier per stream, from one read of the high-waters.
+
+    ``streams`` are the streams whose producer is on; a barrier consumes no
+    sequence number. One ``barrier_id`` and one ``emitted_at`` cover them all.
+    """
+    for stream in streams:
+        if stream not in STREAMS:
+            raise ValueError(f"unknown stream {stream!r}")
+    if not streams:
+        return []
+
+    def read(state: dict[str, Any]) -> dict[str, int]:
+        return {stream: int(state.get(stream, 0)) for stream in streams}
+
+    marks: dict[str, int] = _locked_json(
+        _state_path(item_dir_for(journal_dir), session_id, "seq"), read
+    )
+    chosen_id = barrier_id or str(uuid.uuid4())
+    at = emitted_at or datetime.now(UTC).isoformat()
+    return [
+        build_barrier_payload(
+            session_id=session_id,
+            barrier_id=chosen_id,
+            stream=stream,
+            high_water_value=marks[stream],
+            content_capture_enabled=content_capture_enabled,
+            emitted_at=at,
+        )
+        for stream in streams
+    ]
+
+
 class HandlerCaptureItemIdentity:
-    """The node's handler: one request in, one id or number out."""
+    """The node's handler: one request in, the ids, numbers or records out."""
 
     def handle(
         self, request: ModelCaptureItemIdentityRequest
@@ -342,6 +519,53 @@ class HandlerCaptureItemIdentity:
                 raise ValueError("content_record_id needs event_id and field")
             return ModelCaptureItemIdentityResult(
                 content_record_id=content_record_id(request.event_id, request.field)
+            )
+        if operation is EnumCaptureItemOperation.STAMP_LINEAGE_EVENT:
+            if request.journal_dir is None or request.payload is None:
+                raise ValueError("stamp_lineage_event needs journal_dir and payload")
+            return ModelCaptureItemIdentityResult(
+                payload=stamp_lineage_event(
+                    Path(request.journal_dir), request.payload, request.hook_input or {}
+                )
+            )
+        if operation is EnumCaptureItemOperation.STAMP_CONTENT_RECORDS:
+            if (
+                request.journal_dir is None
+                or request.session_id is None
+                or request.records is None
+            ):
+                raise ValueError(
+                    "stamp_content_records needs journal_dir, session_id and records"
+                )
+            return ModelCaptureItemIdentityResult(
+                records=stamp_content_records(
+                    Path(request.journal_dir),
+                    session_id=request.session_id,
+                    agent_id=request.agent_id,
+                    hook_input=request.hook_input or {},
+                    records=request.records,
+                )
+            )
+        if operation is EnumCaptureItemOperation.SESSION_BARRIER:
+            if (
+                request.journal_dir is None
+                or request.session_id is None
+                or request.streams is None
+                or request.content_capture_enabled is None
+            ):
+                raise ValueError(
+                    "session_barrier needs journal_dir, session_id, streams and "
+                    "content_capture_enabled"
+                )
+            return ModelCaptureItemIdentityResult(
+                records=session_barrier_payloads(
+                    Path(request.journal_dir),
+                    session_id=request.session_id,
+                    streams=request.streams,
+                    content_capture_enabled=request.content_capture_enabled,
+                    barrier_id=request.barrier_id,
+                    emitted_at=request.emitted_at,
+                )
             )
         if request.session_id is None or request.item_dir is None:
             raise ValueError(f"{operation.value} needs session_id and item_dir")
