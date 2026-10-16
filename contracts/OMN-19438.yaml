@@ -26,20 +26,26 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn19438-ac1
-  description: The savings writer tests assert the UUID stamp and the typed refusal.
+  description: The savings writer tests assert the UUID stamp and the typed refusal, and the re-backfill source tests assert that the rows the unfixed writer left under the slug are moved to the registry UUID. The writer tests already pass at the merge base, so the second check is what fails there, because the re-backfill migration is absent.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_omn19438_savings_registry_tenant_uuid.py -q -m "not kafka"
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19438_savings_rebackfill_migration.py -q -m "not kafka"
+    cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
 - id: dod-omn19438-ac2
-  description: The default-tenant tests parse each named default as a UUID.
+  description: The default-tenant tests parse each named default as a UUID, and the re-backfill source tests assert that no row stays under the slug. The default-tenant tests already pass at the merge base, so the second check is what fails there, because the re-backfill migration is absent.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_omn19438_savings_registry_tenant_uuid.py -q -m "not kafka"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19438_savings_rebackfill_migration.py -q -m "not kafka"
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
