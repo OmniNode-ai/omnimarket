@@ -9,7 +9,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Self
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 UUID_PATTERN = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -59,7 +65,7 @@ class EnumReleasedState(StrEnum):
 
 
 class EnumCloserHealth(StrEnum):
-    """The closer's health on the morning report: RED from the third zero-flip run on."""
+    """The closer's health on the morning report at the requested zero-flip threshold."""
 
     GREEN = "GREEN"
     RED = "RED"
@@ -176,6 +182,20 @@ class ModelRunSummary(BaseModel):
     flip_refused: list[ModelRunFlipRefusal] = Field(default_factory=list)
     held_for_amendment: list[str]
     deferred_count: int = Field(ge=0)
+
+
+class ModelDodCloseoutZeroFlipAlert(BaseModel):
+    """OMN-21146: the zero-flip alert, carried on the node's terminal event."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    run_key: str = Field(pattern=r"^[^\s|]+$", description="One ledger token.")
+    zero_flip_streak: int = Field(ge=1)
+    threshold_runs: int = Field(ge=1)
+    deferred_count: int = Field(ge=1)
+    top_deferral_reason: str
+    observed_at: str
 
 
 class ModelSprintProject(BaseModel):
@@ -355,6 +375,11 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     # with precheck)
     run_summary: ModelRunSummary | None = None
     report_ref: str = ""
+    zero_flip_threshold_runs: int = Field(
+        default=3,
+        ge=1,
+        description="completion, ground_state: N, the consecutive zero-flip runs that raise the FRICTION row, the RED health and (while tickets are deferred) the zero-flip alert; declared in contract.yaml inputs (OMN-21146).",
+    )
 
     @model_validator(mode="after")
     def validate_fields_for_kind(self) -> Self:
@@ -425,8 +450,11 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "run_key",
                 "text_sha",
             ),
-            EnumCloseoutDecisionKind.COMPLETION: ("report_ref",),
-            EnumCloseoutDecisionKind.GROUND_STATE: (),
+            EnumCloseoutDecisionKind.COMPLETION: (
+                "report_ref",
+                "zero_flip_threshold_runs",
+            ),
+            EnumCloseoutDecisionKind.GROUND_STATE: ("zero_flip_threshold_runs",),
         }
         for field in required[kind]:
             if getattr(self, field) is None:
@@ -532,6 +560,7 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     comment_text: str | None = None
     # completion and ground_state
     completion_rows: list[str] | None = None
+    zero_flip_alert: ModelDodCloseoutZeroFlipAlert | None = None
     zero_flip_streak: int | None = None
     top_deferral_reason: str | None = None
     health: EnumCloserHealth | None = None
