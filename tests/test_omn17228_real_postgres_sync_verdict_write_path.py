@@ -182,7 +182,14 @@ def drifted_sync_adapter() -> Iterator[tuple[_SyncAsyncpgAdapter, Any]]:
                         f"ALTER TABLE {TABLE} ALTER COLUMN {column} DROP DEFAULT"
                     )
                 )
-            yield _SyncAsyncpgAdapter(loop, conn), (loop, conn, schema)
+            yield (
+                _SyncAsyncpgAdapter(loop, conn, dsn=dsn, schema=schema),
+                (
+                    loop,
+                    conn,
+                    schema,
+                ),
+            )
         finally:
             loop.run_until_complete(
                 conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")

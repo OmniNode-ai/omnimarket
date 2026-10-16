@@ -407,6 +407,12 @@ projection_api:
         # cost_usd is null for a run whose cost was never measured.
         - terminal_ok
         - cost_usd
+        # OMN-21015: one canonical per-run modelled figure, with its own basis.
+        # Legacy rows and unmeasured runs keep a nullable figure.
+        - modelled_savings_usd
+        - savings_baseline_model
+        - savings_pricing_manifest_version
+        - savings_measurement
         - created_at
         # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
         - data_source
