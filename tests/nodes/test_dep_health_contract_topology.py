@@ -84,6 +84,22 @@ def test_this_repo_allowlist_has_no_expired_entries() -> None:
     assert expired == [], f"expired dep-health allowlist rows: {expired}"
 
 
+def test_this_repo_allowlist_has_no_task_delegated_row() -> None:
+    """The legacy task-delegated topic is not allowlisted: it has no live producer or consumer."""
+    import yaml
+
+    from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+
+    root = Path(__file__).resolve().parents[2]
+    data = yaml.safe_load((root / "src" / "dep_health_allowlist.yaml").read_text())
+    topics = [
+        entry.get("topic")
+        for entry in data.get("allowlist", []) or []
+        if isinstance(entry, dict)
+    ]
+    assert TASK_DELEGATED_TOPIC_V1 not in topics
+
+
 def test_matched_pub_sub_no_orphans(tmp_path: Path) -> None:
     """Two contracts with matching pub/sub produce no orphan topics."""
     _write_contract(

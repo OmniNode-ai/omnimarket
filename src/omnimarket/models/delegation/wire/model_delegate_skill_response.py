@@ -125,6 +125,18 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 #
 # Response-source provenance is declared after its consumer-first release.
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
+# Accept the next receiver's keys without declaring producer fields. Keep the
+# construction-failure distinction privately: its failed topic can preserve a
+# true gate flag, and its absent score must not become a measured zero.
+_FORTHCOMING_CONSTRUCTION_KEYS: frozenset[str] = frozenset(
+    {
+        "operational_outcome",
+        "content_verdict",
+        "terminal_failure_reason",
+        "rule_evaluations",
+    }
+)
+_CONSTRUCTION_FAILED = "terminal_construction_failed"
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -412,6 +424,17 @@ class ModelDelegateSkillResponse(BaseModel):
     """Typed delegation result returned to requesting adapters."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+    _terminal_construction_failed: bool = PrivateAttr(default=False)
+
+    @property
+    def terminal_construction_failed(self) -> bool:
+        """Decoded failure evidence, private to this consumer release."""
+        return self._terminal_construction_failed
+
+    def retain_terminal_construction_failure(self, failed: bool) -> Self:
+        """Keep decode evidence without adding a producer field."""
+        self._terminal_construction_failed = failed
+        return self
 
     status: Literal["completed", "failed", "timeout"] = Field(...)
     # OMN-19013: the typed pair Core reserves for a terminal whose carrier failed
@@ -1153,6 +1176,73 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="wrap")
+    @classmethod
+    def accept_construction_keys_without_emitting_them(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        """Consumer first: validate the failure before dropping its new keys.
+
+        Wrap the base validators so the private distinction is retained before
+        the failed-topic subclass checks whether the gate flag implies success.
+        Once a subclass declares the keys, leave those declared fields intact.
+        """
+        if not isinstance(data, Mapping):
+            return handler(data)
+        outcome = data.get("operational_outcome")
+        verdict = data.get("content_verdict")
+        if (outcome is None) != (verdict is None):
+            raise ValueError(
+                "operational_outcome and content_verdict must be provided together"
+            )
+        construction_failed = outcome == _CONSTRUCTION_FAILED
+        if verdict == "undetermined" and not construction_failed:
+            raise ValueError(
+                "undetermined content verdict requires construction failure outcome"
+            )
+        if construction_failed and verdict != "undetermined":
+            raise ValueError(
+                "construction failure requires undetermined content verdict"
+            )
+        if construction_failed:
+            if data.get("status") == "completed":
+                raise ValueError("construction failure must not use completed status")
+            if data.get("terminal_failure_reason") != _CONSTRUCTION_FAILED:
+                raise ValueError(
+                    "construction failure requires stable terminal_failure_reason"
+                )
+            if (
+                data.get("quality_score") is not None
+                or data.get("required_quality_bar") is not None
+            ):
+                raise ValueError(
+                    "construction failure cannot carry quality score evidence"
+                )
+            if any(
+                data.get(key)
+                for key in (
+                    "score_vs_required_bar",
+                    "failed_acceptance_criteria",
+                    "rule_evaluations",
+                    "quality_gates_failed",
+                )
+            ):
+                raise ValueError("construction failure cannot carry quality evidence")
+            if data.get("terminal_failure_cause") is not None:
+                raise ValueError(
+                    "construction failure cannot claim provider failure cause"
+                )
+        decoded = {
+            key: value
+            for key, value in data.items()
+            if key not in _FORTHCOMING_CONSTRUCTION_KEYS or key in cls.model_fields
+        }
+        if construction_failed:
+            decoded.setdefault("quality_score", None)
+        return handler(decoded).retain_terminal_construction_failure(
+            construction_failed
+        )
+
 
 # Provider status classes as they appear in raw refusal text. Matched only as a
 # FALLBACK, after the typed ``failure_class`` on the attempt ladder: the string
@@ -1376,6 +1466,7 @@ def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
     if (
         response.operational_outcome
         is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        or response.terminal_construction_failed
         or response.terminal_failure_cause is not None
     ):
         return False
@@ -1494,6 +1585,14 @@ def delegate_skill_terminal_from_response(
             response.model_dump(mode="python")
         )
     data = response.model_dump(mode="python")
+    if response.terminal_construction_failed:
+        # Internal conversion must retain the decoded distinction even though
+        # this consumer release does not publish the forthcoming wire keys.
+        data.update(
+            operational_outcome=_CONSTRUCTION_FAILED,
+            content_verdict="undetermined",
+            terminal_failure_reason=_CONSTRUCTION_FAILED,
+        )
     if data.get("status") == "completed":
         data["status"] = "failed"
         data["quality_gate_passed"] = False

@@ -31,6 +31,21 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "AC5: given repo_status facts, a repository with two open PRs red on the same check and no cause lease is shared_red_unowned with a MISSING repo-status line naming one cause lane, a base_blocked ejection is merge_queue_ejecting, an open unit with the same verdict emits no event, and the verdicts ride the node's result over the in-memory bus -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q fails at the merge base"
+  - id: "req-expired-dep-health-allowlist-row-removed"
+    statement: "The committed dep-health allowlist carries no row past its expires_at: the task-delegated legacy compat row expired 2026-10-15 and is removed, so the allowlist expiry test passes on dev and in every shard that runs it."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: src/dep_health_allowlist.yaml carries no row for onex.evt.omniclaude.task-delegated.v1, test_this_repo_allowlist_has_no_expired_entries passes, and the dependency health sweep reports no finding for that topic -- falsifier: uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries fails at the merge base once the UTC date is past 2026-10-15"
+  - id: "req-construction-terminal-consumer-first"
+    statement: "The released delegate-skill consumer accepts construction-result keys before the producer declares them, preserving a null score and the gate's own flag without emitting the new keys."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: response and failed-topic JSON decode construction failure with either gate flag and a null score; conversion retains the distinction, contradictory evidence and unknown keys are refused, legacy defaults stay intact, and the four forthcoming keys are absent from serialization -- falsifier: uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q fails at the merge base"
+  - id: "req-capture-item-identity-node-in-omnimarket"
+    statement: "The shared item identity, per-stream producer sequence and barrier fields that omniclaude's two capture hooks stamp are owned by an omnimarket node in canonical shape (contract, node, handler), and the capture-redaction owner contract classifies the new record fields verbatim."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: node_capture_item_identity_effect resolves a content record id, claims one event id shared by the two hooks of a call in either order, issues 1,000 gap-free sequence numbers to eight concurrent writers, declares its topics in its contract, loads by file path with standard-library imports only, and the owner redaction contract keeps content_record_id, producer_seq, stream and the barrier fields verbatim -- falsifier: uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -38,11 +53,29 @@ evidence_requirements:
   - kind: "tests"
     description: "A reviewer red rerun at its head gets a worker or an escalation, never pending."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -q"
+  - kind: "tests"
+    description: "The committed dep-health allowlist has no expired row."
+    command: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19998-construction-consumer-first"
+    description: "The consumer JSON decode and terminal conversion tests reject the base's extra-key and null-score refusals, preserve the gate fact, and keep the forthcoming producer fields off the wire."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn19998-construction-consumer-deploy-probe"
+    description: "Hosted-runner decode through the consumer's JSON API at this head accepts an unscored construction failure while retaining the gate flag and emitting none of its forthcoming fields; the base rejects that payload."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import json; from omnimarket.models.delegation.wire.model_delegate_skill_response import ModelDelegateSkillFailed; p={"correlation_id":"4d97ece9-97cc-4837-9f67-fc0c29bc53ef","task_type":"document","status":"failed","quality_gate_passed":True,"quality_score":None,"operational_outcome":"terminal_construction_failed","content_verdict":"undetermined","terminal_failure_reason":"terminal_construction_failed","rule_evaluations":[]}; r=ModelDelegateSkillFailed.model_validate_json(json.dumps(p)); assert r.quality_gate_passed is True and r.quality_score is None; assert not {"operational_outcome","content_verdict","terminal_failure_reason","rule_evaluations"}.intersection(r.model_dump())'
   - id: "dod-omn19998-repo-contracts-bind-pytest-evidence"
     description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-20074.yaml binds AC10 to a command-only deploy probe."
     source: "manual"
@@ -114,3 +147,33 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def check_repo_status('
+  - id: "dod-omn19998-expired-allowlist-row-removed"
+    description: "The allowlist expiry test passes at the head and fails at the merge base, where the task-delegated row is past its expires_at of 2026-10-15."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k 'test_this_repo_allowlist_has_no_expired_entries or test_this_repo_allowlist_has_no_task_delegated_row'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn19998-expired-allowlist-deploy-probe"
+    description: "Hosted-runner probe reads the dep-health allowlist at this commit and requires the diagnostic row to remain and the task-delegated row to be gone; the base still carries the expired row and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/dep_health_allowlist.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/onex.evt.diagnostic.daemon-health.v1/{a=1} /onex.evt.omniclaude.task-delegated.v1/{b=1} END{exit !(a&&!b)}'
+  - id: "dod-omn19998-capture-item-identity-node"
+    description: "The node's handler, golden chain and contract tests and the redaction owner fields pass at the head; at the merge base the node package does not exist and every test file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19998-capture-item-identity-deploy-probe"
+    description: "Hosted-runner probe reads the item identity handler at this commit and requires claim_event_id; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_capture_item_identity_effect/handlers/handler_item_identity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^def claim_event_id('

@@ -149,6 +149,8 @@ not_routing_configs:
     reason: response shape conformance schema
   - path: src/omnimarket/configs/delegation_rung_eval.v1.yaml
     reason: evaluation rung list in which every endpoint and model is an environment variable name
+  - path: src/omnimarket/configs/grounding_budget_by_task_class.yaml
+    reason: input token budget per backend and task class; it refuses an oversized prompt and selects no backend, tier or route
   - path: src/omnimarket/configs/inference_protocols.v1.yaml
     reason: provider protocol directives keyed by model pattern; they shape a request and select no route
   - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
