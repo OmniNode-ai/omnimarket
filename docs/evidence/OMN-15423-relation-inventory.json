@@ -9231,7 +9231,8 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/090_savings_aggregate_excludes_model_text.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/090_savings_aggregate_excludes_model_text.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/096_delegation_savings_unpriced_calls.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -9366,7 +9367,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0062_delegation_token_usage_unpriced_calls.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",

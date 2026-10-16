@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +21,8 @@ from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command
     ModelRepoHealthRepairCommand,
 )
 
+pytestmark = pytest.mark.usefixtures("lane_intake_gate")
+
 
 class _RecordingLinearClient:
     def __init__(self) -> None:
@@ -28,7 +31,14 @@ class _RecordingLinearClient:
     def search_issues_by_content_key(self, *, content_key: str) -> str | None:
         return None
 
-    def create_issue(self, *, title: str, description: str, parent_id: str) -> str:
+    def create_issue(
+        self,
+        *,
+        title: str,
+        description: str,
+        parent_id: str,
+        label_names: Sequence[str] = (),
+    ) -> str:
         self.created.append(
             {"title": title, "description": description, "parent_id": parent_id}
         )

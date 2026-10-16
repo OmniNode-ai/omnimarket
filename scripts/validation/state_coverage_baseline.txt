@@ -210,7 +210,6 @@ node_refill_sprint_orchestrator onex.evt.omnimarket.sprint-auto-pull-completed.v
 node_refill_sprint_orchestrator onex.evt.omnimarket.tech-debt-queue-empty.v1
 node_regression_test_orchestrator experiment_result
 node_repo_health_classify_compute onex.evt.omnimarket.repo-health-classified.v1
-node_repo_health_repair_effect onex.evt.omnimarket.repo-health-repair-emitted.v1
 node_report_format_compute onex.evt.omnimarket.report-format-completed.v1
 node_resume_session_compute onex.evt.omnimarket.resume-session-completed.v1
 node_resume_session_compute phase

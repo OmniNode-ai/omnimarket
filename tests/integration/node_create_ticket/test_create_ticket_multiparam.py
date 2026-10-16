@@ -20,6 +20,8 @@ Each parametrized case exercises a distinct mode/flag combination:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
@@ -28,6 +30,8 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketResult,
     ModelTicketGuardDecision,
 )
+
+pytestmark = pytest.mark.usefixtures("lane_create_context")
 
 
 class _AdmitGuard:
@@ -58,6 +62,7 @@ class _MockLinearTicketClient:
         team: str,
         parent: str | None,
         assignee_id: str | None = None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         self.create_ticket_calls.append(
             {
@@ -238,4 +243,6 @@ def test_created_ticket_passes_the_description_through() -> None:
         )
     )
     assert result.status == "created"
-    assert result.description_body == "implement the widget"
+    assert (
+        result.description_body == "stamped-by: lane-under-test\n\nimplement the widget"
+    )

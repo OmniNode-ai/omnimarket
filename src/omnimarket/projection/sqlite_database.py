@@ -566,6 +566,14 @@ _DELEGATION_SAVINGS_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view.sql",
 )
+# OMN-20717: the counterpart of migration 096, which appends unpriced_call_count
+# to the savings view. Its own step after the OMN-20008 one: a store that has
+# recorded that step would never run it again.
+_DELEGATION_SAVINGS_UNPRICED_VIEW_STEP = "omn20717_delegation_savings_unpriced_view"
+_DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_savings",
+    "sqlite/delegation_savings_view_unpriced.sql",
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -794,6 +802,14 @@ class SqliteDatabaseAdapter:
                     "added the metering-summary savings share column",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP,
+                    cls._create_delegation_savings_unpriced_view,
+                    "re-created the delegation savings view with its unpriced-call count",
+                )
+            )
         if not cls._store_step_recorded(
             conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
         ):
@@ -935,6 +951,18 @@ class SqliteDatabaseAdapter:
         this one; a later revision is a new step, never an edit to this one.
         """
         package, resource = _DELEGATION_SAVINGS_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_savings_unpriced_view(conn: sqlite3.Connection) -> None:
+        """OMN-20717: re-create the savings view with unpriced_call_count appended.
+
+        Same shape as the OMN-20008 step it follows: dropped first, and a later
+        revision is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
         conn.execute(ddl)

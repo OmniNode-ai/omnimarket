@@ -107,6 +107,10 @@ _POST_CONVERSION_MODEL_ROUTING_VIEW = "0055_model_routing_local_call_share.sql"
 # OMN-21015: 0060 re-creates projection_delegation_model_routing again, with the same
 # dependence on 0045 and on tenant_id, so it is withheld with 0055.
 _POST_CONVERSION_TIER_MODELS_VIEW = "0060_model_routing_tier_models.sql"
+# OMN-20717: 0062 re-creates projection_delegation_token_usage, which groups
+# ON tenant_id, so it depends on the column the conversion alters and is
+# withheld with 0039.
+_POST_CONVERSION_TOKEN_USAGE_VIEW = "0062_delegation_token_usage_unpriced_calls.sql"
 
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
@@ -194,6 +198,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_SUMMARY_VIEW,
             _POST_CONVERSION_MODEL_ROUTING_VIEW,
             _POST_CONVERSION_TIER_MODELS_VIEW,
+            _POST_CONVERSION_TOKEN_USAGE_VIEW,
         }
     ]
 

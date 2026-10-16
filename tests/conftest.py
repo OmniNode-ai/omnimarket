@@ -1139,3 +1139,61 @@ def bind_bifrost_glm_endpoint(
         monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
 
     return _bind
+
+
+# ---------------------------------------------------------------------------
+# Lane intake (OMN-17942). Every Linear item a node opens is lane-created: it is
+# labelled, stamped with its lane, and counted against a daily budget. The
+# vocabulary comes from the installed omniclaude plugin in production; these
+# fixtures stand in for it, and tests/nodes/lane_intake covers the real wiring.
+# ---------------------------------------------------------------------------
+
+LANE_TEST_LABEL = "test-lane-label"
+LANE_TEST_STAMP_PREFIX = "stamped-by:"
+LANE_TEST_LANE = "lane-under-test"
+
+
+@pytest.fixture
+def lane_create_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """node_create_ticket sees a declared lane and the stand-in vocabulary."""
+    from omnimarket.handlers.handler_lane_intake import ModelLaneIntakePolicy
+    from omnimarket.nodes.node_create_ticket.handlers import handler_create_ticket
+
+    policy = ModelLaneIntakePolicy(
+        label=LANE_TEST_LABEL, stamp_prefix=LANE_TEST_STAMP_PREFIX
+    )
+    monkeypatch.setenv("ONEX_LANE", LANE_TEST_LANE)
+
+    def _policy(self: object) -> ModelLaneIntakePolicy:
+        del self
+        return policy
+
+    monkeypatch.setattr(
+        handler_create_ticket.HandlerCreateTicket, "_get_lane_intake_policy", _policy
+    )
+
+
+@pytest.fixture
+def lane_intake_gate(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """node_repo_health_repair_effect's gate: a recording fake that admits."""
+    from omnimarket.handlers.handler_lane_intake import (
+        LaneIntakeGate,
+        ModelLaneIntakePolicy,
+    )
+
+    policy = ModelLaneIntakePolicy(
+        label=LANE_TEST_LABEL, stamp_prefix=LANE_TEST_STAMP_PREFIX
+    )
+    admitted: list[dict[str, Any]] = []
+
+    def _policy(self: object) -> ModelLaneIntakePolicy:
+        del self
+        return policy
+
+    def _admit(self: object, tool_input: dict[str, object], lane: str) -> None:
+        del self
+        admitted.append({"tool_input": tool_input, "lane": lane})
+
+    monkeypatch.setattr(LaneIntakeGate, "policy", _policy)
+    monkeypatch.setattr(LaneIntakeGate, "admit", _admit)
+    return admitted
