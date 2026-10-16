@@ -1674,7 +1674,9 @@ class LocalDelegationDispatchPort:
             # contained. The ladder escalates instead; the receipt carries both
             # the budget and the measured input so the hop is attributable.
             measured_input_tokens = measure_grounding_input_tokens(prompt)
-            grounding_budget = resolve_backend_grounding_budget(backend.backend_id)
+            grounding_budget = resolve_backend_grounding_budget(
+                backend.backend_id, task_type
+            )
             if (
                 grounding_budget is not None
                 and measured_input_tokens > grounding_budget

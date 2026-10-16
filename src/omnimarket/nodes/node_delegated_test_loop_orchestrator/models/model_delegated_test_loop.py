@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 MAX_DELEGATE_CALLS = 3
 #: The serialized result stays under this many bytes.
 MAX_RESULT_BYTES = 4096
+#: test_path is echoed in the result; this cap keeps the compact result in budget.
+MAX_TEST_PATH_CHARS = 512
 
 RunOutcome = Literal[
     "passed",
@@ -71,7 +73,11 @@ class ModelDelegatedTestLoopRequest(BaseModel):
         description="1-based inclusive line ranges of the target shown to the "
         "model. Empty shows the whole file (the prompt compute caps it).",
     )
-    test_path: str = Field(..., pattern=r"^tests/[A-Za-z0-9_./-]+\.py$")
+    test_path: str = Field(
+        ...,
+        max_length=MAX_TEST_PATH_CHARS,
+        pattern=r"^tests/[A-Za-z0-9_./-]+\.py$",
+    )
     hide_paths: tuple[str, ...] = ()
     forbidden_fragments: tuple[str, ...] = ()
     mutations: tuple[ModelLoopMutation, ...] = ()
