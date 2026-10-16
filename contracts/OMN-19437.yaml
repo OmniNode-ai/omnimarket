@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19437"
 title: "Delegate-skill request and terminal decode trace_id and span_id before any producer emits them"
-summary: "Consumer half of the delegation trace context: the delegate-skill request and terminal wire models decode and drop trace_id and span_id, so a producer that stamps them is not refused as extra_forbidden by the last released consumer. The field declarations, the handler's copy and the CLI and RuntimeLocal stamping follow once a release carrying this is out."
+summary: "The delegation trace context in the delegate-skill wire models. Consumer half: the request and terminal models decode trace_id and span_id, so a producer that stamps them is not refused as extra_forbidden by the last released consumer. Producer half: the request and terminal models declare both fields and the handler copies the command's ids onto every terminal it builds."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -18,6 +18,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The consumer-first wire model tests pass."
     command: "uv run pytest tests/unit/delegation/test_omn19437_trace_span_consumer_first.py -q"
+  - kind: "tests"
+    description: "The handler copies the command's trace and span ids onto the terminal."
+    command: "uv run pytest tests/test_omn19437_terminal_trace_span.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -31,3 +34,18 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn19437_trace_span_consumer_first.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-trace-span-terminal-copy-ac1"
+    description: "A round trip through the handler asserts the terminal's trace_id and span_id equal the command's, and that a command without ids yields a terminal without them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19437_terminal_trace_span.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19437-deploy-probe"
+    description: "Deploy probe. The delegate-skill handler at the checked-out commit copies the command's trace_id onto the terminal; the probe reads the file from GitHub at that commit and exits nonzero on a tree without the copy, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF '(\"trace_id\", request.trace_id)'"
+        cwd: "${OMNI_HOME}/omnimarket"

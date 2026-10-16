@@ -50,9 +50,10 @@ NO_ESCALATION_WIRE_KEY = "no_escalation"
 # ``_tolerate_model_before_it_is_declared``.
 MODEL_WIRE_KEY = "model"
 
-# OMN-19437 AC1, consumer half: the keys the CLI and RuntimeLocal will stamp on a
-# command so its terminal can carry the same ids. Decoded, not declared, by
-# ``_tolerate_trace_context_before_it_is_declared``.
+# OMN-19437 AC1: the keys the CLI and RuntimeLocal stamp on a command so its
+# terminal can carry the same ids. Declared on the request below; the released
+# step-1 decoder ``_tolerate_trace_context_before_it_is_declared`` is now a no-op
+# for this class.
 TRACE_CONTEXT_WIRE_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
 
 
@@ -155,6 +156,26 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Multi-tenant isolation identifier, verified upstream when present. "
             "Never a self-reported/client-writable value."
+        ),
+    )
+    # OMN-19437: the trace context the issuing CLI or RuntimeLocal stamps at
+    # publish. The handler copies both onto every terminal it builds so the
+    # delegation_events row joins to the trace. ``exclude_if`` keeps a command
+    # that carries no ids byte-identical on the wire to today's.
+    trace_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Trace this command belongs to. None is explicit legacy/unset; the "
+            "terminal then carries none."
+        ),
+    )
+    span_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Span of this command within trace_id. None is explicit legacy/unset; "
+            "the terminal then carries none."
         ),
     )
     # OMN-15180: optional caller-supplied backend PIN. None (the default)
@@ -371,22 +392,23 @@ class ModelDelegateSkillRequest(BaseModel):
             )
         return {key: item for key, item in data.items() if key != MODEL_WIRE_KEY}
 
-    # OMN-19437, step 1 of 2: decode ``trace_id`` and ``span_id`` before they are
-    # declared, the same tolerate-before-declare order as ``model`` above. The
-    # Wire Compatibility Gate refuses declaring them while the last release
-    # forbids the keys. They are tracing context only, so a release that does
-    # not yet honour them drops them without changing what the command asks.
-    # Step 2 declares the fields once a release carrying this is out.
+    # OMN-19437, step 2 is done: ``trace_id`` and ``span_id`` are now declared
+    # (below), so this released step-1 decoder is a no-op for this class. Keep it
+    # in place for a subclass or an older payload that still routes through it:
+    # only an undeclared key is dropped; every other unknown key is still refused.
     @model_validator(mode="before")
     @classmethod
     def _tolerate_trace_context_before_it_is_declared(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping) or TRACE_CONTEXT_WIRE_KEYS.isdisjoint(data):
+        if not isinstance(data, Mapping):
             return data
-        return {
-            key: item
-            for key, item in data.items()
-            if key not in TRACE_CONTEXT_WIRE_KEYS
+        undeclared = {
+            key
+            for key in TRACE_CONTEXT_WIRE_KEYS
+            if key in data and key not in cls.model_fields
         }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
 
     @field_validator("published_at")
     @classmethod

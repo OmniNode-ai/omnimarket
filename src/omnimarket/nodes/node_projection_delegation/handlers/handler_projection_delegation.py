@@ -1657,6 +1657,12 @@ def _canonical_response_text(
 def _canonical_result_to_task_delegated_payload(
     payload: dict[str, object],
 ) -> dict[str, object]:
+    # OMN-19013: the one pair Core reserves for a terminal that failed to
+    # construct. Its content was never graded, so no score survives into the row.
+    construction_failed = (
+        payload.get("operational_outcome") == "terminal_construction_failed"
+        and payload.get("content_verdict") == "undetermined"
+    )
     quality_passed = bool(payload.get("quality_passed"))
     failure_reason = str(payload.get("failure_reason") or "")
     escalation_history = payload.get("escalation_history") or ()
@@ -1755,7 +1761,11 @@ def _canonical_result_to_task_delegated_payload(
         "tokens_to_compliance": payload.get("tokens_to_compliance") or 0,
         "compliance_attempts": payload.get("compliance_attempts") or 1,
         "required_bar": payload.get("required_bar"),
-        "actual_score": payload.get("actual_score") or payload.get("quality_score"),
+        "actual_score": (
+            None
+            if construction_failed
+            else payload.get("actual_score") or payload.get("quality_score")
+        ),
         "escalation_count": payload.get("escalation_count") or 0,
         # OMN-13408: the metered total + serving tier carried from the canonical
         # terminal. With cost_tier_name set, _measure_actual_cost re-prices/trusts
