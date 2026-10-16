@@ -35,6 +35,9 @@ from omnimarket.nodes.node_delegation_orchestrator.state_codec import decode, en
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    tiers_declaring_backend,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
@@ -175,4 +178,26 @@ def test_the_rejected_backend_stays_excluded_after_a_state_roundtrip(
 
     route = next(e for e in events if isinstance(e, ModelRoutingIntent))
     assert route.min_tier_name == "ceiling"
-    assert {_SHARED_BACKEND, "a-different-backend"} <= set(route.excluded_backend_refs)
+    assert _SHARED_BACKEND in route.excluded_backend_refs
+    assert _SHARED_BACKEND in next_tier_calls[-1]
+
+
+def test_a_backend_one_tier_owns_is_not_excluded(
+    next_tier_calls: list[frozenset[str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(_LADDER, "claude", ("a-different-backend",))
+    handler = hw.HandlerDelegationWorkflow(workflows={})
+    cid = _start(handler)
+
+    events = _reject_on(handler, cid, tier="cheap_cloud", backend="owned-by-one-tier")
+
+    route = next(e for e in events if isinstance(e, ModelRoutingIntent))
+    assert route.excluded_backend_refs == ()
+    assert next_tier_calls[-1] == frozenset()
+
+
+def test_the_recorded_ladder_declares_the_backend_on_two_tiers() -> None:
+    declared = tiers_declaring_backend(_SHARED_BACKEND)
+    assert {"cheap_cloud", "claude"} <= set(declared)
+    assert tiers_declaring_backend("local-coder") == ("local",)

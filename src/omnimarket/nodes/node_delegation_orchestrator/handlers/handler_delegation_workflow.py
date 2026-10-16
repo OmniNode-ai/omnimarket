@@ -226,6 +226,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_response_contract,
     sibling_backend_available_in_tier,
     tier_max_retries,
+    tiers_declaring_backend,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -3882,9 +3883,14 @@ class HandlerDelegationWorkflow:
         # (below), the spend is banked into the cumulative totals; if this is the
         # terminal attempt, ``_emit_terminal`` re-prices it from the same
         # current-tier tokens, so it is NOT double-counted.
+        # OMN-18831: only a backend that more than one tier label declares is a
+        # repeat the ladder must not climb to; a backend one tier owns is left to
+        # the routing authority's own selection.
         rejected_backend_ref = (
             workflow.routing_decision.selected_backend_ref or ""
         ).strip()
+        if len(tiers_declaring_backend(rejected_backend_ref)) < 2:
+            rejected_backend_ref = ""
         rejected_attempt_cost_usd = self._record_escalation_attempt(
             workflow,
             ModelDelegationEscalationAttempt(
