@@ -78,9 +78,7 @@ def test_start_topic_has_this_node_as_a_producer_and_dod_verify_as_its_consumer(
         in ((contract.get("event_bus") or {}).get("publish_topics") or [])
     ]
     assert NODE in publishers
-    assert contracts["node_dod_verify"]["event_bus"]["subscribe_topics"] == [
-        VERIFY_START
-    ]
+    assert VERIFY_START in contracts["node_dod_verify"]["event_bus"]["subscribe_topics"]
     bus = contracts[NODE]["event_bus"]
     assert bus["subscribe_topics"] == [COMPLETED]
     assert bus["publish_topics"] == [VERIFY_START]

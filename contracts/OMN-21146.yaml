@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-closeout-zero-flip-alert"
+    statement: "The DoD closeout sweep's completion decision returns a zero-flip alert event when it has flipped nothing for N consecutive runs while tickets are deferred, N declared in its contract."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: node_dod_closeout_sweep_compute completion returns a typed zero-flip alert, carried on its terminal event, once the zero-flip streak reaches the contract-declared zero_flip_threshold_runs while tickets are deferred, and none otherwise -- falsifier: tests/test_omn21146_zero_flip_alert.py fails, or a threshold literal remains in the node's Python"
   - id: "req-gateway-answers-both-reads"
     statement: "The GitHub gateway node answers a check-runs-at-commit request and a merged-PR-by-number request with typed results."
     acceptance:
@@ -23,6 +28,11 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "AC4: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at 4d16322dae9d62f96089b93421a768fb8dd8c8fe (omnibase_core#1986) and keeps its job id and inputs -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q fails at the merge base, where the caller pins 4e4f5e0404d364e296c5d37db6aa3ab9e07f8ffa"
+  - id: "req-dod-verify-on-merge"
+    statement: "node_dod_verify verifies the ticket a merged PR cites at merge time, from the merge event, instead of waiting for the scheduled closeout sweep."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: node_dod_verify routes onex.evt.github.pr-merged.v1 to HandlerDodVerifyOnMerge, which runs the cited ticket's hosted verification and publishes nothing for a merge citing no ticket -- falsifier: tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_on_merge.py fails, or the contract does not route the merge topic to that handler"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the gateway's read tests for commit_check_runs and merged_pr, and the onex scm verbs that publish them."
@@ -38,6 +48,13 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21146-zero-flip-alert"
+    description: "node_dod_closeout_sweep_compute completion returns a typed zero-flip alert, carried on its terminal event, once the zero-flip streak reaches the contract-declared zero_flip_threshold_runs input while tickets are deferred; no threshold literal remains in the node's Python."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21146_zero_flip_alert.py tests/test_closeout_completion.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC5"]
   - id: "dod-omn21146-ac1-gateway-operations"
     description: "AC1: the gateway reads a commit's check runs (paged, filtered by name) and one PR's merge facts, and the commit-check-runs and pr-merged verbs publish them on the gateway's command topic and return the terminal result."
     source: "manual"
@@ -80,3 +97,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q -p no:randomly --no-cov"
     binds_ac: ["AC4"]
+  - id: "dod-omn21146-verify-on-merge"
+    description: "node_dod_verify subscribes to onex.evt.github.pr-merged.v1: the runtime wiring assigns that topic to HandlerDodVerifyOnMerge and the start command topic to HandlerDodVerify, a merge citing a ticket runs that ticket's verification under the hosted audience, and a merge citing no ticket publishes nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21146_dod_verify_on_merge.py tests/unit/nodes/node_dod_verify/test_dispatch_envelope_unwrap.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC5"]

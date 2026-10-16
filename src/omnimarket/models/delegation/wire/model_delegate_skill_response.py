@@ -90,7 +90,18 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # request's ``backend_id`` pin chose, so a pinned run's tier entry is not read
 # as a weighted spread draw. The producer and the declared field land in the
 # change after the release that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
+#
+# OMN-20717 adds ``usage_source``: the measurement provenance the transport
+# reported for the attempt's cost, so an unpriced call can be stored as a null
+# cost rather than 0. Its producer and declared field land after the release
+# that carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {"backend_pinned", "usage_source"}
+)
+# OMN-20717: ``cost_measured`` on the metrics says whether any attempt's cost
+# was measured, so a zero ``cost_usd`` can be told apart from an unpriced one.
+# Same consumer-first order as the attempt key above.
+_FORTHCOMING_METRICS_KEYS: frozenset[str] = frozenset({"cost_measured"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -380,6 +391,12 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
         ),
     )
     latency_ms: int = Field(default=0, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode metrics from a producer one release ahead (OMN-20717)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_METRICS_KEYS)
 
 
 class ModelDelegateSkillResponse(BaseModel):
