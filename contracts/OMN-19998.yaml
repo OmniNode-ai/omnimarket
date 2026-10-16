@@ -190,7 +190,7 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_sibling_pins_omn20001.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
-  - id: "dod-omn19998-release-gates-accept-git-pin-deploy-probe"
+  - id: "dod-omn19998-git-pin-gates-deploy-probe"
     description: "Hosted-runner probe reads ci.yml at this commit and requires the wire gate to pass omniclaude's pin as --consumer-ref; the base has no such line and the probe finds no match."
     source: "manual"
     checks:
