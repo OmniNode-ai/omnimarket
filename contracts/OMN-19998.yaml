@@ -402,7 +402,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py tests/test_golden_chain_rescue_patch_review_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC14"]
+    binds_ac: ["AC16"]
   - id: "dod-omn19998-rescue-patch-effects-deploy-probe"
     description: "Hosted-runner source probe requires the rescue-patch scan contract to declare effects runtime ownership; the dispatch head declares main and fails."
     source: "manual"
