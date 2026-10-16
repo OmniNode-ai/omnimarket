@@ -26,7 +26,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn20705-ac1-printed-root-serves-verified-pages"
+  - id: "dod-omn20705-ac1-printed-root-serves-pages"
     description: "The real command with only the download faked fetches and verifies the bundle before it prints its address, and the printed root, opened with its token, answers 200 with the pages. At the merge base the address is printed before the download, so it fails."
     source: "manual"
     checks:
@@ -35,7 +35,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac:
       - "AC1"
-  - id: "dod-omn20705-ac2-unreachable-bundle-exits-non-zero"
+  - id: "dod-omn20705-ac2-unreachable-exits-non-zero"
     description: "An unreachable asset exits 1, names \"could not download the dashboard bundle\" and \"nothing was served\" on stderr, prints no address, never serves, no traceback."
     source: "manual"
     checks:
@@ -44,7 +44,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac:
       - "AC2"
-  - id: "dod-omn20705-ac2-checksum-mismatch-exits-non-zero"
+  - id: "dod-omn20705-ac2-checksum-exits-non-zero"
     description: "A bundle whose digest does not match the pin exits 1, names \"does not match the pin\" on stderr, discards the archive, prints no address, never serves."
     source: "manual"
     checks:
