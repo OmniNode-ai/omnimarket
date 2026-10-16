@@ -1,0 +1,543 @@
+{
+ "prereg_sha256": "76bad58216c84972d1ea7de862593071ffeb64849dc53563b82fadbc23f263f7",
+ "items_sha256": "74dc274a6d98d97259b38118ce9cedc13587a70815907741dfa73d3328711d6c",
+ "prereg": "Experiment m4-structured-brief-extraction (OMN-20422 program, lane omn20422-m4)\nHypothesis: a structured brief (Task/Input/Output format/Constraints sections) raises exact-match accuracy of Qwen3.8-27B on a pytest-log extraction task by at least 15 points over the free-text prompt.\nMetric: exact-match accuracy of the one-line test name (strip whitespace, backticks, trailing period).\nBaseline: the free-text arm on the same 16 items (items.json sha256 74dc274a6d98d97259b38118ce9cedc13587a70815907741dfa73d3328711d6c, generator seed 20261015).\nArms: A free-text, B structured brief. 16 items per arm, 32 runs. One call per item per arm via onex delegate --task-type reasoning, deployed lab lane, no backend pin.\nVerdict rule: supported if B - A >= 0.15; refuted if B - A < 0.15 with every counted run answered by Qwen3.8-27B; void if fewer than 12 runs per arm are answered by Qwen3.8-27B.\nMeasurement only; no routing or contract change.\n",
+ "record": {
+  "experiment_id": "m4-structured-brief-extraction",
+  "hypothesis": "A structured brief (Task/Input/Output format/Constraints) raises exact-match accuracy of Qwen3.8-27B on a pytest-log extraction task by at least 15 points over the free-text prompt.",
+  "metric": "exact-match accuracy of the one-line test name, 16 items per arm",
+  "baseline": 1.0,
+  "arms": [
+   {
+    "arm_id": "A",
+    "model": "Qwen3.8-27B",
+    "run_ids": [
+     "5ff8d770-7707-42b1-8632-04df58cc8af9",
+     "be68e007-ee41-4d1a-b7f0-df0f65f33fca",
+     "6708ca5c-cb2a-4f20-ad4c-12e2a0a948f9",
+     "b75da6e4-5911-4dc3-8a6b-53895b8239a7",
+     "01267b55-286f-4642-b54b-ec010f25a12a",
+     "3fbed8a7-9f00-418b-8f21-b7bca881ebdd",
+     "dc9cdd0c-7550-49e1-97cc-e23d2be65daa",
+     "9878a2de-935a-48e3-b634-c4ab4a732af0",
+     "06adc79a-6b74-435a-9f76-3d4592451d09",
+     "115b650f-06af-4eca-9da6-b222b6822f90",
+     "45f075e2-8a5c-42e7-a94e-8fd4b149d2fe",
+     "4c7aa516-6b2f-4ab8-9317-6f3e01087143",
+     "898b5c4a-9ccf-4d28-96a2-ea486683ba9a",
+     "36465593-b8eb-4976-872c-159a66efc2ed",
+     "8d58db0d-641b-4cb8-bc0b-09091f21c134",
+     "ad34ed41-3e50-408d-bbb7-5790b051f908"
+    ],
+    "per_arm_value": 1.0
+   },
+   {
+    "arm_id": "B",
+    "model": "Qwen3.8-27B",
+    "run_ids": [
+     "1103142f-a089-4aa1-8c87-3563c20023d9",
+     "69a6f896-1533-4bd0-bbf2-4f63c157af50",
+     "b49d81be-930b-462b-afae-eddfbd323a0c",
+     "6d280fa1-f011-421c-8d3a-9049ac6744d7",
+     "0384cc85-30f5-4fe9-a90d-5a320e0b747d",
+     "7caf73ef-14dc-48cc-8d39-4d201794cc7a",
+     "8a57769d-d831-4ecf-b83e-c971cffb0251",
+     "12035c57-56f7-4cfe-9254-e3ed32bd6c97",
+     "32940225-7e21-4018-9e47-0498f2e0e056",
+     "4e7bc7e0-7756-47f3-b7aa-b0c217dd3b24",
+     "14ae877f-2f31-40c0-9d89-05294dee3d60",
+     "f0cce4d7-b475-4f6b-902c-e6a8be5b1de3",
+     "08d6f098-6a2a-49e1-b783-44fd2b793d24",
+     "7311e01e-8931-430a-91a9-34698919066a",
+     "26e8c7a5-0223-420b-b9f6-ac01f193c2d7",
+     "f202238a-9331-4ee0-a34e-b6b8e4d65b73"
+    ],
+    "per_arm_value": 0.0
+   }
+  ],
+  "verdict": "refuted",
+  "changed_paths": []
+ },
+ "runs": [
+  {
+   "run_id": "5ff8d770-7707-42b1-8632-04df58cc8af9",
+   "arm": "A",
+   "item": "i00",
+   "expected": "test_hash_key",
+   "answer": "test_hash_key",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "1103142f-a089-4aa1-8c87-3563c20023d9",
+   "arm": "B",
+   "item": "i00",
+   "expected": "test_hash_key",
+   "answer": "1. Compare the exception types in the log. 2. The only KeyError is test_hash_key. Conclusion: test_hash_key",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "be68e007-ee41-4d1a-b7f0-df0f65f33fca",
+   "arm": "A",
+   "item": "i01",
+   "expected": "test_render_table",
+   "answer": "test_render_table",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-studio-planner"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "69a6f896-1533-4bd0-bbf2-4f63c157af50",
+   "arm": "B",
+   "item": "i01",
+   "expected": "test_render_table",
+   "answer": "1. The log lists four failed tests: test_retry_backoff, test_load_config, test_sum_prices, test_render_table.\n2. Their exceptions are ValueError, TypeError, KeyError, ZeroDivisionError.\n3. The only failure with ZeroDivisionError is test_render_table.\nConclusion: test_render_table",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "6708ca5c-cb2a-4f20-ad4c-12e2a0a948f9",
+   "arm": "A",
+   "item": "i02",
+   "expected": "test_load_config",
+   "answer": "test_load_config",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "b49d81be-930b-462b-afae-eddfbd323a0c",
+   "arm": "B",
+   "item": "i02",
+   "expected": "test_load_config",
+   "answer": "1. tests/test_mod.py::test_load_config FAILED with ValueError. 2. The other FAILED lines have ZeroDivisionError, TypeError, KeyError. Conclusion: test_load_config",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "b75da6e4-5911-4dc3-8a6b-53895b8239a7",
+   "arm": "A",
+   "item": "i03",
+   "expected": "test_cache_evict",
+   "answer": "test_cache_evict",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "6d280fa1-f011-421c-8d3a-9049ac6744d7",
+   "arm": "B",
+   "item": "i03",
+   "expected": "test_cache_evict",
+   "answer": "1. The log reports IndexError for test_cache_evict.\n2. Conclusion: test_cache_evict",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "01267b55-286f-4642-b54b-ec010f25a12a",
+   "arm": "A",
+   "item": "i04",
+   "expected": "test_cache_evict",
+   "answer": "test_cache_evict",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "0384cc85-30f5-4fe9-a90d-5a320e0b747d",
+   "arm": "B",
+   "item": "i04",
+   "expected": "test_cache_evict",
+   "answer": "1. tests/test_mod.py::test_cache_evict has KeyError: 'missing_field'.\n2. tests/test_mod.py::test_render_table has IndexError.\n3. tests/test_mod.py::test_merge_rows has AssertionError.\n4. tests/test_mod.py::test_close_pool has TypeError.\nConclusion: test_cache_evict",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "3fbed8a7-9f00-418b-8f21-b7bca881ebdd",
+   "arm": "A",
+   "item": "i05",
+   "expected": "test_load_config",
+   "answer": "test_load_config",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "7caf73ef-14dc-48cc-8d39-4d201794cc7a",
+   "arm": "B",
+   "item": "i05",
+   "expected": "test_load_config",
+   "answer": "1. The log lists four failed tests: test_hash_key, test_flush_queue, test_parse_header, and test_load_config.\n2. The only failed test with IndexError is test_load_config.\nConclusion: test_load_config",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "dc9cdd0c-7550-49e1-97cc-e23d2be65daa",
+   "arm": "A",
+   "item": "i06",
+   "expected": "test_cache_evict",
+   "answer": "test_cache_evict",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-studio-planner"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "8a57769d-d831-4ecf-b83e-c971cffb0251",
+   "arm": "B",
+   "item": "i06",
+   "expected": "test_cache_evict",
+   "answer": "1. The failed tests are test_retry_backoff, test_hash_key, test_cache_evict, and test_flush_queue.\n2. Their reported exceptions are ZeroDivisionError, KeyError, ValueError, and AssertionError.\n3. The failed test with ValueError is test_cache_evict.\ntest_cache_evict",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-studio-planner"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "9878a2de-935a-48e3-b634-c4ab4a732af0",
+   "arm": "A",
+   "item": "i07",
+   "expected": "test_hash_key",
+   "answer": "test_hash_key",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "12035c57-56f7-4cfe-9254-e3ed32bd6c97",
+   "arm": "B",
+   "item": "i07",
+   "expected": "test_hash_key",
+   "answer": "1. AssertionError: assert 3 == 4 appears in test_hash_key.\n2. ValueError, TypeError, and ZeroDivisionError are ignored.\nConclusion: test_hash_key",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "06adc79a-6b74-435a-9f76-3d4592451d09",
+   "arm": "A",
+   "item": "i08",
+   "expected": "test_load_config",
+   "answer": "test_load_config",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "32940225-7e21-4018-9e47-0498f2e0e056",
+   "arm": "B",
+   "item": "i08",
+   "expected": "test_load_config",
+   "answer": "1. The failed tests are test_load_config, test_sum_prices, test_retry_backoff, and test_cache_evict. 2. The ValueError failure is test_load_config. Conclusion: test_load_config",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "115b650f-06af-4eca-9da6-b222b6822f90",
+   "arm": "A",
+   "item": "i09",
+   "expected": "test_render_table",
+   "answer": "test_render_table",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "4e7bc7e0-7756-47f3-b7aa-b0c217dd3b24",
+   "arm": "B",
+   "item": "i09",
+   "expected": "test_render_table",
+   "answer": "1. Scan the FAILURES section for an exception type of IndexError.\n2. The failure for test_render_table shows IndexError.\n3. Ignore the failures that show ValueError, ZeroDivisionError, and KeyError.\ntest_render_table",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "45f075e2-8a5c-42e7-a94e-8fd4b149d2fe",
+   "arm": "A",
+   "item": "i10",
+   "expected": "test_dedupe_ids",
+   "answer": "test_dedupe_ids",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "14ae877f-2f31-40c0-9d89-05294dee3d60",
+   "arm": "B",
+   "item": "i10",
+   "expected": "test_dedupe_ids",
+   "answer": "1. Scan the listed failures for the exception type KeyError. 2. The only failure with KeyError is test_dedupe_ids.",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "4c7aa516-6b2f-4ab8-9317-6f3e01087143",
+   "arm": "A",
+   "item": "i11",
+   "expected": "test_render_table",
+   "answer": "test_render_table",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "f0cce4d7-b475-4f6b-902c-e6a8be5b1de3",
+   "arm": "B",
+   "item": "i11",
+   "expected": "test_render_table",
+   "answer": "1. Scan the FAILURES section for the exception type. 2. Ignore ZeroDivisionError, KeyError, and AssertionError. 3. The TypeError failure is test_render_table. Conclusion: test_render_table",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "898b5c4a-9ccf-4d28-96a2-ea486683ba9a",
+   "arm": "A",
+   "item": "i12",
+   "expected": "test_load_config",
+   "answer": "test_load_config",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "08d6f098-6a2a-49e1-b783-44fd2b793d24",
+   "arm": "B",
+   "item": "i12",
+   "expected": "test_load_config",
+   "answer": "1. The log lists four failures. 2. test_load_config failed with ValueError. Conclusion: test_load_config",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "36465593-b8eb-4976-872c-159a66efc2ed",
+   "arm": "A",
+   "item": "i13",
+   "expected": "test_parse_header",
+   "answer": "test_parse_header",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-studio-planner"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "7311e01e-8931-430a-91a9-34698919066a",
+   "arm": "B",
+   "item": "i13",
+   "expected": "test_parse_header",
+   "answer": "1. The log shows test_parse_header failed with ValueError.\n2. The other failed tests show ZeroDivisionError, TypeError, and IndexError.\ntest_parse_header",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "8d58db0d-641b-4cb8-bc0b-09091f21c134",
+   "arm": "A",
+   "item": "i14",
+   "expected": "test_merge_rows",
+   "answer": "test_merge_rows",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "26e8c7a5-0223-420b-b9f6-ac01f193c2d7",
+   "arm": "B",
+   "item": "i14",
+   "expected": "test_merge_rows",
+   "answer": "1. Scan the FAILURES section for ZeroDivisionError; 2. read the test name in that block; Conclusion: test_merge_rows",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-heavy-reasoning"
+   ],
+   "gate_passed": true
+  },
+  {
+   "run_id": "ad34ed41-3e50-408d-bbb7-5790b051f908",
+   "arm": "A",
+   "item": "i15",
+   "expected": "test_close_pool",
+   "answer": "test_close_pool",
+   "correct": true,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": false
+  },
+  {
+   "run_id": "f202238a-9331-4ee0-a34e-b6b8e4d65b73",
+   "arm": "B",
+   "item": "i15",
+   "expected": "test_close_pool",
+   "answer": "1. Scan the FAILURES section for the exception type KeyError.\n2. The only failure that reports KeyError is tests/test_mod.py::test_close_pool, with KeyError: 'missing_field'.\n3. Ignore the failures that report ZeroDivisionError, AssertionError, or IndexError.\ntest_close_pool",
+   "correct": false,
+   "models": [
+    "Qwen3.8-27B"
+   ],
+   "backends": [
+    "local-omnipc2-chat"
+   ],
+   "gate_passed": true
+  }
+ ]
+}

@@ -12,6 +12,11 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "scripts/check_release_identity.py in strict mode exits 0 on the bumped tree and uv.lock pins the pyproject.toml version."
+  - id: "req-release-staleness-heal"
+    statement: "A PR's red Release Staleness copy is re-run once a release newer than the base it failed against is published."
+    acceptance:
+      - id: "AC2"
+        statement: "scripts/ci/pr_stale_red_heal.py re-runs a red Release Staleness job (and CI Summary when those are the run's only reds) when the newest published tag is newer than the failed measurement's base, and re-runs nothing when no release followed the red."
 evidence_requirements:
   - kind: "tests"
     description: "Run the release-identity gate in strict mode against the tree and compare the uv.lock pin with pyproject.toml."
@@ -29,3 +34,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-release-staleness-heal"
+    description: "The stale-red heal re-runs a Release Staleness red once a newer release is tagged, and not otherwise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q -k release_staleness"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

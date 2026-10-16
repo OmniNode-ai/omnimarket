@@ -132,3 +132,46 @@ def test_seed_names_no_omni_home_parameter_on_the_customer_surface() -> None:
     ]
     assert "OMNI_HOME" not in names
     assert "WORKSPACE_ROOT" in names
+
+
+def test_golden_chain_reseed_over_the_broker_path_leaves_the_same_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # AC1 over the broker path: two `onex seed --bus kafka` runs publish the same
+    # keyed messages, and projecting both batches upserts onto the first batch's
+    # rows instead of adding a second set.
+    captured = _CapturingBus()
+
+    @asynccontextmanager
+    async def _fake_open(**_kwargs: object) -> AsyncIterator[_CapturingBus]:
+        yield captured
+
+    monkeypatch.setattr(cli_seed, "open_lab_run_bus", _fake_open)
+    args = ["--bus", "kafka", "--kafka-bootstrap", "broker.invalid:9092"]
+    args += ["--tenant", "omninode"]
+
+    db = InmemoryDatabaseAdapter()
+    projection = HandlerProjectionDelegation(publisher=_NullPublisher())
+    expected = len(HandlerDevSeed().load_fixture_set().runs)
+    batches: list[list[bytes | None]] = []
+    for _ in range(2):
+        start = len(captured.published)
+        result = CliRunner().invoke(cli_seed.seed_command, args)
+        assert result.exit_code == 0, result.output
+        batch = captured.published[start:]
+        assert len(batch) == expected
+        batches.append([key for _topic, key, _value in batch])
+        for _topic, _key, value in batch:
+            data = unwrap_envelope(value)
+            assert data is not None
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(
+                strip_runner_injected_keys(data)
+            )
+            projection.project_delegate_skill_terminal(
+                terminal, db, data_source=envelope_data_source(data)
+            )
+        rows = db.query("delegation_events")
+        assert len(rows) == expected
+        assert {row["data_source"] for row in rows} == {"fixture"}
+
+    assert batches[0] == batches[1]

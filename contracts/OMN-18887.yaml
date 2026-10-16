@@ -1,33 +1,83 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-18887"
-title: "End-to-end redelivery test for the delegate-skill handler"
-summary: "A redelivered delegate-skill record calls the provider once, and a reused correlation id on a new record still calls it. The cases run the real handler, dispatch port, adequacy judge, durable claim store and evidence store, and fake only the provider HTTP boundary."
+title: "Delegate-skill commands are not idempotent, so a redelivered command re-runs the inference and re-bills it"
+summary: "A redelivered delegate-skill record is claimed before dispatch in a durable store: it reaches the provider once, writes one billing row, survives a runtime restart, and still answers its caller with a terminal. The proof is the Golden Chain Suite, which runs the real handler, dispatch port, claim store and evidence store and fakes only the provider HTTP boundary."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-redelivery-end-to-end"
-    statement: |-
-      A redelivered delegate-skill record must reach the provider once, proven by a golden-chain case with no handler-level mocks.
+  - id: "req-redelivery-idempotent"
+    statement: "The criteria below are transcribed from the ticket body; each id is the label a dod_evidence item claims through binds_ac."
     acceptance:
+      - id: "AC1"
+        statement: "AC1: a correlation-keyed idempotency check runs BEFORE dispatch, and a command whose correlation already reached a terminal is not dispatched again -- falsifier: redeliver a completed delegate-skill command and observe a second HandlerInferenceIntent call for that correlation."
+      - id: "AC2"
+        statement: "AC2: a redelivered completed command produces no second billing row -- falsifier: redeliver a completed command and observe the delegation cost/savings projection gain a second row, or actual_cost_usd accrue twice, for one correlation."
+      - id: "AC3"
+        statement: "AC3: the redelivered command still produces a terminal for its caller rather than silently vanishing. Suppressing the work must not suppress the answer -- falsifier: a redelivered command is dropped with no terminal published, which converts a double-bill into the missing-envelope defect OMN-15504 exists to prevent."
+      - id: "AC4"
+        statement: "AC4: the check reads durable state, not process memory -- falsifier: restarting the runtime between the original and the redelivery re-runs the inference. In-process memoisation is not a fix, because the redelivery cause that matters most is the crash."
       - id: "AC5"
-        statement: |-
-          AC5: one envelope id bound twice around the handler gives one provider call, two completed responses with equal text and one delegation_events row, and the same correlation id on two envelope ids gives two provider calls -- falsifier: uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py -q
+        statement: "AC5: the proof is a golden-chain case exercised end to end -- falsifier: the only coverage is a handler-level test with a mocked dispatch port, which can observe neither a second inference nor a second billing row."
 evidence_requirements:
   - kind: "tests"
-    description: "The end-to-end redelivery cases and the existing delegate-skill golden chain."
-    command: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py -q"
+    description: "AC1 golden-chain probe. A delivered record handled twice reaches the dispatch port once, and a new record that reuses the correlation is dispatched again, so the claim is keyed on the delivery and a legitimate retry is not swallowed."
+    command: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::TestDelegateSkillRedeliveryIsIdempotent::test_a_redelivered_record_dispatches_the_inference_once tests/test_golden_chain_node_delegate_skill_orchestrator.py::TestDelegateSkillRedeliveryIsIdempotent::test_a_reused_correlation_on_a_new_record_still_dispatches -q"
+  - kind: "tests"
+    description: "AC2 end-to-end probe. The real handler, local dispatch port and SQLite evidence store, with only the provider HTTP faked, leave one delegation_events row and an unchanged cost and token sum after the redelivery, on the same runtime and on a restarted one."
+    command: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_redelivered_record_calls_the_provider_once -q"
+  - kind: "tests"
+    description: "AC3 golden-chain probe. The redelivered record returns a terminal of the same class as the first, for the same correlation, rather than None."
+    command: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::TestDelegateSkillRedeliveryIsIdempotent::test_the_redelivered_record_still_answers_its_caller -q"
+  - kind: "tests"
+    description: "AC4 restart probe. The end-to-end case rebuilds the handler, dispatch port and claim adapter between the original and the redelivery so only the files remain, and a second claim-store instance over one state directory loses the claim the first one won."
+    command: "uv run pytest 'tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_redelivered_record_calls_the_provider_once[restarted-runtime]' tests/unit/nodes/node_delegate_skill_orchestrator/test_claim_store_state_root_omn19654.py::test_omninode_readonly_rootfs_claim_store_is_durable_across_ports -q"
+  - kind: "tests"
+    description: "AC5 golden-chain probe. The cases live in the Golden Chain Suite file and run the real handler, dispatch port and evidence store: one envelope id bound twice gives one provider call and one row, and the same correlation on two envelope ids gives two provider calls."
+    command: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_redelivered_record_calls_the_provider_once tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_reused_correlation_on_a_new_record_still_calls_the_provider -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-redelivery-end-to-end-ac5"
-    description: "The end-to-end test proves a redelivered record calls the provider once and a reused correlation id on a new record calls it again."
+  - id: "dod-omn18887-ac1"
+    description: "AC1 golden-chain probe. A delivered record handled twice reaches the dispatch port once, and a new record that reuses the correlation is dispatched again, so the claim is keyed on the delivery and a legitimate retry is not swallowed."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py -q"
+        check_value: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::TestDelegateSkillRedeliveryIsIdempotent::test_a_redelivered_record_dispatches_the_inference_once tests/test_golden_chain_node_delegate_skill_orchestrator.py::TestDelegateSkillRedeliveryIsIdempotent::test_a_reused_correlation_on_a_new_record_still_dispatches -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18887-ac2"
+    description: "AC2 end-to-end probe. The real handler, local dispatch port and SQLite evidence store, with only the provider HTTP faked, leave one delegation_events row and an unchanged cost and token sum after the redelivery, on the same runtime and on a restarted one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_redelivered_record_calls_the_provider_once -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn18887-ac3"
+    description: "AC3 golden-chain probe. The redelivered record returns a terminal of the same class as the first, for the same correlation, rather than None."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::TestDelegateSkillRedeliveryIsIdempotent::test_the_redelivered_record_still_answers_its_caller -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn18887-ac4"
+    description: "AC4 restart probe. The end-to-end case rebuilds the handler, dispatch port and claim adapter between the original and the redelivery so only the files remain, and a second claim-store instance over one state directory loses the claim the first one won."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest 'tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_redelivered_record_calls_the_provider_once[restarted-runtime]' tests/unit/nodes/node_delegate_skill_orchestrator/test_claim_store_state_root_omn19654.py::test_omninode_readonly_rootfs_claim_store_is_durable_across_ports -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn18887-ac5"
+    description: "AC5 golden-chain probe. The cases live in the Golden Chain Suite file and run the real handler, dispatch port and evidence store: one envelope id bound twice gives one provider call and one row, and the same correlation on two envelope ids gives two provider calls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_redelivered_record_calls_the_provider_once tests/test_golden_chain_node_delegate_skill_orchestrator.py::test_a_reused_correlation_on_a_new_record_still_calls_the_provider -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import StrEnum, unique
 
-MODEL_REGISTRY_VERSION = "1.3.0"
+MODEL_REGISTRY_VERSION = "1.4.0"
 PRICING_MANIFEST_VERSION = "2026-06-11-gemini-25-flash-lite"
 REGISTRY_OBSERVED_AT = "2026-06-11T00:00:00Z"
 GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)
@@ -21,16 +21,10 @@ GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)
 class EnumLogicalModelKey(StrEnum):
     """Logical model keys declared by the model registry."""
 
-    CLAUDE_OPUS_4_6 = "claude-opus-4-6"
-    CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
-    DEEPSEEK_R1_14B = "deepseek-r1-14b"
-    DEEPSEEK_R1_32B = "deepseek-r1-32b"
     GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
     LLAMA_3_3_70B_FREE = "llama-3.3-70b-free"
     OPENROUTER_NEMOTRON_ULTRA = "openrouter-nemotron-ultra"
     QWEN3_CODER_30B = "qwen3-coder-30b"
-    QWEN3_NEXT_80B = "qwen3-next-80b"
-    QWEN3_6_35B = "qwen3.6-35b"
     VERTEX_GEMINI_FLASH = "vertex-gemini-flash"
 
 
@@ -38,13 +32,9 @@ class EnumLogicalModelKey(StrEnum):
 class EnumLlmEndpointRef(StrEnum):
     """Endpoint reference names declared by registry/topology contracts."""
 
-    ANTHROPIC_DELEGATION_URL = "ANTHROPIC_DELEGATION_URL"
     BIFROST_VERTEX_GEMINI_ENDPOINT_URL = "BIFROST_VERTEX_GEMINI_ENDPOINT_URL"
     GEMINI_API_URL = "GEMINI_API_URL"
-    LLM_CODER_FAST_URL = "LLM_CODER_FAST_URL"
     LLM_CODER_URL = "LLM_CODER_URL"
-    LLM_DEEPSEEK_R1_URL = "LLM_DEEPSEEK_R1_URL"
-    LLM_QWEN3_NEXT_URL = "LLM_QWEN3_NEXT_URL"
     OPENROUTER_URL = "OPENROUTER_URL"
 
 

@@ -358,6 +358,24 @@ quality_rules:
       Attribute its claims to named sources: say where each one comes from
       (for example 'according to the PostgreSQL documentation') and end with
       a References line naming them.
+    # OMN-21088: the rule judges reasoning prose the PROMPT asked for. Measured
+    # 2026-10-14 (omnimarket 0.4.313, "what is 2+2" on qwen/qwen3.8-27b via
+    # OpenRouter): this directive made the model answer a one-token question
+    # with about 990 bytes of sourced reasoning and a References list, which the caller received
+    # as the answer. A prompt matching none of these patterns is waived: the
+    # directive is not stated to the model and the gate does not veto on it.
+    # A prompt that asks for it keeps the rule, as before.
+    waived_unless_prompt_matches:
+      - '\bcit(?:e|es|ed|ing|ations?)\b'
+      - '\bsources?\b'
+      - '\breferences?\b'
+      - '\battribut\w*'
+      - '\baccording to\b'
+      - '\bbibliograph\w*'
+      - '\bevidence\b'
+      - '\bresearch\b'
+      - '\binvestigat\w*'
+      - '\bsurvey\b'
     rationale: >-
       OMN-13354: an unattributed research answer fails. Attribution is the
       thing that makes a research answer checkable, so its absence is a floor
@@ -407,6 +425,36 @@ quality_rules:
     model_directive: >-
       Give the reasoning behind each point, saying why it holds (because ...,
       therefore ...) and what risk or tradeoff it carries.
+    # OMN-21088: the rule judges reasoning prose the PROMPT asked for. Measured
+    # 2026-10-14 (omnimarket 0.4.313, "what is 2+2" on qwen/qwen3.8-27b via
+    # OpenRouter): this directive made the model answer a one-token question
+    # with about 990 bytes of because/therefore/tradeoff prose, which the caller received
+    # as the answer. A prompt matching none of these patterns is waived: the
+    # directive is not stated to the model and the gate does not veto on it.
+    # A prompt that asks for it keeps the rule, as before.
+    waived_unless_prompt_matches:
+      - '\bwhy\b'
+      - '\btrade-?offs?\b'
+      - '\bpros and cons\b'
+      - '\brisks?\b'
+      - '\bjustif\w*'
+      - '\breason(?:s|ing)?\b'
+      - '\bexplain\w*'
+      - '\bcompar\w*'
+      - '\bversus\b'
+      - '\bvs\.?\s'
+      - '\bweigh\w*'
+      - '\bargu\w*'
+      - '\bevaluat\w*'
+      - '\bassess\w*'
+      - '\banaly[sz]\w*'
+      - '\bshould (?:i|we)\b'
+      - '\bdecid\w*'
+      - '\bdecision\b'
+      - '\brecommend\w*'
+      - '\bhow (?!many\b|much\b|old\b|long\b|far\b|big\b)\w+'
+      - '\bresearch\b'
+      - '\binvestigat\w*'
     rationale: >-
       OMN-14220: the reject-only filter that keeps a bad planning or review
       output from terminalising as adequate.
@@ -456,6 +504,25 @@ quality_rules:
       - "\\b(?:answer|reply|respond|output)(?: with)? only\\b"
       - "\\banswer one word then\\b"
       - "\\bone (?:short |plain )?sentence\\b"
+    # OMN-21088: the rule judges reasoning prose the PROMPT asked for. Measured
+    # 2026-10-14 (omnimarket 0.4.313, "what is 2+2" on qwen/qwen3.8-27b via
+    # OpenRouter): this directive made the model answer a one-token question
+    # with about 990 bytes of numbered reasoning steps, which the caller received
+    # as the answer. A prompt matching none of these patterns is waived: the
+    # directive is not stated to the model and the gate does not veto on it.
+    # A prompt that asks for it keeps the rule, as before.
+    waived_unless_prompt_matches:
+      - '\bstep[- ]by[- ]step\b'
+      - '\bsteps?\b'
+      - '\bshow (?:your |the )?(?:work|working|reasoning|derivation)\b'
+      - '\bwalk (?:me |us )?through\b'
+      - '\b(?:reason|think) through\b'
+      - '\bderiv\w*'
+      - '\bprove\b'
+      - '\bproof\b'
+      - '\bhow (?:do|does|did|would|can|could|to)\b'
+      - '\bexplain\w*'
+      - '\bwhy\b'
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   structured_output:
     enforcement: blocking
@@ -1847,6 +1914,8 @@ task_classes:
     # rather than route them to a neighbouring class.
     gateway_exposure: internal
     # OMN-17427: operator RULING 2026-10-02T19:33:51Z, lane orchestrator-2a21.
+    # The first-ordered rung below left the lab Studio on 2026-10-08, when its
+    # server swapped models; the record is kept as dated evidence, not as setup.
     # Order: gpt-oss-120b (local, lab), then GLM glm-5.3 through Claude Code;
     # if neither is adequate, code_review is not delegated and stays with Claude.
     # Each rung measured on the same 28-prompt set before adoption: 14 held-out
@@ -1868,8 +1937,8 @@ task_classes:
       tracking: "OMN-17427 RULING 2026-10-02T19:33:51Z"
       reason: >-
         No delegation rung reached the 21-of-28 adequacy bar on the held-out
-        code_review set (Qwen3.8-27B 0/28, gpt-oss-120b 0/28, glm-5.3 via
-        Claude Code 13/28). Therefore code_review is not delegated and stays
+        code_review set (Qwen3.8-27B 0/28, glm-5.3 via Claude Code
+        13/28). Therefore code_review is not delegated and stays
         with the calling Claude session.
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:

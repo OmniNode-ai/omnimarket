@@ -74,6 +74,23 @@ class TestMypyCheck:
         assert error.column is None or error.column >= 0
         assert error.message
 
+    def test_missing_import_flagged_when_not_ignored(self) -> None:
+        # OMN-21150: the codegen factory sends ignore_missing_imports=False so a
+        # generated artifact importing a module that does not exist is rejected
+        # here rather than exploding as an ImportError at runtime.
+        result = HandlerMypyCheck().handle(
+            ModelMypyCheckRequest(
+                source_text="import omnimarket.does_not_exist\n",
+                ignore_missing_imports=False,
+            )
+        )
+        assert result.mypy_available is True
+        assert result.error_count >= 1
+        assert result.success is False
+        assert any("does_not_exist" in diag.message for diag in result.diagnostics), (
+            result.diagnostics
+        )
+
 
 @pytest.mark.unit
 class TestPathBranch:

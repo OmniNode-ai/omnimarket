@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19834"
+title: "Companion and product merges are detected from the lab git mirror with no REST call"
+summary: "A sync of the git query mirror scans the default branch for squash merges that landed since the previous detecting sync and the node publishes one onex.evt.github.pr-merged.v1 event per merge with source mirror, using git only. The first sync of a repository records a baseline and publishes no history. A PR already published by another producer for the same repository is skipped, through an injected lookup and the mirror's own ledger of what it published. The event id is the UUIDv5 of repo, pr_number and merge sha, shared with the webhook fold, so one merge seen by both is one projection row."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-mirror-merge-event"
+    statement: "A squash merge on the upstream produces one pr-merged event with source mirror on the next sync and none on the sync after."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: A squash merge on a scratch upstream produces one pr-merged event with source mirror and a second sync produces none -- falsifier: uv run pytest over the node with a scratch upstream"
+  - id: "req-no-github-call"
+    statement: "Merge detection runs on git transport alone."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: The detection path makes no GitHub API call -- falsifier: uv run pytest with gh absent from PATH and no token in the environment"
+  - id: "req-dedupe-against-actions"
+    statement: "A PR already published by another producer for the same repository is not published again."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: An event already published by an Actions producer for the same repository and PR is not published again -- falsifier: uv run pytest on the dedupe test"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 in one focused test file."
+    command: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19834-ac1-mirror-merge-event"
+    description: "AC1: one mirror event per squash merge, none on the next sync, no history on the first sync."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q -p no:randomly --no-cov -k 'squash_merge or first_sync or two_merges or direct_push or branch_deleted or force_push or handler_emits'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19834-ac2-no-github-call"
+    description: "AC2: detection runs with gh absent from PATH, no token in the environment, and a gh runner that fails the test when called."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q -p no:randomly --no-cov -k 'no_github_call'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19834-ac3-dedupe"
+    description: "AC3: a PR the injected lookup or the mirror ledger holds is skipped; the same number in another repository is not."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q -p no:randomly --no-cov -k 'already_published or another_repository or default_ledger'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19834-deploy-mirror-merge-scan"
+    description: "Hosted deploy probe: read the mirror module from GitHub at the evaluated commit and require the merge scan and the pr-merged publish declaration in the contract. The probe fails on the merge-base module, which has neither. This checks published source at the evaluated revision, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("def _scan_merges") and contains("merge_scan_sha"))' | grep -qx true

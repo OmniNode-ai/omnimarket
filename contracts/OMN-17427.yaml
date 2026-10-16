@@ -220,6 +220,22 @@ requirements:
     acceptance:
       - id: "AC37"
         statement: "AC37: the delegation gateway raises MorningPhaseCapabilityPendingError naming agent_orchestration and its tracking before publishing anything, and the default gateway sends every phase as a lab work unit that needs a logged-in agent CLI, at the run's labWork repository and pushed sha, through a full in-memory bus cycle -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q fails at the merge base"
+  - id: "req-superseded-run-cancel"
+    statement: "A queued or in-progress CI run that a later push or a merge-queue exit left behind is cancelled from the run list and the queue read alone, one event per cancel, and a run on a PR's current head is never cancelled."
+    acceptance:
+      - id: "AC38"
+        statement: "AC38: node_superseded_run_cancel_effect cancels a pull_request run whose head differs from the head of the PR's newest pull_request run in the same run list and a merge_group run whose commit is not an entry of its base branch's complete queue read, and never cancels a run on the PR's current head -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q fails when the rule takes the oldest run's head as current (9 of 22 fail)"
+      - id: "AC39"
+        statement: "AC39: the node publishes one superseded-run-cancelled event per cancelled run with repo, run id and reason, an unreadable run list or an incomplete queue read cancels nothing, and a bus failure does not undo a cancel -- falsifier: uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure' fails on a handler that cancels on those reads"
+  - id: "req-named-test-runner"
+    statement: "The default local delegation port grades code answers on the named tests carried inline by their request, and records whether tests ran."
+    acceptance:
+      - id: "AC40"
+        statement: "AC40: the default local port accepts a correct answer and rejects an incorrect answer by executing the request's inline named tests without a caller workspace -- falsifier: the two golden-chain inline-test cases fail at the merge base."
+      - id: "AC41"
+        statement: "AC41: code requests naming no tests are decided UNTESTED on the local and bus paths, while named tests that never ran remain INSUFFICIENT -- falsifier: the focused verdict cases fail at the merge base."
+      - id: "AC42"
+        statement: "AC42: the named-test runner preserves the source workspace, scrubs parent secrets, bounds resources and output, kills timed-out process groups, and refuses writes through escaping symlinks -- falsifier: the focused runner module fails at the merge base."
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -314,6 +330,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The morning phases refuse unroutable delegation with a typed error and run as bus lab work."
     command: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py -q"
+  - kind: "tests"
+    description: "AC38 and AC39: the superseded-run cancel node over a recorded GitHub, with negative controls for the current head and for an incomplete queue read."
+    command: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -618,3 +637,59 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_agent_session.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert "acceptEdits" in source and "bypassPermissions" not in source; assert all(n.module == "__future__" for n in tree.body if isinstance(n, ast.ImportFrom)); assert {a.name for n in tree.body if isinstance(n, ast.Import) for a in n.names} <= {"subprocess", "sys"}; assert any(isinstance(n, ast.FunctionDef) and n.name == "main" for n in tree.body); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerAgentSession" for n in tree.body); print("agent session deploy probe: PASS")'
+  - id: "dod-omn17427-ac37-superseded-run-rule"
+    description: "The supersede rule cancels runs behind a later PR head and runs out of the merge queue, and keeps every run on a PR's current head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC38"]
+  - id: "dod-omn17427-ac38-superseded-run-events"
+    description: "One cancelled event per cancel; an unreadable run list or an incomplete queue read cancels nothing; a bus failure does not undo a cancel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py -q -k 'event or incomplete or unreadable or bus_failure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC39"]
+  - id: "dod-omn17427-ac37-superseded-run-deploy-probe"
+    description: "Deploy probe. The handler file GitHub serves at the checked-out commit defines HandlerSupersededRunCancel, the superseded-run cancel node this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_superseded_run_cancel_effect/handlers/handler_superseded_run_cancel.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerSupersededRunCancel:'"
+  - id: "dod-omn17427-ac38-inline-named-test-grading"
+    description: "The default local port accepts a passing answer and rejects a failing answer on inline tests without a workspace."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_named_test_runner_wired_omn17427.py -q -k 'golden_chain_accepts_a_passing_answer_on_its_inline_tests or golden_chain_rejects_a_failing_answer_on_its_inline_tests'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC40"]
+  - id: "dod-omn17427-ac39-named-test-verdicts"
+    description: "No tests named is UNTESTED on the local and bus paths; named tests that never ran remain INSUFFICIENT."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_named_test_runner_wired_omn17427.py -q -k 'no_tests_named or no_test_run or never_ran or bus_path'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC41"]
+  - id: "dod-omn17427-ac40-named-test-isolation"
+    description: "The runner preserves the workspace, scrubs secrets, bounds execution and output, and refuses escaping writes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_handler_named_test_run_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC42"]
+  - id: "dod-omn17427-named-test-runner-deploy-probe"
+    description: "Deploy probe. GitHub serves the named-test runner at the checked-out HEAD with its handler, resource limits and process-group timeout. This command needs no lab network or model on the hosted runner and fails at the merge base, which has no runner module."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_named_test_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerNamedTestRun" for n in tree.body); assert all(name in source for name in ("RLIMIT_CPU", "RLIMIT_AS", "RLIMIT_FSIZE", "os.killpg", "subprocess.TimeoutExpired")); print("named-test runner deploy probe: PASS")'

@@ -244,6 +244,9 @@ from omnimarket.routing.byok_provider_backends import (
     byok_backend_max_retries,
     resolve_byok_backend_by_id,
 )
+from omnimarket.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
+)
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
@@ -1003,6 +1006,30 @@ def _route_identity(
 INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE: Final[
     Literal["ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"]
 ] = "ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"
+
+
+def _boundary_failure_credential_source(
+    workflow: DelegationWorkflowState,
+    terminal: ModelBoundaryFailureTerminal,
+    *,
+    routing_leg: bool,
+) -> EnumCredentialSource | None:
+    """The credential fact a boundary-failure terminal can state.
+
+    OMN-18196 criterion 2: a delegation refused for want of a credential records
+    ``none``. The refusal is raised in the routing reducer, before the effect
+    boundary resolves anything, so the routing leg is the one place this
+    orchestrator learns of it, and ``CustomerKeyRefusedError`` carries the wire
+    code ``CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE`` for every refusal reason. No
+    call reached a provider, so ``none`` is the true credential source. A fact
+    the effect boundary already recorded on an earlier rung is kept as it is, and
+    any other routing failure claims nothing.
+    """
+    if workflow.inference_credential_source is not None:
+        return workflow.inference_credential_source
+    if routing_leg and terminal.failure_code == CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE:
+        return EnumCredentialSource.NONE
+    return None
 
 
 class InferenceIntentCredentialLostError(Exception):
@@ -3017,7 +3044,9 @@ class HandlerDelegationWorkflow:
             # terminal claims nothing — the pre-existing behaviour, unchanged.
             route=workflow.inference_route,
             provider=workflow.inference_provider,
-            credential_source=workflow.inference_credential_source,
+            credential_source=_boundary_failure_credential_source(
+                workflow, terminal, routing_leg=not leg.routing_decision_present
+            ),
             # OMN-17802: the leg declares whether a decision was in hand, and
             # that declaration -- not a guess from the failure text -- is what
             # names this run's routing disposition. On the ROUTING leg the FSM

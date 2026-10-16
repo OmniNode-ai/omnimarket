@@ -613,6 +613,37 @@ def _select_backend_by_id(
     return None
 
 
+def describe_model_name_source(
+    model_id: str,
+    endpoint_url: str,
+    *,
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
+    store: ProtocolSecretStore | None = None,
+) -> str | None:
+    """Name the artifact and key that supplied ``model_id`` for ``endpoint_url``.
+
+    OMN-18670. The inference-intent path receives the resolved model and endpoint
+    but not the backend id or where the model came from, so its fail-closed
+    attribution refusal calls this to recover the source from the same merge the
+    routing authority reads. Returns ``None`` when no merged backend declares
+    both values (a caller-supplied model, or a patched loader with no file merge
+    to attribute): the answer is then "unknown", never a guessed path.
+    """
+    merged, provenance = load_bifrost_backends_with_provenance(
+        config_path=config_path, overlay_path=overlay_path, store=store
+    )
+    for backend in merged:
+        if (
+            backend.get("model_name") == model_id
+            and backend.get("endpoint_url") == endpoint_url
+        ):
+            record = provenance.source_for(str(backend["backend_id"]), "model_name")
+            if record is not None:
+                return record.describe()
+    return None
+
+
 def resolve_delegation_backend(
     task_type: str,
     *,
@@ -970,6 +1001,7 @@ def resolve_timeout_seconds(*, backend_timeout_ms: int) -> float:
 __all__ = [
     "BIFROST_OVERLAY_STORE_KEY",
     "ModelResolvedDelegationBackend",
+    "describe_model_name_source",
     "load_bifrost_backends",
     "refuse_undeclared_local_model",
     "resolve_declared_local_model",

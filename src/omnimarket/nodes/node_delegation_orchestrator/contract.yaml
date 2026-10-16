@@ -544,13 +544,6 @@ escalation:
   excluded_tiers: []
 
 error_handling:
-  retry_policy:
-    max_retries: 1
-    initial_delay_ms: 1000
-    max_delay_ms: 5000
-    exponential_base: 2
-    retry_on:
-      - "InferenceTimeoutError"
   error_types:
     - name: "OrchestrationError"
       description: "Unexpected error during delegation orchestration"

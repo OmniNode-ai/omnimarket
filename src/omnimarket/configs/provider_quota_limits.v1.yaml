@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# provider_quota_limits.v1.yaml -- the quota a provider declares, read by routing
+# to defer a call before the provider refuses it (OMN-20154).
+#
+# provider_quota_policy (bifrost_delegation.yaml) says how to READ a refusal;
+# this file says how much a provider allows before it refuses. Routing compares
+# the declared limit with the call count the durable provider_quota_state
+# projection holds for the same window, and withholds a rung whose window is
+# spent. The provider's own refusal stays the backstop: this only moves the
+# deferral from after the first refusal to before it.
+#
+# One window per provider, because the projection keeps one rolling window per
+# row and the observation of every call carries that window's width. A provider
+# with several windows (the z.ai Coding Plan has a 5-hour and a weekly window)
+# is not declared until the unit it meters can be counted: z.ai meters credits,
+# which need the token counts an observation does not carry yet.
+#
+# Fields, per entry:
+#   provider_id     the quota domain; must be a provider_quota_policy provider_id
+#   window_seconds  width of the window the limit counts over
+#   limit           calls the provider allows per window; the call that would
+#                   exceed it is deferred
+#   unit            what is counted; only `calls` is countable today
+#   scope           `model` (the provider counts per model) or `provider` (one
+#                   counter pooled across every model behind the credential)
+#   source          where the number came from, read by whoever changes it
+#   as_of           the date the source was read; a limit is a provider fact that
+#                   changes, so an entry is edited by pull request, not by code
+#
+# Kept out of bifrost_delegation.yaml on purpose: the provider_quota_policy
+# block is a wire payload model that released consumers decode with extra keys
+# forbidden, so a new key there would need a consumer-first release (the same
+# reason provider_surfaces.v1.yaml is a sibling file).
+
+schema_version: "provider_quota_limits.v1"
+
+limits:
+  - provider_id: google-gemini
+    window_seconds: 86400
+    limit: 20
+    unit: calls
+    scope: model
+    source: >-
+      The free tier's daily request counter, read from a live 429 body
+      ("limit: 20", per model) on 2026-08-29 and as 20 of 20 used in the
+      2026-09-30 per-provider call readback. Applied to every model behind the
+      credential, so a model with a higher limit is deferred early, never late.
+    as_of: "2026-09-30"

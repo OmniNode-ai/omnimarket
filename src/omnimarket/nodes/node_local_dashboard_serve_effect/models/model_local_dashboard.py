@@ -5,9 +5,10 @@
 from __future__ import annotations
 
 import ipaddress
+import secrets
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 # The standalone projection API (``projection/api_server.py``) and OmniDash's
 # Express bridge own this port; the local dashboard never takes it.
@@ -20,6 +21,21 @@ class DashboardBindError(ValueError):
     """``dashboard.bind`` names a value the local dashboard must not bind."""
 
 
+def mint_dashboard_token() -> SecretStr:
+    """A fresh random token for one start of the dashboard (OMN-19916, decision D2)."""
+    return SecretStr(secrets.token_urlsafe(32))
+
+
+def is_loopback_host(host: str) -> bool:
+    """True when ``host`` (a name or an address, no port) is a loopback interface."""
+    if host.lower() in _LOOPBACK_NAMES:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 class ModelLocalDashboardServeRequest(BaseModel):
     """Serve this install's exposures on ``host:port`` for ``tenant_id``."""
 
@@ -29,6 +45,13 @@ class ModelLocalDashboardServeRequest(BaseModel):
     port: int = Field(ge=1, le=65535, description="Never the standalone API's port.")
     tenant_id: str | None = Field(
         default=None, description="The identity `onex local init` minted, if any."
+    )
+    access_token: SecretStr = Field(
+        default_factory=mint_dashboard_token,
+        description=(
+            "Minted per start; every request must carry it (OMN-19916). Handed to "
+            "the developer once, in the start URL, and never written to a page."
+        ),
     )
 
     @model_validator(mode="after")
@@ -76,12 +99,12 @@ def resolve_dashboard_bind(overlay: Mapping[str, object] | None) -> tuple[str, i
         )
     if host not in _LOOPBACK_NAMES:
         try:
-            loopback = ipaddress.ip_address(host).is_loopback
+            ipaddress.ip_address(host)
         except ValueError as exc:
             raise DashboardBindError(
                 f"dashboard.bind host is not an address: {bind!r}"
             ) from exc
-        if not loopback:
+        if not is_loopback_host(host):
             raise DashboardBindError(
                 f"dashboard.bind must name a loopback interface, got {host!r}"
             )
@@ -92,5 +115,7 @@ __all__ = [
     "DashboardBindError",
     "ModelLocalDashboardServeRequest",
     "ModelLocalDashboardServeResult",
+    "is_loopback_host",
+    "mint_dashboard_token",
     "resolve_dashboard_bind",
 ]
