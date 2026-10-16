@@ -199,29 +199,35 @@ def test_lock_expression_resolves_to_the_lock_version() -> None:
 
 
 # The sibling-release-compat job (OMN-19998) also accepts a uv.lock git source
-# pinned to a sibling dev-<UTC>-<sha12> tag, so it checks out the resolved ref
-# and writes the release-or-tag outputs; every other job checks out the release.
-RELEASE_REF = "v${{ steps.pins.outputs.infra_version }}"
-DEV_TAG_REF = "${{ steps.pins.outputs.infra_ref }}"
+# pinned to a sibling dev-<UTC>-<sha12> tag, so it writes the ref name, dev tag
+# and install spec beside the version and ref every other job writes.
 DEV_TAG_JOBS = {("ci.yml", "sibling-release-compat")}
 
 
-def _release_pin_lines(
-    wf: str, job: str, infra_version: str, core_version: str
+def _pin_lines(
+    wf: str, job: str, infra: tuple[str, str], core: tuple[str, str]
 ) -> list[str]:
-    if (wf, job) not in DEV_TAG_JOBS:
-        return [f"infra_version={infra_version}", f"core_version={core_version}"]
+    """The pins step's output lines for (version, ref) of infra and core."""
     lines = []
-    for name, key, version in (
-        ("omnibase-infra", "infra", infra_version),
-        ("omnibase-core", "core", core_version),
+    for name, key, (version, ref) in (
+        ("omnibase-infra", "infra", infra),
+        ("omnibase-core", "core", core),
     ):
+        if (wf, job) not in DEV_TAG_JOBS:
+            lines += [f"{key}_version={version}", f"{key}_ref={ref}"]
+            continue
+        repo = name.replace("-", "_")
+        spec = (
+            f"{name}=={version}"
+            if ref == f"v{version}"
+            else f"{name} @ git+https://github.com/OmniNode-ai/{repo}.git@{ref}"
+        )
         lines += [
             f"{key}_version={version}",
-            f"{key}_ref=v{version}",
-            f"{key}_ref_name=v{version}",
+            f"{key}_ref={ref}",
+            f"{key}_ref_name={ref}",
             f"{key}_dev_tag=",
-            f"{key}_spec={name}=={version}",
+            f"{key}_spec={spec}",
         ]
     return lines
 
@@ -239,8 +245,7 @@ def _infra_pin_steps() -> list[tuple[str, str, dict[str, Any]]]:
     assert {(wf, job) for wf, job, _ in checkouts} >= DEV_TAG_JOBS
     found = []
     for wf, job, checkout in checkouts:
-        expected_ref = DEV_TAG_REF if (wf, job) in DEV_TAG_JOBS else RELEASE_REF
-        assert checkout["with"]["ref"] == expected_ref, (wf, job)
+        assert checkout["with"]["ref"] == "${{ steps.pins.outputs.infra_ref }}"
         job_steps = [step for w, j, step in steps if (w, j) == (wf, job)]
         resolvers = [step for step in job_steps if step.get("id") == "pins"]
         assert len(resolvers) == 1, (wf, job)
@@ -260,8 +265,11 @@ def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
             text=True,
             check=True,
         )
-        assert output.read_text().splitlines() == _release_pin_lines(
-            wf, job, _lock_version("omnibase-infra"), _lock_version("omnibase-core")
+        assert output.read_text().splitlines() == _pin_lines(
+            wf,
+            job,
+            (_lock_version("omnibase-infra"), f"v{_lock_version('omnibase-infra')}"),
+            (_lock_version("omnibase-core"), f"v{_lock_version('omnibase-core')}"),
         ), (wf, job)
 
 
@@ -286,12 +294,17 @@ def test_every_infra_checkout_resolves_a_new_lock_release(
             text=True,
         )
         assert done.returncode == 0, (wf, job, done.stdout, done.stderr)
-        assert output.read_text().splitlines() == _release_pin_lines(
-            wf, job, version, _lock_version("omnibase-core")
+        assert output.read_text().splitlines() == _pin_lines(
+            wf,
+            job,
+            (version, f"v{version}"),
+            (_lock_version("omnibase-core"), f"v{_lock_version('omnibase-core')}"),
         ), (wf, job)
 
 
-@pytest.mark.parametrize("kind", ["missing", "duplicate", "unreleased"])
+@pytest.mark.parametrize(
+    "kind", ["missing", "duplicate", "unreleased", "branch_no_commit"]
+)
 def test_every_infra_checkout_refuses_an_invalid_release_pin(
     tmp_path: Path, kind: str
 ) -> None:
@@ -307,10 +320,15 @@ def test_every_infra_checkout_refuses_an_invalid_release_pin(
         infra = ""
     elif kind == "duplicate":
         infra += infra
-    else:
+    elif kind == "unreleased":
         infra = infra.replace(
             'registry = "https://pypi.org/simple"',
             'git = "https://example.invalid/infra"',
+        )
+    else:
+        infra = infra.replace(
+            'registry = "https://pypi.org/simple"',
+            'git = "https://github.com/OmniNode-ai/omnibase_infra.git?branch=dev"',
         )
     (tmp_path / "uv.lock").write_text(core + infra)
     for index, (wf, job, pin_step) in enumerate(_infra_pin_steps()):
@@ -323,14 +341,93 @@ def test_every_infra_checkout_refuses_an_invalid_release_pin(
             text=True,
         )
         assert done.returncode != 0, (wf, job)
-        if (wf, job) not in DEV_TAG_JOBS:
-            refusal = "a released pin is required"
-        elif kind == "unreleased":
-            refusal = "a pin must be a PyPI release or a git source pinned to a dev-"
-        else:
+        if (wf, job) in DEV_TAG_JOBS and kind in ("missing", "duplicate"):
             refusal = "exactly one pin is required"
+        else:
+            refusal = "a released or commit-pinned source is required"
         assert "::error::omnibase-infra: " in done.stdout, (wf, job)
         assert refusal in done.stdout, (wf, job)
+        assert not output.exists(), (wf, job)
+
+
+@pytest.mark.parametrize("package", ["omnibase-infra", "omnibase-core"])
+@pytest.mark.parametrize("query", ["rev=" + "a" * 40, "branch=dev", "tag=v1", ""])
+def test_every_infra_checkout_accepts_a_commit_pin(
+    tmp_path: Path, package: str, query: str
+) -> None:
+    sha = "a" * 40
+    repository = package.replace("-", "_")
+    url = f"https://github.com/OmniNode-ai/{repository}.git"
+    if query:
+        url += f"?{query}"
+    url += f"#{sha}"
+    lock = ""
+    for name, version in (("omnibase-infra", "0.38.73"), ("omnibase-core", "0.47.39")):
+        source = (
+            f'git = "{url}"'
+            if name == package
+            else 'registry = "https://pypi.org/simple"'
+        )
+        lock += (
+            f'[[package]]\nname = "{name}"\nversion = "{version}"\n'
+            f"source = {{{source}}}\n"
+        )
+    (tmp_path / "uv.lock").write_text(lock)
+    for index, (wf, job, pin_step) in enumerate(_infra_pin_steps()):
+        output = tmp_path / f"pins-{index}"
+        done = subprocess.run(
+            ["bash", "-c", pin_step["run"]],
+            cwd=tmp_path,
+            env={"GITHUB_OUTPUT": str(output)},
+            capture_output=True,
+            text=True,
+        )
+        assert done.returncode == 0, (wf, job, done.stdout, done.stderr)
+        expected = _pin_lines(
+            wf,
+            job,
+            ("0.38.73", sha if package == "omnibase-infra" else "v0.38.73"),
+            ("0.47.39", sha if package == "omnibase-core" else "v0.47.39"),
+        )
+        assert output.read_text().splitlines() == expected, (wf, job)
+        assert done.stdout.splitlines() == expected, (wf, job)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'git = "https://example.invalid/infra#' + "a" * 40 + '"',
+        'git = "https://github.com/OmniNode-ai/omnibase_core.git#' + "a" * 40 + '"',
+        'git = "https://github.com/OmniNode-ai/omnibase_infra.git#' + "A" * 40 + '"',
+        'git = "https://github.com/OmniNode-ai/omnibase_infra.git#' + "a" * 39 + '"',
+        'git = "https://github.com/OmniNode-ai/omnibase_infra.git#'
+        + "a" * 40
+        + '", registry = "https://pypi.org/simple"',
+    ],
+)
+def test_every_infra_checkout_refuses_an_invalid_commit_pin(
+    tmp_path: Path, source: str
+) -> None:
+    (tmp_path / "uv.lock").write_text(
+        '[[package]]\nname = "omnibase-core"\nversion = "0.47.39"\n'
+        'source = {registry = "https://pypi.org/simple"}\n'
+        '[[package]]\nname = "omnibase-infra"\nversion = "0.38.73"\n'
+        f"source = {{{source}}}\n"
+    )
+    for index, (wf, job, pin_step) in enumerate(_infra_pin_steps()):
+        output = tmp_path / f"pins-{index}"
+        done = subprocess.run(
+            ["bash", "-c", pin_step["run"]],
+            cwd=tmp_path,
+            env={"GITHUB_OUTPUT": str(output)},
+            capture_output=True,
+            text=True,
+        )
+        assert done.returncode != 0, (wf, job)
+        assert "a released or commit-pinned source is required" in done.stdout, (
+            wf,
+            job,
+        )
         assert not output.exists(), (wf, job)
 
 

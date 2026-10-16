@@ -6,8 +6,10 @@
 RULING 2026-10-16T09:35:49Z: in the lab, tags replace releases. Each sibling's
 ``dev-merge-tag.yml`` tags every dev push ``dev-<UTC>-<sha12>``, so
 ``sibling-release-compat`` must accept a ``uv.lock`` git source pinned to such a
-tag as well as a PyPI release, still checking out the exact pinned revision, and
-must never widen to an unpinned branch.
+tag as well as a PyPI release, still checking out the exact pinned revision.
+Any other git source of the sibling locked to one commit stays accepted
+(RULING 2026-10-16T07:34:18Z), and a dev-spelled tag that does not name the
+pinned commit is refused.
 
 The tests run the gate's own steps, extracted from ``ci.yml``: the pins step's
 Python against fixture lock files, and the tag step's shell against a local
@@ -174,6 +176,14 @@ def test_core_may_follow_a_dev_tag_too(tmp_path: Path) -> None:
             _git_source(query=f"tag=dev-20261016143012-{'f' * 12}"),
         ),
         ("a malformed dev tag", _git_source(query="tag=dev-latest")),
+        (
+            "a .git dev tag that names another commit",
+            _git_source(query=f"tag=dev-20261016143012-{'f' * 12}", suffix=".git"),
+        ),
+        (
+            "a .git malformed dev tag",
+            _git_source(query="tag=dev-latest", suffix=".git"),
+        ),
         ("a dev tag of another repository", _git_source(repo="OmniNode-ai/omnimarket")),
         ("a fork", _git_source(repo="someone/omnibase_infra")),
         (
@@ -199,6 +209,19 @@ def test_anything_else_is_still_refused(
     assert result.returncode != 0, f"{label} must be refused:\n{result.stdout}"
     assert "::error::omnibase-infra" in result.stdout
     assert out == {}, "a refused lock must publish no pins"
+
+
+@pytest.mark.parametrize("query", ["branch=dev", f"rev={INFRA_SHA}", "tag=v0.38.73"])
+def test_a_commit_locked_git_source_is_a_commit_pin(tmp_path: Path, query: str) -> None:
+    result, out = _run_pins(tmp_path, _lock(_git_source(query=query, suffix=".git")))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert out["infra_ref"] == INFRA_SHA
+    assert out["infra_ref_name"] == INFRA_SHA
+    assert out["infra_dev_tag"] == "", "only a dev tag is verified by the tag step"
+    assert (
+        out["infra_spec"]
+        == f"omnibase-infra @ git+https://github.com/{INFRA_REPO}.git@{INFRA_SHA}"
+    )
 
 
 def test_a_missing_package_entry_is_refused(tmp_path: Path) -> None:

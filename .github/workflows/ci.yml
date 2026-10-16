@@ -2010,15 +2010,30 @@ jobs:
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
         run: uv sync --locked
-      - name: Every changed wire payload must decode on the last release (OMN-18868)
+      - name: Every changed wire payload must decode on omniclaude's pinned omnimarket commit (OMN-18868, OMN-19998)
+        # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): omniclaude consumes
+        # omnimarket by a git pin on a dev commit, not by a release, so the
+        # deployed consumer is the commit omniclaude's uv.lock pins on its dev
+        # branch. That commit is graded instead of the last release tag. An
+        # unreadable pin fails closed; it never falls back to a tag.
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
         run: |
           set -euo pipefail
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
+          lock="$(curl -fsSL --retry 3 https://raw.githubusercontent.com/OmniNode-ai/omniclaude/dev/uv.lock)"
+          pin="$(printf '%s\n' "$lock" | grep -oE 'omnimarket\.git\?rev=[0-9a-f]{40}' | head -1 | sed 's/.*rev=//')"
+          if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::WIRE_COMPAT_RELEASE_UNRESOLVABLE: no omnimarket commit pin found in omniclaude dev's uv.lock; the deployed consumer is unknown, so wire compatibility is unproven"
+            exit 1
+          fi
+          git cat-file -e "${pin}^{commit}" || git fetch --quiet origin "$pin"
+          echo "Consumer: omniclaude dev pins omnimarket at $pin"
           uv run python scripts/ci/check_wire_compatibility.py \
-            --base "origin/${BASE}"
+            --base "origin/${BASE}" \
+            --consumer-ref "$pin" \
+            --consumer-label "omniclaude's pinned omnimarket"
       - name: The two real-history controls must EXECUTE here (OMN-18868)
         # These two replay the OMN-18852 incident against this repository's
         # own tags, and they need what only this job's checkout has. The
@@ -2255,8 +2270,10 @@ jobs:
   # A pin is a PyPI release, or (OMN-19998, RULING 2026-10-16T09:35:49Z: in the
   # lab, tags replace releases) a uv.lock git source pinned to one of the
   # sibling's dev-<UTC>-<sha12> tags (each sibling's dev-merge-tag.yml tags every
-  # dev push). The tag must exist on the sibling and name the pinned commit; an
-  # unpinned branch, a bare rev or another repository is refused as before.
+  # dev push). The tag must exist on the sibling and name the pinned commit.
+  # Any other uv.lock git source of the sibling locked to one commit is a pin
+  # too (OMN-19998, RULING 2026-10-16T07:34:18Z), checked out at that commit;
+  # another repository, a fork or a non-git source is refused as before.
   # Required via the ci-summary aggregator.
   # ============================================================================
   sibling-release-compat:
@@ -2327,21 +2344,31 @@ jobs:
               git = source.get("git") if isinstance(source, dict) and set(source) == {"git"} else None
               source_match = GIT_SOURCE.match(git) if isinstance(git, str) else None
               tag_match = DEV_TAG.match(source_match["tag"]) if source_match else None
+              dev_tag = ""
+              commit = None
               if (
-                  source_match is None
-                  or source_match["repo"] != repo
-                  or tag_match is None
-                  or not source_match["sha"].startswith(tag_match["sha12"])
+                  source_match is not None
+                  and source_match["repo"] == repo
+                  and tag_match is not None
+                  and source_match["sha"].startswith(tag_match["sha12"])
               ):
-                  print(f"::error::{name}: source={source!r}, entries={len(entries)}; a pin must be a PyPI release or a git source pinned to a dev-<UTC>-<sha12> tag of {repo} whose sha12 is the pinned commit (a sibling's unpinned dev is never an integration target).")
+                  dev_tag = source_match["tag"]
+                  commit = source_match["sha"]
+              # OMN-19998 (RULING 2026-10-16T07:34:18Z): any other git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(git, str) and not (source_match and source_match["tag"].startswith("dev-")):
+                  repository, _, locked = git.partition("#")
+                  if repository.split("?", 1)[0] == f"https://github.com/{repo}.git" and re.fullmatch(r"[0-9a-f]{40}", locked):
+                      commit = locked
+              if commit is None:
+                  print(f"::error::{name}: source={source!r}, entries={len(entries)}; a released or commit-pinned source is required: a PyPI release, a git source of https://github.com/{repo}.git locked to one commit, or a dev-<UTC>-<sha12> tag of {repo} whose sha12 is the pinned commit (a sibling's moving dev branch is never an integration target).")
                   failed = True
                   continue
               pins.update({
                   f"{key}_version": version,
-                  f"{key}_ref": source_match["sha"],
-                  f"{key}_ref_name": source_match["tag"],
-                  f"{key}_dev_tag": source_match["tag"],
-                  f"{key}_spec": f"{name} @ git+https://github.com/{repo}.git@{source_match['sha']}",
+                  f"{key}_ref": commit,
+                  f"{key}_ref_name": dev_tag or commit,
+                  f"{key}_dev_tag": dev_tag,
+                  f"{key}_spec": f"{name} @ git+https://github.com/{repo}.git@{commit}",
               })
           if failed:
               raise SystemExit(1)
@@ -2370,7 +2397,7 @@ jobs:
             tag=${!tag_var}
             sha=${!sha_var}
             if [[ -z "$tag" ]]; then
-              echo "OK: $repo is pinned to a PyPI release; no dev tag to verify."
+              echo "OK: $repo is pinned to a PyPI release or a commit; no dev tag to verify."
               continue
             fi
             remote=$(git ls-remote --tags "https://github.com/OmniNode-ai/$repo.git" "refs/tags/$tag" "refs/tags/$tag^{}")
@@ -2519,11 +2546,11 @@ jobs:
           ):
               installed = importlib.metadata.version(package)
               assert installed == os.environ[key], f"{package}: installed {installed}, pinned {os.environ[key]}"
-              if os.environ[tag_key]:
+              if os.environ[sha_key] != f"v{installed}":
                   direct_url = json.loads(importlib.metadata.distribution(package).read_text("direct_url.json"))
                   commit = direct_url.get("vcs_info", {}).get("commit_id")
                   assert commit == os.environ[sha_key], f"{package}: installed commit {commit}, pinned {os.environ[sha_key]} ({os.environ[tag_key]})"
-                  print(f"OK: {package}=={installed} at {os.environ[tag_key]} ({commit})")
+                  print(f"OK: {package}=={installed} at {os.environ[tag_key] or 'commit'} ({commit})")
               else:
                   print(f"OK: {package}=={installed}")
           location = Path(omnimarket.__file__).resolve()
@@ -3377,6 +3404,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import os
+          import re
           import tomllib
 
           with open("uv.lock", "rb") as lock_file:
@@ -3386,11 +3414,22 @@ jobs:
           for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
                   failed = True
                   continue
               pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
@@ -3403,7 +3442,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v${{ steps.pins.outputs.infra_version }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
