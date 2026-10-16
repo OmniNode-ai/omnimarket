@@ -36,6 +36,31 @@ requirements:
     acceptance:
       - id: "AC6"
         statement: "AC6: src/dep_health_allowlist.yaml carries no row for onex.evt.omniclaude.task-delegated.v1, test_this_repo_allowlist_has_no_expired_entries passes, and the dependency health sweep reports no finding for that topic -- falsifier: uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries fails at the merge base once the UTC date is past 2026-10-15"
+  - id: "req-construction-terminal-consumer-first"
+    statement: "The delegate-skill consumer accepts the declared construction-result keys, preserving a null score and the gate's own flag and retaining the construction-result fields through JSON serialization."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: response and failed-topic JSON decode construction failure with either gate flag and a null score; conversion retains the distinction, contradictory evidence and unknown keys are refused, legacy defaults stay intact, the declared construction outcome, content verdict and failure reason round-trip through JSON serialization, and empty rule evaluations retain their omission -- falsifier: uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q refuses a receiver that discards these fields"
+  - id: "req-capture-item-identity-node-in-omnimarket"
+    statement: "The shared item identity, per-stream producer sequence and barrier fields that omniclaude's two capture hooks stamp are owned by an omnimarket node in canonical shape (contract, node, handler), and the capture-redaction owner contract classifies the new record fields verbatim."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: node_capture_item_identity_effect resolves a content record id, claims one event id shared by the two hooks of a call in either order, issues 1,000 gap-free sequence numbers to eight concurrent writers, declares its topics in its contract, loads by file path with standard-library imports only, and the owner redaction contract keeps content_record_id, producer_seq, stream and the barrier fields verbatim -- falsifier: uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q fails at the merge base"
+  - id: "req-external-deadman-check-node-in-omnimarket"
+    statement: "The external dead-man check that judges the two watchdog legs' mirror variables, the open issues and the clock is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: node_external_deadman_check_compute raises when both mirrors are stale or unreadable, when a fresh mirror reports an episode undelivered or unrecorded past its due time plus the escalation bound, or when the day's canary is past its receipt deadline, keeps one issue, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/test_external_deadman_omn20808.py tests/test_golden_chain_external_deadman_check_compute.py -q fails at the merge base"
+  - id: "req-release-staleness-advisory"
+    statement: "Operator RULING 2026-10-16T07:34:18Z (no release wait; no users yet): Release Staleness (OMN-18010) keeps running unconditionally in ci.yml and keeps its 24-hour STALE measurement, but CI Summary lists it in SOFT_ALLOWLIST instead of STRICT_GATE_JOBS, so a stale, failed, absent or running Release Staleness job never fails or holds CI Summary, while any other failed job still fails it."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: Release Staleness (OMN-18010) is in SOFT_ALLOWLIST and in neither STRICT_GATE_JOBS nor SKIPPABLE_GATE_JOBS, CI Summary evaluates SUCCESS with that job failed, cancelled, absent or running, an unregistered failed job still yields FAILURE, and the job stays unconditional with its STALE controls -- falsifier: uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q fails at the merge base"
+  - id: "req-dev-merge-tag-on-every-dev-push"
+    statement: "Operator RULING 2026-10-16T09:35:49Z: in the lab omnimarket deploys from a tag cut automatically on each dev merge, not from a PyPI release. Every push to dev gets a lightweight tag dev-<UTC YYYYMMDDHHMMSS>-<sha12> on the pushed commit, idempotent per commit, and no other ref gets one."
+    acceptance:
+      - id: "AC11"
+        statement: "AC11: .github/workflows/dev-merge-tag.yml triggers only on push to dev, and its tag step, run against a throwaway repository with a +05:30 committer date, pushes one lightweight tag named dev-<committer time in UTC>-<sha12> at the commit, pushes nothing on a second run or when a dev tag for that sha already exists, pushes nothing in a dry run, and refuses a value that is not a full sha -- falsifier: uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py -q fails at the merge base, where the workflow does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -51,6 +76,21 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19998-construction-consumer-first"
+    description: "The consumer JSON decode and terminal conversion tests preserve the gate fact and null score, retain the declared construction-result fields, and refuse contradictory evidence and unknown keys."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn19998-construction-consumer-deploy-probe"
+    description: "Hosted-runner decode through the consumer's JSON API at this head accepts an unscored construction failure, retains the gate flag and empty rule evaluations, and round-trips the declared construction outcome, content verdict and failure reason; a receiver that discards or changes the construction pair or failure reason fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import json; from omnimarket.models.delegation.wire.model_delegate_skill_response import ModelDelegateSkillFailed; p={"correlation_id":"4d97ece9-97cc-4837-9f67-fc0c29bc53ef","task_type":"document","status":"failed","quality_gate_passed":True,"quality_score":None,"operational_outcome":"terminal_construction_failed","content_verdict":"undetermined","terminal_failure_reason":"terminal_construction_failed","rule_evaluations":[]}; r=ModelDelegateSkillFailed.model_validate_json(json.dumps(p)); assert r.quality_gate_passed is True and r.quality_score is None; d=r.model_dump(mode="json"); assert all(d[k] == p[k] for k in ("operational_outcome","content_verdict","terminal_failure_reason")); assert r.rule_evaluations == () and "rule_evaluations" not in d; assert ModelDelegateSkillFailed.model_validate_json(r.model_dump_json()).model_dump(mode="json") == d'
   - id: "dod-omn19998-repo-contracts-bind-pytest-evidence"
     description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-20074.yaml binds AC10 to a command-only deploy probe."
     source: "manual"
@@ -137,3 +177,63 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/dep_health_allowlist.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/onex.evt.diagnostic.daemon-health.v1/{a=1} /onex.evt.omniclaude.task-delegated.v1/{b=1} END{exit !(a&&!b)}'
+  - id: "dod-omn19998-capture-item-identity-node"
+    description: "The node's handler, golden chain and contract tests and the redaction owner fields pass at the head; at the merge base the node package does not exist and every test file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19998-capture-item-identity-deploy-probe"
+    description: "Hosted-runner probe reads the item identity handler at this commit and requires claim_event_id; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_capture_item_identity_effect/handlers/handler_item_identity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^def claim_event_id('
+  - id: "dod-omn19998-external-deadman-check-node"
+    description: "The node's handler and golden-chain tests pass at the head; at the merge base the node package does not exist and both test files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_external_deadman_omn20808.py tests/test_golden_chain_external_deadman_check_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn19998-external-deadman-check-deploy-probe"
+    description: "Hosted-runner probe reads the dead-man handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_external_deadman_check_compute/handlers/handler_external_deadman_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerExternalDeadmanCheck'
+  - id: "dod-omn19998-release-staleness-advisory"
+    description: "The release-staleness registration and CI Summary verdict tests pass at the head; at the merge base the job is a strict gate, so a failed or absent Release Staleness fails or holds CI Summary and six tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn19998-staleness-advisory-deploy-probe"
+    description: "Hosted-runner probe parses scripts/ci/ci_summary_gate.py at this commit and requires Release Staleness in SOFT_ALLOWLIST and out of STRICT_GATE_JOBS; at the base it is strict and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/scripts/ci/ci_summary_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast,sys; t=ast.parse(sys.stdin.read()); v={n.target.id: ((ast.literal_eval(n.value.args[0]) if n.value.args else ()) if isinstance(n.value, ast.Call) else ast.literal_eval(n.value)) for n in t.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in ("STRICT_GATE_JOBS","SOFT_ALLOWLIST")}; j="Release Staleness (OMN-18010)"; assert j in v["SOFT_ALLOWLIST"] and j not in v["STRICT_GATE_JOBS"], "Release Staleness still gates CI Summary"'
+  - id: "dod-omn19998-dev-merge-tag"
+    description: "The dev merge tag tests pass at the head; at the merge base the workflow file does not exist and every test fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py tests/ci/test_automated_pusher_identity_omn18273.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
+  - id: "dod-omn19998-dev-merge-tag-deploy-probe"
+    description: "Hosted-runner probe reads the dev merge tag workflow at this commit and requires its push-to-dev trigger and its tag push; the base has no such file and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/dev-merge-tag.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/branches: \[dev\]/{a=1} /git push origin "refs\/tags\//{b=1} END{exit !(a&&b)}'

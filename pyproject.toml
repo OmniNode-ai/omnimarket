@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.315"
+version = "0.4.316"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -332,6 +332,8 @@ node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_comp
 node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
+node_capture_item_identity_effect = "omnimarket.nodes.node_capture_item_identity_effect"
+node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"
 node_automation_run_observer_effect = "omnimarket.nodes.node_automation_run_observer_effect"
 node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
@@ -515,6 +517,7 @@ node_generated_node_publish_effect = "omnimarket.nodes.node_generated_node_publi
 node_hybrid_codegen_orchestrator = "omnimarket.nodes.node_hybrid_codegen_orchestrator"
 node_llm_codegen_effect = "omnimarket.nodes.node_llm_codegen_effect"
 node_codegen_file_writer_effect = "omnimarket.nodes.node_codegen_file_writer_effect"
+node_codegen_handler_test_effect = "omnimarket.nodes.node_codegen_handler_test_effect"
 node_generated_code_validator = "omnimarket.nodes.node_generated_code_validator"
 node_mypy_check_effect = "omnimarket.nodes.node_mypy_check_effect"
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
