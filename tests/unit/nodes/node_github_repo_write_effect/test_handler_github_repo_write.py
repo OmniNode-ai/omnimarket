@@ -7,7 +7,7 @@ differs from the recorded one in method, path or body fails the test, so the
 node's request shapes are pinned. Response bodies follow GitHub's documented
 REST and GraphQL shapes; a mutation cannot be recorded without mutating.
 
-Covered: each of the six writes; the expected-head refusal; the refused close
+Covered: each write operation; the expected-head refusal; the refused close
 (no claim, and a claim held by another lane) against the real claim registry
 on a temporary directory; the quota-floor refusal; idempotent replays;
 dry_run, which sends nothing; and the contract's own mode per repository
@@ -23,7 +23,11 @@ from uuid import UUID
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.events.pr_landing_github.model_github_quota_reading import (
+    ModelGithubQuotaReading,
+)
 from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     convert_to_draft_request,
@@ -1049,3 +1053,204 @@ def test_an_owner_row_naming_a_repository_is_refused_at_load() -> None:
         ModelRepoWriteConfig.model_validate(
             {"github_mode_by_owner": {"OmniNode-ai/omnimarket": "enforce"}}
         )
+
+
+# --- check_run_create ----------------------------------------------------------
+
+
+def _check_command(**overrides: object) -> ModelRepoWriteRequest:
+    return ModelRepoWriteRequest.model_validate(
+        {
+            "correlation_id": _CORRELATION,
+            "operation": "check_run_create",
+            "repo": _REPO,
+            "idempotency_key": "check-run-create-19998",
+            "requested_by_lane": _LANE,
+            "name": "lab/pr-merged-publisher",
+            "head_sha": _HEAD,
+            "status": "completed",
+            "conclusion": "success",
+            "output": {"title": "Lab publisher", "summary": "One merge published."},
+            **overrides,
+        }
+    )
+
+
+def _check_post(
+    *, status: str = "completed", conclusion: str | None = "success"
+) -> ModelGithubHttpRequest:
+    body: dict[str, object] = {
+        "name": "lab/pr-merged-publisher",
+        "head_sha": _HEAD,
+        "status": status,
+        "output": {"title": "Lab publisher", "summary": "One merge published."},
+    }
+    if conclusion is not None:
+        body["conclusion"] = conclusion
+    return ModelGithubHttpRequest(
+        method="POST", path=f"/repos/{_REPO}/check-runs", body=body
+    )
+
+
+async def test_check_run_create_posts_recorded_response_and_replays() -> None:
+    # Recorded 201 shape from https://docs.github.com/en/rest/checks/runs,
+    # adapted to the test repository and head; this is not a live capture.
+    # No live GitHub transport is constructed in this test.
+    response = _ok(
+        {
+            "id": 4,
+            "head_sha": _HEAD,
+            "html_url": f"https://github.com/{_REPO}/runs/4",
+            "name": "lab/pr-merged-publisher",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        status=201,
+    )
+    transport = _Recorded([(_check_post(), response)])
+    handler = _handler(transport)
+    request = _check_command()
+    result = await handler.handle(
+        ModelRepoWriteRequest.model_validate_json(request.model_dump_json())
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.check_run_id == 4
+    assert result.html_url == f"https://github.com/{_REPO}/runs/4"
+    assert result.head_sha == _HEAD
+    assert result.http_statuses == (201,)
+    assert result.quota is not None
+    assert result.quota.remaining == 4900
+    assert result.pr_number is None
+    replay = await handler.handle(
+        request.model_copy(update={"correlation_id": UUID(int=1)})
+    )
+    assert isinstance(replay, ModelRepoWriteCompleted)
+    assert replay.replayed
+    assert replay.check_run_id == 4
+    assert replay.correlation_id == UUID(int=1)
+    assert transport.sent == [_check_post()]
+    assert transport.drained()
+
+
+@pytest.mark.parametrize("status", ["queued", "in_progress"])
+async def test_check_run_create_nonterminal_omits_conclusion(status: str) -> None:
+    post = _check_post(status=status, conclusion=None)
+    transport = _Recorded([(post, _ok({"id": 4, "head_sha": _HEAD}, status=201))])
+    result = await _handler(transport).handle(
+        _check_command(status=status, conclusion=None)
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.check_run_id == 4
+    assert transport.drained()
+
+
+async def test_check_run_create_dry_run_plans_same_post_without_transport() -> None:
+    transport = _Recorded([])
+    result = await _handler(transport).handle(_check_command(dry_run=True))
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert result.requests == (_check_post(),)
+    assert result.check_run_id is None
+    assert transport.sent == []
+
+
+async def test_check_run_create_refuses_under_quota_before_post() -> None:
+    transport = _Recorded([])
+    handler = _handler(transport)
+    handler.record_reading(
+        ModelGithubQuotaReading.from_response_headers(
+            _headers(remaining=499), identity="test"
+        )
+    )
+    result = await handler.handle(_check_command())
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.QUOTA_FLOOR
+    assert transport.sent == []
+
+
+@pytest.mark.parametrize("http_status", [403, 422])
+async def test_check_run_create_github_refusal_is_typed(http_status: int) -> None:
+    transport = _Recorded(
+        [(_check_post(), _ok({"message": "Checks write refused"}, status=http_status))]
+    )
+    result = await _handler(transport).handle(_check_command())
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert result.terminal_failure_cause is result.reason
+    assert result.http_status == http_status
+    assert transport.drained()
+
+
+@pytest.mark.parametrize("field", ["name", "head_sha", "status"])
+def test_check_run_create_requires_fields(field: str) -> None:
+    with pytest.raises(ValueError, match=field):
+        _check_command(**{field: None})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"head_sha": "main"},
+        {"name": ""},
+        {"status": "pending"},
+        {"status": "completed", "conclusion": None},
+        {"status": "queued", "conclusion": "success"},
+        {"status": "in_progress", "conclusion": "failure"},
+        {"conclusion": "stale"},
+        {"output": {"summary": "missing title"}},
+        {"output": {"title": "missing summary"}},
+        {"output": {"title": "title", "summary": "ok", "extra": True}},
+    ],
+)
+def test_check_run_create_rejects_invalid_fields(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _check_command(**overrides)
+
+
+def test_contract_declares_check_run_create() -> None:
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    assert "check_run_create" in {row["name"] for row in contract["operations"]}
+
+
+@pytest.mark.parametrize(
+    "conclusion",
+    [
+        "success",
+        "failure",
+        "neutral",
+        "cancelled",
+        "skipped",
+        "timed_out",
+        "action_required",
+    ],
+)
+def test_check_run_create_accepts_completed_conclusions(conclusion: str) -> None:
+    request = _check_command(conclusion=conclusion)
+    assert request.conclusion == conclusion
+
+
+def test_check_run_create_fields_are_refused_for_other_operations() -> None:
+    with pytest.raises(ValidationError, match="read only by check_run_create"):
+        _req(
+            EnumRepoWriteOperation.WORKFLOW_DISPATCH,
+            workflow="ci.yml",
+            ref="dev",
+            name="ignored-check",
+        )
+
+
+async def test_check_run_create_omits_optional_output() -> None:
+    post = ModelGithubHttpRequest(
+        method="POST",
+        path=f"/repos/{_REPO}/check-runs",
+        body={
+            "name": "lab/pr-merged-publisher",
+            "head_sha": _HEAD,
+            "status": "completed",
+            "conclusion": "success",
+        },
+    )
+    transport = _Recorded([(post, _ok({"id": 4, "head_sha": _HEAD}, status=201))])
+    result = await _handler(transport).handle(_check_command(output=None))
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert transport.drained()

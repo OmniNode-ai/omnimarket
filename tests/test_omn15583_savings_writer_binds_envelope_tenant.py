@@ -95,9 +95,11 @@ _MIGRATION_DIRS = (
 
 # OMN-19438: migration 091 moves the house-slug rows to the house UUID and sets
 # the column DEFAULT to that UUID. The RED control below reproduces the defect
-# on the schema that shipped it, so it runs on the corpus with 091 held back;
-# every other test in this module runs on the full corpus.
+# on the schema that shipped it, so it runs on the corpus with 091 and its
+# re-run 095 held back (095 sets the same DEFAULT); every other test in this
+# module runs on the full corpus.
 _MIGRATION_091 = "091_savings_estimates_house_tenant_uuid_backfill.sql"
+_MIGRATION_095 = "095_savings_estimates_house_tenant_uuid_rebackfill.sql"
 
 # The beta proof tenant, materialized the way
 # ``node_projection_tenant_registry`` materializes it from
@@ -602,14 +604,14 @@ class TestRealPostgresSavingsWritePath:
         the beta tenant. That is the 96-row defect in one statement, and it is
         what every green assertion below is measured against.
 
-        Applied on the corpus WITHOUT migration 091 (OMN-19438): 091 moves the
+        Applied on the corpus WITHOUT migrations 091 and 095 (OMN-19438): 091 moves the
         column DEFAULT to the house UUID, which is what the GREEN test
         ``test_green_091_refuses_the_pre_fix_statement_under_the_house_slug``
-        proves against the full corpus. Holding 091 back keeps this control
+        proves against the full corpus. Holding 091 and 095 back keeps this control
         executed against the schema that produced the defect.
         """
         async with _rls_enforced_savings_runner(
-            exclude=frozenset({_MIGRATION_091})
+            exclude=frozenset({_MIGRATION_091, _MIGRATION_095})
         ) as (_runner, rls):
             async with rls.transaction():
                 await rls.execute(

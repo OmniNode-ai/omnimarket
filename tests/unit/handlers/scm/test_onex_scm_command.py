@@ -453,6 +453,21 @@ _WRITE_ARGS: dict[str, list[str]] = {
     ],
     "pr-comment": [f"{REPO}#77", "--body", "hello"],
     "workflow-run": [REPO, "--workflow", "ci.yml", "--ref", "dev", "--input", "a=b"],
+    "check-run-create": [
+        REPO,
+        "--name",
+        "lab/check",
+        "--head-sha",
+        HEAD,
+        "--status",
+        "completed",
+        "--conclusion",
+        "success",
+        "--output-title",
+        "Lab check",
+        "--output-summary",
+        "Passed.",
+    ],
 }
 
 
@@ -1094,3 +1109,90 @@ def test_verbs_table_lists_served_and_refused() -> None:
     table = json.loads(result.stdout)
     assert {v["verb"] for v in table["served"]} == {s.verb for s in SCM_VERBS}
     assert {v["verb"] for v in table["refused"]} == {r.verb for r in SCM_REFUSED_VERBS}
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("completed", "success"), ("queued", None), ("in_progress", None)],
+)
+def test_check_run_create_cli_maps_head_and_output(
+    monkeypatch: pytest.MonkeyPatch, status: str, conclusion: str | None
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = [
+        "check-run-create",
+        REPO,
+        "--name",
+        "lab/check",
+        "--head-sha",
+        HEAD,
+        "--status",
+        status,
+        "--output-title",
+        "Lab check",
+        "--output-summary",
+        "Passed.",
+        "--lane",
+        "lane-x",
+    ]
+    if conclusion is not None:
+        args += ["--conclusion", conclusion]
+    result = _run(args)
+    assert result.exit_code == 0, result.output
+    assert len(bus.published) == 1
+    topic, envelope = bus.published[0]
+    assert topic == WRITE.command
+    sent = ModelRepoWriteRequest.model_validate(envelope["payload"])
+    assert sent.operation.value == "check_run_create"
+    assert sent.head_sha == HEAD
+    assert sent.expected_head_sha is None
+    assert sent.name == "lab/check"
+    assert sent.status == status
+    assert sent.conclusion == conclusion
+    assert sent.output is not None
+    assert sent.output.title == "Lab check"
+    assert sent.output.summary == "Passed."
+
+
+@pytest.mark.parametrize(
+    ("extra", "missing"),
+    [
+        (["--status", "queued"], "head_sha"),
+        (
+            ["--head-sha", HEAD, "--status", "queued", "--output-title", "Lab"],
+            "summary",
+        ),
+        (["--head-sha", HEAD, "--status", "completed"], "conclusion"),
+    ],
+)
+def test_invalid_check_run_cli_does_not_open_bus(
+    monkeypatch: pytest.MonkeyPatch, extra: list[str], missing: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["check-run-create", REPO, "--name", "lab/check", "--lane", "lane-x", *extra]
+    )
+    assert result.exit_code == 2, result.output
+    assert missing in result.output
+    assert bus.published == []
+
+
+def test_check_run_retry_key_includes_head_and_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = ["check-run-create", *_WRITE_ARGS["check-run-create"], "--lane", "lane-x"]
+    for command in (
+        args,
+        args,
+        [MOVED if value == HEAD else value for value in args],
+        ["Changed." if value == "Passed." else value for value in args],
+    ):
+        result = _run(command)
+        assert result.exit_code == 0, result.output
+    keys = [envelope["payload"]["idempotency_key"] for _, envelope in bus.published]
+    assert keys[0] == keys[1]
+    assert len(set(keys)) == 3

@@ -120,6 +120,13 @@ requirements:
       - id: "AC17"
         statement: |-
           AC17: no stored test answer that the scorer passed and that the rule accepted before the change is refused after it, and a fragment with no import of its own is not judged on the binding -- falsifier: a scorer-passed stored answer refused, or a no-import fragment refused.
+  - id: "req-omn20844-packaged-openrouter-default"
+    statement: |-
+      A developer who cannot read a private overlay still gets a default OpenRouter model on a first run.
+    acceptance:
+      - id: "AC31"
+        statement: |-
+          AC31: with no ONEX_OPENROUTER_DEFAULT_MODEL and no node_model_setup_effect overlay, onex models default-model openrouter returns the model_name of the model registry entry the node's contract names under config.openrouter_default_model.registry_model; the model id is declared only in model_registry_v1.yaml, not in contract.yaml or handler code; the environment variable and an overlay still win, an overlay that is present but broken is still refused, and the read stores nothing -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly -k "none_declared_the_contract_default or declared_in_the_registry_not_in_code" fails against the merge base.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -384,3 +391,11 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py::test_an_executing_task_of_each_scorer_rescores_on_every_rung -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac31-packaged-openrouter-default"
+    description: "AC31: with no variable and no overlay, the OpenRouter default is the model registry entry the node contract names, declared only in the registry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly --no-cov -k 'none_declared_the_contract_default or declared_in_the_registry_not_in_code'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
