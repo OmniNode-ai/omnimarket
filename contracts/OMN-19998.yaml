@@ -81,6 +81,11 @@ requirements:
     acceptance:
       - id: "AC14"
         statement: "AC14: the gate's pins step resolves a uv.lock git source ?tag=dev-<14 digits>-<sha12>#<sha> of omnibase_infra or omnibase_core to the pinned sha, still resolves a PyPI pin to v<version>, resolves any other git source of https://github.com/OmniNode-ai/<sibling>.git locked to one commit to that commit, and refuses a dev tag whose sha12 is not the pinned commit, a malformed dev tag, another repository, a fork, a subdirectory, directory and editable source; its tag step fails for a pin to a nonexistent tag and for a tag that names another commit -- falsifier: uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py -q -n 0 fails at the merge base, where the pins step accepts only the PyPI registry"
+  - id: "req-context-compaction-manifest-node-in-omnimarket"
+    statement: "The compaction replay manifest (boundary pairing, prompt-window and repeat classification, manifest build and bundle verification over caller-supplied rows) is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract and no captured session data committed."
+    acceptance:
+      - id: "AC15"
+        statement: "AC15: node_context_compaction_manifest_compute pairs PreCompact and PostCompact boundaries keeping an unpaired PreCompact, classifies a repeat with no boundary between as NO_BOUNDARY_BETWEEN and one after a boundary as AFTER_BOUNDARY, builds a byte-identical manifest on a second build, reports a planted changed byte as a hash mismatch, refuses a quote not in the prompt and a path leaving the bundle root, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_context_compaction_manifest.py tests/test_golden_chain_context_compaction_manifest_compute.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -338,3 +343,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/Every dev-tag pin names the commit it pins/{a=1} /ref: \$\{\{ steps.pins.outputs.infra_ref \}\}/{b=1} END{exit !(a&&b)}'
+  - id: "dod-omn19998-context-compaction-manifest-node"
+    description: "The manifest and golden-chain tests pass at the head; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_context_compaction_manifest.py tests/test_golden_chain_context_compaction_manifest_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]
+  - id: "dod-omn19998-context-compaction-manifest-deploy-probe"
+    description: "Hosted-runner probe reads the manifest handler at this commit and requires its exception class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_compaction_manifest_compute/handlers/handler_compaction_manifest.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class ManifestRefusalError'

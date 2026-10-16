@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction replay manifest (OMN-19998).
+# Pins each compaction boundary as a replay case, by hash, from caller-supplied captured hook and
+# content events. The caller reads the hook-event rows and the session-content rows read-only
+# and passes them in. Handlers compute from these inputs; bundle helpers use an explicit root.
+# Hook-event rows: hook_event_name in (PreCompact, PostCompact), payload trigger and
+#   compact_summary_ref (length, sha256, content_record_id); model from the session's hook rows.
+# Session-content rows: content_kind in (prompt, operator_prompt, assistant_reply), redacted text.
+# Hash rules and the exclusions (ORCHESTRATION_STATE, REPO_STATE) are in the handler docstring and
+# written into the manifest itself.
+name: context_compaction_manifest_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pair PreCompact and PostCompact hook events per session (an unpaired PreCompact is reported, a
+  window starts at the previous paired PostCompact), classify the operator prompts of a window
+  (exact from the operator_prompt kind, else a heuristic with its measured accuracy), classify a
+  repeated operator statement as after a boundary or with none between, build the pinned replay
+  manifest and its bundle (transcript chain sha256, ledger prefix per file, scoring), and verify
+  a bundle against a manifest.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: pair_compaction_boundaries
+      handler:
+        name: HandlerBoundaryPairing
+        module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
+      input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelBoundaryPairingRequest
+      output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelBoundaryPairing
+    - operation: classify_prompt_window
+      handler:
+        name: HandlerPromptWindow
+        module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
+      input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelPromptWindowRequest
+      output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelPromptWindow
+    - operation: classify_repeat
+      handler:
+        name: HandlerRepeatClassifier
+        module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
+      input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelRepeatRequest
+      output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelRepeatVerdict
+    - operation: build_replay_manifest
+      handler:
+        name: HandlerReplayManifestBuilder
+        module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
+      input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelBuildManifestRequest
+      output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelBuildManifestResult
+    - operation: verify_replay_bundle
+      handler:
+        name: HandlerReplayBundleVerifier
+        module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
+      input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelVerifyBundleRequest
+      output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelVerifyBundleResult
+entry_points:
+  onex.nodes:
+    node_context_compaction_manifest_compute: omnimarket.nodes.node_context_compaction_manifest_compute
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.context-compaction-manifest-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-compaction-manifest-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-compaction-manifest-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-compaction-manifest-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-compaction-manifest-completed.v1
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka
