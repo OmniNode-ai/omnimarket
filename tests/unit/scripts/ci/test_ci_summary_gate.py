@@ -900,6 +900,13 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "and lab-pass receipt live in the called workflow and report on the "
         "post-merge run, not on any PR."
     ),
+    ("runtime-rebuild-trigger.yml", "notify-omniclaude-pin"): (
+        "post-merge automation (if: pull_request.merged == true) — "
+        "structurally cannot gate the merge that already happened. It sends "
+        "one omnimarket-dev-moved repository_dispatch so omniclaude's git pin "
+        "follows omnimarket dev (OMN-19998); omniclaude's hourly schedule is "
+        "the fallback when the dispatch is lost."
+    ),
     # --- self-declared staged / deliberately-deferred promotion.
     ("dep-health-gate.yml", "dep-health"): (
         "Phase 1 advisory by explicit design (file header: 'Phase 1 "

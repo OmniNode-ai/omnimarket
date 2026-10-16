@@ -37,7 +37,7 @@ descriptor:
     - runs the placement gate's --write-variables-snapshot once per registry repository (live GitHub reads)
     - replaces the snapshot file in the local home and, over ssh, in each available lab host's home
     - replaces heartbeat.json on a complete run and failure.json on a failed one in the state directory
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
 
 terminal_event: onex.evt.omnimarket.prrp-snapshot-publish-completed.v1
 

@@ -184,7 +184,7 @@ class ModelGitQueryResult(BaseModel):
     head_refs: int | None = None
     merged_prs: list[ModelMirrorPrMerged] | None = Field(
         default=None,
-        description="sync only: squash merges found on the default branch since the previous sync.",
+        description="sync only: pending squash merges, including unacknowledged payloads from earlier syncs.",
     )
     error: str | None = None
 
