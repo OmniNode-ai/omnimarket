@@ -16,6 +16,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,7 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
 )
 from omnimarket.projection import sqlite_metering_summary
 from omnimarket.projection.discovery import build_projection_topic_map
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
@@ -133,8 +135,15 @@ def event(index: int = 1, **changes: object) -> ModelTaskDelegatedEvent:
     return ModelTaskDelegatedEvent.model_validate(payload)
 
 
+@cache
+def topic_map() -> dict[str, ProjectionTableConfig]:
+    # Discovery reads every node contract (about 3 s); its result does not
+    # depend on a test's store, so it is built once per module.
+    return build_projection_topic_map()
+
+
 def served(tmp_path: Path, tenant: str = TENANT) -> list[dict[str, object]]:
-    topics = build_projection_topic_map()
+    topics = topic_map()
     client = TestClient(
         create_dashboard_app(
             handler=HandlerProjectionRead(
