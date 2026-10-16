@@ -41,18 +41,24 @@ def _ledger() -> dict[str, Any]:
     return ledger
 
 
-def _baseline_at(rev: str) -> Counter[str]:
-    proc = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "show", f"{rev}:{BASELINE}"],
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
         capture_output=True,
         text=True,
         check=False,
         env=scrub_git_location_env(os.environ),
     )
+
+
+def _baseline_at(rev: str) -> Counter[str]:
+    proc = _git("show", f"{rev}:{BASELINE}")
     if proc.returncode != 0:
-        pytest.fail(
-            f"cannot read {rev}:{BASELINE} (needs full git history): {proc.stderr.strip()}"
-        )
+        # A shallow CI checkout lacks the debank commit and its parent.
+        _git("fetch", "--quiet", "--no-tags", "--depth=2", "origin", DEBANK_COMMIT)
+        proc = _git("show", f"{rev}:{BASELINE}")
+    if proc.returncode != 0:
+        pytest.fail(f"cannot read {rev}:{BASELINE}: {proc.stderr.strip()}")
     findings = json.loads(proc.stdout)["findings"]
     return Counter(json.dumps(f, sort_keys=True) for f in findings)
 
