@@ -138,9 +138,18 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegated_test_loop/test_must_fail_local_tree_run_shallow_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-deployed-path-publishes-run-steps"
-    description: "The deployed delegation path publishes each numbered step of a run on the declared run-step topic, so the run-trace writer has steps to fold for a deployed run as it does for a local one. This is the producer half of the ticket body's run-trace writer item; it does not bind or discharge AC1, AC2 or AC3."
+    binds_ac: ["AC3"]
+    description: "The deployed delegation path publishes each numbered step on the declared topic, and the writer folds those steps into seven ordered run_trace rows. This binds the run-step producer contribution to AC3; the in-memory bus and SQLite test does not discharge the full laptop compose-Postgres and Runs exposure readback."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_run_steps_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19972-deploy-container-run-trace"
+    description: "Hosted deploy probe: a disposable Python container installs the evaluated checkout and drives its runtime dispatch port, event-envelope decode and run-trace writer fold. The readback requires seven ordered rows for the dispatched correlation id. It fails against the merge-base port, which publishes no run steps. It uses an in-memory bus and SQLite; it does not claim a deployed Kafka or compose-Postgres readback."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/run-trace-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_run_steps_omn19972.py::test_a_deployed_runs_published_steps_fold_into_run_trace_rows -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/run-trace-tests --refuse-skips
         cwd: "${OMNI_HOME}/omnimarket"
