@@ -19,7 +19,11 @@ description: >
   --backend-id`, pin-or-refuse), recording pass, or fail with the provider's
   reason, and the time. Storing a key is not this node's work: the `onex models`
   shim stores it through node_local_secret_store_effect first. No request,
-  result or record carries a key.
+  result or record carries a key. It also reports the model onboarding registers
+  for OpenRouter (`default_model`), read from this node's deployment overlay
+  (`<root>/node_model_setup_effect/overlay.yaml`, field `openrouter_default_model`)
+  and never from code; the customer changes it with `onex models add openrouter
+  --model <id>`.
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 

@@ -280,7 +280,7 @@ class TestOutcomeEventsRouteViaRealCategoryFilter:
             ),
             (
                 _T_SERIALIZE_OUTCOME,
-                lambda: ModelCodegenSerializeOutcome(state=_state()),
+                lambda: ModelCodegenSerializeOutcome(state=_state(), lint_passed=True),
                 "onex.cmd.omnimarket.codegen-file-write.v1",
             ),
         ],

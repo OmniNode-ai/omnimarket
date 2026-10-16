@@ -127,17 +127,20 @@ def test_passing_named_test_is_an_executed_verifying_pass() -> None:
 def test_no_run_supplied_is_never_a_pass() -> None:
     """With no named-test run the check is never a phantom pass.
 
-    OMN-21077: for a code class the missing run is an INSUFFICIENT refusal,
-    not a skip, so the answer is not accepted untested.
+    OMN-17427: with no tests named the contract decides acceptance; the
+    skipped check records UNTESTED and never verifies the score.
     """
     result = delta(_gate())
-    assert result.passed is False
-    assert _CHECK not in result.skipped_checks
+    assert result.passed is True
+    assert _CHECK in result.skipped_checks
     assert not any(e.rule == _CHECK and e.passed for e in result.rule_evaluations)
-    assert any(
-        reason.startswith("INSUFFICIENT") and _CHECK in reason
-        for reason in result.failure_reasons
-    )
+    evaluation = next(e for e in result.rule_evaluations if e.rule == _CHECK)
+    assert evaluation.enforcement == "scored"
+    assert evaluation.detail is not None
+    assert evaluation.detail.startswith("UNTESTED:")
+    assert result.failure_reasons == ()
+    assert result.score_verified is False
+    assert UNVERIFIED_NO_EXECUTED_CHECK in result.score_unverified_because
 
 
 @pytest.mark.unit

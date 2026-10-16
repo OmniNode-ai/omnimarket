@@ -24,6 +24,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     completion_rows,
     ground_state,
     read_receipts,
+    zero_flip_alert,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
     chunk_list,
@@ -859,7 +860,7 @@ def judge_ticket(
 def complete_run(
     *, request: ModelDodCloseoutDecisionRequest
 ) -> ModelDodCloseoutDecisionResult:
-    """The rows that complete one closer run, FRICTION first on the third zero-flip run."""
+    """Complete a run with FRICTION and an alert at the requested threshold."""
     assert request.clock_utc is not None
     assert request.ledger_rows is not None
     assert request.run_summary is not None
@@ -868,12 +869,20 @@ def complete_run(
         request.run_summary,
         request.clock_utc,
         request.report_ref,
+        threshold=request.zero_flip_threshold_runs,
     )
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.COMPLETION,
         completion_rows=rows,
         zero_flip_streak=length,
         top_deferral_reason=reason,
+        zero_flip_alert=zero_flip_alert(
+            request.run_summary,
+            length,
+            reason,
+            request.clock_utc,
+            threshold=request.zero_flip_threshold_runs,
+        ),
     )
 
 
@@ -882,7 +891,9 @@ def closer_health(
 ) -> ModelDodCloseoutDecisionResult:
     """The closer's row on the morning report, from its completed-run receipts."""
     assert request.ledger_rows is not None
-    health, row, length, reason = ground_state(read_receipts(request.ledger_rows))
+    health, row, length, reason = ground_state(
+        read_receipts(request.ledger_rows), threshold=request.zero_flip_threshold_runs
+    )
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.GROUND_STATE,
         health=health,

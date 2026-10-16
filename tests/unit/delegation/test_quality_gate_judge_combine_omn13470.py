@@ -57,6 +57,9 @@ from omnimarket.inference.secret_store_resolver import (
     clear_secret_store_resolver_cache,
 )
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
@@ -643,21 +646,29 @@ class TestJudgeCombineRealBusChain:
         return gate_result, terminal_events, workflow, consumed_topics
 
     @pytest.mark.asyncio
-    async def test_untested_code_fails_over_bus(self) -> None:
+    async def test_untested_code_completes_over_bus(self) -> None:
         gate_result, _terminal, workflow, consumed = await self._drive_chain(
             llm_content=_GOOD_CODE_MARKED,
             min_tier_name="claude",
         )
-        assert gate_result.score_source == "deterministic_acceptance"  # type: ignore[attr-defined]
-        assert TOPIC_ID_DELEGATION_FAILED in consumed, (
-            "untested code answer must publish a terminal delegation-failed event "
+        assert isinstance(gate_result, ModelQualityGateResult)
+        assert gate_result.score_source == "deterministic_acceptance"
+        assert gate_result.passed is True
+        assert "passes_existing_tests" in gate_result.skipped_checks
+        evaluation = next(
+            e for e in gate_result.rule_evaluations if e.rule == "passes_existing_tests"
+        )
+        assert evaluation.enforcement == "scored"
+        assert evaluation.passed is False
+        assert evaluation.detail is not None
+        assert evaluation.detail.startswith("UNTESTED:")
+        assert TOPIC_ID_DELEGATION_COMPLETED in consumed, (
+            "untested code answer must publish a terminal delegation-completed event "
             f"over the bus; consumed={consumed}"
         )
-        assert TOPIC_ID_DELEGATION_COMPLETED not in consumed
-        wf = workflow.workflows[
-            UUID(str(gate_result.correlation_id))  # type: ignore[attr-defined]
-        ]
-        assert wf.state == EnumDelegationState.FAILED
+        assert TOPIC_ID_DELEGATION_FAILED not in consumed
+        wf = workflow.workflows[UUID(str(gate_result.correlation_id))]
+        assert wf.state == EnumDelegationState.COMPLETED
 
     @pytest.mark.asyncio
     async def test_refusal_not_completed_even_with_high_judge_over_bus(self) -> None:

@@ -1,0 +1,20 @@
+name: node_context_profile_resolver_effect
+version: "1.0.0"
+description: "Resolves a context profile by name from packaged YAML data"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_context_profile_resolver_effect: "omnimarket.nodes.node_context_profile_resolver_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.47.44,<0.48.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "context-pack", "contract", "deterministic", "profile"]
+pack: "pipeline"
+display_name: "Context Profile Resolver Compute"
+node_role: "effect"

@@ -53,6 +53,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.delegation.wire.model_delegation_output_files import (
+    ModelDelegationOutputFile,
+    ModelDelegationOutputManifest,
+)
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -86,7 +90,18 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # request's ``backend_id`` pin chose, so a pinned run's tier entry is not read
 # as a weighted spread draw. The producer and the declared field land in the
 # change after the release that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
+#
+# OMN-20717 adds ``usage_source``: the measurement provenance the transport
+# reported for the attempt's cost, so an unpriced call can be stored as a null
+# cost rather than 0. Its producer and declared field land after the release
+# that carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {"backend_pinned", "usage_source"}
+)
+# OMN-20717: ``cost_measured`` on the metrics says whether any attempt's cost
+# was measured, so a zero ``cost_usd`` can be told apart from an unpriced one.
+# Same consumer-first order as the attempt key above.
+_FORTHCOMING_METRICS_KEYS: frozenset[str] = frozenset({"cost_measured"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -101,6 +116,18 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 #
 # Response-source provenance is declared after its consumer-first release.
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
+# Accept the next receiver's keys without declaring producer fields. Keep the
+# construction-failure distinction privately: its failed topic can preserve a
+# true gate flag, and its absent score must not become a measured zero.
+_FORTHCOMING_CONSTRUCTION_KEYS: frozenset[str] = frozenset(
+    {
+        "operational_outcome",
+        "content_verdict",
+        "terminal_failure_reason",
+        "rule_evaluations",
+    }
+)
+_CONSTRUCTION_FAILED = "terminal_construction_failed"
 
 
 def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
@@ -109,11 +136,6 @@ def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
         return data
     return {key: value for key, value in data.items() if key not in keys}
 
-
-# OMN-19600: response keys OMN-19602 declares for delegated output files.
-OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
-    {"output_manifest", "output_files"}
-)
 
 #: The terminal key that carries the ticket a delegation worked (OMN-19514).
 #: The request carries it in ``metadata`` under the same name.
@@ -382,11 +404,28 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     )
     latency_ms: int = Field(default=0, ge=0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode metrics from a producer one release ahead (OMN-20717)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_METRICS_KEYS)
+
 
 class ModelDelegateSkillResponse(BaseModel):
     """Typed delegation result returned to requesting adapters."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+    _terminal_construction_failed: bool = PrivateAttr(default=False)
+
+    @property
+    def terminal_construction_failed(self) -> bool:
+        """Decoded failure evidence, private to this consumer release."""
+        return self._terminal_construction_failed
+
+    def retain_terminal_construction_failure(self, failed: bool) -> Self:
+        """Keep decode evidence without adding a producer field."""
+        self._terminal_construction_failed = failed
+        return self
 
     status: Literal["completed", "failed", "timeout"] = Field(...)
     correlation_id: UUID = Field(...)
@@ -488,7 +527,7 @@ class ModelDelegateSkillResponse(BaseModel):
         ).retain_response_reasoning(reasoning)
 
     quality_gate_passed: bool = Field(default=False)
-    quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    quality_score: float | None = Field(default=0.0, ge=0.0, le=1.0)
     required_quality_bar: float | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -537,6 +576,28 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Typed refusal when the declared output contract cannot locate a "
             "safe customer deliverable."
+        ),
+    )
+    # OMN-19599 (OMN-19602 step 2 of 2): present only on a completed terminal
+    # whose request declared output files. Step 1 (OMN-19600, v0.4.225) taught
+    # this model to decode both keys, so the wire compatibility gate accepts
+    # declaring them. ``exclude_if`` keeps every other terminal byte-identical.
+    output_manifest: ModelDelegationOutputManifest | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Exactly which declared files the delegation produced (path, kind, "
+            "sha256, size, artifact ref) and which it refused, with a digest "
+            "over the entries. Present only when the request declared outputs."
+        ),
+    )
+    output_files: tuple[ModelDelegationOutputFile, ...] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The accepted files with their content, in declaration order, "
+            "each matching its output_manifest entry. Present only when the "
+            "request declared outputs."
         ),
     )
     preamble_chars: int | None = Field(
@@ -717,24 +778,6 @@ class ModelDelegateSkillResponse(BaseModel):
             except ValueError:
                 return None
         return None
-
-    # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
-    # they are declared. The wire compatibility gate (OMN-18868) refuses a new
-    # field until a release that decodes it is out; this release is that
-    # consumer. A consumer at this release has no use for the manifest or the
-    # files, so they are dropped and the rest of the terminal decodes.
-    @model_validator(mode="before")
-    @classmethod
-    def tolerate_output_file_keys_before_they_are_declared(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping) or not (
-            OUTPUT_FILE_RESPONSE_WIRE_KEYS & set(data)
-        ):
-            return data
-        return {
-            key: item
-            for key, item in data.items()
-            if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
-        }
 
     # OMN-20274, step 1 of 2 (OMN-19969): a CONSUMER that decodes the savings
     # baseline keys before any producer emits them. omnimarket#3172 declares
@@ -943,6 +986,8 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
 
         if required_bar is not None and comparison is not None:
+            if self.quality_score is None:
+                raise ValueError("quality-bar evidence requires quality_score")
             expected = (
                 EnumQualityScoreComparison.BELOW_BAR
                 if self.quality_score < required_bar
@@ -1058,6 +1103,69 @@ class ModelDelegateSkillResponse(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def accept_construction_keys_without_emitting_them(
+        cls, data: Any, handler: ModelWrapValidatorHandler[Self]
+    ) -> Self:
+        """Consumer first: validate the failure before dropping its new keys.
+
+        Wrap the base validators so the private distinction is retained before
+        the failed-topic subclass checks whether the gate flag implies success.
+        Once a subclass declares the keys, leave those declared fields intact.
+        """
+        if not isinstance(data, Mapping):
+            return handler(data)
+        outcome = data.get("operational_outcome")
+        verdict = data.get("content_verdict")
+        if (outcome is None) != (verdict is None):
+            raise ValueError(
+                "operational_outcome and content_verdict must be provided together"
+            )
+        construction_failed = outcome == _CONSTRUCTION_FAILED
+        if (verdict == "undetermined") != construction_failed:
+            raise ValueError(
+                "construction failure requires undetermined content verdict and conversely"
+            )
+        if construction_failed:
+            if data.get("status") == "completed":
+                raise ValueError("construction failure must not use completed status")
+            if data.get("terminal_failure_reason") != _CONSTRUCTION_FAILED:
+                raise ValueError(
+                    "construction failure requires stable terminal_failure_reason"
+                )
+            if (
+                data.get("quality_score") is not None
+                or data.get("required_quality_bar") is not None
+            ):
+                raise ValueError(
+                    "construction failure cannot carry quality score evidence"
+                )
+            if any(
+                data.get(key)
+                for key in (
+                    "score_vs_required_bar",
+                    "failed_acceptance_criteria",
+                    "rule_evaluations",
+                    "quality_gates_failed",
+                )
+            ):
+                raise ValueError("construction failure cannot carry quality evidence")
+            if data.get("terminal_failure_cause") is not None:
+                raise ValueError(
+                    "construction failure cannot claim provider failure cause"
+                )
+        decoded = {
+            key: value
+            for key, value in data.items()
+            if key not in _FORTHCOMING_CONSTRUCTION_KEYS or key in cls.model_fields
+        }
+        if construction_failed:
+            decoded.setdefault("quality_score", None)
+        return handler(decoded).retain_terminal_construction_failure(
+            construction_failed
+        )
 
 
 # Provider status classes as they appear in raw refusal text. Matched only as a
@@ -1279,7 +1387,10 @@ def _authoritative_attempt_ladder_verdict(
 
 def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
     """Status-independent success evidence for validating failed terminals."""
-    if response.terminal_failure_cause is not None:
+    if (
+        response.terminal_construction_failed
+        or response.terminal_failure_cause is not None
+    ):
         return False
     attempt_verdict = _authoritative_attempt_ladder_verdict(response)
     if attempt_verdict is not None:
@@ -1391,6 +1502,14 @@ def delegate_skill_terminal_from_response(
             response.model_dump(mode="python")
         )
     data = response.model_dump(mode="python")
+    if response.terminal_construction_failed:
+        # Internal conversion must retain the decoded distinction even though
+        # this consumer release does not publish the forthcoming wire keys.
+        data.update(
+            operational_outcome=_CONSTRUCTION_FAILED,
+            content_verdict="undetermined",
+            terminal_failure_reason=_CONSTRUCTION_FAILED,
+        )
     if data.get("status") == "completed":
         data["status"] = "failed"
         data["quality_gate_passed"] = False
@@ -1417,7 +1536,6 @@ def delegate_skill_terminal_from_response(
 
 __all__ = [
     "CALLER_LANE_WIRE_KEY",
-    "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
     "SESSION_ID_WIRE_KEY",
     "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",

@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19916"
+title: "onex dashboard answers only on loopback and only to a token minted at start (omnimarket half)"
+summary: "Decision D2 (RULING 2026-10-02T01:10:19Z), as re-scoped on the ticket on 2026-10-02: the serving process `onex dashboard` starts mints a random token per start, prints it once in the start URL, trades it for an HttpOnly SameSite=Strict cookie, refuses a read without it with 401, and refuses a non-loopback Host (DNS rebinding) or a foreign Origin with 403. The description's AC1 to AC4 were written for the retired OmniDash Express bridge and are superseded by the D2 cases below, per the ticket's 2026-10-02 re-scope comment."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-d2-token-boundary"
+    statement: "Every request to the local dashboard carries this start's token from a loopback host and the page's own origin, or is refused."
+    acceptance:
+      - id: "AC1"
+        statement: "D2-AC1: a loopback request carrying the current token (query, bearer or the traded cookie) is served 200 -- falsifier: any of the three channels refused"
+      - id: "AC2"
+        statement: "D2-AC2: a token minted by an earlier start is refused 401 on every channel, and each start mints a different token -- falsifier: a stale token served or two starts sharing a token"
+      - id: "AC3"
+        statement: "D2-AC3: a request with no token is refused 401, the pages included -- falsifier: any route answering 200 without a token"
+      - id: "AC4"
+        statement: "D2-AC4: a non-loopback dashboard.bind is refused at start -- falsifier: 0.0.0.0 or a LAN address accepted"
+      - id: "AC5"
+        statement: "D2-AC5: a foreign Host is refused 403 even with the token, and a foreign Origin with the token is refused 403 -- falsifier: either read served"
+evidence_requirements:
+  - kind: "tests"
+    description: "The D2 cases, driven through the handler path onex dashboard wires."
+    command: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19916-d2-ac1-current-token"
+    description: "D2-AC1: the current token is served on every channel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'current_token or httponly_cookie or pages_own_origin'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19916-d2-ac2-stale-token"
+    description: "D2-AC2: a stale token is refused and every start mints a new one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'earlier_starts_token or each_start_mints'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19916-d2-ac3-no-token"
+    description: "D2-AC3: no token is refused, pages included."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'no_token_is_refused'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19916-d2-ac4-non-loopback-bind"
+    description: "D2-AC4: a non-loopback bind is refused at start."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'non_loopback_bind'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19916-d2-ac5-host-and-origin"
+    description: "D2-AC5: DNS-rebinding Host and foreign Origin are refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_local_serving_auth.py -q -p no:randomly --no-cov -k 'rebinding_host or cross_origin_read'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn19916-deploy-token-guard"
+    description: "Hosted deploy probe: read the serve handler from GitHub at the evaluated commit and require the guard to be wired on the production path. Fails on the merge-base handler, which has no require_local_access. This checks published source at the evaluated revision, not a release."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_local_dashboard_serve_effect/handlers/handler_local_dashboard_serve.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | (contains("def require_local_access(") and contains("token=request.access_token.get_secret_value(), port=request.port"))' | grep -qx true

@@ -9,6 +9,7 @@ agent or generated shell executes this workflow anymore (OMN-20678).
 from __future__ import annotations
 
 import json
+import shlex
 import threading
 import time
 from importlib.metadata import entry_points
@@ -311,6 +312,76 @@ def test_real_subprocess_exit_zero_without_receipt_is_not_success(
     )
     assert result["terminal"] == "NO_RECEIPT"
     assert result["last_stdout_line"] == "refused before publish"
+
+
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_real_subprocess_terminal_is_receipt_fact_regardless_of_exit_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: str, exit_code: int
+) -> None:
+    """Exercise the local runtime through dispatch, receipt reading and closeout."""
+    import asyncio
+
+    from omnimarket.nodes.node_delegate_fanout_effect.models.model_fanout_result import (
+        ModelFanoutResult,
+    )
+
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "status": status,
+                "correlation_id": "c-receipt",
+                "run_id": "r-receipt",
+                "terminal_failure_cause": "quota" if status == "failed" else None,
+            }
+        )
+    )
+    calls = tmp_path / "calls.txt"
+    wrapper = tmp_path / "registry/omnibase_infra/scripts/onex"
+    wrapper.parent.mkdir(parents=True)
+    wrapper.write_text(
+        "#!/bin/bash\nset -eu\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--state-root" ]; then root="$2"; break; fi\n'
+        "  shift\ndone\n"
+        'mkdir -p "$root/runs/r-receipt"\n'
+        f'cp {shlex.quote(str(receipt))} "$root/runs/r-receipt/receipt.json"\n'
+        f"echo called >> {shlex.quote(str(calls))}\n"
+        'echo "CLI output is not the terminal verdict"\n'
+        f"exit {exit_code}\n"
+    )
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "registry"))
+    request = ModelFanoutRequest(
+        items=[ModelFanoutItem(label="a", prompt="Name one")],
+        state_root=tmp_path / "fanout",
+    )
+    payload = tmp_path / "request.json"
+    payload.write_text(request.model_dump_json())
+    runtime = RuntimeLocal(
+        NODE / "contract.yaml",
+        input_path=payload,
+        state_root=tmp_path / "runtime",
+        timeout=5,
+        backend_overrides={"event_bus": "inmemory"},
+    )
+    terminal = asyncio.run(runtime.run_async())
+    assert terminal.value == "completed"
+    readback = json.loads((tmp_path / "runtime/workflow_result.json").read_text())
+    result = ModelFanoutResult.model_validate(readback["handler_result"])
+    assert calls.read_text().splitlines() == ["called"]
+    assert result.rows[0].terminal == status
+    assert result.rows[0].run_id == "r-receipt"
+    assert result.rows[0].terminal_failure_cause == (
+        "quota" if status == "failed" else None
+    )
+    assert result.rows[0].last_stdout_line is None
+    assert result.failed == int(status != "completed")
+    assert result.receipts == 1
+    assert result.correlation_ids == ["c-receipt"]
+    assert result.closeout_fragment == (
+        f"delegate_receipts=1 correlation_ids=c-receipt failed={result.failed}"
+    )
 
 
 def test_real_subprocess_hard_bound_preserves_no_receipt_reason(

@@ -33,9 +33,11 @@ from typing import get_args
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError, resolve_setting
 from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
+    resolve_local_byok_credential_models,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
@@ -63,12 +65,29 @@ _KEY_PREFIXES: tuple[tuple[str, str], ...] = (
     ("sk-", "openai"),
 )
 
+#: The node whose overlay (``<root>/node_model_setup_effect/overlay.yaml``) declares
+#: the model onboarding registers (OMN-20844). No model id is written in code: the
+#: value is a deployment fact, read from the environment variable, else the overlay.
+DEFAULT_MODEL_NODE = "node_model_setup_effect"
+_DEFAULT_MODEL_ENV: dict[str, str] = {"openrouter": "ONEX_OPENROUTER_DEFAULT_MODEL"}
+_DEFAULT_MODEL_FIELDS = frozenset(f"{p}_default_model" for p in _DEFAULT_MODEL_ENV)
+
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300
 _MODEL_CONFIG = Path(__file__).resolve().parents[3] / "configs/bifrost_delegation.yaml"
 
 #: (backend id) -> (exit code, stdout, stderr) of one pinned ``onex delegate``.
 DelegateRunner = Callable[[str], tuple[int, str, str]]
+
+#: (provider, the whole ordered list) -> the list as stored. The write belongs to
+#: node_local_secret_store_effect; the shim that runs both nodes passes it in, so
+#: this node never imports that node's handler. It raises
+#: ``ModelSetupRefusedError`` for a write the store refuses.
+ModelListWriter = Callable[[str, tuple[str, ...]], tuple[str, ...]]
+
+
+class ModelSetupRefusedError(Exception):
+    """A model-list edit the setup effect refuses. Its text says what to run instead."""
 
 
 def key_looks_like(value: str) -> str | None:
@@ -149,8 +168,13 @@ def _text(value: object) -> str | None:
 class HandlerModelSetup:
     """Status and pinned test delegations for the models delegation can use."""
 
-    def __init__(self, run_delegation: DelegateRunner | None = None) -> None:
+    def __init__(
+        self,
+        run_delegation: DelegateRunner | None = None,
+        write_model_list: ModelListWriter | None = None,
+    ) -> None:
         self._run_delegation = run_delegation or run_pinned_delegation
+        self._write_model_list = write_model_list
 
     def handle(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
         if request.operation == "status":
@@ -158,6 +182,10 @@ class HandlerModelSetup:
                 operation="status",
                 providers=tuple(self._status(p) for p in PROVIDERS),
             )
+        if request.operation in ("add_models", "reorder", "remove_model"):
+            return self._edit_models(request)
+        if request.operation == "default_model":
+            return self._default_model(request)
         if request.operation == "forget":
             if request.provider is not None:
                 self._forget(request.provider)
@@ -169,6 +197,91 @@ class HandlerModelSetup:
         )
         return ModelModelSetupResult(
             operation="test", tests=tuple(self._test(p) for p in providers)
+        )
+
+    # -- the model onboarding registers ------------------------------------
+
+    def _default_model(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
+        """The provider's default model from the deployment overlay; stores nothing."""
+        provider = request.provider
+        if provider not in _DEFAULT_MODEL_ENV:
+            raise ModelSetupRefusedError(
+                "only a provider where you choose the model has a default declared "
+                f"({', '.join(sorted(_DEFAULT_MODEL_ENV))}); name one of them"
+            )
+        setting = f"{provider}_default_model"
+        try:
+            model = resolve_setting(
+                DEFAULT_MODEL_NODE,
+                setting,
+                fields=_DEFAULT_MODEL_FIELDS,
+                env_vars=(_DEFAULT_MODEL_ENV[provider],),
+            )
+        except NodeOverlayError as error:
+            raise ModelSetupRefusedError(
+                f"{error}. To choose a model yourself: onex models add {provider} "
+                "--model <model id>"
+            ) from None
+        return ModelModelSetupResult(operation="default_model", models=(model,))
+
+    # -- the ordered models of a stored key --------------------------------
+
+    def _edit_models(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
+        """Compute the key's next list and hand the write to the local secret store."""
+        provider = request.provider
+        if provider is None:
+            raise ModelSetupRefusedError(
+                "name a provider that holds a key: gemini, openrouter, openai or "
+                "anthropic"
+            )
+        stored = resolve_local_byok_credential_models(provider)
+        if provider not in registered_local_byok_providers():
+            raise ModelSetupRefusedError(
+                f"no {provider} key is stored; add one with: onex models add {provider}"
+            )
+        asked = request.models
+        if not asked:
+            raise ModelSetupRefusedError("name at least one model")
+        if len(set(asked)) != len(asked):
+            raise ModelSetupRefusedError("a model is named twice")
+        if request.operation == "add_models":
+            already = [model for model in asked if model in stored]
+            if already:
+                raise ModelSetupRefusedError(
+                    f"{', '.join(already)} is already in your {provider} list: "
+                    f"{', '.join(stored)}"
+                )
+            wanted = (*stored, *asked)
+        elif request.operation == "reorder":
+            if set(asked) != set(stored):
+                raise ModelSetupRefusedError(
+                    "reorder names exactly the models your "
+                    f"{provider} list holds ({', '.join(stored) or 'none'}), "
+                    "each once; add or remove models with their own commands"
+                )
+            wanted = asked
+        else:
+            missing = [model for model in asked if model not in stored]
+            if missing:
+                raise ModelSetupRefusedError(
+                    f"{', '.join(missing)} is not in your {provider} list: "
+                    f"{', '.join(stored) or 'empty'}"
+                )
+            wanted = tuple(model for model in stored if model not in asked)
+            if not wanted:
+                raise ModelSetupRefusedError(
+                    f"that would leave your {provider} key with no model; add the "
+                    f"one you want first, or delete the key with: onex models "
+                    f"remove {provider}"
+                )
+        if self._write_model_list is None:
+            raise ModelSetupRefusedError(
+                "no writer for the model list was given; the list is stored by "
+                "the local secret store, which the onex models command passes in"
+            )
+        return ModelModelSetupResult(
+            operation=request.operation,
+            models=self._write_model_list(provider, wanted),
         )
 
     # -- where things live -------------------------------------------------
@@ -246,7 +359,10 @@ class HandlerModelSetup:
                 last = ModelModelTestResult.model_validate(recorded)
             except ValueError:
                 last = None
-        return ModelModelStatus(provider=provider, set_up=set_up, last_test=last)
+        models = resolve_local_byok_credential_models(provider) if set_up else ()
+        return ModelModelStatus(
+            provider=provider, set_up=set_up, last_test=last, models=models
+        )
 
     # -- the test ----------------------------------------------------------
 
