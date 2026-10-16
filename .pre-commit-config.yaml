@@ -1787,6 +1787,15 @@ repos:
         files: ^(src/omnimarket/delegation/output_only_acceptance\.py|tests/unit/delegation/test_output_only_acceptance_omn18932\.py)$
         stages: [pre-commit]
 
+      # OMN-18925 AC-2: CI twin is the "Schema-invalid terminal never quality-passing" step of ci.yml. Check-only.
+      - id: schema-invalid-terminal-never-passes
+        name: Schema-invalid terminal never quality-passing (OMN-18925)
+        entry: uv run --frozen pytest tests/unit/delegation/test_schema_invalid_terminal_never_passes_omn18925.py tests/ci/test_schema_invalid_terminal_gate_wiring_omn18925.py -q -p no:randomly --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_delegation_orchestrator/|src/omnimarket/nodes/node_delegation_quality_gate_reducer/|tests/unit/delegation/test_schema_invalid_terminal_never_passes_omn18925\.py|tests/ci/test_schema_invalid_terminal_gate_wiring_omn18925\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)
+        stages: [pre-commit]
+
       # OMN-20780: RULING 2026-10-14T18:17:30Z, a delegated answer is gated by an independent judge for the text
       # classes and by its own named tests for the code classes (OMN-20489). CI twin: the "Delegated answers gated
       # by an independent judge or named tests" step of ci.yml. Check-only.
