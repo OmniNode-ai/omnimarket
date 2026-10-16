@@ -351,7 +351,7 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_context_compaction_manifest.py tests/test_golden_chain_context_compaction_manifest_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC15"]
-  - id: "dod-omn19998-context-compaction-manifest-deploy-probe"
+  - id: "dod-omn19998-compaction-manifest-deploy-probe"
     description: "Hosted-runner probe reads the manifest handler at this commit and requires its exception class; the base has no such file and the probe finds no match."
     source: "manual"
     checks:

@@ -53,9 +53,6 @@ handler_routing:
         module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
       input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelVerifyBundleRequest
       output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelVerifyBundleResult
-entry_points:
-  onex.nodes:
-    node_context_compaction_manifest_compute: omnimarket.nodes.node_context_compaction_manifest_compute
 descriptor:
   node_archetype: compute
   purity: pure

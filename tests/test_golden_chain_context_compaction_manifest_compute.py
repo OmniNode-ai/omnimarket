@@ -201,7 +201,7 @@ def test_entry_point_registered_and_loads() -> None:
     contract = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
     assert project["project"]["entry-points"]["onex.nodes"][NODE_NAME] == PACKAGE
     assert metadata["entry_points"]["onex.nodes"][NODE_NAME] == PACKAGE
-    assert contract["entry_points"]["onex.nodes"][NODE_NAME] == PACKAGE
+    assert "entry_points" not in contract
     registered = {entry.name: entry for entry in entry_points(group="onex.nodes")}
     assert registered[NODE_NAME].value == PACKAGE
     assert registered[NODE_NAME].load() is importlib.import_module(PACKAGE)
