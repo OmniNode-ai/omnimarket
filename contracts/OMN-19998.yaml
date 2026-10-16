@@ -41,6 +41,16 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: response and failed-topic JSON decode construction failure with either gate flag and a null score; conversion retains the distinction, contradictory evidence and unknown keys are refused, legacy defaults stay intact, and the four forthcoming keys are absent from serialization -- falsifier: uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q fails at the merge base"
+  - id: "req-capture-item-identity-node-in-omnimarket"
+    statement: "The shared item identity, per-stream producer sequence and barrier fields that omniclaude's two capture hooks stamp are owned by an omnimarket node in canonical shape (contract, node, handler), and the capture-redaction owner contract classifies the new record fields verbatim."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: node_capture_item_identity_effect resolves a content record id, claims one event id shared by the two hooks of a call in either order, issues 1,000 gap-free sequence numbers to eight concurrent writers, declares its topics in its contract, loads by file path with standard-library imports only, and the owner redaction contract keeps content_record_id, producer_seq, stream and the barrier fields verbatim -- falsifier: uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q fails at the merge base"
+  - id: "req-release-staleness-advisory"
+    statement: "Operator RULING 2026-10-16T07:34:18Z (no release wait; no users yet): Release Staleness (OMN-18010) keeps running unconditionally in ci.yml and keeps its 24-hour STALE measurement, but CI Summary lists it in SOFT_ALLOWLIST instead of STRICT_GATE_JOBS, so a stale, failed, absent or running Release Staleness job never fails or holds CI Summary, while any other failed job still fails it."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: Release Staleness (OMN-18010) is in SOFT_ALLOWLIST and in neither STRICT_GATE_JOBS nor SKIPPABLE_GATE_JOBS, CI Summary evaluates SUCCESS with that job failed, cancelled, absent or running, an unregistered failed job still yields FAILURE, and the job stays unconditional with its STALE controls -- falsifier: uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -157,3 +167,33 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/dep_health_allowlist.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/onex.evt.diagnostic.daemon-health.v1/{a=1} /onex.evt.omniclaude.task-delegated.v1/{b=1} END{exit !(a&&!b)}'
+  - id: "dod-omn19998-capture-item-identity-node"
+    description: "The node's handler, golden chain and contract tests and the redaction owner fields pass at the head; at the merge base the node package does not exist and every test file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19998-capture-item-identity-deploy-probe"
+    description: "Hosted-runner probe reads the item identity handler at this commit and requires claim_event_id; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_capture_item_identity_effect/handlers/handler_item_identity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^def claim_event_id('
+  - id: "dod-omn19998-release-staleness-advisory"
+    description: "The release-staleness registration and CI Summary verdict tests pass at the head; at the merge base the job is a strict gate, so a failed or absent Release Staleness fails or holds CI Summary and six tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn19998-staleness-advisory-deploy-probe"
+    description: "Hosted-runner probe parses scripts/ci/ci_summary_gate.py at this commit and requires Release Staleness in SOFT_ALLOWLIST and out of STRICT_GATE_JOBS; at the base it is strict and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/scripts/ci/ci_summary_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast,sys; t=ast.parse(sys.stdin.read()); v={n.target.id: ((ast.literal_eval(n.value.args[0]) if n.value.args else ()) if isinstance(n.value, ast.Call) else ast.literal_eval(n.value)) for n in t.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in ("STRICT_GATE_JOBS","SOFT_ALLOWLIST")}; j="Release Staleness (OMN-18010)"; assert j in v["SOFT_ALLOWLIST"] and j not in v["STRICT_GATE_JOBS"], "Release Staleness still gates CI Summary"'
