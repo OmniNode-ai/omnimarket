@@ -127,6 +127,13 @@ requirements:
       - id: "AC31"
         statement: |-
           AC31: with no ONEX_OPENROUTER_DEFAULT_MODEL and no node_model_setup_effect overlay, onex models default-model openrouter returns the model_name of the model registry entry the node's contract names under config.openrouter_default_model.registry_model; the model id is declared only in model_registry_v1.yaml, not in contract.yaml or handler code; the environment variable and an overlay still win, an overlay that is present but broken is still refused, and the read stores nothing -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly -k "none_declared_the_contract_default or declared_in_the_registry_not_in_code" fails against the merge base.
+  - id: "req-omn20844-next-customer-key"
+    statement: |-
+      A customer with two registered provider keys reaches the second when the first fails and the ladder offers no new responder.
+    acceptance:
+      - id: "AC32"
+        statement: |-
+          AC32: on the local path with a Gemini and an OpenRouter key registered and no house credential, an unpinned document delegation whose OpenRouter route fails retryably (after its own retry budget) or fails the quality gate is answered next on the customer's Gemini route; an auth failure never moves to another key, and a run with both keys healthy is answered by OpenRouter alone -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly fails, or its fall-through tests pass against the merge base.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -399,3 +406,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly --no-cov -k 'none_declared_the_contract_default or declared_in_the_registry_not_in_code'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC31"]
+  - id: "dod-omn20844-ac32-next-customer-key"
+    description: "AC32: a retryable failure or a quality-gate FAIL on the customer's first key falls through to their second registered key; an auth failure does not, and a healthy first key answers alone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]
