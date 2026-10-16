@@ -91,6 +91,9 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # request's ``backend_id`` pin chose, so a pinned run's tier entry is not read
 # as a weighted spread draw. The producer and the declared field land in the
 # change after the release that carries this consumer.
+#
+# OMN-20717 declared ``usage_source`` on the attempt and ``cost_measured`` on
+# the metrics below, after the release that carried their consumer-first keys.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(

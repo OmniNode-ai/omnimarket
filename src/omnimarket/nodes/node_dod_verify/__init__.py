@@ -3,6 +3,9 @@
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
 )
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify_on_merge import (
+    HandlerDodVerifyOnMerge,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -20,6 +23,7 @@ __all__ = [
     "EnumDodVerifyStatus",
     "EnumEvidenceCheckStatus",
     "HandlerDodVerify",
+    "HandlerDodVerifyOnMerge",
     "ModelDodVerifyCompletedEvent",
     "ModelDodVerifyStartCommand",
     "ModelDodVerifyState",
