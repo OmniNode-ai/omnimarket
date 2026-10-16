@@ -5,8 +5,10 @@
 The model id an onboarding run registers is a deployment fact, so it lives in a
 contract overlay (``<root>/node_model_setup_effect/overlay.yaml`` under a root
 named in ``ONEX_SKILL_OVERLAY_ROOTS``) and never in code. ``onex models
-default-model openrouter`` reads it for the onboarding script; with none declared
-it refuses, names the overlay and stores nothing. The customer changes the model
+default-model openrouter`` reads it for the onboarding script. With none declared
+it returns the default the node's contract ships, so a developer who cannot read
+a private overlay still gets a working first run; an overlay that is present but
+broken is refused, never read as absent. The customer changes the model
 afterwards with one command, ``onex models add openrouter --model <id>``.
 
 Every model id below is a fixture this file declares. Fakes only: the provider's
@@ -27,6 +29,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_models,
 )
+from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     HandlerModelSetup,
     ModelSetupRefusedError,
@@ -106,7 +109,47 @@ def test_the_cli_prints_only_the_overlay_default(
     assert shown.output.strip() == _DEFAULT
 
 
-def test_no_declared_default_is_refused_and_the_message_names_the_overlay() -> None:
+_HANDLER_SOURCE = Path(handler_model_setup.__file__)
+_CONTRACT = _HANDLER_SOURCE.parents[1] / "contract.yaml"
+
+
+def test_with_none_declared_the_contract_default_is_returned() -> None:
+    """A developer with no overlay and no variable gets the packaged default."""
+    packaged = handler_model_setup.packaged_default("openrouter_default_model")
+    assert packaged, "the contract ships no openrouter_default_model default"
+    shown = _models("default-model", "openrouter")
+    assert shown.exit_code == 0, shown.output
+    assert shown.output.strip() == packaged
+    assert _stored_key() is None
+
+
+def test_the_packaged_default_is_declared_in_the_registry_not_in_code() -> None:
+    """The contract names a registry entry; the model id lives only in the registry."""
+    packaged = handler_model_setup.packaged_default("openrouter_default_model")
+    registry = (
+        _HANDLER_SOURCE.parents[3]
+        / "data"
+        / "model_registry"
+        / "model_registry_v1.yaml"
+    )
+    assert f'model_name: "{packaged}"' in registry.read_text(encoding="utf-8")
+    assert packaged not in _CONTRACT.read_text(encoding="utf-8")
+    assert packaged not in _HANDLER_SOURCE.read_text(encoding="utf-8")
+
+
+def test_an_overlay_default_wins_over_the_packaged_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _declare(monkeypatch, tmp_path, _OTHER)
+    assert handler_model_setup.packaged_default("openrouter_default_model") != _OTHER
+    assert _models("default-model", "openrouter").output.strip() == _OTHER
+
+
+def test_no_declared_default_is_refused_and_the_message_names_the_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Without a packaged default the refusal is unchanged.
+    monkeypatch.setattr(handler_model_setup, "packaged_default", lambda _setting: "")
     shown = _models("default-model", "openrouter")
     assert shown.exit_code != 0
     assert f"<root>/{_NODE}/overlay.yaml" in shown.output

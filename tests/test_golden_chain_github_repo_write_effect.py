@@ -269,3 +269,58 @@ async def test_a_close_carrying_the_callers_claim_crosses_the_bus_and_completes(
     completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
     assert completed.operation is EnumRepoWriteOperation.PR_CLOSE
     assert completed.mode is EnumRepoWriteMode.DRY_RUN
+
+
+async def test_check_run_create_is_published_as_completed() -> None:
+    output = {"title": "Lab job", "summary": "Recorded lab check."}
+    post = ModelGithubHttpRequest(
+        method="POST",
+        path=f"/repos/{_REPO}/check-runs",
+        body={
+            "name": "lab/pr-merged-publisher",
+            "head_sha": _HEAD,
+            "status": "completed",
+            "conclusion": "success",
+            "output": output,
+        },
+    )
+    fake = _Recorded(
+        [
+            (
+                post,
+                ModelGithubHttpResponse(
+                    status=201,
+                    headers=_HEADERS,
+                    body={
+                        "id": 4,
+                        "head_sha": _HEAD,
+                        "html_url": f"https://github.com/{_REPO}/runs/4",
+                    },
+                ),
+            )
+        ]
+    )
+    handler = HandlerGithubRepoWriteEffect(fake, clock=_CLOCK.timestamp)
+    broker, correlation_id = await _run(
+        handler,
+        _command(
+            EnumRepoWriteOperation.CHECK_RUN_CREATE,
+            name="lab/pr-merged-publisher",
+            head_sha=_HEAD,
+            status="completed",
+            conclusion="success",
+            output=output,
+        ),
+    )
+    (envelope,) = _on(broker, _COMPLETED)
+    assert envelope.correlation_id == correlation_id
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.CHECK_RUN_CREATE
+    assert completed.check_run_id == 4
+    assert completed.head_sha == _HEAD
+    assert completed.html_url == f"https://github.com/{_REPO}/runs/4"
+    assert completed.http_statuses == (201,)
+    assert completed.mode is EnumRepoWriteMode.ENFORCE
+    assert fake.sent == [post]
+    assert fake.exchanges == []
+    assert _on(broker, _FAILED) == []

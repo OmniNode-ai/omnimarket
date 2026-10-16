@@ -28,7 +28,8 @@ Rules this handler enforces:
   itself is the record: pr_create finds an open PR for the head, pr_comment
   finds a comment carrying the key, pr_ready and pr_close find the PR already
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
-  the in-process record guards a retry.
+  the in-process record guards a retry. check_run_create likewise only has
+  the in-process record; a restart can create another check run.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -200,6 +201,7 @@ class _Run:
         html_url: str | None = None,
         head_sha: str | None = None,
         comment_id: int | None = None,
+        check_run_id: int | None = None,
     ) -> ModelRepoWriteCompleted:
         c = self.command
         return ModelRepoWriteCompleted(
@@ -217,6 +219,7 @@ class _Run:
             html_url=html_url,
             head_sha=head_sha,
             comment_id=comment_id,
+            check_run_id=check_run_id,
         )
 
     async def send(
@@ -464,6 +467,8 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_close(run)
         if op is EnumRepoWriteOperation.PR_COMMENT:
             return await _pr_comment(run)
+        if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
+            return await _check_run_create(run)
         return await _workflow_dispatch(run)
 
 
@@ -658,6 +663,30 @@ async def _pr_comment(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
+    body: dict[str, object] = {
+        "name": c.name,
+        "head_sha": c.head_sha,
+        "status": c.status,
+    }
+    if c.conclusion is not None:
+        body["conclusion"] = c.conclusion
+    if c.output is not None:
+        body["output"] = c.output.model_dump(mode="json")
+    return ModelGithubHttpRequest(
+        method="POST", path=f"/repos/{c.repo}/check-runs", body=body
+    )
+
+
+async def _check_run_create(run: _Run) -> ModelRepoWriteCompleted:
+    created = (await run.send(_check_run_create_request(run.command))).body
+    return run.completed(
+        check_run_id=_int_at(created, "id"),
+        html_url=_str_at(created, "html_url"),
+        head_sha=_str_at(created, "head_sha"),
+    )
+
+
 async def _workflow_dispatch(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     ref = c.ref or ""
@@ -703,6 +732,8 @@ def planned_requests(
                 draft=bool(c.draft),
             ),
         )
+    if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
+        return (_check_run_create_request(c),)
     if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
         return (
             *tip,
