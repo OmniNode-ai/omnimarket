@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import shlex
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -58,73 +59,148 @@ def test_caller_workflow_shape() -> None:
     assert "secrets: inherit" not in text, "caller must not inherit secrets"
 
 
+def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
+    violations: list[str] = []
+    criteria = {
+        ac["id"]
+        for requirement in contract.get("requirements", [])
+        for ac in requirement.get("acceptance", [])
+    }
+    bound: set[str] = set()
+    for item in contract.get("dod_evidence", []):
+        label = f"{name}:{item['id']}"
+        # The verifier's must-fail control only works on merged PRs; such
+        # an item would be reported unavailable on an open PR.
+        if item["id"].startswith("dod-occ-diff-derived-behavior-proof"):
+            violations.append(
+                f"{label}: merged-PR must-fail controls are unavailable on open PRs"
+            )
+        if "ac_bindings" in item:
+            violations.append(f"{label}: use binds_ac, not ac_bindings")
+        if "binds_ac" not in item:
+            continue
+        bound.update(item["binds_ac"])
+        checks = [
+            check
+            for check in item.get("checks", [])
+            if check.get("check_type") == "test_passes"
+            and check.get("check_value", "").startswith("uv run pytest ")
+        ]
+        selectors = [
+            next(
+                (
+                    path
+                    for path in (
+                        token.split("::", 1)[0]
+                        for token in shlex.split(check["check_value"])
+                    )
+                    if path.endswith(".py") or path.endswith("/tests")
+                ),
+                "",
+            )
+            for check in checks
+        ]
+        # A criterion about a merged PR body is bound to a grep over that
+        # body, which exits non-zero when the sentence is absent.
+        body_checks = [
+            check
+            for check in item.get("checks", [])
+            if check.get("check_type") == "command"
+            and check.get("check_value", "").startswith("gh pr view ")
+            and "--json body" in check["check_value"]
+            and "| grep -Eq " in check["check_value"]
+        ]
+        if body_checks:
+            continue
+        if not any(
+            selector
+            and not Path(selector).is_absolute()
+            and (REPO_ROOT / selector).resolve().is_relative_to(REPO_ROOT)
+            and (REPO_ROOT / selector).exists()
+            for selector in selectors
+        ):
+            violations.append(
+                f"{label}: binds_ac requires uv run pytest evidence naming an existing repo test file"
+            )
+    if not criteria <= bound:
+        violations.append(
+            f"{name}: acceptance criteria missing binds_ac: {sorted(criteria - bound)}"
+        )
+    return violations
+
+
 def test_every_repo_contract_binds_every_criterion() -> None:
     assert CALLER_PATH.is_file(), "repo-owned evidence requires the caller workflow"
     contracts = sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml"))
     assert contracts, "expected at least one repo-owned contracts/OMN-*.yaml"
+    violations: list[str] = []
     for path in contracts:
         contract = yaml.safe_load(path.read_text(encoding="utf-8"))
-        criteria = {
-            ac["id"]
-            for requirement in contract.get("requirements", [])
-            for ac in requirement.get("acceptance", [])
-        }
-        bound: set[str] = set()
-        for item in contract.get("dod_evidence", []):
-            label = f"{path.name}:{item['id']}"
-            # The verifier's must-fail control only works on merged PRs; such
-            # an item would be reported unavailable on an open PR.
-            assert not item["id"].startswith("dod-occ-diff-derived-behavior-proof"), (
-                f"{label}: merged-PR must-fail controls are unavailable on open PRs"
-            )
-            assert "ac_bindings" not in item, f"{label}: use binds_ac, not ac_bindings"
-            if "binds_ac" not in item:
-                continue
-            bound.update(item["binds_ac"])
-            checks = [
-                check
-                for check in item.get("checks", [])
-                if check.get("check_type") == "test_passes"
-                and check.get("check_value", "").startswith("uv run pytest ")
-            ]
-            selectors = [
-                next(
-                    (
-                        path
-                        for path in (
-                            token.split("::", 1)[0]
-                            for token in shlex.split(check["check_value"])
-                        )
-                        if path.endswith(".py") or path.endswith("/tests")
-                    ),
-                    "",
-                )
-                for check in checks
-            ]
-            # A criterion about a merged PR body is bound to a grep over that
-            # body, which exits non-zero when the sentence is absent.
-            body_checks = [
-                check
-                for check in item.get("checks", [])
-                if check.get("check_type") == "command"
-                and check.get("check_value", "").startswith("gh pr view ")
-                and "--json body" in check["check_value"]
-                and "| grep -Eq " in check["check_value"]
-            ]
-            if body_checks:
-                continue
-            assert any(
-                selector
-                and not Path(selector).is_absolute()
-                and (REPO_ROOT / selector).resolve().is_relative_to(REPO_ROOT)
-                and (REPO_ROOT / selector).exists()
-                for selector in selectors
-            ), (
-                f"{label}: binds_ac requires uv run pytest evidence naming an existing repo test file"
-            )
-        assert criteria <= bound, (
-            f"{path.name}: acceptance criteria missing binds_ac: {sorted(criteria - bound)}"
-        )
+        violations.extend(contract_binds_violations(path.name, contract))
+    assert not violations, "\n".join(violations)
+
+
+def test_contract_binds_refuses_a_bound_command_only_deploy_probe() -> None:
+    """A command-only deploy probe is evidence the verifier runs, not a binding."""
+    contract = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-bound-test",
+                "binds_ac": ["AC1"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+                    }
+                ],
+            },
+            {
+                "id": "dod-planted-deploy-probe",
+                "binds_ac": ["AC1"],
+                "checks": [
+                    {
+                        "check_type": "command",
+                        "check_value": "curl -fsSL https://raw.githubusercontent.com/OmniNode-ai/omnimarket/main/pyproject.toml | grep -F '[project]'",
+                    }
+                ],
+            },
+        ],
+    }
+    violations = contract_binds_violations("OMN-0.yaml", contract)
+    assert violations == [
+        "OMN-0.yaml:dod-planted-deploy-probe: binds_ac requires uv run pytest evidence naming an existing repo test file"
+    ]
+
+
+def test_contract_binds_accepts_an_unbound_command_only_deploy_probe() -> None:
+    """The repository's deploy probes carry no binds_ac (OMN-20070)."""
+    contract = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-bound-test",
+                "binds_ac": ["AC1"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+                    }
+                ],
+            },
+            {
+                "id": "dod-planted-deploy-probe",
+                "checks": [
+                    {
+                        "check_type": "command",
+                        "check_value": "curl -fsSL https://raw.githubusercontent.com/OmniNode-ai/omnimarket/main/pyproject.toml | grep -F '[project]'",
+                    }
+                ],
+            },
+        ],
+    }
+    violations = contract_binds_violations("OMN-0.yaml", contract)
+    assert violations == []
 
 
 # OMN-20073: omnibase_core#1884 added the dependency-bot and pin-only writer-app

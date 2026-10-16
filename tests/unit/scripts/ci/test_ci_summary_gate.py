@@ -354,8 +354,8 @@ def test_unlisted_failed_job_fails_via_sweep() -> None:
 def test_allowlisted_shadow_failure_is_tolerated() -> None:
     """An allowlisted advisory/shadow job may fail without failing the gate."""
 
-    # SOFT_ALLOWLIST is empty since OMN-18556; exercise the mechanism with an
-    # explicit allowlist so a future advisory job keeps a tested path.
+    # Exercise the mechanism with an explicit allowlist so the test does not
+    # depend on which advisory jobs production lists.
     allowlisted = "Some Advisory Shadow Job"
     jobs = _healthy_jobs()
     jobs.append(_job(allowlisted, conclusion="failure"))
@@ -834,7 +834,7 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
-    ("validator-runtime-profiles.yml", "occ-preflight"): (
+    ("validator-runtime-profiles.yml", "repo-evidence-preflight"): (
         "internal precondition-wait job; not independently required — "
         "repo-evidence / dod-verify is the real gate and IS asserted (L4)."
     ),
