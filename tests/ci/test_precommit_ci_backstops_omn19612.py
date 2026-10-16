@@ -79,6 +79,11 @@ BACKSTOPS: dict[str, tuple[Path, str, tuple[str, ...]]] = {
         "lint",
         ("scripts/validation/validate_no_env_fallbacks.py",),
     ),
+    "contract-overlay-boundary": (
+        CI_WORKFLOW,
+        "lint",
+        ("scripts/validation/validate_contract_overlay_boundary.py",),
+    ),
     "ruff-format": (
         CI_WORKFLOW,
         "lint",

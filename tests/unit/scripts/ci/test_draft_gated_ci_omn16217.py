@@ -124,8 +124,8 @@ class TestDraftGateWorkflowShape:
             f"got: {or_clause}"
         )
 
-    def test_needs_occ_preflight_unchanged(self) -> None:
-        """The `occ-preflight` dependency must survive every later edit.
+    def test_needs_repo_evidence_dependency_unchanged(self) -> None:
+        """The repo-evidence dependency must survive every later edit.
 
         OMN-16217 itself added no `needs:` edge — it was purely a draft-state
         `if:` addition, and this test originally pinned the edge as the exact
@@ -135,12 +135,15 @@ class TestDraftGateWorkflowShape:
         docs-only diff (a Markdown PR cannot move a coverage census). That is a
         deliberate second dependency, not drift, so the assertion is widened
         from equality to containment — the property OMN-16217 actually cares
-        about is that `occ-preflight` is still upstream of this job, which is
-        what makes its `if:` reachable only for an OCC-eligible PR.
+        about is that the repo-evidence wait is still upstream of this job,
+        which is what makes its `if:` reachable only for a PR whose
+        ``repo-evidence / dod-verify`` passed. OMN-20074 renamed that job's key
+        from ``occ-preflight`` to ``repo-evidence-preflight``; the job and its
+        display name ``Repo Evidence Dependency`` are unchanged.
         """
         needs = _job()["needs"]
         needs_list = [needs] if isinstance(needs, str) else list(needs)
-        assert "occ-preflight" in needs_list, needs_list
+        assert "repo-evidence-preflight" in needs_list, needs_list
 
     def test_red_control_pre_migration_shape_had_no_draft_arm(self) -> None:
         """RED-before control: the job's original condition was a bare

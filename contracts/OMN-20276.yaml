@@ -1,0 +1,67 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20276"
+title: "delegation_events: an idempotent, reversible backfill rewrites the rows that read terminal_ok=false with operational_outcome=completed"
+summary: "Migration 0051 of node_projection_delegation rewrites the historical delegation_events rows that read terminal_ok=false while operational_outcome=completed, keeps each row's prior values in an audit table, and its rollback restores them (omnimarket#3181, vendored by omnibase_infra#4422). AC1, AC2 and AC3 are proven by the real-Postgres backfill tests; the dev-lane readback is an unbound local Done gate check."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20276-backfill-idempotent-reversible"
+    statement: "The backfill rewrites the contradictory rows once, never twice, and its rollback restores them exactly."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: applying the migration twice to a copy of the rows rewrites them on the first run and touches 0 rows on the second -- falsifier: uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -k idempotent -v in omnimarket"
+      - id: "AC2"
+        statement: "AC2: the rollback restores every rewritten row's prior operational_outcome and content_verdict exactly and drops the audit table -- falsifier: uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -k rollback -v in omnimarket"
+      - id: "AC3"
+        statement: "AC3: after the migration applies on the dev lane, the count of delegation_events rows with terminal_ok=false and operational_outcome=completed is 0, with a positive control on the count of rows with terminal_ok=false -- falsifier: a read-only psql count on the dev lane that returns a non-zero contradictory count"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the idempotence and rollback tests run against a disposable Postgres 16."
+    command: "uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -v"
+  - kind: "manual"
+    description: "AC3: read-only dev-lane count of contradictory rows, with a positive control."
+    command: "see dod-omn20276-ac3-dev-lane-contradictory-count"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20276-ac1-ac2-backfill-real-postgres"
+    description: "AC1 and AC2 hosted probe. A disposable Postgres 16 container carries the node's full migration set; the backfill tests then run against it with skips refused: the second forward run touches 0 rows after the first rewrites them, and the rollback restores every rewritten row's prior operational_outcome and content_verdict and drops the audit table. Fails at the merge base of omnimarket#3181, which has no migration 0051 or rollback file."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -k "idempotent or rollback" -v --refuse-skips'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          bash -c 'set -euo pipefail; name="omn20276-pg-$$"; trap "docker rm -f $name >/dev/null" EXIT; docker run -d --name "$name" -e POSTGRES_PASSWORD=disposable20276 -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; port="$(docker port "$name" 5432/tcp | head -n1 | sed "s/.*://")"; for _ in $(seq 1 60); do docker exec "$name" pg_isready -U postgres -d omnibase_infra >/dev/null 2>&1 && break; sleep 1; done; sleep 2; INTEGRATION_POSTGRES_PASSWORD=disposable20276 INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$port" uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -k "idempotent or rollback" -v --refuse-skips'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20276-ac3-contradictory-count-real-postgres"
+    description: "AC3 hosted probe. A disposable Postgres 16 container carries the node's full migration set and a copy of the rows; after the backfill, AC3's own count of rows with terminal_ok=false and operational_outcome=completed reads 0 and its positive control, the count of rows with terminal_ok=false, is unchanged and above 0. Skips refused."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -k contradictory_count -v --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          bash -c 'set -euo pipefail; name="omn20276-pg-$$"; trap "docker rm -f $name >/dev/null" EXIT; docker run -d --name "$name" -e POSTGRES_PASSWORD=disposable20276 -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; port="$(docker port "$name" 5432/tcp | head -n1 | sed "s/.*://")"; for _ in $(seq 1 60); do docker exec "$name" pg_isready -U postgres -d omnibase_infra >/dev/null 2>&1 && break; sleep 1; done; sleep 2; INTEGRATION_POSTGRES_PASSWORD=disposable20276 INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$port" uv run pytest tests/test_omn19559_backfill_migration_real_postgres.py -k contradictory_count -v --refuse-skips'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20276-ac3-dev-lane-contradictory-count"
+    description: "AC3 dev-lane readback, unbound: AC3 binds the hosted probe above, and the local Done gate must execute this check because the hosted runner cannot reach the lab dev lane. A single read-only transaction on the dev lane's omnidash_analytics.delegation_events as postgres: the count of rows with terminal_ok=false and operational_outcome=completed must be 0, and the positive control, the count of rows with terminal_ok=false, must be above 0. The check exits 0 only when both hold and exits 1 when a contradictory row exists or the control reads 0. Read 2026-10-15T16:26Z on the dev lane: contradictory 0, terminal_ok=false 4768, audit table rows 249."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" 'docker exec -i omnibase-infra-postgres psql -X -q -U postgres -d omnidash_analytics -tA' <<'SQL' | grep -Fx 'ok'
+          SET default_transaction_read_only = on;
+          SELECT CASE WHEN (SELECT count(*) FROM delegation_events WHERE terminal_ok IS FALSE AND operational_outcome = 'completed') = 0 AND (SELECT count(*) FROM delegation_events WHERE terminal_ok IS FALSE) > 0 THEN 'ok' ELSE 'fail' END;
+        cwd: "${OMNI_HOME}/omnimarket"

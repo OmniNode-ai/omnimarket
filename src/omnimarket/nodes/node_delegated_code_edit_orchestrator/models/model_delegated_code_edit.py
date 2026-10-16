@@ -225,6 +225,21 @@ class ModelCodeEditAction(BaseModel):
         return self.file_path or self.path or self.glob
 
 
+class ModelDelegatePin(BaseModel):
+    """The routing backend every model turn is pinned to (OMN-20514).
+
+    Resolved from the routing contract before the first turn, so the host a
+    turn will use is known, printed and recorded ahead of the first model call.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    backend_id: str
+    host: str
+    endpoint_url: str
+    model_name: str = ""
+
+
 class ModelTurnReply(BaseModel):
     """What one ``onex delegate`` turn returned."""
 
@@ -305,6 +320,7 @@ __all__ = [
     "ModelCodeEditAction",
     "ModelCodeEditResult",
     "ModelDeclaredCheck",
+    "ModelDelegatePin",
     "ModelDelegatedCodeEditRequest",
     "ModelObservation",
     "ModelTurnReply",

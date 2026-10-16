@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19599"
+title: "The delegate-skill request declares output files and the orchestrator returns a manifest on the terminal"
+summary: "The delegate-skill request declares declared_outputs and its terminal declares output_manifest and output_files; the orchestrator derives the response contract from the declaration and stamps the accepted files and their sha256 manifest on a completed terminal. The projection row per file, the CLI, customer, dashboard, test-loop and patch halves of the epic are separate children and are not claimed here."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+requirements:
+  - id: "req-declared-outputs-return-a-manifest-on-the-terminal"
+    statement: "A delegation that declares output files gets them back as files with a manifest on its completed terminal. The criteria below are the two this change delivers, labelled AC1 and AC2 so each binding item can claim one through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a delegate-skill request that declares output files yields, on its completed terminal, a manifest entry per accepted file whose sha256 equals the sha256 of the returned bytes, a named refusal for a declared file the reply omits, and no manifest on a failed terminal or on a request that declared nothing -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_declared_outputs_omn19599.py -q in omnimarket"
+      - id: "AC2"
+        statement: "AC2: the request and terminal models declare declared_outputs, output_manifest and output_files as optional fields that are absent from the wire when unset, and the wire compatibility gate accepts them against the last released consumer -- falsifier: uv run pytest tests/unit/delegation/test_omn19600_output_files_consumer_first.py -q in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The orchestrator stamps the manifest and files on a completed terminal."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_declared_outputs_omn19599.py -q"
+  - kind: "tests"
+    description: "AC2 hosted probe. The new wire keys are declared, optional and omitted when unset."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn19600_output_files_consumer_first.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19599-ac1-terminal-carries-manifest"
+    description: "AC1 hosted probe. The real delegate-skill handler runs a request that declares two output files against a dispatch port that answers with the files object; the completed terminal carries a manifest entry per file whose sha256 equals the returned bytes, a missing file is a named refusal, and a failed terminal carries no manifest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_declared_outputs_omn19599.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19599-ac2-wire-keys-declared"
+    description: "AC2 hosted probe. The request and terminal models declare the three keys, decode them, and omit them from the wire when unset."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn19600_output_files_consumer_first.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19599-deploy-container-smoke"
+    description: "A disposable container runs the delegate-skill handler and wire-model tests against the checked-out source. It reads back the completed terminal's files and manifest, checks each sha256 against the returned bytes, and checks omitted files, failed terminals and unset wire keys. The hosted runner needs Docker and network access to install the locked dependencies; no deployed lane or private service is required."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/declared-outputs-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen --python 3.12 pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_declared_outputs_omn19599.py tests/unit/delegation/test_omn19600_output_files_consumer_first.py -q --no-cov -p no:randomly -p no:cacheprovider --basetemp=/tmp/declared-outputs-tests
+        cwd: "."

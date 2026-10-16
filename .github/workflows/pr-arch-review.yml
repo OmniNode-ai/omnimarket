@@ -391,10 +391,10 @@ jobs:
 
   # ============================================================================
   # GATE AGGREGATOR
-  # arch-lint is required to pass. (OMN-15057: the occ-preflight cross-check
-  # that used to live here was dropped along with `needs: occ-preflight` --
-  # OCC eligibility is already independently enforced as its own required
-  # status check, `occ-preflight / eligibility`; re-checking it here was
+  # arch-lint is required to pass. (OMN-15057: the preflight cross-check
+  # that used to live here was dropped along with its `needs:` edge -- PR
+  # admission is enforced as its own required status check,
+  # `repo-evidence / dod-verify`; re-checking it here was
   # redundant AND was the exact skip-then-vacuous-green vector -- when the
   # same-file poller job failed, this whole job went `skipped`, which GitHub
   # branch protection treats as passing. See OMN-14668 for the precedent fix.)

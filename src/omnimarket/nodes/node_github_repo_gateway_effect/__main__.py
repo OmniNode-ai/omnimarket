@@ -24,11 +24,11 @@ import argparse
 import json
 import sys
 
-from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
     resolve_github_token,
 )
@@ -63,7 +63,14 @@ def main(argv: list[str] | None = None) -> int:
         "--artifact-id", type=int, default=None, help="Artifact to fetch (bounded)."
     )
     parser.add_argument("--branch", default=None, help="workflow_runs: branch.")
-    parser.add_argument("--head-sha", default=None, help="workflow_runs: head sha.")
+    parser.add_argument(
+        "--head-sha", default=None, help="Head sha (required for commit_check_runs)."
+    )
+    parser.add_argument(
+        "--check-name",
+        default=None,
+        help="commit_check_runs: keep checks of this name.",
+    )
     parser.add_argument("--workflow", default=None, help="workflow_runs: workflow.")
     parser.add_argument("--event", default=None, help="workflow_runs: event.")
     parser.add_argument("--status", default=None, help="workflow_runs: status.")
@@ -87,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         "artifact_id": args.artifact_id,
         "branch": args.branch,
         "head_sha": args.head_sha,
+        "check_name": args.check_name,
         "workflow": args.workflow,
         "event": args.event,
         "status": args.status,

@@ -1,31 +1,70 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-19440"
-title: "The daily terminal join counts dropped terminals and second outcomes per command id"
-summary: "The delegate-skill terminal carries the id of the command that produced it. The daily join reads each command's wire message id and each terminal's command id, and reports per command id the dropped commands, the second logical outcomes, the served replays and the reused correlations. A replay and a reuse are reported as such and are never counted as duplicates."
+title: "The daily terminal join measures dropped and duplicate delegation terminals"
+summary: "The daily job joins the command topic to the terminal topics. It reports the share of correlation ids with a terminal, reports indeterminate when a topic cannot be read, counts dropped terminals and second logical outcomes per command id with a served replay and a reused correlation classified apart from a duplicate, and headlines the duplicates-with-a-single-command figure."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-per-command-join"
-    statement: "The join counts dropped terminals and second logical outcomes per command id, and classifies a served replay and a reused correlation apart from a duplicate."
+  - id: "req-terminal-join-measurement"
+    statement: "The criteria below are transcribed from the ticket body; each id is the label a dod_evidence item claims through binds_ac."
     acceptance:
+      - id: "AC1"
+        statement: "AC1: a scheduled job reads the last 24 hours of the command and terminal topics and publishes the share of correlation ids with a terminal and the count with more than one -- falsifier: a day with a planted command that has no terminal and a planted double terminal for which the job reports neither"
+      - id: "AC2"
+        statement: "AC2: the job reports indeterminate, never zero, when it cannot read a topic -- falsifier: a pytest with an unreadable topic asserting an indeterminate result"
       - id: "AC3"
-        statement: "AC3: a pytest over scripts/delegation_terminal_join.py with a planted served replay and a planted reused correlation asserts zero duplicates, and a planted second outcome asserts one -- falsifier: uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC3CountsPerCommandId"
+        statement: "AC3: once the terminal carries the command id ([OMN-19437](https://linear.app/omninode/issue/OMN-19437) AC4), the job counts dropped terminals and second logical outcomes per command id, and reports a served replay of the recorded terminal as a replay and a reused correlation as a reuse, neither as a duplicate -- falsifier: a pytest over scripts/delegation_terminal_join.py with a planted served replay and a planted reused correlation asserting zero duplicates, plus a planted second outcome asserting one"
+      - id: "AC4"
+        statement: "AC4: until AC3 lands, the published headline duplicate figure is the duplicates-with-a-single-command count, not the per-correlation count -- falsifier: a pytest over the job's published summary asserting the headline field"
 evidence_requirements:
   - kind: "tests"
-    description: "Run the per-command join tests."
+    description: "AC1 hosted probe. A synthetic day with a planted command that has no terminal and a planted double terminal reports both, and the planted controls are removed from the live numbers."
+    command: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC1PlantedDropAndDoubleAreReported"
+  - kind: "tests"
+    description: "AC2 hosted probe. An unreadable command or terminal topic, a retention-truncated window and an empty day each report indeterminate or no commands, never a zero share."
+    command: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC2UnreadableIsIndeterminateNeverZero"
+  - kind: "tests"
+    description: "AC3 hosted probe. A planted served replay and a planted reused correlation add no duplicate and a planted second outcome adds one, per command id."
     command: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC3CountsPerCommandId"
+  - kind: "tests"
+    description: "AC4 hosted probe. The published summary headlines the duplicates-with-a-single-command count and keeps the per-correlation figure as a labelled secondary."
+    command: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC4PublishedSummaryHeadline"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn19440-ac3-per-command"
-    description: "AC3 hosted probe. A planted replay and reuse add no duplicate and a planted second outcome adds one."
+  - id: "dod-omn19440-ac1"
+    description: "AC1 hosted probe. A synthetic day with a planted command that has no terminal and a planted double terminal reports both, and the planted controls are removed from the live numbers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC1PlantedDropAndDoubleAreReported"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19440-ac2"
+    description: "AC2 hosted probe. An unreadable command or terminal topic, a retention-truncated window and an empty day each report indeterminate or no commands, never a zero share."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC2UnreadableIsIndeterminateNeverZero"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19440-ac3"
+    description: "AC3 hosted probe. A planted served replay and a planted reused correlation add no duplicate and a planted second outcome adds one, per command id."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC3CountsPerCommandId"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn19440-ac4"
+    description: "AC4 hosted probe. The published summary headlines the duplicates-with-a-single-command count and keeps the per-correlation figure as a labelled secondary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC4PublishedSummaryHeadline"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
