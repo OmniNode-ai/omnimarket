@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Delegation wire DTOs — canonical source is omnibase_core (OMN-12659).
+"""Delegation wire DTOs with shared primitives from omnibase_core.
 
 Shared platform-primitive models re-exported from omnibase_core.
-Omnimarket-specific projection models remain local.
+Omnimarket-specific configuration and projection models remain local.
 """
 
 from __future__ import annotations
@@ -12,15 +12,6 @@ from __future__ import annotations
 import yaml
 
 # --- Shared models from omnibase_core (canonical source, OMN-12126) ---
-from omnibase_core.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelBifrostDelegationConfig,
-    ModelDelegationBackendConfig,
-    ModelDelegationCircuitBreakerConfig,
-    ModelDelegationFailoverConfig,
-    ModelDelegationFallbackPolicy,
-    ModelDelegationRoutingRule,
-    ModelDelegationShadowConfig,
-)
 from omnibase_core.models.delegation.wire.model_budget import (
     EnumBudgetAction,
     ModelBudgetLimits,
@@ -66,7 +57,18 @@ from omnibase_core.models.delegation.wire.model_task_delegated_event import (
     ModelTaskDelegatedEvent,
 )
 
-# --- Omnimarket-specific projection models (not in core) ---
+# --- Omnimarket-specific configuration and projection models ---
+# The Bifrost loader validates this local DTO family. Keep the public surface
+# identical to that family, including its nested configuration models (OMN-17104).
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelBifrostDelegationConfig,
+    ModelDelegationBackendConfig,
+    ModelDelegationCircuitBreakerConfig,
+    ModelDelegationFailoverConfig,
+    ModelDelegationFallbackPolicy,
+    ModelDelegationRoutingRule,
+    ModelDelegationShadowConfig,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
