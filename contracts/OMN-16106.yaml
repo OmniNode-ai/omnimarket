@@ -14,24 +14,60 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: req-receipt-repo-from-api-path
+    statement: "PASS receipts that name their repository only through a GitHub REST probe can supply a citation, which the gate still verifies as merged in that repository."
+    acceptance:
+      - id: AC1
+        statement: "A commits API path naming the receipt's own commit_sha resolves its repository and preserves the receipt's PR and SHA."
+      - id: AC2
+        statement: "A pulls API path naming the receipt's own pr_number resolves its repository."
+      - id: AC3
+        statement: "The citation check accepts an inferred repository when the receipt's commit belongs to a merged PR in that repository."
 evidence_requirements:
   - kind: tests
     description: "A commit or pulls API path naming the receipt's own commit or PR resolves the repository; any other path resolves nothing; an explicit citation is never joined by an inferred one; an inferred PR that is not merged fails the citation check."
-    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py -q -n 0"
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: dod-omn16106-ac1-commit-api-path
+    description: "AC1: the commit probe supplies the repository, PR number and cited SHA. Fails at the merge base, which extracts no citation."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py::TestReceiptRepoFromGithubApiPath::test_commit_probe_path_names_the_repo -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn16106-ac2-pulls-api-path
+    description: "AC2: the pulls probe supplies the repository for the receipt's PR number. Fails at the merge base, which extracts no citation."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py::TestReceiptRepoFromGithubApiPath::test_pulls_path_for_the_receipt_pr_names_the_repo -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn16106-ac3-merged-citation
+    description: "AC3: the gate accepts the inferred citation after verifying its merged PR and commit membership. Fails at the merge base with no receipt-bound commit."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py::TestReceiptRepoFromGithubApiPath::test_gate_passes_the_citation_on_a_merged_pr -q"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn16106-receipt-repo-from-api-path
     description: "The durable-evidence gate tests pass, including the seven api-path cases; at the merge base the commit-path, pulls-path and merged-citation cases fail."
     source: manual
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py -q -n 0"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_durable_evidence_gate.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn16106-deploy-probe
     description: "Deploy probe: the gate read from GitHub at the checked-out commit defines the api-path repository reader. A head without it fails the probe."
     source: manual
     checks:
       - check_type: command
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def _extract_receipt_repo_from_api_path'"
+        cwd: "${OMNI_HOME}/omnimarket"
