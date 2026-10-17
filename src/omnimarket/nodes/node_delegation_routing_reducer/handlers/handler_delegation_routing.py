@@ -257,6 +257,14 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "existing test suite, and enforce the declared rule precisely — "
         "prefer a hard failure over a silent pass on an unmet condition."
     ),
+    # OMN-17427: the model drafts only the free-text slots; code fills the rest.
+    "brief_drafting": (
+        "You are a lane brief drafting assistant. Draft only the free-text "
+        "slots you are asked for, from the facts given. State only what the "
+        "facts state and never add an identifier they do not hold. Never write "
+        "a ticket-state acknowledgement, a quoted criterion, a constraints "
+        "block or a heading of the standing rules; code fills those."
+    ),
 }
 
 # cloud_routing_policy values that block routing to non-local tiers.

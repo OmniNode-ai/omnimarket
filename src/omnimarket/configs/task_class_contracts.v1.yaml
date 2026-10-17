@@ -716,6 +716,7 @@ execution_budgets:
   summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
 
 # S is value <= s_max, M is <= m_max, L is above. Every class inherits this
 # default; task_classes.<class>.size_band_thresholds may override the same shape.
@@ -2261,3 +2262,56 @@ task_classes:
       tier_order:
         - local
         - claude
+  # OMN-17427: lane brief drafting (experiment exp-brief-drafting-local, 2026-10-17, h202). The lab Qwen
+  # rung drafts the free-text slots of a lane brief and `lane_brief.py check` is the acceptance gate.
+  # `local` is the whole closed ladder: GLM sits in `cheap_cloud` and the experiment found it not usable
+  # for this class, so no tier after `local` is declared and a refused draft is not escalated to one.
+  # A refusal rejects the draft; the next move (regenerate the shell parts in code, redraft once, or
+  # have Claude write the brief) is node_lane_brief_draft_compute's gate. The shell parts (ticket-state
+  # acknowledgements, quoted criteria, the 3a block) are pasted by code, never written by the model.
+  # Internal: the Gateway does not admit it, and no prompt selects it (empty phrases).
+  brief_drafting:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.0
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: blocked
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        # OMN-18297: an identifier the draft states must occur in the fact table it was given.
+        - identifiers_grounded
+        - numbers_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    external_acceptance:
+      checker: "lane_brief.py check"
+      on_refusal: reject_draft
+      free_text_slots:
+        - title
+        - premises
+        - task
+      shell_parts:
+        - header
+        - ticket_state_acknowledgements
+        - quoted_criteria
+        - out_of_scope
+        - standing_rules
+        - constraints_block
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local

@@ -129,6 +129,7 @@ allowed_task_types:
   - escalation
   - documentation
   - validator_generation
+  - brief_drafting
 
 inputs:
   prompt:

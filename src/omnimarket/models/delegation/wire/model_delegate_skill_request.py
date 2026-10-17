@@ -79,6 +79,7 @@ class ModelDelegateSkillRequest(BaseModel):
         "escalation",
         "documentation",
         "validator_generation",
+        "brief_drafting",
     ] = Field(
         ...,
         description=(
