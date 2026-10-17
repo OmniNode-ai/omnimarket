@@ -144,3 +144,29 @@ def test_imperative_contract_guard_required_check_names_its_core_owner() -> None
     assert rows[0]["cross_repo_ref"].startswith(
         "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml@"
     )
+
+
+# The two report-only observer nodes nothing calls any more: their workflow
+# callers were deleted (OMN-20073), no bus producer publishes either command
+# topic in any repository, and no other node imports them.
+DELETED_NODES = (
+    "node_occ_attestation_observe",
+    "node_occ_observation_effect",
+)
+
+
+@pytest.mark.parametrize("name", DELETED_NODES)
+def test_dead_occ_observer_node_is_deleted(name: str) -> None:
+    assert not (ROOT / "src" / "omnimarket" / "nodes" / name).exists()
+    assert not (ROOT / "tests" / "unit" / "nodes" / name).exists()
+    entry_points = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert f"{name} = " not in entry_points
+
+
+def test_dead_occ_observer_node_positive_control() -> None:
+    """The same reads find the companion effect node, which stays until its
+    remaining callers are retired, so the absences above are not an unreadable
+    tree."""
+    assert (ROOT / "src/omnimarket/nodes/node_occ_companion_effect").is_dir()
+    entry_points = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "node_occ_companion_effect = " in entry_points

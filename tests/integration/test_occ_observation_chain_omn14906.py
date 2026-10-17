@@ -2,23 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Integration tests for the OCC observation chain (OMN-14906).
 
-These tests exist because the existing unit/golden-chain suites stub
-``_read_occ_preflight_eligible`` **wholesale** (see
-``tests/unit/nodes/node_occ_attestation_observe/test_attestation_observe.py`` and
-``tests/nodes/node_occ_attestation_observe/test_golden_chain_occ_attestation_observe.py``).
-A stub of the method under test cannot catch a mismatch *inside* that method,
-which is exactly how the ``/commits/{sha}/check-runs`` response-shape defect
-survived: the endpoint returns a JSON **object**
-(``{"total_count": N, "check_runs": [...]}``) but the handler called
-``rest_json_array``, whose list-only contract raised ``GitHubApiError``, which the
-caller swallowed to ``False`` — making ``occ_preflight_eligible`` structurally
-unreachable and therefore N=10 unreachable.
-
-So these tests stub the **HTTP transport** (``urllib.request.urlopen``) and run
-the real ``_read_occ_preflight_eligible`` → real ``omnimarket.github_api`` →
-real ``json`` decode path against the real GitHub payload shape.
-
-They also cover the two remaining links in the chain:
+The attestation observer and its HTTP-transport tests are gone with the node
+(OMN-17427); the two links that remain are covered here:
 
 * the read side must **ERROR** on an ABSENT observation store rather than
   reporting ``raw_record_count=0`` (an absent store is indistinguishable from an
@@ -28,12 +13,7 @@ They also cover the two remaining links in the chain:
 
 from __future__ import annotations
 
-import io
-import json
-import urllib.error
-import urllib.request
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -46,9 +26,6 @@ from omnimarket.events.occ_observation_store import (
     OCC_OBSERVATIONS_ROOT,
     occ_observation_record_relpath,
     render_occ_observation_record,
-)
-from omnimarket.nodes.node_occ_attestation_observe.handlers.handler_occ_attestation_observe import (
-    HandlerOccAttestationObserve,
 )
 from omnimarket.nodes.node_occ_autoauthor_window.handlers.handler_occ_autoauthor_window import (
     HandlerOccAutoauthorWindow,
@@ -69,177 +46,7 @@ _REPO = "OmniNode-ai/omnimarket"
 
 
 # --------------------------------------------------------------------------- #
-# HTTP transport double — the REAL github_api code runs on top of this        #
-# --------------------------------------------------------------------------- #
-
-
-class _FakeResponse(io.BytesIO):
-    """Minimal context-manager stand-in for an ``http.client.HTTPResponse``."""
-
-    def __enter__(self) -> _FakeResponse:
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        self.close()
-
-
-def _install_transport(
-    monkeypatch: pytest.MonkeyPatch, pages: list[dict[str, Any]]
-) -> list[str]:
-    """Serve ``pages`` in order for successive ``urlopen`` calls in github_api.
-
-    Returns the list that accumulates every requested full URL, so tests can
-    assert on pagination behaviour without reaching the network.
-    """
-    requested: list[str] = []
-    remaining = list(pages)
-
-    def _fake_urlopen(req: urllib.request.Request, timeout: float = 0) -> _FakeResponse:
-        requested.append(req.full_url)
-        if not remaining:
-            raise AssertionError(f"unexpected extra request: {req.full_url}")
-        return _FakeResponse(json.dumps(remaining.pop(0)).encode("utf-8"))
-
-    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
-    return requested
-
-
-def _check_run(name: str, conclusion: str | None) -> dict[str, Any]:
-    return {"id": 1, "name": name, "status": "completed", "conclusion": conclusion}
-
-
-def _check_runs_payload(runs: list[dict[str, Any]]) -> dict[str, Any]:
-    """The REAL GitHub ``/commits/{sha}/check-runs`` response shape: an OBJECT."""
-    return {"total_count": len(runs), "check_runs": runs}
-
-
-# --------------------------------------------------------------------------- #
-# Defect 1 — object-shaped check-runs response                                #
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.integration
-def test_preflight_eligible_true_against_real_object_shaped_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """RED before the fix: the real endpoint shape is an object, not an array.
-
-    Pre-fix, ``rest_json_array`` raises ``GitHubApiError('unexpected JSON
-    response type ...')`` on this payload and the caller swallows it to False,
-    so ``occ_preflight_eligible`` can never be True and no streak can ever
-    accumulate. This asserts the successful conclusion is actually read.
-    """
-    _install_transport(
-        monkeypatch,
-        [
-            _check_runs_payload(
-                [
-                    _check_run("some-other-check", "failure"),
-                    _check_run(_PREFLIGHT_CHECK, "success"),
-                ]
-            )
-        ],
-    )
-
-    handler = HandlerOccAttestationObserve()
-    assert handler._read_occ_preflight_eligible(_REPO, _HEAD_SHA, "token") is True
-
-
-@pytest.mark.integration
-def test_preflight_eligible_false_when_check_concluded_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A real failure must read as False for the RIGHT reason (parsed, not raised)."""
-    _install_transport(
-        monkeypatch,
-        [_check_runs_payload([_check_run(_PREFLIGHT_CHECK, "failure")])],
-    )
-
-    handler = HandlerOccAttestationObserve()
-    assert handler._read_occ_preflight_eligible(_REPO, _HEAD_SHA, "token") is False
-
-
-@pytest.mark.integration
-def test_preflight_eligible_false_when_check_never_reported(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Absent check-run → not eligible (fail-safe), still via a parsed response."""
-    _install_transport(
-        monkeypatch,
-        [_check_runs_payload([_check_run("unrelated", "success")])],
-    )
-
-    handler = HandlerOccAttestationObserve()
-    assert handler._read_occ_preflight_eligible(_REPO, _HEAD_SHA, "token") is False
-
-
-@pytest.mark.integration
-def test_preflight_eligible_paginates_over_object_shaped_pages(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Pagination must key off the nested ``check_runs`` list length.
-
-    OMN-14442 is the sibling defect: an unpaginated check-runs query goes GREEN
-    BY TRUNCATION when the interesting run sorts past page 1. Here the preflight
-    check lives on page 2, so a reader that stops after one page reports False.
-    """
-    page_one = _check_runs_payload(
-        [_check_run(f"filler-{i}", "success") for i in range(100)]
-    )
-    page_two = _check_runs_payload([_check_run(_PREFLIGHT_CHECK, "success")])
-    requested = _install_transport(monkeypatch, [page_one, page_two])
-
-    handler = HandlerOccAttestationObserve()
-    assert handler._read_occ_preflight_eligible(_REPO, _HEAD_SHA, "token") is True
-    assert len(requested) == 2
-    assert "page=1" in requested[0]
-    assert "page=2" in requested[1]
-
-
-@pytest.mark.integration
-def test_preflight_eligible_uses_newest_run_for_a_rerun_check(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """GitHub returns one entry per rerun; the last one is the current state."""
-    _install_transport(
-        monkeypatch,
-        [
-            _check_runs_payload(
-                [
-                    _check_run(_PREFLIGHT_CHECK, "failure"),
-                    _check_run(_PREFLIGHT_CHECK, "success"),
-                ]
-            )
-        ],
-    )
-
-    handler = HandlerOccAttestationObserve()
-    assert handler._read_occ_preflight_eligible(_REPO, _HEAD_SHA, "token") is True
-
-
-@pytest.mark.integration
-def test_preflight_eligible_false_on_http_error_is_fail_safe(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A transport failure stays fail-safe (report-only gate never raises)."""
-
-    def _raise(req: urllib.request.Request, timeout: float = 0) -> None:
-        raise urllib.error.HTTPError(
-            req.full_url,
-            404,
-            "Not Found",
-            {},
-            io.BytesIO(b"missing"),  # type: ignore[arg-type]
-        )
-
-    monkeypatch.setattr(urllib.request, "urlopen", _raise)
-
-    handler = HandlerOccAttestationObserve()
-    assert handler._read_occ_preflight_eligible(_REPO, _HEAD_SHA, "token") is False
-
-
-# --------------------------------------------------------------------------- #
-# Defect 2 — absent observation store must ERROR, not read as zero            #
+# Absent observation store must ERROR, not read as zero                       #
 # --------------------------------------------------------------------------- #
 
 
