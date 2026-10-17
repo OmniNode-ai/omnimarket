@@ -1,6 +1,6 @@
 name: node_prod_promotion_grant_resolver_effect
 version: "1.0.0"
-description: "Resolve the prod promotion grant from onex_change_control@main."
+description: "Resolve the prod promotion grant from omninode_infra@main."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
