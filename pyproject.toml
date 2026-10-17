@@ -698,6 +698,7 @@ node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effec
 node_pr_lifecycle_worktree_prune_effect = "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect"
 node_verification_sweep_orchestrator = "omnimarket.nodes.node_verification_sweep_orchestrator"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup"
+node_lab_history_archive_effect = "omnimarket.nodes.node_lab_history_archive_effect"
 node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scanner"
 node_linear_triage = "omnimarket.nodes.node_linear_triage"
 node_autopilot_orchestrator = "omnimarket.nodes.node_autopilot_orchestrator"
@@ -979,6 +980,10 @@ seed = "omnimarket.cli.cli_seed:seed_command"
 # the bus; the rest publish the node's typed command and wait for its terminal
 # event. Discovered over installed distributions like the groups above.
 scm = "omnimarket.handlers.scm.scm_cli:scm_group"
+# OMN-17427: `onex lab-archive` -- archive lab history older than seven days to Drive
+# under a CPU, IO and bandwidth budget, then free the local copy. A shim over
+# node_lab_history_archive_effect, discovered over installed distributions like the groups above.
+lab-archive = "omnimarket.nodes.node_lab_history_archive_effect.cli:lab_archive_group"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
