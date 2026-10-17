@@ -156,6 +156,11 @@ requirements:
       - id: "AC30"
         statement: "AC30: the canonical internal release-path check refuses an internal release strategy or instruction, accepts a git pin, blocks lab-fill dispatch before file writes and controller worker/cause briefs before construction, and runs through its contract-declared bus topics -- falsifier: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q fails at the merge base"
 
+  - id: "req-git-mirror-sync-on-runtime-tick"
+    statement: "Plan step 5.0 (mirror path): node_git_mirror_sync_schedule_compute turns the runtime tick into a detecting sync request for one watched repository per window on onex.cmd.omnimarket.git-query-mirror-requested.v1, node_git_query_mirror_effect subscribes to that topic so the runtime wires it instead of skipping it, and the mirror's query response is its terminal event on onex.evt.omnimarket.git-query-mirror-completed.v1, never the pr-merged topic."
+    acceptance:
+      - id: "AC29"
+        statement: "AC29: wire_from_manifest wires node_git_query_mirror_effect with no skip, a window tick through the runtime publishes one sync request that ModelGitQueryRequest accepts as a detecting sync of OmniNode-ai/omnimarket, an off-window tick publishes nothing, watched repositories take turns, and the mirror's terminal_event is the completed topic -- falsifier: uv run pytest tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q fails with the mirror contract at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -639,3 +644,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+  - id: "dod-omn19998-git-mirror-sync-schedule"
+    description: "The git mirror sync schedule golden chain passes at the head; at the merge base the mirror contract declares no subscribe topic and no terminal event, so the wiring, topic and terminal-event tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
