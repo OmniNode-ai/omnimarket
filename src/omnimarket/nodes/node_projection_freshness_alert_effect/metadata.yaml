@@ -1,0 +1,22 @@
+name: projection_freshness_alert_effect
+version: "1.0.0"
+description: >
+  Reads contract-declared supply and demand projections on the existing runtime
+  heartbeat and publishes stale findings through the canonical Slack effect.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+  # The shared read-only Postgres boundary owns the sync driver import.
+  - "psycopg2-binary>=2.9"
+tags: [effect, observability, alerting, freshness]
+pack: "data"
+display_name: "Effect: Projection Freshness Alert"
+node_role: "effect"

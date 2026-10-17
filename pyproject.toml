@@ -568,6 +568,7 @@ node_projection_routing_decision = "omnimarket.nodes.node_projection_routing_dec
 node_projection_pattern_learning = "omnimarket.nodes.node_projection_pattern_learning"
 node_projection_traces = "omnimarket.nodes.node_projection_traces"
 node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
+node_projection_freshness_alert_effect = "omnimarket.nodes.node_projection_freshness_alert_effect"
 node_projection_consumer_flow = "omnimarket.nodes.node_projection_consumer_flow"
 node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attempt_outcome"
 node_projection_delegation_eval = "omnimarket.nodes.node_projection_delegation_eval"
