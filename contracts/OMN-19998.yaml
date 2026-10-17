@@ -145,6 +145,11 @@ requirements:
     acceptance:
       - id: "AC27"
         statement: "AC27: HandlerPrMergedProjection upserts on (repo, pr_number), so replaying one merged event, or the same merge under a new event_id, yields one row while the same pr_number in two repositories yields two, and migration 0003 deletes all but the lowest projection_cursor row per (repo, pr_number) before adding UNIQUE (repo, pr_number) -- falsifier: at the merge base the new-event_id replay leaves two rows and the 0003 migration file does not exist"
+  - id: "req-lab-claude-token-rotation-node"
+    statement: "Claude-token rotation for lab hosts is an omnimarket node in canonical shape (contract, node, handler) with an onex CLI verb: the token is read from stdin only, stored under a per-host, per-account secret-store reference, deployed mode 0600, probed with placement's limit re-probe question, and a limited host is rotated onto a spare pool account with headroom; no script, argv, result, event or line carries a token value."
+    acceptance:
+      - id: "AC28"
+        statement: "AC28: node_lab_claude_token_effect, against a fake host and a fake store, stores, deploys and probes a set token and removes the host's .limited marker on an answer, restores the previous token on the host and in the store on a limit notice or failed deploy, rotates a limited host onto the first spare that answers and records the rotation event, says no-spare once per marker, and onex lab claude-token takes no token argument and never echoes the piped token -- falsifier: uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -605,3 +610,32 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'import importlib.metadata as m, json; from omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection import CONFLICT_KEY; d=json.loads(m.distribution("omnibase-infra").read_text("direct_url.json") or "{}"); assert d.get("vcs_info", {}).get("vcs") == "git" and len(d["vcs_info"]["commit_id"]) == 40; assert CONFLICT_KEY == "repo,pr_number"'
+  - id: "dod-omn19998-lab-claude-token-node"
+    description: "The handler and CLI tests pass at the head against a fake host and a fake store; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC28"]
+  - id: "dod-omn19998-lab-claude-token-deploy-probe"
+    description: "Hosted-runner probe reads the token handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_claude_token_effect/handlers/handler_lab_claude_token.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerLabClaudeToken'
+  - id: "dod-omn19998-lab-claude-token-local-discovery"
+    description: "The inventory discovers the token node and validates its typed local invocation at the head. The inventory test is generic and also passes at the merge base, so this item carries no binds_ac; AC28 is bound by the node's own handler and CLI tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q -k test_market_node_runtime_dogfood_inventory_classifies_all_entry_points"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-claude-token-discovery-deploy-probe"
+    description: "Hosted-runner readback loads the installed node entry point and validates the local contract's handler models, trigger, empty bus topics and runtime profiles; the dispatch head has no node entry point and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.metadata import entry_points; from scripts.audit.market_node_runtime_dogfood import _contract_for, _local_invocation_check; n="node_lab_claude_token_effect"; e=next(e for e in entry_points(group="onex.nodes") if e.name == n); assert e.load().__name__ == "omnimarket.nodes." + n; assert _local_invocation_check(_contract_for(n)) == (True, "")'
