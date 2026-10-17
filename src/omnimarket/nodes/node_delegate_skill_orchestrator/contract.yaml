@@ -91,10 +91,11 @@ outputs:
     type: int
     required: false
     default: 1
-    minimum: 1
+    minimum: 0
     description: >
       Authoritative total inference calls, including compliance repairs,
-      same-tier retries, and the terminal attempt.
+      same-tier retries, and the terminal attempt. Zero is reserved for a
+      request refused before dispatch; an omitted count retains one.
   queue_wait_ms:
     type: int
     required: false
