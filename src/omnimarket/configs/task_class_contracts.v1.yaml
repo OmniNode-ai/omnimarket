@@ -553,6 +553,27 @@ quality_rules:
       Reject-only grounding. A number absent from the input is fabricated
       content that no score can make usable; it can fail a response and
       never promote one.
+  # OMN-17427: the draft's entries against the criteria it was built from.
+  criteria_covered:
+    enforcement: blocking
+    model_directive: >-
+      Write one entry per acceptance criterion, in the order given, each
+      opening with its label exactly as given (AC1, AC2, ...). Do not add,
+      merge or drop an entry.
+    rationale: >-
+      Reject-only. A comment that skips or reorders a criterion cannot be
+      checked against the criteria by the lane that reads it.
+  entry_cites_evidence:
+    enforcement: blocking
+    model_directive: >-
+      In each entry, cite what the lane report states for that criterion: an
+      identifier, test or file name, count or timestamp copied from it. If the
+      report holds none, write exactly: no evidence in the lane report. Do not
+      restate the criterion as if it were the evidence.
+    rationale: >-
+      Reject-only. An entry with no token of the report is the criterion
+      restated or an inference; a draft that reads as evidence of done must
+      carry the report's own evidence.
 
 # ===========================================================================
 # reasoning_preamble — where a leaked scratchpad ends and the answer begins
@@ -716,6 +737,7 @@ execution_budgets:
   summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  evidence_comment: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
 
 # S is value <= s_max, M is <= m_max, L is above. Every class inherits this
 # default; task_classes.<class>.size_band_thresholds may override the same shape.
@@ -1353,6 +1375,62 @@ task_classes:
         - local
         - cheap_frontier
         - cheap_cloud
+  # OMN-17427: drafts of Linear done-evidence comments from a lane report plus
+  # the ticket's acceptance criteria (experiment of 2026-10-17: 54 drafts over 18
+  # lane reports, 0 invented ids, shas, counts or file names; wall time about 50
+  # s on the lab rung). A DRAFT the lane verifies, never an auto-post. Internal:
+  # never resolved from a prompt, only named with `--task-type evidence_comment`.
+  # The prompt carries an `=== ACCEPTANCE CRITERIA ===` block of `AC<n>: <text>`
+  # lines and an `=== LANE REPORT ===` block (the gate node's contract.yaml,
+  # `evidence_comment`, states the layout both new checks read).
+  #
+  # LOCAL ONLY. The lane report is internal, so cloud routing is blocked and the
+  # ladder is the lab rung alone; the second try of a refused or thin draft is the
+  # lane's own GLM call through Claude Code, outside this ladder (the direct
+  # cloud-glm rung of `onex delegate` is retired).
+  #
+  # The caller, not the model, appends the report's verdict and caveat lines
+  # verbatim: all three rungs of the experiment dropped them (a BLOCKED report
+  # drafted as evidence of done). No check here can see that omission.
+  evidence_comment:
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: blocked
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        # OMN-18297, OMN-19529, OMN-19199: an identifier, number or state the
+        # report does not hold is an invented fact about a real ticket.
+        - identifiers_grounded
+        - numbers_grounded
+        - claims_grounded
+        # OMN-17427: each criterion label opens exactly one entry, in order.
+        - criteria_covered
+        # OMN-17427: an entry cites a token of the report (or says the report
+        # holds none) and does not restate its criterion. The document gate
+        # scored 1.0 on drafts that did both in the experiment.
+        - entry_cites_evidence
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local
   research:
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first

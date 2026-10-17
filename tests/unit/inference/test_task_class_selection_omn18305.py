@@ -69,7 +69,7 @@ class TestEveryClassDeclaresItsPredicate:
     def test_the_contract_loads_with_a_selection_on_every_class(self) -> None:
         """``selection`` is a required field, so loading at all proves this."""
         authority = load_task_class_authority()
-        assert len(authority.task_classes) == 15
+        assert len(authority.task_classes) == 16
         assert all(
             entry.selection is not None for entry in authority.task_classes.values()
         )

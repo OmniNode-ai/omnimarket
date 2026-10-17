@@ -235,6 +235,11 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are an expert assistant handling a complex task that requires deep "
         "reasoning and careful consideration. Approach this methodically."
     ),
+    "evidence_comment": (
+        "You are an evidence-comment drafting assistant. For each acceptance "
+        "criterion, state only what the lane report says about it, citing the "
+        "report's own identifiers, names, counts and timestamps."
+    ),
     "complex_reasoning": (
         "You are an expert reasoning assistant. Analyze the problem deeply, "
         "consider edge cases, and provide a comprehensive solution."
