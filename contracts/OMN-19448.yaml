@@ -133,5 +133,5 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c 'set -eu; grep -Fq "EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH" src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py'
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; grep -Fq EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py"'
         cwd: "${OMNI_HOME}/omnimarket"
