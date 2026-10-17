@@ -128,6 +128,16 @@ requirements:
     acceptance:
       - id: "AC24"
         statement: "AC24: the runner fallback guard accepts hosted and fleet trusted defaults and refuses self-hosted public defaults, unknown labels, incomplete fleet labels and empty labels; the workflow checks still pass -- falsifier: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q fails at the merge base because the hosted fallback guard does not exist"
+  - id: "req-omn19998-public-runner-placement"
+    statement: "Operator RULING 2026-10-16T07:07:09Z: CI runners are for private repositories only. omnimarket is public, so no workflow routing fallback may name the self-hosted fleet except the two lab carve-outs (OMNI_REVIEW_RUNS_ON_JSON, OMNI_PR_MERGED_PUBLISHER_RUNS_ON_JSON), and omnibase_core's check-public-runner-placement runs as a CI Summary registered job and as a pre-commit hook at one core pin."
+    acceptance:
+      - id: "AC25"
+        statement: "AC25: no workflow line outside the two carve-outs carries the self-hosted fleet fallback, the Public Runner Placement job is unconditional, hosted, carries a positive control and the same core pin as the hook, and CI Summary registers it -- falsifier: uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q fails at the merge base, where 18 fallback lines name the fleet and neither the job nor the hook exists"
+  - id: "req-pr-merged-projection-reads-watcher-merges"
+    statement: "node_pr_merged_projection also subscribes to onex.evt.omnimarket.repo-merged.v1, which the PR watcher publishes for every merge it observes, and folds each merged event into one pr_merged_events row keyed by the shared (repo, pr_number, merge sha) event id, so the merged-PR feed does not depend on the Actions publisher or the webhook path."
+    acceptance:
+      - id: "AC26"
+        statement: "AC26: a repo-merged event dispatched to HandlerPrMergedProjection.handle with _topic onex.evt.omnimarket.repo-merged.v1 writes one row with event_id pr_merged_event_id(repo, pr_number, merge_sha) and branch refs/pull/<n>/head, a replay or the git mirror's pr-merged event for the same merge leaves one row, an open or closed state writes nothing, and the contract declares the subscription -- falsifier: uv run pytest tests/test_omn19998_pr_merged_projection_repo_merged.py -q fails with the handler and contract at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -138,6 +148,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The committed dep-health allowlist has no expired row."
     command: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries"
+  - kind: "tests"
+    description: "The placement tests read every workflow file for the fleet fallback, the ci.yml job, .pre-commit-config.yaml and the CI Summary gate list."
+    command: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -525,3 +538,32 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q -k test_runner_fallback_guard_accepts_hosted_and_fleet_seams"
+  - id: "dod-omn19998-ac22-public-runner-placement"
+    description: "AC25 tests read the workflows, the CI job, the pre-commit hook and the CI Summary gate list."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC25"]
+  - id: "dod-omn19998-public-runner-placement-deploy-probe"
+    description: "Hosted-runner probe requires hosted routing fallbacks and the registered runner-placement CI job and hook; the merge base lacks them and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
+  - id: "dod-omn19998-pr-merged-projection-repo-merged"
+    description: "The repo-merged fold tests pass at the head; at the merge base the handler reads a repo-merged payload as a pr-merged event and the contract does not subscribe to the topic, so the tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19998_pr_merged_projection_repo_merged.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC26"]
+  - id: "dod-omn19998-watcher-merge-deploy-probe"
+    description: "Hosted-runner probe reads the projection contract at this commit and requires the repo-merged subscription; the base subscribes only to the pr-merged topic and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_merged_projection/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^    - onex.evt.omnimarket.repo-merged.v1$'

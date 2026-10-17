@@ -1,32 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""A merge event, the refresh request a host derives from a burst of them, and its receipt
-(OMN-20496)."""
+"""The refresh request a host derives from a burst of merge events, and its receipt
+(OMN-20496). The merge event itself, ``ModelRepoMerged``, is shared from
+``omnimarket.models.model_repo_merged`` (OMN-19998) and re-exported here."""
 
-import re
-from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ALLOWED_OWNER = "OmniNode-ai"
-_REPO_RE = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$")
-_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-
-
-def _repo(value: str) -> str:
-    if not _REPO_RE.match(value):
-        raise ValueError(f"repo must be owner/name: {value!r}")
-    if value.split("/", 1)[0] != ALLOWED_OWNER:
-        raise ValueError(f"repo owner must be {ALLOWED_OWNER}: {value!r}")
-    return value
-
-
-def _sha(value: str) -> str:
-    if not _SHA_RE.match(value):
-        raise ValueError(f"sha must be 40 lowercase hex: {value!r}")
-    return value
+from omnimarket.models.model_repo_merged import ModelRepoMerged
+from omnimarket.models.model_repo_merged import validate_git_sha as _sha
+from omnimarket.models.model_repo_merged import validate_repo_slug as _repo
 
 
 class EnumCanonicalCloneRefreshStatus(StrEnum):
@@ -37,30 +21,6 @@ class EnumCanonicalCloneRefreshStatus(StrEnum):
     REFUSED = "refused"
     FAILED = "failed"
     NO_CLONE = "no_clone"
-
-
-class ModelRepoMerged(BaseModel):
-    """A pull request merged into a repository branch: the event every host's clone follows."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    repo: str = Field(description="owner/name on GitHub")
-    base: str = Field(min_length=1, max_length=255)
-    merge_sha: str
-    pr_number: int = Field(ge=1)
-    merged_at: Annotated[datetime, AwareDatetime]
-    source: str = Field(min_length=1, max_length=64)
-    state: Literal["merged", "open", "closed"] = "merged"
-
-    @field_validator("repo")
-    @classmethod
-    def _check_repo(cls, value: str) -> str:
-        return _repo(value)
-
-    @field_validator("merge_sha")
-    @classmethod
-    def _check_sha(cls, value: str) -> str:
-        return _sha(value)
 
 
 class ModelCanonicalCloneRefreshRequest(BaseModel):
@@ -107,3 +67,12 @@ class ModelCanonicalCloneRefreshTopics(BaseModel):
 
     merged: str
     receipt: str
+
+
+__all__ = [
+    "EnumCanonicalCloneRefreshStatus",
+    "ModelCanonicalCloneRefreshReceipt",
+    "ModelCanonicalCloneRefreshRequest",
+    "ModelCanonicalCloneRefreshTopics",
+    "ModelRepoMerged",
+]

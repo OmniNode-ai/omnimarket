@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ai.omninode.retention-cleanup - the host's one retention timer. Once a day it
+  runs node_retention_cleanup with --files: the contract's file_retention paths
+  on this host, plus the declared tables when OMNIDASH_ANALYTICS_DB_URL is set.
+  Replace __HOME__, __OMNI_HOME__, __OMNIMARKET_DIR__ (a clean omnimarket
+  checkout on dev) and __ARCHIVE_ROOT__ (the folder archive entries copy into;
+  on the host that syncs Google Drive, the 'OmniNode Lab Archive' folder under
+  its CloudStorage mount) before loading it. With no archive root, an archive
+  entry removes nothing. StartCalendarInterval fires a missed slot on wake.
+  Each run prints one JSON result: files and bytes removed and archived per item.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.omninode.retention-cleanup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>cd "__OMNIMARKET_DIR__" &amp;&amp; exec env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retention_cleanup --files</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>20</integer></dict>
+
+  <key>StandardOutPath</key>
+  <string>__OMNI_HOME__/.onex_state/retention-cleanup/run.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__OMNI_HOME__/.onex_state/retention-cleanup/run.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>OMNI_HOME</key>
+    <string>__OMNI_HOME__</string>
+    <key>ONEX_RETENTION_ARCHIVE_ROOT</key>
+    <string>__ARCHIVE_ROOT__</string>
+  </dict>
+
+  <key>Nice</key>
+  <integer>10</integer>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

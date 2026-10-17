@@ -33,8 +33,8 @@ that assertion ever proved.
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
-import os
 import shutil
 import subprocess
 import sys
@@ -1833,32 +1833,31 @@ def _sibling_occ_package(src: Path) -> Iterator[None]:
         sys.modules.update(saved)
 
 
-def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
-    """Import an onex_change_control gate script from a sibling checkout, or None.
+# OMN-17427: the onex_change_control gate scripts these tests drove are ported
+# into omnibase_core, which holds the ports to the originals with a recorded
+# parity corpus (tests/unit/handlers/test_occ_contract_checks_parity.py there).
+# Each script path maps to its core port, so no onex_change_control checkout is
+# needed and nothing skips.
+_CORE_PORTS = {
+    "scripts/lint_contract_check_values.py": (
+        "omnibase_core.handlers.handler_contract_check_values_lint"
+    ),
+    "scripts/validation/check_contract_substance_floor.py": (
+        "omnibase_core.handlers.handler_contract_substance_floor"
+    ),
+    "src/onex_change_control/scripts/contract_compliance_check.py": (
+        "omnibase_core.handlers.handler_contract_compliance_check"
+    ),
+    "src/onex_change_control/validation/evidence_admissibility.py": (
+        "omnibase_core.handlers.handler_evidence_admissibility"
+    ),
+}
 
-    CLAUDE.md OMN-14208 requires a real cross-boundary regression test driving
-    the ACTUAL seam — two independent unit suites would not catch a mismatch
-    here. The golden gate workflow clones onex_change_control so this runs for
-    real in CI; locally it skips when the sibling checkout is absent.
-    """
-    root = Path(os.environ.get("OCC_REPO_DIR", "../onex_change_control")).resolve()
-    target = root / relpath
-    if not target.is_file():
-        return None
-    src = root / "src"
-    if str(src) not in sys.path:
-        sys.path.insert(0, str(src))
-    spec = importlib.util.spec_from_file_location(name, target)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    # Register BEFORE exec: ``dataclasses`` resolves a field's annotation via
-    # ``sys.modules[cls.__module__]``, which is None for an unregistered module
-    # and raises AttributeError mid-import.
-    sys.modules[name] = module
-    with _sibling_occ_package(src):
-        spec.loader.exec_module(module)
-    return module
+
+def _load_occ_module(relpath: str, name: str) -> ModuleType:
+    """Import the omnibase_core port of an onex_change_control gate script."""
+    del name  # the core module carries its own name
+    return importlib.import_module(_CORE_PORTS[relpath])
 
 
 @pytest.mark.unit
@@ -1885,8 +1884,6 @@ class TestConsumerGateParity:
         module = _load_occ_module(
             "scripts/lint_contract_check_values.py", "occ_lint_check_values"
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         violations = module.lint_contract(content_bound_contract)
         assert violations == [], f"lint-contract-check-values rejects: {violations}"
 
@@ -1897,8 +1894,6 @@ class TestConsumerGateParity:
             "scripts/validation/check_contract_substance_floor.py",
             "occ_substance_floor",
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         downstream = _contract_check_values(content_bound_contract)[0]
         tier = module.derive_proof_tier("command", downstream)
         assert tier.value == "L1", f"expected L1 for {downstream!r}, got {tier}"
@@ -1910,8 +1905,6 @@ class TestConsumerGateParity:
             "src/onex_change_control/scripts/contract_compliance_check.py",
             "occ_compliance_check",
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         downstream = _contract_check_values(content_bound_contract)[0]
         assert module._is_inert_check(downstream) is False
         assert (
@@ -1929,8 +1922,6 @@ class TestConsumerGateParity:
             "src/onex_change_control/scripts/contract_compliance_check.py",
             "occ_compliance_check",
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         downstream = _contract_check_values(content_bound_contract)[0]
         substituted = module._substitute_tokens(
             downstream,

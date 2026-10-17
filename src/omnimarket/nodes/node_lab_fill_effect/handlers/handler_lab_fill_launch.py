@@ -33,6 +33,10 @@ from .helpers_lab_fill_effect import default_clock, iso_utc
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
 _DELEGATION_MARK = "3a.9 Delegation"
 _RECEIPT = re.compile(r"receipt=(\S+)")
+# The runner's own check of the brief, before anything is placed: a lab lane that mints a
+# ticket, a time limit past the default with no reason line. The brief, not the host, is
+# what is wrong, so the same brief is refused again.
+_BRIEF_CHECK = re.compile(r"REMOTE-LANE-(?:MINT|TIMEOUT)-REFUSED\b.*")
 _TIMED_OUT = 124
 
 
@@ -244,6 +248,21 @@ class HandlerLabFillLaunch:
                 receipt=match.group(1),
                 brief_has_delegation=has_delegation,
                 detail=detached_line[:300],
+            )
+        refused = next(
+            (
+                m.group(0)
+                for ln in (*lines, *outcome.stderr.splitlines())
+                if (m := _BRIEF_CHECK.search(ln))
+            ),
+            "",
+        )
+        if refused:
+            return result(
+                detached=False,
+                skipped="brief-check-refused",
+                brief_has_delegation=has_delegation,
+                detail=refused[:300],
             )
         tail_lines = lines[-2:] or [outcome.stderr.strip()[-200:]]
         return result(

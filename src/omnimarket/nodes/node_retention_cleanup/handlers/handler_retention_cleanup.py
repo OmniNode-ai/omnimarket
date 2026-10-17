@@ -38,6 +38,13 @@ Schedule (OMN-17427): the platform runtime tick runs the cleanup once per
 ``schedule.run_interval_seconds`` against the database named by the
 contract's ``schedule.database_url_env``, and the run's result is published on
 the completed topic, one event per run with rows removed per table.
+
+File retention (OMN-17427): a run with ``include_files`` also retires the
+contract's ``retention_policy.file_retention`` paths through
+``NodeFileRetention`` and adds files and bytes removed and archived to the same
+completed event, so one timer per host covers the tables and the files. The
+runtime tick does not set it: the file paths belong to the host, so the host's
+timer runs ``python -m omnimarket.nodes.node_retention_cleanup --files``.
 """
 
 from __future__ import annotations
@@ -53,6 +60,13 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
+    FileRetentionEntry,
+    FileRetentionRequest,
+    FileRetentionResult,
+    NodeFileRetention,
+    load_file_policy,
+)
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_rls_read_tenant,
@@ -212,6 +226,21 @@ class RetentionCleanupRequest(BaseModel):
         default="",
         description="PostgreSQL connection URL; empty = skip DB operations",
     )
+    include_files: bool = Field(
+        default=False,
+        description="Also retire the contract's file_retention paths on this host",
+    )
+    file_entries: list[FileRetentionEntry] | None = Field(
+        default=None, description="Override the contract's file entries (tests)"
+    )
+    file_only: tuple[str, ...] = Field(
+        default_factory=tuple, description="Run only these file entries; empty = all"
+    )
+    file_now: dt.datetime | None = None
+    file_host: str = ""
+    file_archive_root: str = Field(
+        default="", description="Archive tree; empty = the contract's archive_root_env"
+    )
 
 
 class RetentionTableResult(BaseModel):
@@ -232,6 +261,11 @@ class RetentionCleanupResult(BaseModel):
     total_deleted: int = Field(default=0)
     dry_run: bool = Field(default=False)
     message: str = Field(default="")
+    files: FileRetentionResult | None = None
+    files_removed: int = Field(default=0)
+    bytes_removed: int = Field(default=0)
+    files_archived: int = Field(default=0)
+    bytes_archived: int = Field(default=0)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +305,55 @@ class NodeRetentionCleanup:
             if gated is None:
                 return None
             request = gated
-        return self._run(request)
+        result = self._run(request)
+        if not request.include_files:
+            return result
+        return self._with_files(result, request)
+
+    def _with_files(
+        self, result: RetentionCleanupResult, request: RetentionCleanupRequest
+    ) -> RetentionCleanupResult:
+        policy = load_file_policy()
+        archive_root = request.file_archive_root or os.environ.get(
+            policy.archive_root_env, ""
+        )
+        files = NodeFileRetention().handle(
+            FileRetentionRequest(
+                entries=request.file_entries
+                if request.file_entries is not None
+                else policy.entries,
+                now=request.file_now or dt.datetime.now(dt.UTC),
+                dry_run=request.dry_run,
+                host=request.file_host,
+                archive_root=archive_root,
+                synced_marker=policy.synced_marker_xattr,
+                only=request.file_only,
+            )
+        )
+        failed = [i for i in files.items if i.status == "error"]
+        status = result.status
+        if status == EnumCleanupStatus.NO_DB:
+            status = (
+                EnumCleanupStatus.DRY_RUN if request.dry_run else EnumCleanupStatus.OK
+            )
+        if failed:
+            status = EnumCleanupStatus.ERROR
+        verb = "would retire" if request.dry_run else "retired"
+        return result.model_copy(
+            update={
+                "status": status,
+                "files": files,
+                "files_removed": files.files_removed,
+                "bytes_removed": files.bytes_removed,
+                "files_archived": files.files_archived,
+                "bytes_archived": files.bytes_archived,
+                "message": (
+                    f"{result.message}; files: {verb} {files.files_removed} files, "
+                    f"{files.bytes_removed} bytes, archived {files.bytes_archived} bytes"
+                    + (f"; {len(failed)} entries failed" if failed else "")
+                ),
+            }
+        )
 
     def _gate_scheduled_run(
         self, tick: ModelRuntimeTick

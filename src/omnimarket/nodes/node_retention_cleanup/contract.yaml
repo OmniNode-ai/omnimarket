@@ -2,12 +2,12 @@
 name: retention_cleanup
 contract_version:
   major: 1
-  minor: 3
+  minor: 4
   patch: 0
 node_type: effect
 node_version:
   major: 1
-  minor: 2
+  minor: 3
   patch: 0
 description: >
   Prunes stale records from projection tables per declarative retention policy.
@@ -18,7 +18,10 @@ description: >
   transaction each. Runs once per schedule.run_interval_seconds on the
   platform runtime tick of each lab runtime, and publishes one completed event
   per run with rows removed per table. Ledger, credential, tenant registry and
-  migration history tables are refused at load.
+  migration history tables are refused at load. The same contract declares
+  the lab hosts' unbounded file paths (retention_policy.file_retention), each
+  with the keep window its readers set; the host timer runs them with the
+  tables and the completed event carries files and bytes removed and archived.
 handler:
   module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
   class: NodeRetentionCleanup
@@ -88,6 +91,108 @@ retention_policy:
       # No index leads with window_start; the unique cursor index rises with
       # insertion, so each batch reads the oldest rows first.
       batch_order_column: projection_cursor
+  # File retention (OMN-17427). Paths belong to the host the timer runs on;
+  # a path that is absent there is skipped. keep_days has a floor of 7: nothing
+  # modified in the last week is touched. A unit (a file, or a directory matched
+  # by `pattern`) goes only when every file in it is older than keep_days.
+  # `archive` compresses into <archive_root>/<host>/<name>/, reads the copy back
+  # and compares checksums, and removes the local unit only then. The archive
+  # tree is the directory named by archive_root_env (the Google Drive folder on
+  # the host that syncs it); with none, an archive entry removes nothing.
+  # Unit directories that hold a .git entry are git worktrees; onex-lane-closeout
+  # owns those and retention skips them. Memory directories, symlinks and the
+  # live ledger are never touched.
+  #
+  # Sync check: Google Drive for desktop sets the com.google.drivefs.item-id
+  # extended attribute on a file once Drive has registered it. An archive copy
+  # that lacks it keeps its local unit; the next run finds the verified copy,
+  # reads it back again and removes the unit once the attribute is there.
+  file_retention:
+    archive_root_env: ONEX_RETENTION_ARCHIVE_ROOT
+    synced_marker_xattr: com.google.drivefs.item-id
+    entries:
+      # Readers: the lane that ran the ledger verb reads the detail= path in the
+      # refusal within the session. Nothing reads one later.
+      - name: ledger-detail
+        path: $OMNI_HOME/.claude_scratch/ledger-detail
+        pattern: "*"
+        keep_days: 7
+        action: archive
+        readers: [onex-ledger verb output, read in the same session]
+        consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
+      # Readers: a ledger TERMINAL cell worktree=pinned-removed:<path>@<archive>
+      # cites a pin, and a person restores from one by hand after a lane stops.
+      # Two weeks covers a lane's review and re-dispatch cycle.
+      - name: worktree-pins
+        path: $OMNI_HOME/.onex_state/worktree-pins
+        pattern: "*/*"
+        keep_days: 14
+        action: archive
+        readers: [ledger TERMINAL worktree=pinned-removed cell, manual restore of unpushed work]
+      # Readers: prune-worktrees safety checks read INDEX.tsv (kept) and a
+      # snapshot is restored by hand within days of a removal.
+      - name: worktree-removal-snapshots
+        path: $OMNI_HOME/.onex_state/worktree-removal-snapshots
+        pattern: "*"
+        exclude: [INDEX.tsv]
+        keep_days: 14
+        action: archive
+        readers: [prune-worktrees INDEX.tsv, manual restore after a removal]
+      # Readers: lane_scratch.py mints unique paths under it for live lanes;
+      # nothing reads a finished lane's scratch.
+      - name: lane-scratch
+        path: $OMNI_HOME/.onex_state/lane_scratch
+        pattern: "*"
+        keep_days: 14
+        action: delete
+        readers: [lane_scratch.py, the lane that minted the path]
+      # Readers: node_lab_fill_effect reads */*.json to see running lanes and
+      # node_throughput_tick_decision_compute reads receipts inside its window
+      # (hours). The ledger STATUS and TERMINAL rows are the durable record.
+      - name: remote-lane-receipts
+        path: ~/.local/state/omni/remote-lanes
+        pattern: "*/*"
+        keep_days: 14
+        action: delete
+        readers: [node_lab_fill_effect, node_throughput_tick_decision_compute]
+      # Readers: the lane's own session while it runs; onex-lane-closeout
+      # archives and removes the worktree trees (skipped here by their .git).
+      - name: lab-run-lane-dirs
+        path: ~/lab-run/runs
+        pattern: "*"
+        keep_days: 7
+        action: archive
+        readers: [onex-remote-lane receipt reads, the lane while it runs]
+        consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
+      # Readers: node_merge_sweep_plan_compute reads the latest reports for its
+      # brief; an orchestrator reads a lane report within days of its terminal.
+      - name: lane-reports
+        path: $OMNI_HOME/.claude_scratch/reports
+        pattern: "*"
+        keep_days: 14
+        action: archive
+        readers: [node_merge_sweep_plan_compute, orchestrator report reads]
+        consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
+      # Session transcripts as *.jsonl session files only; the memory
+      # directories are excluded. Readers: claude --resume reads a recent
+      # session; memory and audits read history, which the archive keeps.
+      - name: claude-transcripts
+        path: ~/.claude/projects
+        pattern: "*/*.jsonl"
+        exclude: [memory]
+        keep_days: 7
+        action: archive
+        readers: [claude --resume, memory and audit reads of history]
+        consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
+      # Declared, not enabled: the consent row names Claude transcripts, not
+      # Codex sessions. Enable with a consent row for them.
+      - name: codex-sessions
+        path: ~/.codex/sessions
+        pattern: "*/*/*/*.jsonl"
+        keep_days: 7
+        action: archive
+        enabled: false
+        readers: [codex resume]
 
 metadata:
   transport_type: kafka

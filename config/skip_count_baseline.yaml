@@ -27,7 +27,7 @@ suites:
     repo: omnimarket
     job: Tests (Split n/m)
     mode: nodeids
-    max_skips: 284
+    max_skips: 276
     baseline_collected: 22836
     provenance:
       measured_at: '2026-09-18'
@@ -199,7 +199,6 @@ suites:
       - tests.unit.nodes.node_occ_companion_compute.test_occ_companion_deploy_assessment_falsifiability_omn_15988.TestHasDeployEvidenceEndToEnd::test_mutation_a_genuinely_vacuous_assessment_still_fails[empty]
       - tests.unit.nodes.node_occ_companion_compute.test_occ_companion_deploy_assessment_falsifiability_omn_15988.TestHasDeployEvidenceEndToEnd::test_mutation_a_genuinely_vacuous_assessment_still_fails[self-referential]
       - tests.unit.nodes.node_occ_companion_compute.test_occ_companion_deploy_assessment_falsifiability_omn_15988.TestHasDeployEvidenceEndToEnd::test_red_not_grandfathered_pre_fix_contract_fails
-      - tests.unit.nodes.node_occ_companion_compute.test_occ_companion_deploy_assessment_omn_14742.TestDeployItemGateCompliance::test_deploy_check_value_clears_the_real_check_value_lint
       - tests.unit.nodes.node_occ_companion_compute.test_occ_emitter_golden_fixtures_omn_14710.TestF03FormatterClean::test_every_companion_file_is_yamlfmt_clean
       - tests.unit.nodes.node_occ_companion_compute.test_occ_emitter_golden_fixtures_omn_14710.TestF03FormatterClean::test_merged_path_supersession_is_yamlfmt_clean
       - tests.unit.nodes.node_occ_companion_compute.test_occ_emitter_golden_fixtures_omn_14710.TestF03FormatterClean::test_negative_misformatted_yaml_is_flagged
@@ -208,10 +207,6 @@ suites:
       - tests.unit.nodes.node_occ_companion_effect.test_contract_yamlfmt_stable_omn_14684.TestContractYamlfmtStableGuard::test_guard_is_contract_scoped_and_ignores_dirty_receipts
       - tests.unit.nodes.node_occ_companion_effect.test_contract_yamlfmt_stable_omn_14684.TestContractYamlfmtStableGuard::test_non_yamlfmt_clean_contract_is_rejected
       - tests.unit.nodes.node_occ_companion_effect.test_contract_yamlfmt_stable_omn_14684.TestContractYamlfmtStableGuard::test_stamped_contract_sha256_matches_post_yamlfmt_bytes
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestConsumerGateParity::test_compliance_runner_treats_the_check_as_live_and_hermetic
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestConsumerGateParity::test_lint_contract_check_values_accepts_the_generated_contract
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestConsumerGateParity::test_substance_floor_derives_proof_tier_l1
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestConsumerGateParity::test_the_pinned_ref_survives_token_substitution_unchanged
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestContentBoundChecks::test_every_generated_yaml_stays_yamlfmt_idempotent
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestContentBoundRenderingSeam::test_the_content_bound_check_value_survives_real_yamlfmt_byte_identical
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_autobind_contention_omn_15247.TestYamlfmtStabilityPredicateMatchesTheRealFormatter::test_predicate_agrees_with_the_binary[gh api repos/OmniNode-ai/omnimarket/contents/src/x.py?ref=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --jq '.content' | base64 -d | grep -c 'class H']
@@ -252,9 +247,6 @@ suites:
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_compute_summary_foldproof_omn_18592.TestTheCompanionContractSurvivesTheConsumingRepoFormatter::test_the_omn_18669_recurrence_is_a_fixpoint[vendored-occ-yamlfmt]
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_compute_summary_foldproof_omn_18592.TestTheVendoredConfigCannotGoStale::test_the_vendored_occ_yamlfmt_fixture_matches_the_real_one
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_emitter_literal_pins_omn_15407.TestComputeReceiptIsYamlfmtIdempotent::test_the_deploy_receipt_is_a_yamlfmt_fixpoint
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_emitter_literal_pins_omn_15407.TestConsumerGateParityOnTheDeployBearingContract::test_lint_contract_check_values_accepts_it
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_emitter_literal_pins_omn_15407.TestConsumerGateParityOnTheDeployBearingContract::test_the_deploy_item_clears_the_substance_floor
-      - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_emitter_literal_pins_omn_15407.TestConsumerGateParityOnTheDeployBearingContract::test_token_substitution_leaves_every_generated_check_unchanged
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_evidence_stamp_admissible_shapes_omn_16160.TestComputeOracleWiresContentBoundIntoTheContract::test_content_bound_contract_items_pass_both_live_gates
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_evidence_stamp_admissible_shapes_omn_16160.TestContentBoundOverrideIsAdmissibleUnderBothLiveGates::test_admitted_by_deploy_gate[ci_dod_evidence_check_value]
       - tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_evidence_stamp_admissible_shapes_omn_16160.TestContentBoundOverrideIsAdmissibleUnderBothLiveGates::test_admitted_by_deploy_gate[ci_receipt_public_check_value]

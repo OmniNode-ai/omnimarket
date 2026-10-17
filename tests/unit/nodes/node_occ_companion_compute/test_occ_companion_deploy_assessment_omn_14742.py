@@ -92,8 +92,9 @@ def _has_deploy_evidence(contract_path: Path) -> bool:
 # while the real linter accepted it. The deploy item is now linted by the REAL
 # script in
 # ``tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py``
-# (``TestConsumerGateParityOnTheDeployBearingContract``), which loads it from the
-# sibling checkout the golden-gate workflow clones. ``_load_occ_module`` is
+# (``TestConsumerGateParityOnTheDeployBearingContract``), which imports the
+# omnibase_core port of it (a hard dependency, so the import cannot be absent
+# and ``_load_occ_module`` never returns ``None``). ``_load_occ_module`` is
 # imported from there rather than re-vendored, so there is exactly one loader.
 
 _TICKET = "OMN-14742"
@@ -310,8 +311,6 @@ class TestDeployItemGateCompliance:
         module = _load_occ_module(
             "scripts/lint_contract_check_values.py", "occ_lint_check_values_14742"
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         path = tmp_path / f"{_TICKET}.yaml"
         path.write_text(_contract(compute_companion_plan(_request())), encoding="utf-8")
         violations = module.lint_contract(path)

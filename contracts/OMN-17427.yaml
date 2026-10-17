@@ -256,6 +256,11 @@ requirements:
     acceptance:
     - id: AC49
       statement: 'AC49: the contract subscribes to the runtime tick with a 01:00 to 05:00 America/New_York window, a tick runs once per interval inside it, and onex lab-archive run is registered and exits 2 on a refused host -- falsifier: the focused pytest finds a run outside the window, a second run inside the interval, or an unregistered verb'
+  - id: req-consumer-gate-parity-on-core
+    statement: The golden-gate consumer-gate parity tests drive omnibase_core's ports of the onex_change_control gate scripts and need no onex_change_control checkout.
+    acceptance:
+    - id: AC58
+      statement: 'AC58: the consumer-gate parity tests import the omnibase_core ports of lint_contract_check_values, check_contract_substance_floor, contract_compliance_check and evidence_admissibility and none of them skips for a missing onex_change_control checkout -- falsifier: the focused pytest reports a skip naming the onex_change_control checkout, or an import of a sibling onex_change_control path'
   - id: "req-lab-story-log"
     statement: "The work ledger's week becomes a sanitized story log by a node, with private names replaced by roles from the public-repo hygiene vocabulary, and the log is never written when a private name survives."
     acceptance:
@@ -263,6 +268,13 @@ requirements:
         statement: "AC52: node_lab_story_log_effect writes the ISO week's rulings, incidents and merged pull requests grouped by theme with their timestamps and figures, leaves out rows outside the week and the operator's quoted words, and replaces private repository names, addresses, host names, lane ids and person names by roles -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'no_private_name_survives or only_rows_inside or operators_own_words'"
       - id: "AC53"
         statement: "AC53: a sanitizer that lets a private name through stops the write, and a vocabulary with no private repository names is refused -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'surviving_private_name or no_private_repos or missing_vocabulary'"
+  - id: "req-declared-file-retention"
+    statement: "The retention node retires the lab hosts' unbounded file paths from the same contract, with a keep window set by each path's readers, archives history before removing it, and reports bytes and files removed and archived per run."
+    acceptance:
+      - id: "AC58"
+        statement: "AC58: node_retention_cleanup declares ledger-detail, worktree-pins, worktree-removal-snapshots, lane-scratch, remote-lane-receipts, lab-run-lane-dirs, lane-reports and claude-transcripts in retention_policy.file_retention, each with its readers and a keep window of at least seven days, and retires a unit only when every file in it is older than the window -- falsifier: uv run pytest tests/nodes/test_omn17427_file_retention.py -q fails at the merge base"
+      - id: "AC59"
+        statement: "AC59: an archive entry removes a unit only after the copy is read back and every checksum matches, removes nothing without an archive tree, never follows symlinks and never touches memory directories or the live ledger, and the cleanup run reports bytes and files removed and archived -- falsifier: the archive, verify-failure, symlink and protected-path cases in tests/nodes/test_omn17427_file_retention.py fail at the merge base"
   - id: "req-sweep-root-no-registry-fallback"
     statement: "Sweep orchestrators refuse a stale ONEX_CC_REPO_PATH instead of locating a change-control clone through OMNI_HOME."
     acceptance:
@@ -293,6 +305,16 @@ requirements:
     acceptance:
       - id: "AC57"
         statement: "AC57: git_mirror.REGISTRY_REPOS, both merge-sweep _DEFAULT_REPOS lists and the PR snapshot DEFAULT_REPOS name no change-control repository, and resolve_contract_subject binds a change-control checkout as PRODUCT_REPOSITORY -- falsifier: uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q fails at the merge base"
+  - id: "req-lab-fill-tick-no-model"
+    statement: "One lab-fill tick fills a fire's free slots from the approved-work list with no model call: ownership read once, the Linear assignee and state re-read directly per launch, lanes launched through the remote-lane runner, and a result naming what was dispatched and why the rest was not."
+    acceptance:
+      - id: "AC58"
+        statement: "AC58: node_lab_fill_effect's run_lab_fill_tick dispatches free slots in priority order, frees a slot a refused candidate leaves for the next, skips owned and blocked rows before launch, launches nothing when apply is false, never treats an unread owner as free, and stops on a runner or standing-rules failure leaving the rest untried -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q fails at the merge base"
+  - id: "req-lab-fill-zero-placement-alarm"
+    statement: "A lab-fill tick that leaves free slots unplaced names every unplaced lane with its reason, acts on a second such tick in a row with one deduplicated diagnose lane and an event, and parks a candidate the brief check refused twice instead of retrying it every tick."
+    acceptance:
+      - id: "AC60"
+        statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -810,6 +832,41 @@ dod_evidence:
     binds_ac:
     - AC48
     - AC49
+  - id: dod-omn17427-ac58-consumer-gate-parity-on-core
+    description: 'AC58: consumer-gate parity tests run against the omnibase_core ports with no onex_change_control checkout.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: |
+        uv run python - <<'PY'
+        import ast
+        import subprocess
+
+        expected = {
+            "scripts/lint_contract_check_values.py": "omnibase_core.handlers.handler_contract_check_values_lint",
+            "scripts/validation/check_contract_substance_floor.py": "omnibase_core.handlers.handler_contract_substance_floor",
+            "src/onex_change_control/scripts/contract_compliance_check.py": "omnibase_core.handlers.handler_contract_compliance_check",
+            "src/onex_change_control/validation/evidence_admissibility.py": "omnibase_core.handlers.handler_evidence_admissibility",
+        }
+        # Inspect the subject commit: the control overlays the new tests on the
+        # merge base, so executing those tests alone cannot detect this migration.
+        for name in ("test_occ_autobind_contention_omn_15247.py", "test_occ_emitter_literal_pins_omn_15407.py"):
+            path = "tests/unit/nodes/node_pr_lifecycle_fix_effect/" + name
+            source = subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+            tree = ast.parse(source)
+            ports = [node for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_CORE_PORTS" for target in node.targets)]
+            assert len(ports) == 1 and ast.literal_eval(ports[0].value) == expected, path + ": core port mapping missing or incorrect"
+            loader = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_load_occ_module")
+            assert ast.unparse(loader.body[-1]) == "return importlib.import_module(_CORE_PORTS[relpath])", path + ": loader does not import the core port"
+            assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "spec_from_file_location" for node in ast.walk(loader)), path + ": sibling checkout loader remains"
+            print(path + ": committed core port imports verified")
+        PY
+      cwd: ${OMNI_HOME}/omnimarket
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q -p no:randomly -k "ConsumerGateParity"
+      cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+    - AC58
   - id: "dod-omn17427-ac52-lab-story-log"
     description: "The weekly story log keeps the week's rows, themes and figures, and no planted private name or quoted operator word survives."
     source: "manual"
@@ -833,6 +890,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_story_log_effect/handlers/handler_lab_story_log.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerLabStoryLog" for n in tree.body); assert "LabStoryLogLeakError" in source and "clean.leaks" in source; print("lab story log deploy probe: PASS")'
+  - id: "dod-omn17427-ac58-ac59-declared-file-retention"
+    description: "The file retention contract entries, keep-window floor, archive-then-remove order and per-run totals pass their tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_omn17427_file_retention.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC58", "AC59"]
+  - id: "dod-omn17427-declared-file-retention-deploy-probe"
+    description: "Deploy probe. GitHub serves the file retention handler and the contract's file_retention block at the checked-out HEAD. It fails at the merge base, which has neither, and needs no lab network on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("MIN_KEEP_DAYS", "_verify_archive", "NodeFileRetention")); print("declared file retention deploy probe: PASS")'
   - id: "dod-omn17427-ac50-sweep-root-no-registry-fallback"
     description: "Both sweep resolvers refuse stale environment roots without locating an OMNI_HOME registry clone; explicit and valid environment roots still resolve."
     source: "manual"
@@ -909,3 +981,33 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); lists = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "REGISTRY_REPOS"]; assert len(lists) == 1; names = [c.value for c in ast.walk(lists[0]) if isinstance(c, ast.Constant) and isinstance(c.value, str)]; assert len(names) > 5; assert not [n for n in names if n.endswith("_change_control")]; print("git mirror repo list deploy probe: PASS")'
+  - id: "dod-omn17427-ac58-lab-fill-tick"
+    description: "The lab-fill tick golden and error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC58"]
+  - id: "dod-omn17427-lab-fill-tick-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill effect contract at the checked-out HEAD binding run_lab_fill_tick to HandlerLabFillTick. It fails at the merge base, which has no such operation, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("run_lab_fill_tick", "HandlerLabFillTick", "ModelLabFillTickResult")); print("lab-fill tick deploy probe: PASS")'
+  - id: "dod-omn17427-ac60-lab-fill-zero-placement-alarm"
+    description: "The lab-fill zero-placement chain passes: refusals count every unplaced lane, two idle ticks dispatch one diagnose lane, a twice brief-check-refused ticket is parked."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC60"]
+  - id: "dod-omn17427-lab-fill-zero-placement-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill tick handler at the checked-out HEAD with the diagnose lane and the brief-check parking. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
