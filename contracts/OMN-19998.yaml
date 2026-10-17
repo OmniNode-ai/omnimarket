@@ -651,4 +651,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py::test_effectful_command_consumers_declare_effects_runtime_profile -q"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC29"]
+  - id: "dod-omn19998-git-mirror-effects-deploy-probe"
+    description: "Hosted-runner source probe requires descriptor-level effects ownership and the detecting-sync command subscription. The dispatch head lacks descriptor.runtime_profiles and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_git_query_mirror_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]; s=yaml.safe_load(Path("src/omnimarket/nodes/node_git_mirror_sync_schedule_compute/contract.yaml").read_text()); assert s["terminal_event"] in c["event_bus"]["subscribe_topics"]'
