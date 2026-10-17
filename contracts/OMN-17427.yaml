@@ -1062,7 +1062,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
-  - id: "dod-omn17427-ac64-hostile-reviewer-delegation-route"
+  - id: "dod-omn17427-ac64-hostile-review-delegation"
     description: "The hostile reviewer's delegation route sends each model call through the review task class pinned to the route key, a delegation that does not complete fails its route, and the completed event carries the verdict and the merged findings."
     source: "manual"
     checks:
@@ -1070,7 +1070,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC64"]
-  - id: "dod-omn17427-hostile-reviewer-delegation-route-deploy-probe"
+  - id: "dod-omn17427-hostile-review-delegation-probe"
     description: "Deploy probe. GitHub serves the delegation review adapter at the checked-out HEAD, calling the delegate skill with the review task type. It fails at the merge base, where the adapter does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
