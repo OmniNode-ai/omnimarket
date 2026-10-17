@@ -310,11 +310,16 @@ requirements:
     acceptance:
       - id: "AC58"
         statement: "AC58: node_lab_fill_effect's run_lab_fill_tick dispatches free slots in priority order, frees a slot a refused candidate leaves for the next, skips owned and blocked rows before launch, launches nothing when apply is false, never treats an unread owner as free, and stops on a runner or standing-rules failure leaving the rest untried -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q fails at the merge base"
+  - id: "req-lab-fill-zero-placement-alarm"
+    statement: "A lab-fill tick that leaves free slots unplaced names every unplaced lane with its reason, acts on a second such tick in a row with one deduplicated diagnose lane and an event, and parks a candidate the brief check refused twice instead of retrying it every tick."
+    acceptance:
+      - id: "AC60"
+        statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
   - id: "req-dead-occ-observers-deleted"
     statement: "The two report-only OCC observer nodes that no workflow, bus producer or node calls are deleted from omnimarket, so their change-control repository slugs and clone paths leave the code."
     acceptance:
-      - id: "AC60"
-        statement: "AC60: node_occ_attestation_observe and node_occ_observation_effect, their tests and their pyproject entry points are absent while node_occ_companion_effect stays -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer fails at the merge base"
+      - id: "AC61"
+        statement: "AC61: node_occ_attestation_observe and node_occ_observation_effect, their tests and their pyproject entry points are absent while node_occ_companion_effect stays -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -996,14 +1001,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("run_lab_fill_tick", "HandlerLabFillTick", "ModelLabFillTickResult")); print("lab-fill tick deploy probe: PASS")'
-  - id: "dod-omn17427-ac60-dead-occ-observers"
+  - id: "dod-omn17427-ac60-lab-fill-zero-placement-alarm"
+    description: "The lab-fill zero-placement chain passes: refusals count every unplaced lane, two idle ticks dispatch one diagnose lane, a twice brief-check-refused ticket is parked."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC60"]
+  - id: "dod-omn17427-lab-fill-zero-placement-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill tick handler at the checked-out HEAD with the diagnose lane and the brief-check parking. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
+  - id: "dod-omn17427-ac61-dead-occ-observers"
     description: "The two OCC observer node packages, their tests and their entry points are absent and the companion effect node remains."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC60"]
+    binds_ac: ["AC61"]
   - id: "dod-omn17427-dead-occ-observers-deploy-probe"
     description: "Deploy probe. GitHub serves pyproject.toml at the checked-out HEAD with no entry point for the two observer nodes and one for node_occ_companion_effect. It fails at the merge base, which registers both, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
