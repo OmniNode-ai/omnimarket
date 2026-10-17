@@ -27,6 +27,34 @@ fix_lane:
   - OMN-19998
   - --priority-class
   - process-fix
+# The registry clones every lab host holds; the public ones are listed here and a host names its
+# private ones in the JSON file ONEX_LAB_PRIVATE_CLONES_FILE points at ({"repos": [...]}). A missing clone is cloned; a clean clone on its default
+# branch is fast-forwarded to origin; a dirty, detached or diverged clone is reported and left alone.
+# Clones sync before the daemons, so a plugin source clone created this tick is read the same tick.
+clones:
+  root: ${OMNI_HOME}
+  url: https://github.com/OmniNode-ai/{repo}.git
+  extra_repos_file: ${ONEX_LAB_PRIVATE_CLONES_FILE}
+  repos:
+    - omnibase_compat
+    - omnibase_core
+    - omnibase_spi
+    - omnibase_infra
+    - omniclaude
+    - omnidash
+    - omnigemini
+    - omniintelligence
+    - omnimarket
+    - omnimemory
+# Maintenance commands run every tick, after the daemons.
+chores:
+  - name: pre-commit-gc
+    description: >
+      Drops pre-commit cache entries no config on this host still references, so a dead hook
+      repository is cloned fresh by the next hook run instead of failing every commit.
+    present_when: ${HOME}/.cache/pre-commit
+    argv: [pre-commit, gc]
+    no_change: '^0 repo\(s\) removed'
 daemons:
   - name: landing-controller
     description: >
@@ -78,9 +106,9 @@ daemons:
     installer: [bash, "${ONEX_INSTALLERS_HOME}/launchd/pr-watcher/install.sh"]
   - name: omni-plugin
     description: >
-      The omni plugin installed for Claude Code on this host, compared by version with
-      plugins/omni/.claude-plugin/plugin.json on the plugin source clone's main.
-    present_when: ${HOME}/.claude/plugins/installed_plugins.json
+      The omni plugin installed for Claude Code on this host, compared by version with the omninode-internal marketplace tip: the source probe updates the marketplace and reads the plugin's plugin.json from it. The installer updates the plugin, or installs it on a host that has none. A host without the marketplace registered reads no source and is refused with that blocker.
+    present_when: ${HOME}/.claude
+    absent_is_lag: true
     installed:
       kind: json_file
       path: ${HOME}/.claude/plugins/installed_plugins.json
@@ -88,13 +116,43 @@ daemons:
     source:
       kind: command
       argv:
-        - git
-        - -C
-        - ${ONEX_PLUGIN_SOURCE_CLONE}
-        - show
-        - origin/main:plugins/omni/.claude-plugin/plugin.json
+        - bash
+        - -c
+        - >-
+          claude plugin marketplace update omninode-internal >&2
+          && cat "${HOME}/.claude/plugins/marketplaces/omninode-internal/plugins/omni/.claude-plugin/plugin.json"
       key: version
-    installer: [claude, plugin, update, omni@omninode-internal]
+    installer:
+      - bash
+      - -c
+      - >-
+        claude plugin update omni@omninode-internal
+        || claude plugin install omni@omninode-internal
+    installer_timeout_s: 600
+  - name: onex-overlays-plugin
+    description: >
+      The onex-overlays plugin, converged the same way from the same marketplace.
+    present_when: ${HOME}/.claude
+    absent_is_lag: true
+    installed:
+      kind: json_file
+      path: ${HOME}/.claude/plugins/installed_plugins.json
+      key: plugins.onex-overlays@omninode-internal.0.version
+    source:
+      kind: command
+      argv:
+        - bash
+        - -c
+        - >-
+          claude plugin marketplace update omninode-internal >&2
+          && cat "${HOME}/.claude/plugins/marketplaces/omninode-internal/plugins/onex-overlays/.claude-plugin/plugin.json"
+      key: version
+    installer:
+      - bash
+      - -c
+      - >-
+        claude plugin update onex-overlays@omninode-internal
+        || claude plugin install onex-overlays@omninode-internal
     installer_timeout_s: 600
   - name: dispatch-venv
     description: >

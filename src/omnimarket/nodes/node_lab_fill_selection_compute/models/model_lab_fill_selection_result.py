@@ -35,3 +35,6 @@ class ModelLabFillSelectionResult:
     baselines: tuple[ModelLabFillInputBaseline, ...]
     # The idle-slot pr-land fallback's plan (OMN-20864); None when the request carried no PR facts.
     pr_land: ModelLabFillPrLandPlan | None = None
+    # Implementation-merged tickets taken as DoD-verify work for the slots ordinary and pr-land
+    # work leave idle, one per ticket in candidate order (OMN-17427).
+    dod_verify: tuple[ModelLabFillDecision, ...] = ()

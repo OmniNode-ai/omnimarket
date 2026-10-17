@@ -23,6 +23,11 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: "AC3: an oversized record at the spool head is quarantined with reason payload_too_large after one attempt and the two records behind it publish -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov fails against the pre-change handler"
+  - id: "req-projection-accepts-item-identity-stamp"
+    statement: "The claude_hook_events projection ingests a lineage event carrying the capture hook's stream and producer_seq stamp, and still refuses a stamp that is not a lineage sequence."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: an event with stream lineage and a producer_seq validates and projects the same row as without them, and a content stream, a zero, a string or a boolean sequence is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k item_identity fails against the pre-change wire model"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -63,3 +68,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov"
     binds_ac: ["AC3"]
+  - id: "dod-omn19513-ac4-item-identity-stamp"
+    description: "AC4: the wire model takes the capture hook's lineage stream and producer_seq stamp. Deploy probe: read the wire model from GitHub at the checked-out commit and require the producer_seq field; it fails at the merge base, whose wire model forbids the key and so dead-letters every stamped event."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k item_identity"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    producer_seq:\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

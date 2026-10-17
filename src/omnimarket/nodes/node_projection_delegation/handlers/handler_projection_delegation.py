@@ -1017,6 +1017,15 @@ class HandlerProjectionDelegation:
             if reduction.terminal_failure_cause is not None
             else None
         )
+        # OMN-19448: keep the disposition the terminal declared, just as the
+        # canonical terminal path does. Older terminals omit the pair, so do
+        # not erase an earlier terminal's evidence with missing values.
+        for column, terminal_disposition in (
+            ("operational_outcome", event.operational_outcome),
+            ("content_verdict", event.content_verdict),
+        ):
+            if terminal_disposition is not None:
+                row[column] = terminal_disposition.value
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
