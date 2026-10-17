@@ -941,6 +941,12 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_run_trace/migrations/0000_create_run_trace.sql
       access: read_write
       role: run_trace
+    - name: local_environment
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_local_environment/migrations/0000_create_local_environment.sql
+      access: read_write
+      role: local_environment
     - name: traces
       database_ref: application
       schema: omninode_internal

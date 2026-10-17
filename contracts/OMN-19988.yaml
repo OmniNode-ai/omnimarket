@@ -1,32 +1,53 @@
 schema_version: "1.0.0"
-ticket_id: OMN-19988
-title: Ownership of the local_environment cursor sequence, ahead of its vendoring
-summary: >-
-  Ownership half only: declares the local_environment table's cursor sequence in the application relation ownership manifest, ahead of omnibase_infra vendoring the node's migrations, whose application SQL gate needs every sequence a vendored GRANT names to have exactly one owner here. The migrations, the verdicts, the store and the Environment panel are other changes. This check proves the declaration, not acceptance of the criterion.
+ticket_id: "OMN-19988"
+title: "The local environment's verdicts, alerts and per-service rows, and the migrations that store them"
+summary: "First of two omnimarket steps. This change adds the shared environment report and health types, the pure local alert compute with its three rules and freshness deadline declared in its contract, the store-neutral write of one report and the verdicts it moves (applied to the local SQLite store), and the three local_environment migrations with the declaration of who owns the table. The projection node's contract, its Postgres writer and the local-environment.v1 exposure follow after an omnibase_infra release grants the table, as OMN-19987 landed. What this step proves is the fold and compute half of AC1, and the table's tenant isolation on a real Postgres. AC2 and AC3 are lab page reads, declared and bound by the change that lands the producers and the panel."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: req-omn19988-ac1-cursor-ownership
-    statement: >-
-      The local_environment cursor sequence has exactly one ownership declaration, in the tenant domain, owned by the projection migration runner, so omnibase_infra's application SQL gate accepts the vendored writer grant that names it.
+  - id: "req-omn19988-verdicts-and-alerts-from-environment-reports"
+    statement: |-
+      Each local service's latest report is stored once per tenant, mode and service, with the verdict (RUNNING, DOWN, UNHEALTHY or STALE) and the open alert the pure local alert compute gives it under the rules its contract declares; a report of any service re-judges its tenant's other services at that time, and a replayed or late report changes no row. The criteria below are transcribed from the ticket body.
     acceptance:
-      - id: AC1
-        statement: "AC1: In mode 2 stopping one compose service turns its row `DOWN` and opens one `SERVICE_DOWN` alert with nobody running a status command; a failing health check turns `UNHEALTHY`; losing the observer or broker turns every row `STALE` after the deadline; a replay of the same health events changes no row -- falsifier: the omnimarket test run with uv run pytest fails any case"
+      - id: "AC1"
+        statement: |-
+          AC1: In mode 2 stopping one compose service turns its row `DOWN` and opens one `SERVICE_DOWN` alert with nobody running a status command; a failing health check turns `UNHEALTHY`; losing the observer or broker turns every row `STALE` after the deadline; a replay of the same health events changes no row -- falsifier: the omnimarket test run with uv run pytest fails any case
 evidence_requirements:
-  - kind: tests
-    description: Ownership half only; the cursor sequence is declared once, with its domain and owner.
-    command: uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q
+  - kind: "tests"
+    description: "The compute and the store-neutral write give DOWN with one SERVICE_DOWN alert for a stopped service, UNHEALTHY for a failing health check, STALE after the deadline and not before, and no change on a replayed or late report, through the real SQLite adapter; they cannot be collected at the merge base, where the modules do not exist."
+    command: "uv run pytest tests/test_omn19988_local_environment.py -q"
+  - kind: "tests"
+    description: "The migration proof passes at the head against a real Postgres and fails at the merge base, where the migration files do not exist."
+    command: "uv run pytest tests/test_omn19988_local_environment_migrations_real_postgres.py -q --refuse-skips"
+  - kind: "tests"
+    description: "Ownership half only; the cursor sequence is declared once, with its domain and owner."
+    command: "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q"
 emergency_bypass:
   enabled: false
-  justification: ''
-  follow_up_ticket_id: ''
+  justification: ""
+  follow_up_ticket_id: ""
 dod_evidence:
-  - id: dod-omn19988-ac1-cursor-sequence-ownership
-    description: Ownership half only. The cursor sequence is declared exactly once, in the tenant domain, owned by the projection migration runner. It does not prove the verdicts, the store or the panel.
-    source: manual
+  - id: "dod-omn19988-ac1-verdicts-alerts-and-replay"
+    description: "The fold and compute half of AC1. Five services boot RUNNING through the store-neutral write on a local SQLite store; one reported down turns DOWN with exactly one SERVICE_DOWN alert, critical, since the report; one reported unhealthy turns UNHEALTHY with SERVICE_DEGRADED; with one service reporting 75 s later every silent row turns STALE with HEALTH_UNKNOWN, and a row is RUNNING at 60 s and STALE at 61 s; replaying every report, and a late older report, leave the whole table byte for byte. The rules and the 60 s deadline are read from the compute's contract, and each rule has a fixture that raises it and one that does not. The case where nothing reports at all (the observer or the broker is gone) cannot write a row; it is served as stale by the exposure's freshness, which lands with the node and is bound then."
+    source: "manual"
     checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q
-        cwd: ${OMNI_HOME}/omnimarket
-    binds_ac: [AC1]
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_local_environment.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19988-table-tenant-isolation"
+    description: "On a real Postgres the create and FORCE migrations apply twice; the key is (tenant_id, mode, service); row-level security is enabled and forced under the single tenant_isolation policy; the table refuses an unknown mode, state, verdict or severity, an empty service, and an alert missing its code, severity or start, with two accepted rows as the control; the Postgres table and the local SQLite store carry the same 21 columns; a session bound to one tenant writes its own row, is refused and cannot rewrite another tenant's, and reads only its own; a session with no tenant set reads none and is refused every insert. Run with --refuse-skips, so it cannot pass where no database is provisioned."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_local_environment_migrations_real_postgres.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19988-ac1-cursor-sequence-ownership"
+    description: "Ownership half only. The cursor sequence is declared exactly once, in the tenant domain, owned by the projection migration runner. It does not prove the verdicts, the store or the panel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

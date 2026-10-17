@@ -1,0 +1,27 @@
+name: projection_local_environment
+version: "1.0.0"
+description: "The latest report of each local service, its verdict and its open alert, per tenant and mode."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  # This step ships the node's migrations and its store-neutral write; the contract and
+  # writer follow after the omnibase_infra release that grants the table, and set this to true.
+  full_runtime: false
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, local, environment, health, reducer]
+ownership:
+  local_environment:
+    ddl_owner: omnimarket.nodes.node_projection_local_environment
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_local_environment.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns the local environment read model; infra vendors its migration."
+pack: "data"
+display_name: "Projection: Local Environment"
+node_role: "effect"
