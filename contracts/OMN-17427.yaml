@@ -315,6 +315,11 @@ requirements:
     acceptance:
       - id: "AC60"
         statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
+  - id: "req-lab-fill-dod-verify-fallback"
+    statement: "Lab-fill selection takes tickets it skipped because their implementation merged as DoD-verify lanes for the slots ordinary and pr-land work leave idle, one per ticket and gated by the ticket's lab-fill attempt history, and the dispatch plan ranks them last, scopes them by the kind they were enumerated as and renders a brief that closes the ticket only on a passing DoD receipt."
+    acceptance:
+      - id: "AC61"
+        statement: "AC61: with the 2026-10-17T1730Z run's shape (9 free slots on h101:1, h202:4, h201:4, 2 eligible candidates, 41 implementation-merged) selection plus the dispatch plan dispatch at least 9 lanes where the base dispatches 2; an open or blocked-in-cooldown verify lane, a second row of the same ticket and an out-of-scope origin are not taken -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q fails at the merge base"
   - id: "req-review-finding-parse-veto"
     statement: "A blocking hostile-review finding that claims a Python, YAML or JSON file is syntactically invalid is checked by parsing that file at the pull request head, and dropped with a logged reason when it parses; findings of every other class are left as the reviewers raised them."
     acceptance:
@@ -446,9 +451,6 @@ evidence_requirements:
   - kind: "tests"
     description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
     command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
-  - kind: "tests"
-    description: "AC70 and AC71: the parse veto drops the omnimarket#4063 'invalid Python' block, keeps true and unrelated findings, and runs from the base commit before the verdict."
-    command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q"
   - kind: "tests"
     description: "AC72 to AC74: only an introduced, evidenced, non-style Important finding blocks, and past round three only the new diff is re-reviewed without repeating a posted finding."
     command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q"
@@ -1033,6 +1035,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
+  - id: "dod-omn17427-ac61-lab-fill-dod-verify-fallback"
+    description: "The lab-fill DoD-verify fallback chain passes, including the replay of the 2026-10-17T1730Z run's shape."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC61"]
+  - id: "dod-omn17427-lab-fill-dod-verify-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill dispatch plan at the checked-out HEAD with the dod-verify kind and its item builder. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_dispatch_plan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("DOD_VERIFY", "dod_verify_item", "origin_kind")); print("lab-fill dod-verify deploy probe: PASS")'
   - id: "dod-omn17427-ac70-review-finding-parse-veto"
     description: "A blocking 'invalid Python' finding on the omnimarket#4063 test file, which parses at its blocked head, is dropped with a reason and the verdict becomes passed; a Python, YAML or JSON file that does not parse keeps its finding."
     source: "manual"
@@ -1041,7 +1058,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py -q -k 'pr4063 or yaml_and_json or does_not_parse'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC70"]
-  - id: "dod-omn17427-ac71-review-finding-veto-keeps-other-findings"
+  - id: "dod-omn17427-ac71-veto-keeps-other-findings"
     description: "Other finding classes, warnings, claims about another file, run-time parse claims and unreadable files are untouched, and the workflow runs the veto from the base commit before the verdict."
     source: "manual"
     checks:
