@@ -83,4 +83,11 @@ dod_evidence:
         check_value: |
           env -u PYTHONPATH uv run python scripts/ci/run_delegation_response_contract_conformance.py --trials 1 | jq -e '[.contracts[] | select(.contract_id == "l11-json-classifier") | .trials[]] | length > 0 and all(.raw_response_carrier.sha256_verified == true and .output_only.evidence_basis == "raw_provider_bytes" and .output_only.accepted == true)'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19385-ticket-ac5-hosted-runtime-handoff"
+    description: "AC5 hosted runtime handoff: an isolated HTTP provider feeds the real inference effect, local dispatch port and delegate orchestrator; the live conformance grader consumes their serialized terminal. Exact raw text, SHA-256, carrier retention and raw_provider_bytes are asserted, with a clean JSON pass and a trailing-prose refusal. This reproducible check binds the runtime behavior for hosted verification. The preceding local Done probe remains required there to measure the deployed dev lane and lab-served model; this hosted test does not claim to measure that model."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k hosted_provider_terminal_and_live_grader -q -p no:cacheprovider'
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
