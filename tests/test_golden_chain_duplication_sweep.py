@@ -209,32 +209,71 @@ class TestDuplicationSweepGoldenChain:
         assert result.status == "FAIL"
         assert [f.name for f in result.findings] == ["onex.evt.omniclaude.conflict.v1"]
 
-    async def test_d3_uses_occ_venv_command(
+    async def test_d3_reports_a_name_conflict_across_repos(
         self, event_bus: EventBusInmemory, tmp_path: Path
     ) -> None:
-        """D3 should invoke OCC's local check-migration-conflicts executable."""
-        command = (
-            tmp_path
-            / "onex_change_control"
-            / ".venv"
-            / "bin"
-            / "check-migration-conflicts"
-        )
-        command.parent.mkdir(parents=True)
-        command.write_text(
-            "#!/usr/bin/env python3\n"
-            "import sys\n"
-            "assert '--repos-root' in sys.argv\n"
-            "print('NAME_CONFLICT migration conflict from fake OCC command')\n"
-        )
-        command.chmod(0o755)
+        """D3 finds a table two repos create with different columns, in process."""
+        for repo, columns in (
+            ("repo_a", "\n  id INT,\n  a TEXT\n"),
+            ("repo_b", "\n  id INT\n"),
+        ):
+            (tmp_path / repo / ".git").mkdir(parents=True)
+            migration = tmp_path / repo / "migrations" / "001_init.sql"
+            migration.parent.mkdir(parents=True)
+            migration.write_text(f"CREATE TABLE d3_probe ({columns});\n")
 
         result = _check_d3_migration_prefixes(str(tmp_path))
+
         assert result.status == "FAIL"
         assert result.finding_count == 1
-        assert result.findings[0].name == (
-            "NAME_CONFLICT migration conflict from fake OCC command"
+        assert result.findings[0].name == "NAME_CONFLICT: table `d3_probe`"
+        assert sorted(result.findings[0].locations) == [
+            "repo_a/migrations/001_init.sql",
+            "repo_b/migrations/001_init.sql",
+        ]
+
+    async def test_d3_passes_when_each_table_is_created_once(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """Positive control: distinct tables are not a conflict."""
+        for repo in ("repo_a", "repo_b"):
+            (tmp_path / repo / ".git").mkdir(parents=True)
+            migration = tmp_path / repo / "migrations" / "001_init.sql"
+            migration.parent.mkdir(parents=True)
+            migration.write_text(f"CREATE TABLE {repo}_only (id INT);\n")
+
+        result = _check_d3_migration_prefixes(str(tmp_path))
+
+        assert result.status == "PASS"
+        assert result.finding_count == 0
+
+    async def test_d3_never_runs_a_change_control_checkout(
+        self, event_bus: EventBusInmemory, tmp_path: Path
+    ) -> None:
+        """D3 runs omnibase_core's migration-conflict handler, not a command or
+        suppressions file found in a change-control clone beside the repos."""
+        occ_root = tmp_path / "onex_change_control"
+        command = occ_root / ".venv" / "bin" / "check-migration-conflicts"
+        command.parent.mkdir(parents=True)
+        command.write_text(
+            "#!/usr/bin/env python3\nprint('NAME_CONFLICT from a change-control clone')\n"
         )
+        command.chmod(0o755)
+        (occ_root / "migration_conflict_suppressions.yaml").write_text(
+            "suppressions:\n  - {table: d3_probe}\n"
+        )
+        for repo, columns in (
+            ("repo_a", "\n  id INT,\n  a TEXT\n"),
+            ("repo_b", "\n  id INT\n"),
+        ):
+            (tmp_path / repo / ".git").mkdir(parents=True)
+            migration = tmp_path / repo / "migrations" / "001_init.sql"
+            migration.parent.mkdir(parents=True)
+            migration.write_text(f"CREATE TABLE d3_probe ({columns});\n")
+
+        result = _check_d3_migration_prefixes(str(tmp_path))
+
+        assert [f.name for f in result.findings] == ["NAME_CONFLICT: table `d3_probe`"]
 
     async def test_d3_repo_resolution_excludes_generated_worktrees(
         self, event_bus: EventBusInmemory, tmp_path: Path
@@ -252,82 +291,6 @@ class TestDuplicationSweepGoldenChain:
             "omnimarket",
             "onex_change_control",
         ]
-
-    async def test_d3_passes_suppressions_file_when_present(
-        self, event_bus: EventBusInmemory, tmp_path: Path
-    ) -> None:
-        """OMN-11013: D3 must pass --suppressions-file to check-migration-conflicts
-        when onex_change_control/migration_conflict_suppressions.yaml exists, so
-        official sweep output distinguishes true unsuppressed conflicts from known
-        historical ones."""
-        occ_root = tmp_path / "onex_change_control"
-        suppressions_path = occ_root / "migration_conflict_suppressions.yaml"
-        suppressions_path.parent.mkdir(parents=True)
-        suppressions_path.write_text(
-            "suppressions:\n  - {table: nightly_loop_decisions}\n"
-        )
-        command = occ_root / ".venv" / "bin" / "check-migration-conflicts"
-        command.parent.mkdir(parents=True)
-        # Fake CLI writes its argv to a sidecar file so the test can assert
-        # what was passed. If `--suppressions-file` is missing, surface that
-        # as a synthetic NAME_CONFLICT line so the result is non-PASS.
-        argv_log = tmp_path / "d3-argv.json"
-        command.write_text(
-            "#!/usr/bin/env python3\n"
-            "import json, sys\n"
-            f"with open({str(argv_log)!r}, 'w') as f:\n"
-            "    json.dump(sys.argv[1:], f)\n"
-            "if '--suppressions-file' not in sys.argv:\n"
-            "    print('NAME_CONFLICT --suppressions-file not wired')\n"
-            "else:\n"
-            "    print('No migration prefix conflicts')\n"
-        )
-        command.chmod(0o755)
-
-        result = _check_d3_migration_prefixes(str(tmp_path))
-
-        assert argv_log.exists(), "Fake CLI was not invoked"
-        argv = json.loads(argv_log.read_text())
-        assert "--suppressions-file" in argv, (
-            f"D3 must pass --suppressions-file when "
-            f"migration_conflict_suppressions.yaml exists; got argv={argv}"
-        )
-        idx = argv.index("--suppressions-file")
-        assert argv[idx + 1].endswith("migration_conflict_suppressions.yaml"), (
-            f"D3 must point --suppressions-file at the OCC suppressions yaml; "
-            f"got {argv[idx + 1]}"
-        )
-        assert result.status == "PASS"
-
-    async def test_d3_omits_suppressions_file_when_absent(
-        self, event_bus: EventBusInmemory, tmp_path: Path
-    ) -> None:
-        """When no suppressions file exists, D3 must not pass the flag.
-
-        Guards against a regression where the wiring unconditionally sets the
-        flag with a nonexistent path.
-        """
-        occ_root = tmp_path / "onex_change_control"
-        command = occ_root / ".venv" / "bin" / "check-migration-conflicts"
-        command.parent.mkdir(parents=True)
-        argv_log = tmp_path / "d3-argv.json"
-        command.write_text(
-            "#!/usr/bin/env python3\n"
-            "import json, sys\n"
-            f"with open({str(argv_log)!r}, 'w') as f:\n"
-            "    json.dump(sys.argv[1:], f)\n"
-            "print('No migration prefix conflicts')\n"
-        )
-        command.chmod(0o755)
-
-        result = _check_d3_migration_prefixes(str(tmp_path))
-
-        assert argv_log.exists(), "Fake CLI was not invoked"
-        argv = json.loads(argv_log.read_text())
-        assert "--suppressions-file" not in argv, (
-            f"D3 must omit --suppressions-file when the yaml is absent; got argv={argv}"
-        )
-        assert result.status == "PASS"
 
     async def test_d4_no_collisions(
         self, event_bus: EventBusInmemory, tmp_path: Path

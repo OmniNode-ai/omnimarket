@@ -175,10 +175,10 @@ from omnimarket.occ_evidence_probative_class import (
 
 logger = logging.getLogger(__name__)
 
-# Default contract search roots (first match wins)
+# Default contract search roots (first match wins). The change-control clone is
+# located only by ONEX_CC_REPO_PATH, never under $OMNI_HOME (OMN-17427).
 _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${ONEX_CC_REPO_PATH}/contracts",
-    "${OMNI_HOME}/onex_change_control/contracts",
 ]
 
 # OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
@@ -2990,15 +2990,10 @@ class EvidenceCollector:
         return self._make_durable_gate_effect().handle(self._durable_gate_inputs)
 
     def _resolve_occ_root(self) -> Path | None:
-        """Return the OCC repo root from the environment, or None."""
+        """Return the OCC repo root from ``ONEX_CC_REPO_PATH``, or None."""
         cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
         if cc_repo_path and Path(cc_repo_path).is_dir():
             return Path(cc_repo_path)
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        if omni_home:
-            occ = Path(omni_home) / "onex_change_control"
-            if occ.is_dir():
-                return occ
         return None
 
     def _materialize_occ_dev_worktree(
@@ -4974,15 +4969,6 @@ class EvidenceCollector:
                 logger.info("Found contract at %s", candidate)
                 return candidate
 
-        # Fallback: resolve via OMNI_HOME env var
-        omni_home = os.environ.get("OMNI_HOME", "")
-        candidate = (
-            Path(omni_home) / "onex_change_control" / "contracts" / f"{ticket_id}.yaml"
-        )
-        if candidate.exists():
-            logger.info("Found contract at %s", candidate)
-            return candidate
-
         return None
 
     def _load_yaml(self, path: Path) -> dict[str, Any] | None:
@@ -5682,8 +5668,9 @@ class EvidenceCollector:
         """Return the onex_change_control repo path when contract is from OCC.
 
         Detects OCC contracts by checking whether the contract path contains
-        ``onex_change_control`` as a path component. Returns None for all
-        other contracts (cwd stays inherited).
+        ``onex_change_control`` as a path component, and returns the root of
+        that same tree, so greps run against the revision the contract was
+        read from. Returns None for all other contracts (cwd stays inherited).
         """
         # OMN-13888 (scope 6): during a dev-resolved collect, greps must run
         # inside the origin/dev worktree so dev-only receipt files are visible.
@@ -5693,12 +5680,10 @@ class EvidenceCollector:
             return None
         if "onex_change_control" not in contract_path.parts:
             return None
-        omni_home = os.environ.get("OMNI_HOME")
-        if not omni_home:
-            return None
-        occ_path = Path(omni_home) / "onex_change_control"
-        if occ_path.is_dir():
-            return str(occ_path)
+        parts = contract_path.parts
+        occ_root = Path(*parts[: parts.index("onex_change_control") + 1])
+        if occ_root.is_dir():
+            return str(occ_root)
         return None
 
     def _resolve_contract_repo_dir(self, contract_path: Path | None) -> str | None:
@@ -5719,7 +5704,9 @@ class EvidenceCollector:
            OCC root is derived from the contract path itself — correct even when
            ``OMNI_HOME`` is unset or points elsewhere.
         3. Otherwise ``$ONEX_CC_REPO_PATH`` when set.
-        4. Otherwise ``$OMNI_HOME/onex_change_control`` when that directory exists.
+
+        ``$OMNI_HOME`` is not consulted (OMN-17427): the change-control clone is
+        located only by ``ONEX_CC_REPO_PATH`` or by the contract's own path.
 
         Returns the absolute OCC root, or ``None`` when it cannot be resolved
         (the check then runs with the token unset — the fail-closed pre-fix
@@ -5745,12 +5732,6 @@ class EvidenceCollector:
         cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
         if cc_repo_path:
             return cc_repo_path
-
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        if omni_home:
-            occ_path = Path(omni_home) / "onex_change_control"
-            if occ_path.is_dir():
-                return str(occ_path)
 
         return None
 

@@ -111,6 +111,11 @@ requirements:
     acceptance:
       - id: "AC20"
         statement: "AC20: node_prrp_snapshot_publish_effect declares descriptor.runtime_profiles exactly [effects], so the effects runtime owns its command subscription -- falsifier: uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py -q -k test_the_effects_runtime_owns_the_publisher_command_subscription fails when the publisher declares [main] and at the merge base"
+  - id: "req-hostile-reviewer-large-result-verdict"
+    statement: "The Hostile Reviewer verdict step reads cli_review's result from a file, so a review result over the 128 KiB per-string exec limit still yields a verdict instead of failing as unknown with Argument list too long."
+    acceptance:
+      - id: "AC21"
+        statement: "AC21: hostile-reviewer.yml writes cli_review's stdout to REVIEW_JSON_FILE and the verdict parser reads that file, so a 300000-byte review result yields its quorum verdict -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_large_result_omn19998.py -q fails over the merge base's workflow with Argument list too long, exit 126"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -463,3 +468,11 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prrp_snapshot_publish_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys,yaml; c=yaml.safe_load(sys.stdin); assert c["descriptor"]["runtime_profiles"] == ["effects"], "snapshot publisher must belong to effects"'
+  - id: "dod-omn19998-hostile-reviewer-large-result-verdict"
+    description: "The verdict step reads a review result over 128 KiB from a file and prints its verdict; the merge base's workflow fails the test with Argument list too long."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_large_result_omn19998.py tests/ci/test_hostile_reviewer_quorum_verdict.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
