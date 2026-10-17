@@ -336,6 +336,11 @@ requirements:
         statement: "AC73: a finding of a style or cleanup class is dropped as a Nit, while a security, logic, integration or contract category, a title that names a defect and a finding bound to a standing rule keep blocking -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'style_and_cleanup or real_defect or standing_rule' fails at the merge base"
       - id: "AC74"
         statement: "AC74: from the fourth review round of one pull request a finding already posted is not repeated and a finding on a line outside the diff since the previous round does not block, while rounds one to three and a rerun of one head repeat nothing; the gate comment carries the round state only from the Actions bot -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q fails at the merge base"
+  - id: "req-hook-push-rehearsal-caller"
+    statement: "A pull request that changes the pre-push set runs omnibase_core's hook push rehearsal before it merges."
+    acceptance:
+      - id: "AC62"
+        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a full 40-hex SHA, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -454,6 +459,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC72 to AC74: only an introduced, evidenced, non-style Important finding blocks, and past round three only the new diff is re-reviewed without repeating a posted finding."
     command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q"
+  - kind: "tests"
+    description: "AC62: the hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin and its path-regex selects the hook paths."
+    command: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1104,3 +1112,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_policy.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerReviewFindingPolicy", "PRE_EXISTING", "NO_EVIDENCE", "ROUND_LIMIT")); print("review finding policy deploy probe: PASS")'
+  - id: "dod-omn17427-ac62-hook-push-rehearsal-caller"
+    description: "The hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin, and its path-regex selects the hook paths and no source path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC62"]
+  - id: "dod-omn17427-hook-push-rehearsal-deploy-probe"
+    description: "Deploy probe. GitHub serves the hook push rehearsal caller at the checked-out HEAD calling omnibase_core's reusable hook push rehearsal at a full SHA with a path-regex that matches .pre-commit-config.yaml. It fails at the merge base, where the caller does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
