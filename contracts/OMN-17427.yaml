@@ -874,7 +874,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); names = {"_resolve_occ_root", "_infer_occ_cwd", "_resolve_contract_repo_dir"}; funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in names]; assert len(funcs) == 3; assert not any(isinstance(c, ast.Constant) and c.value == "OMNI_HOME" for f in funcs for c in ast.walk(f)); roots = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "_DEFAULT_CONTRACT_ROOTS"]; assert len(roots) == 1; assert not any(isinstance(c, ast.Constant) and "OMNI_HOME" in str(c.value) for c in ast.walk(roots[0])); print("dod_verify occ root deploy probe: PASS")'
-  - id: "dod-omn17427-ac57-default-repo-lists-off-change-control"
+  - id: "dod-omn17427-ac57-default-repos-off-occ"
     description: "The default repository lists name no change-control repository and a change-control checkout binds as a product repository."
     source: "manual"
     checks:
