@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21092"
+title: "Lost-ruling census and pinned replay manifest (plan task T0.2)"
+summary: >-
+  Pin captured lab events, ledger prefixes, and replay scoring for at least three
+  confirmed lost or contradicted rulings, including a two-boundary case with an
+  operator instruction unrecorded before the first boundary.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-t02-pinned-replay-manifest"
+    statement: "Plan task T0.2 pins the lost-ruling census cases and their replay evidence."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every listed ruling timestamp is found in the pinned ledger prefix -- falsifier: a listed timestamp absent from it"
+      - id: "AC2"
+        statement: "AC2: every case's pinned hashes reproduce from the bundle on the runtime host -- falsifier: a hash mismatch"
+      - id: "AC3"
+        statement: "AC3: at least 3 cases with a confirmed lost or contradicted ruling, one with two boundaries and an unrecorded operator instruction before the first -- falsifier: fewer than 3, or no such two-boundary case"
+evidence_requirements:
+  - kind: "tests"
+    description: "Pinned replay manifest form and confirmed census cases for OMN-21092."
+    command: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_t02_replay_manifest_omn21092.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21092-ac1-ruling-stamps"
+    description: >-
+      The committed test checks the manifest's form, including ruling timestamp
+      syntax and written scoring. The ruling stamps and hashes are verified
+      against the bundle on the lab runtime host by the node's verify_replay_bundle
+      handler; the lab proof is in the PR body.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_t02_replay_manifest_omn21092.py -q -n 0 -k 't02_manifest and scoring_written'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21092-ac2-bundle-hashes"
+    description: >-
+      The committed test checks the manifest's form, including SHA-256 pins,
+      byte counts, and bundle paths. The ruling stamps and hashes are verified
+      against the bundle on the lab runtime host by the node's verify_replay_bundle
+      handler; the lab proof is in the PR body.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_t02_replay_manifest_omn21092.py -q -n 0 -k 't02_manifest and pins_are_sha256'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21092-ac3-confirmed-cases"
+    description: "At least three cases are confirmed, and one has two boundaries and an operator instruction unrecorded before the first boundary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_t02_replay_manifest_omn21092.py -q -n 0 -k 't02_manifest and (three_confirmed or two_boundary)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21092-deploy-probe"
+    description: "Deploy probe: the manifest read from GitHub at the checked-out commit declares plan task T0.2."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/tests/fixtures/context_compaction/manifest.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c ''plan_task: T0.2'''
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
