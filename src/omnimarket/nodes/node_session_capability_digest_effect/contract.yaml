@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: session_capability_digest_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Decides the text a session start prints from the cached capability
+  digest. Inside a registry root it prints the digest, or a STALE line with its
+  fix when the digest is missing or older than 45 minutes; on a compact restart
+  it prints one pointer line; elsewhere it prints nothing. Reads two cached
+  files, opens no socket and never blocks a session.
+input_model: omnimarket.nodes.node_session_capability_digest_effect.models.ModelSessionCapabilityDigestRequest
+output_model: omnimarket.nodes.node_session_capability_digest_effect.models.ModelSessionCapabilityDigestResult
+handler:
+  module: omnimarket.nodes.node_session_capability_digest_effect.handlers.handler_session_capability_digest
+  class: HandlerSessionCapabilityDigest
+  input_model: omnimarket.nodes.node_session_capability_digest_effect.models.ModelSessionCapabilityDigestRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerSessionCapabilityDigest
+      module: omnimarket.nodes.node_session_capability_digest_effect.handlers.handler_session_capability_digest
+    event_model:
+      name: ModelSessionCapabilityDigestRequest
+      module: omnimarket.nodes.node_session_capability_digest_effect.models
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.session-capability-digest-printed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.session-capability-digest-print.v1
+  publish_topics:
+  - onex.evt.omnimarket.session-capability-digest-printed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.session-capability-digest-print.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.session-capability-digest-printed.v1
+metadata:
+  transport_type: kafka
+entry_point:
+  module: omnimarket.nodes.node_session_capability_digest_effect.handlers.handler_session_capability_digest_cli
+  function: main
+  stdin: one SessionStart hook JSON document
+  stdout: the digest text, a STALE line with its fix, a compact pointer, or nothing
+env_dependencies:
+  ONEX_REGISTRY_ROOTS:
+    required: false
+    description: Colon-separated absolute registry roots; the digest prints only inside one.
+  OMNI_HOME:
+    required: false
+    description: Registry root, unioned with ONEX_REGISTRY_ROOTS.
+  ONEX_STATE_DIR:
+    required: false
+    description: State root holding the capability directory with digest.txt and failure.json.
+inputs:
+  cwd:
+    type: string
+    required: true
+    description: Working directory the session opened in.
+  source:
+    type: string
+    required: false
+    description: How the session started; compact prints one pointer line.
+  registry_roots:
+    type: string
+    required: false
+    description: Colon-separated absolute registry roots.
+  state_dir:
+    type: string
+    required: false
+    description: State root holding the capability directory.
+  uid:
+    type: integer
+    required: false
+    description: User id the launchd fix line names.
+outputs:
+  outcome:
+    type: string
+    description: Why this text was chosen.
+  output:
+    type: string
+    description: Text for stdout; empty when the hook stays silent.
+  age_minutes:
+    type: integer
+    description: Whole minutes since the digest was written; absent when missing.
