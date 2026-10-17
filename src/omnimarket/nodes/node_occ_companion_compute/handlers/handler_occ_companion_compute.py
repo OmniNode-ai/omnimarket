@@ -868,10 +868,9 @@ def assert_receipt_keys_match_declarations(
     # It is refused, not synthesised: ``probe_command`` / ``probe_stdout`` /
     # ``exit_code`` are an OBSERVATION of the OCC PR and this function is pure,
     # so manufacturing one would mint the "surrogate that reads as proof"
-    # OMN-16892 removed from the sibling producer. Both live callers
-    # (``node_occ_companion_effect._observe_occ_probe``,
-    # ``node_occ_attestation_observe._attest_companion``) already observe the
-    # OCC PR behind a total fallback and set ``occ_probe`` in the same
+    # OMN-16892 removed from the sibling producer. The live caller
+    # (``node_occ_companion_effect._observe_occ_probe``) already observes the
+    # OCC PR behind a total fallback and sets ``occ_probe`` in the same
     # ``model_copy`` that sets ``occ_pr_number``, so this refuses no shape that
     # exists today — it makes the gap unshippable instead of silent.
     self_bind_id = (
