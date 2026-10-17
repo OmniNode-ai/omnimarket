@@ -170,32 +170,6 @@ exit 1
                 "exactly_two_sentences",
             ]
         )
-    elif spec.smoke_kind == "coderabbit_triage":
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir()
-        _write_bin_script(
-            bin_dir,
-            "gh",
-            """#!/usr/bin/env bash
-if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
-  cat <<'JSON'
-{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"thread-1","isResolved":false,"comments":{"nodes":[{"databaseId":101,"author":{"login":"coderabbitai"},"body":"minor suggestion: rename this variable","path":"src/example.py","url":"https://example.com/thread-1"}]}}]}}}}}
-JSON
-  exit 0
-fi
-exit 1
-""",
-        )
-        env["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
-        command.extend(
-            [
-                "--repo",
-                "OmniNode-ai/omnimarket",
-                "--pr",
-                "1",
-                "--dry-run",
-            ]
-        )
     elif spec.smoke_kind == "session_bootstrap":
         command.extend(["--dry-run", "--state-dir", str(tmp_path / "state")])
     elif spec.smoke_kind == "session_orchestrator":

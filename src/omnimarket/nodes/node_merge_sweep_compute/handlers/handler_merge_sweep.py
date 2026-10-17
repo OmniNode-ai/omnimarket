@@ -432,7 +432,6 @@ class NodeMergeSweep:
                 checks_status="success",
                 review_status=_review_status(c.pr),
                 has_conflicts=False,
-                coderabbit_unresolved=0,
             )
             for c in track_a
         )
@@ -649,7 +648,7 @@ class NodeMergeSweep:
         OMN-8492: merge-sweep now treats review-bot/all-findings-resolved as
         the single authoritative gate. A PR with review_bot_gate_passed=False
         (or None with BLOCKED status) goes to Track A-resolve so merge-sweep
-        waits for the bot to clear it, rather than trying to inspect CodeRabbit
+        waits for the bot to clear it, rather than trying to inspect review
         threads directly.
         """
         if pr.mergeable != "MERGEABLE":

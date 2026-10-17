@@ -86,7 +86,7 @@ async def test_happy_path_merges_and_returns_sha() -> None:
     responses = [
         # Step 1: fetch mergeStateStatus
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
-        # Step 2: CodeRabbit gate check
+        # Step 2: review-decision gate check
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
         (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
         (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
@@ -225,7 +225,7 @@ async def test_changes_requested_review_blocks_merge() -> None:
     responses = [
         # PR state: CI clean
         (0, _pr_view_response("CLEAN", "CHANGES_REQUESTED"), ""),
-        # CodeRabbit gate
+        # review-decision gate
         (
             0,
             json.dumps({"reviewDecision": "CHANGES_REQUESTED", "latestReviews": []}),

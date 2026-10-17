@@ -7,7 +7,7 @@ worktree, re-checks the denylist/blast-radius safety bar against the ACTUAL
 diff produced (defense-in-depth — the caller's eligibility check already ran
 against the *reported* changed_files/diff_total_lines, which can be stale),
 commits with a ``delegated-by:`` trailer, then re-enters the EXISTING
-``node_pr_polish`` gate/verify/push/coderabbit-triage/auto-merge-arm flow via
+``node_pr_polish`` gate/verify/push/auto-merge-arm flow via
 its CLI with ``--skip-repair-dispatch`` and ``--no-automerge`` always set
 (safety bar #6 — a delegated fix never self-arms auto-merge).
 

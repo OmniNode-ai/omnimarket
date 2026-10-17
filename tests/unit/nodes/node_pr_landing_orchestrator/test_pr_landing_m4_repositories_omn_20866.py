@@ -229,12 +229,6 @@ def test_config_each_m4_repository_carries_its_own_facts() -> None:
     assert config.arm_method(INFRA) is EnumPrLandingArmMethod.QUEUE
     for repository in (CANARY, *NOT_CUT_OVER):
         assert config.arm_method(repository) is EnumPrLandingArmMethod.AUTO_MERGE
-    # No M4 dev branch requires conversation resolution.
-    assert config.review_threads_not_required_repos == {
-        CANARY,
-        INFRA,
-        *NOT_CUT_OVER,
-    }
     # omnibase_infra publishes no autobind prompt, so the watcher prompts it;
     # the three that still publish one are prompted by it.
     assert config.observed_prompt_repos == {CANARY, INFRA}

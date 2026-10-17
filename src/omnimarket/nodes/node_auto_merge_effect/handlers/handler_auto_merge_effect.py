@@ -5,7 +5,7 @@
 
 Steps:
     1. Fetch PR state via `gh pr view` and gate on mergeStateStatus == "CLEAN"
-    2. Verify no unresolved CodeRabbit Major threads (checks reviews for CHANGES_REQUESTED)
+    2. Verify no outstanding review change requests (reviewDecision CHANGES_REQUESTED)
     3. Execute merge via `gh pr merge` (explicit gh exception per SKILL.md),
        refused when the base branch has a merge queue or its rules cannot be
        read (OMN-19929): a queue branch lands only by enqueue
@@ -167,8 +167,8 @@ class HandlerAutoMergeEffect:
             # Unexpected state — treat as poll-continue
             self._sleep(_POLL_INTERVAL_S)
 
-        # Step 2: Check CodeRabbit Major threads via reviewDecision
-        cr_blocked, cr_reason = self._check_coderabbit_gate(pr_number, repo)
+        # Step 2: Check for outstanding change requests via reviewDecision
+        cr_blocked, cr_reason = self._check_changes_requested_gate(pr_number, repo)
         if cr_blocked:
             return ModelAutoMergeResult(
                 correlation_id=correlation_id,
@@ -238,7 +238,7 @@ class HandlerAutoMergeEffect:
             return None, f"Failed to parse gh output: {exc}"
         return data.get("mergeStateStatus", "UNKNOWN"), None
 
-    def _check_coderabbit_gate(
+    def _check_changes_requested_gate(
         self, pr_number: int, repo: str
     ) -> tuple[bool, str | None]:
         """Return (blocked, reason). Blocks if reviewDecision is CHANGES_REQUESTED."""
@@ -264,7 +264,7 @@ class HandlerAutoMergeEffect:
         if data.get("reviewDecision") == "CHANGES_REQUESTED":
             return (
                 True,
-                "PR has unresolved review requests (CHANGES_REQUESTED) -- resolve CodeRabbit Major threads before merging",
+                "PR has unresolved review requests (CHANGES_REQUESTED) -- resolve the requested changes before merging",
             )
         return False, None
 

@@ -195,13 +195,12 @@ entries:
     root_paths:
       - "docs/plans/2026-*merge*"
       - "docs/plans/2026-*pr*review*"
-      - "docs/plans/2026-*coderabbit*"
       - "docs/plans/2026-*cr*thread*"
     discovery_mode: true
     models: [qwen3-coder]
     source_directory: "docs/plans"
     topic_cluster: "pr-review-and-merge-policy"
-    rationale: "PR review policy, CodeRabbit thread gating, merge queue behavior"
+    rationale: "PR review policy, review thread gating, merge queue behavior"
 
   # ── Skills & Plugin Architecture ──────────────────────────────────────
 

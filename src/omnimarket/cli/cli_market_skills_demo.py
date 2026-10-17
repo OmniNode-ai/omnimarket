@@ -147,18 +147,18 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
         demo_id="review-cost-control",
         title="Review Work Deflection",
         task_text=(
-            "Run local review, CodeRabbit thread triage, and PR polish before "
-            "spending higher-cost review attention."
+            "Run local review and PR polish before spending higher-cost review "
+            "attention."
         ),
         pitch_claim=(
-            "Uses local review, CodeRabbit triage, and PR polish before "
-            "spending human attention on review cleanup."
+            "Uses local review and PR polish before spending human attention "
+            "on review cleanup."
         ),
-        skill_names=("local_review", "coderabbit_triage", "pr_polish"),
+        skill_names=("local_review", "pr_polish"),
         market_nodes=(),
         command_hint=(
             "uv run python scripts/run_market_skill_baseline.py "
-            "--skills local_review,coderabbit_triage,pr_polish --skip-pytest --stream"
+            "--skills local_review,pr_polish --skip-pytest --stream"
         ),
         value_tags=("delegation", "review-automation", "cost-avoidance"),
     ),
@@ -193,11 +193,11 @@ _DEMO_DEFINITIONS: tuple[DemoDefinition, ...] = (
             "Uses cheap local review and deterministic cleanup first, then "
             "escalates only unresolved review work to higher-cost assistance."
         ),
-        skill_names=("local_review", "coderabbit_triage", "aislop_sweep", "pr_polish"),
+        skill_names=("local_review", "aislop_sweep", "pr_polish"),
         market_nodes=("node_model_router", "node_projection_llm_cost"),
         command_hint=(
             "uv run python scripts/run_market_skill_baseline.py "
-            "--skills local_review,coderabbit_triage,aislop_sweep,pr_polish "
+            "--skills local_review,aislop_sweep,pr_polish "
             "--skip-pytest --stream"
         ),
         value_tags=("review-automation", "cost-avoidance", "escalation-control"),

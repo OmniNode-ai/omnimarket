@@ -8,9 +8,8 @@ description: >
   Agent-dispatched PR remediation effect. Consumes triage events for
   non-green PRs and routes fix actions by block reason:
   ci_failure -> CI fix dispatch, conflict -> conflict resolution,
-  changes_requested -> review-comment address, coderabbit -> CodeRabbit
-  auto-reply. Protocol-injected adapters for GitHub and agent dispatch.
-  Absorbs pr_polish conflict-resolution and coderabbit_triage auto-reply
+  changes_requested -> review-comment address. Protocol-injected adapters
+  for GitHub and agent dispatch. Absorbs pr_polish conflict-resolution
   logic into a proper node with contract-declared behavior.
 
 # OMN-13990: the runtime resolver zero-arg-constructs the declared handler on the
@@ -64,7 +63,7 @@ inputs:
     type: str
     description: >
       Block reason: ci_failure | code_failure | receipt_failure | conflict |
-      changes_requested | coderabbit | deploy_gate_contract_not_found |
+      changes_requested | deploy_gate_contract_not_found |
       receipt_evidence_source_autobind
     required: true
   ticket_id:

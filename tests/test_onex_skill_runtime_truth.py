@@ -22,7 +22,6 @@ EXPECTED_SKILLS = {
     ),
     "aislop-sweep": ("node_aislop_sweep", "aislop_sweep"),
     "bus-audit": ("node_bus_audit_compute", "bus_audit_compute"),
-    "coderabbit-triage": ("node_coderabbit_triage", "coderabbit_triage"),
     "dep-cascade-dedup": (
         "node_dep_cascade_dedup_orchestrator",
         "dep_cascade_dedup_orchestrator",

@@ -71,7 +71,6 @@ RECORDED_PATHS = [
     "omnimarket/nodes/node_closeout_verifier_compute/handlers/handler_closeout_verifier.py",
     "omnimarket/nodes/node_code_embedding_effect/handlers/handler_code_embedding_effect.py",
     "omnimarket/nodes/node_code_enrichment_effect/handlers/handler_code_enrichment_effect.py",
-    "omnimarket/nodes/node_coderabbit_triage/handlers/handler_coderabbit_triage.py",
     "omnimarket/nodes/node_compliance_sweep/handlers/handler_compliance_sweep.py",
     "omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py",
     "omnimarket/nodes/node_content_ingestion_effect/handlers/handler_content_ingestion.py",
