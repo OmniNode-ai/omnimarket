@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab SLI Alert Effect (OMN-17427)
+#
+# Definition-B effect: handle(ModelLabSliAlertRequest) -> ModelLabSliAlertResult.
+# What each severity does, and how often it may repeat, is severity_policy below.
+# The decision is pure (DecideLabSliAlert); the handler publishes each push on the
+# existing slack-publish command; fix lanes ride on the lab-sli-alerted terminal event.
+name: node_lab_sli_alert_effect
+contract_name: node_lab_sli_alert_effect
+node_name: node_lab_sli_alert_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Turns one interval's indicator verdicts into actions, per the breaching
+  indicator's own severity: SEV1 pushes the operator and asks for a fix lane,
+  SEV2 asks for a fix lane, SEV3 and every dark (unknown) indicator ride one
+  batched fix lane, SEV4 only reaches the board. Deduplicated per indicator: an
+  indicator still firing inside its severity's renotify window is suppressed; a
+  recovered one is cleared and fires again at once on its next breach. The
+  alert state goes in and comes out, so the node itself holds none. Each
+  push's delivery (published, or the error) and each requested fix lane are on
+  the lab-sli-alerted terminal event.
+
+handler:
+  module: omnimarket.nodes.node_lab_sli_alert_effect.handlers.handler_lab_sli_alert
+  class: HandlerLabSliAlert
+  input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliAlertRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: alert_lab_sli
+      handler:
+        name: HandlerLabSliAlert
+        module: omnimarket.nodes.node_lab_sli_alert_effect.handlers.handler_lab_sli_alert
+      input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliAlertRequest
+      output_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliAlertResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 10000
+
+input_model:
+  name: ModelLabSliAlertRequest
+  module: omnimarket.models.lab_sli.model_lab_sli
+  description: One evaluation batch and the alert state the previous interval left.
+output_model:
+  name: ModelLabSliAlertResult
+  module: omnimarket.models.lab_sli.model_lab_sli
+  description: Actions to take, indicators suppressed and cleared, and the next state.
+
+terminal_event: onex.evt.omnimarket.lab-sli-alerted.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.lab-sli-evaluated.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-sli-alerted.v1
+    # The existing operator push path (node_slack_publish_effect).
+    - onex.cmd.omnimarket.slack-publish.v1
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack channel id the SEV1 operator push is posted to. Resolved at the
+      effect boundary through the canonical secret-store resolver.
+    required: true
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-sli-alerted.v1
+
+config:
+  lab_sli_alert:
+    lane_prefix: "lab-sli-fix-"
+    batched_lane_slug: "drift"
+    # A dark indicator acts at this severity: build or repair its reader.
+    unknown_acts_as: SEV3
+    severity_policy:
+      SEV1:
+        push_operator: true
+        fix_lane: immediate
+        renotify_minutes: 60
+      SEV2:
+        push_operator: false
+        fix_lane: immediate
+        renotify_minutes: 180
+      SEV3:
+        push_operator: false
+        fix_lane: batched
+        renotify_minutes: 720
+      SEV4:
+        push_operator: false
+        fix_lane: none
+        renotify_minutes: 1440

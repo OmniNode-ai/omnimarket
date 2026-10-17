@@ -1,0 +1,24 @@
+name: node_lab_sli_collect_effect
+version: "0.1.0"
+description: "Collects lab SLI readings from the PR watcher state, host probes and the scheduler"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_sli_collect_effect: "omnimarket.nodes.node_lab_sli_collect_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "observability", "lab", "sli", "OMN-17427"]
+pack: "pipeline"
+display_name: "Lab SLI Collect"
+node_role: "effect"
