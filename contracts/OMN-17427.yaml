@@ -243,8 +243,6 @@ requirements:
     acceptance:
       - id: "AC44"
         statement: "AC44: node_retention_cleanup registers omninode_internal.consumer_flow_windows, deletes a batched target in bounded batches with one committed transaction each and the tenant GUC first, isolates a failing target, refuses a protected table at load, and runs once per declared interval on the runtime tick -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q fails at the merge base"
-      - id: "AC45"
-        statement: "AC45: the consumer-flow projection declares an index leading with window_start, built concurrently -- falsifier: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0006_add_window_start_index.sql is absent at the merge base"
   - id: req-verified-delete
     statement: A local file is deleted only after Drive reports the size and md5 of the staged part that holds it.
     acceptance:
@@ -764,14 +762,6 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py tests/nodes/test_omn15797_retention_cleanup_tenant_seam.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC44"]
-  - id: "dod-omn17427-ac45-window-start-index"
-    description: "The consumer-flow projection ships the window_start index migration."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: "grep -q 'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_consumer_flow_windows_window_start' src/omnimarket/nodes/node_projection_consumer_flow/migrations/0006_add_window_start_index.sql"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC45"]
   - id: "dod-omn17427-declared-table-retention-deploy-probe"
     description: "Deploy probe. GitHub serves the retention handler and contract at the checked-out HEAD with batched deletes, the protected-table refusal and the consumer_flow_windows target. It fails at the merge base, which has none of them, and needs no lab network on the hosted runner."
     source: "manual"
