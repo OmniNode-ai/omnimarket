@@ -65,13 +65,17 @@ def _dsn() -> str:
     return f"host={host} port={port} user={user} password={password} dbname={db}"
 
 
+def _connect_or_skip(dsn: str) -> psycopg2.extensions.connection:
+    try:
+        return psycopg2.connect(dsn, connect_timeout=5)
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"no reachable Postgres for the freshness proof: {exc}")
+
+
 @pytest.fixture
 def scratch_dsn() -> Iterator[str]:
     dsn = _dsn()
-    try:
-        conn = psycopg2.connect(dsn, connect_timeout=5)
-    except psycopg2.OperationalError as exc:
-        pytest.skip(f"no reachable Postgres for the freshness proof: {exc}")
+    conn = _connect_or_skip(dsn)
     conn.autocommit = True
     with conn.cursor() as cur:
         cur.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
