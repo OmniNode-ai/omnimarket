@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18143"
+title: "The deploy effect reports the published rebuild commands that nothing has answered yet"
+summary: >-
+  OMN-18143 AC2 asks that the deploy effect's pending depth for a lane be observable so a
+  stalled channel is diagnosable without reading the topic by hand. The command, completion
+  and rejection arms of node_redeploy_deploy_effect now return a pending_depth metric: the
+  published rebuild commands for the lane that no completion has answered and no rejection
+  has ended. A rejection that means the agent will never complete the command settles it;
+  a duplicate and a busy do not count against the original.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-deploy-effect-pending-depth"
+    statement: "node_redeploy_deploy_effect exposes, per lane, how many published rebuild commands are still unanswered."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the effect's pending depth for a lane is observable as the pending_depth metric of the command, completion and rejection arms -- falsifier: uv run pytest tests/test_omn18143_deploy_effect_pending_depth.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The pending-depth tests, and the deploy effect's existing publish-and-return, publish-once and rejection-arm tests."
+    command: "uv run pytest tests/test_omn18143_deploy_effect_pending_depth.py tests/test_omn18143_deploy_effect_publishes_and_returns.py tests/test_omn19377_deploy_effect_skips_repeats.py tests/test_omn19377_deploy_effect_durable_publish_record.py tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py tests/test_deploy_publish_monitor_rebuild_rejected_dispatch_omn18816.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18143-ac2-pending-depth"
+    description: "AC2: the three arms return pending_depth per lane; a completion, or a rejection other than duplicate, takes its command out of the count (12 tests)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18143_deploy_effect_pending_depth.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn18143-deploy-effect-unchanged"
+    description: "The deploy effect's publish-and-return, publish-once, completion-arm and rejection-arm tests still pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18143_deploy_effect_publishes_and_returns.py tests/test_omn19377_deploy_effect_skips_repeats.py tests/test_omn19377_deploy_effect_durable_publish_record.py tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py tests/test_deploy_publish_monitor_rebuild_rejected_dispatch_omn18816.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
