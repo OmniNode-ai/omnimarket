@@ -46,32 +46,32 @@ dod_evidence:
     description: "Ticket AC1 accepted binding: the Core carrier keeps exact text, sha256 and byte count under the 64 KiB bound and refuses a hash mismatch, a length mismatch and dropped text under the bound."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_core_raw_response_carrier_bounds_omn19385.py -q -p no:cacheprovider'
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/delegation/test_core_raw_response_carrier_bounds_omn19385.py -q -p no:cacheprovider'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19385-ticket-ac2-accepted-carrier-stamping"
     description: "Ticket AC2 accepted binding: the provider-boundary effects and LocalDelegationDispatchPort stamp the exact provider content onto the carrier and the terminal carries it."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k "provider_boundary_field_set or local_effect_field_set or local_terminal_retains" -q -p no:cacheprovider'
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k "provider_boundary_field_set or local_effect_field_set or local_terminal_retains" -q -p no:cacheprovider'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn19385-ticket-ac3-accepted-raw-bytes-bar"
     description: "Ticket AC3 accepted binding: run_live_manifest refuses a prose-after-JSON trial and passes a clean JSON trial, both on the raw_provider_bytes basis."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k "followed_with_prose_is_refused or clean_json_answer_is_measured" -q -p no:cacheprovider'
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k "followed_with_prose_is_refused or clean_json_answer_is_measured" -q -p no:cacheprovider'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn19385-ticket-ac4-accepted-carrier-field-set"
     description: "Ticket AC4 accepted binding: the carrier dump equals exactly source_field, sha256, utf8_bytes and the message content text. Limit: no credential header is sent in the fixture, so a credential leak is covered only by the exact-equality assertion."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k field_set -q -p no:cacheprovider'
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k field_set -q -p no:cacheprovider'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn19385-ticket-ac5-live-lab-raw-carrier"
@@ -88,6 +88,14 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k hosted_provider_terminal_and_live_grader -q -p no:cacheprovider'
+        check_value: 'uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k hosted_provider_terminal_and_live_grader -q -p no:cacheprovider'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn19385-deploy-runtime-handoff-smoke"
+    description: "Hosted deployment-candidate smoke: run the inference effect, local dispatch port and delegate orchestrator against an isolated HTTP provider, then grade the serialized terminal. The check fails if raw text, SHA-256 or retention changes, clean JSON is refused or trailing prose is accepted. It requires no lab service and measures the checked-out runtime in process; the separate local Done probe measures the deployed dev lane."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: 'uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k hosted_provider_terminal_and_live_grader -q -p no:cacheprovider'
+        cwd: "${OMNI_HOME}/omnimarket"
