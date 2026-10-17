@@ -10,6 +10,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
 
 class LabSyncHostIo:
     def run(self, argv: list[str], timeout_s: int) -> tuple[int, str, str]:
@@ -20,6 +22,9 @@ class LabSyncHostIo:
                 text=True,
                 timeout=timeout_s,
                 check=False,
+                env=scrub_git_location_env(dict(os.environ))
+                if argv[0] == "git"
+                else None,
             )
         except subprocess.TimeoutExpired as exc:
             return 124, "", f"timed out after {timeout_s}s: {exc}"

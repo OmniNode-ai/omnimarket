@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from string import Formatter
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
@@ -20,6 +21,8 @@ def _valid_stamp(value: str) -> str:
 
 
 _Arg = Annotated[str, Field(min_length=1)]
+REPO_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
+FIX_LANE_FIELDS = frozenset({"lane", "brief", "daemon", "host"})
 _Stamp = Annotated[str, Field(pattern=_TS), AfterValidator(_valid_stamp)]
 
 EnumDaemonDecision = Literal[
@@ -33,6 +36,18 @@ EnumDaemonVerdict = Literal[
     "busy",
     "refused",
 ]
+EnumCloneVerdict = Literal[
+    "current",
+    "missing",
+    "behind",
+    "created",
+    "fast_forwarded",
+    "dirty",
+    "off_branch",
+    "diverged",
+    "refused",
+]
+EnumChoreVerdict = Literal["ran", "due", "refused"]
 
 
 class ModelRevisionProbe(BaseModel):
@@ -99,6 +114,50 @@ class ModelDaemonDeclaration(BaseModel):
         description="Locks the installer takes itself; any held one skips this tick as busy.",
     )
     branch_record: ModelBranchRecord | None = None
+    absent_is_lag: bool = Field(
+        default=False,
+        description=(
+            "An unreadable installed revision is a lag the installer fixes (a plugin this host "
+            "does not have yet), not a refusal."
+        ),
+    )
+
+
+class ModelCloneSet(BaseModel):
+    """The registry clones every lab host holds: a missing one is cloned, a clean one fast-forwarded."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    root: str = Field(
+        min_length=1, description="The registry root the clones live under."
+    )
+    url: str = Field(
+        pattern=r"^https://[^\s{}]*\{repo\}[^\s{}]*$",
+        description="HTTPS clone URL template; `{repo}` is the repository name.",
+    )
+    repos: list[Annotated[str, Field(pattern=REPO_NAME_PATTERN)]] = Field(min_length=1)
+    extra_repos_file: str | None = Field(
+        default=None,
+        description='A host JSON file {"repos": [...]} naming more clones, such as private ones.',
+    )
+    timeout_s: int = Field(default=900, ge=1)
+
+
+class ModelChoreDeclaration(BaseModel):
+    """A host maintenance command the sync runs every tick, such as the pre-commit cache gc."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9-]*$")
+    description: str = ""
+    hosts: list[str] = Field(default_factory=lambda: ["*"])
+    present_when: str | None = None
+    argv: list[_Arg] = Field(min_length=1)
+    timeout_s: int = Field(default=600, ge=1)
+    no_change: str | None = Field(
+        default=None,
+        description="A regular expression the output matches when the run changed nothing.",
+    )
 
 
 class ModelDaemonOverlay(BaseModel):
@@ -115,11 +174,27 @@ class ModelDaemonOverlay(BaseModel):
             "and `{host}` are filled per refusal."
         ),
     )
+    clones: ModelCloneSet | None = None
+    chores: list[ModelChoreDeclaration] = Field(default_factory=list)
     fix_lane_repeat_hours: float = Field(
         default=6.0,
         gt=0,
         description="The same blocker dispatches another fix lane only after this long.",
     )
+
+    @model_validator(mode="after")
+    def _fix_lane_placeholders(self) -> ModelDaemonOverlay:
+        """A fix-lane part names only the four plain fields, so formatting it cannot fail or reach an attribute; `${VAR}` is expanded at load."""
+        for part in self.fix_lane:
+            for text, field, spec, conversion in Formatter().parse(part):
+                if field is None or text.endswith("$"):
+                    continue
+                if field not in FIX_LANE_FIELDS or spec or conversion:
+                    raise ValueError(
+                        f"fix_lane part {part!r} names {{{field}}}; "
+                        f"only {', '.join(sorted(FIX_LANE_FIELDS))} are filled, with no spec or conversion"
+                    )
+        return self
 
 
 class ModelLabDaemonSyncCommand(BaseModel):
@@ -163,6 +238,33 @@ class ModelDaemonOutcome(BaseModel):
     fix_lane: str | None = None
 
 
+class ModelCloneOutcome(BaseModel):
+    """What one tick found and did for one registry clone."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str
+    path: str
+    verdict: EnumCloneVerdict
+    branch: str | None = None
+    before: str | None = None
+    after: str | None = None
+    blocker: str | None = None
+    fix_lane: str | None = None
+
+
+class ModelChoreOutcome(BaseModel):
+    """What one tick's run of one maintenance command printed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    verdict: EnumChoreVerdict
+    output: str = ""
+    blocker: str | None = None
+    fix_lane: str | None = None
+
+
 class ModelLabDaemonInstallRefused(BaseModel):
     """The alarm event: a daemon could not be converged, naming the blocker."""
 
@@ -191,5 +293,11 @@ class ModelLabDaemonSyncResult(BaseModel):
     mode: Literal["repair", "check"]
     daemons: list[ModelDaemonOutcome]
     drifts: list[ModelLabDaemonDrift]
+    clones: list[ModelCloneOutcome] = Field(default_factory=list)
+    chores: list[ModelChoreOutcome] = Field(default_factory=list)
+    changes: list[str] = Field(
+        default_factory=list,
+        description="One line per change this run made on the host; empty when it changed nothing.",
+    )
     diagnostics: list[str] = Field(default_factory=list)
     exit_code: int

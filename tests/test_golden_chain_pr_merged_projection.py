@@ -39,6 +39,9 @@ NODE_DIR = (
 )
 CONTRACT_PATH = NODE_DIR / "contract.yaml"
 MIGRATION_PATH = NODE_DIR / "migrations" / "0001_create_pr_merged_events.sql"
+DEDUPE_MIGRATION_PATH = (
+    NODE_DIR / "migrations" / "0003_pr_merged_events_unique_repo_pr_number.sql"
+)
 
 EXPECTED_SUBSCRIBE_TOPIC = "onex.evt.github.pr-merged.v1"
 
@@ -93,6 +96,28 @@ class TestPrMergedProjectionDataFlow:
         HANDLER.project(_make_event(event_id="evt-dup"), db)
         assert len(db.query(TABLE)) == 1
 
+    def test_replayed_merge_with_new_event_id_yields_one_row(self) -> None:
+        """A merge replayed under a fresh event_id still yields one row.
+
+        The publisher mints a new event_id per publication, so a webhook
+        redelivery or a mirror republish of the same merge must dedupe on
+        (repo, pr_number), not on event_id.
+        """
+        db = InmemoryDatabaseAdapter()
+        HANDLER.project(_make_event(event_id="evt-first"), db)
+        HANDLER.project(_make_event(event_id="evt-replay"), db)
+        rows = db.query(TABLE)
+        assert len(rows) == 1
+        assert rows[0]["repo"] == "OmniNode-ai/omnimarket"
+        assert rows[0]["pr_number"] == 1265
+
+    def test_same_pr_number_in_different_repos_stays_distinct(self) -> None:
+        """pr_number alone is not the key: the repo is part of it."""
+        db = InmemoryDatabaseAdapter()
+        HANDLER.project(_make_event(event_id="evt-a", repo="OmniNode-ai/a"), db)
+        HANDLER.project(_make_event(event_id="evt-b", repo="OmniNode-ai/b"), db)
+        assert len(db.query(TABLE)) == 2
+
     def test_distinct_events_produce_distinct_rows(self) -> None:
         """Two merged PRs (distinct event_id) produce two rows."""
         db = InmemoryDatabaseAdapter()
@@ -143,6 +168,13 @@ class TestPrMergedProjectionContract:
         ddl = MIGRATION_PATH.read_text()
         assert "CREATE TABLE IF NOT EXISTS pr_merged_events" in ddl
         assert "projection_cursor BIGSERIAL" in ddl
+
+    def test_dedupe_migration_adds_unique_key_on_repo_pr_number(self) -> None:
+        assert DEDUPE_MIGRATION_PATH.exists(), f"Missing {DEDUPE_MIGRATION_PATH}"
+        ddl = DEDUPE_MIGRATION_PATH.read_text()
+        assert "UNIQUE (repo, pr_number)" in ddl
+        # Existing duplicates must be collapsed before the key can be added.
+        assert "DELETE FROM pr_merged_events" in ddl
 
     def test_node_type_is_reducer(self) -> None:
         assert self._load_contract().get("node_type") == "reducer"
