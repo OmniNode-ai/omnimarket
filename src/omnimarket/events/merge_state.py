@@ -55,13 +55,12 @@ class EnumMergeRerunReason(StrEnum):
 
     Distinct axis from ``EnumPrLifecyclePhase`` (the state FSM). Used for the
     "same-head reruns by reason code" metric so a rerun caused by a stale
-    OCC-preflight run is distinguishable from one caused by an unresolved
-    CodeRabbit thread or a genuine CI flake. Values map to the recurring
-    merge-flow friction classes documented in CLAUDE.md / the rolling ledger.
+    OCC-preflight run is distinguishable from one caused by a genuine CI
+    flake. Values map to the recurring merge-flow friction classes documented
+    in CLAUDE.md / the rolling ledger.
     """
 
     STALE_OCC_PREFLIGHT = "stale_occ_preflight"
-    CODERABBIT_UNRESOLVED = "coderabbit_unresolved"
     DEPLOY_GATE = "deploy_gate"
     RECEIPT_GATE = "receipt_gate"
     HEAD_REFRESH = "head_refresh"

@@ -280,7 +280,6 @@ _PR_GREEN = PrRecord(
     # OMN-14151: arm-gate-ready facts so tests asserting a real merge continue
     # to pass under the merge-queue governor's fail-closed arm gate.
     is_draft=False,
-    coderabbit_unresolved=0,
     merge_state_status="CLEAN",
 )
 _PR_RED = PrRecord(

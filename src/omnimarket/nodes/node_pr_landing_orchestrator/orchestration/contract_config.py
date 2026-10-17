@@ -5,7 +5,7 @@
 The ``landing_config`` block of node_pr_landing_orchestrator's contract.yaml
 declares the GitHub mode (a default and one per repository), the operations
 that stay dry_run everywhere, the repositories that need no change-control
-companion, land through a merge queue, need no conversation resolution or are
+companion, land through a merge queue or are
 prompted by the PR watcher's observations, and the arm gate's policy. The
 handler builds :class:`PrLandingOrchestratorConfig` from it, so the contract,
 not a code default, decides whether a mutation is sent.
@@ -60,7 +60,6 @@ _KEYS = frozenset(
         "dry_run_operations",
         "companion_exempt_repositories",
         "queue_repositories",
-        "review_threads_not_required_repositories",
         "observed_prompt_repositories",
         "arm_policy",
     }
@@ -166,9 +165,6 @@ def config_from_block(block: object) -> PrLandingOrchestratorConfig:
         arm_policy=arm_policy,
         companion_exempt_repos=_repositories(block, "companion_exempt_repositories"),
         queue_repos=_repositories(block, "queue_repositories"),
-        review_threads_not_required_repos=_repositories(
-            block, "review_threads_not_required_repositories"
-        ),
         observed_prompt_repos=_repositories(block, "observed_prompt_repositories"),
     )
 

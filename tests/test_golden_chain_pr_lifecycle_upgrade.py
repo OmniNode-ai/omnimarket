@@ -272,7 +272,7 @@ class TestTrivialCommentResolution:
     def _make_bot_comment(self, comment_id: int, body: str) -> dict[str, object]:
         return {
             "id": comment_id,
-            "user": {"login": "coderabbitai"},
+            "user": {"login": "dependabot[bot]"},
             "body": body,
         }
 

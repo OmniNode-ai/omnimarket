@@ -184,7 +184,7 @@ inputs:
     default: true
   enable_trivial_comment_resolution:
     type: bool
-    description: "Auto-resolve trivial CodeRabbit or bot review threads before merge"
+    description: "Auto-resolve trivial bot review threads before merge"
     required: false
     default: true
   verify:

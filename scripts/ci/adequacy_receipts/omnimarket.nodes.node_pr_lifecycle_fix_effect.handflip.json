@@ -13,7 +13,6 @@
     "HandlerPrLifecycleFix.handler_type",
     "_InMemoryTwoStrikeStore.get_strikes",
     "_InMemoryTwoStrikeStore.record_failure",
-    "_NoopAgentDispatchAdapter.dispatch_coderabbit_reply",
     "_NoopAgentDispatchAdapter.dispatch_review_fix",
     "_NoopDelegationFixAdapter.dispatch_delegated_fix",
     "_NoopGitHubAdapter.rerun_failed_checks",

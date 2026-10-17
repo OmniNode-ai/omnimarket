@@ -24,14 +24,6 @@ class ModelArmCandidate(BaseModel):
         default=None,
         description="True/False from a genuine read; None means unknown -> WITHHOLD.",
     )
-    coderabbit_unresolved: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Count of unresolved CodeRabbit review threads. None means the "
-            "count was never collected -> WITHHOLD (never defaults to 0)."
-        ),
-    )
     merge_state_status: str | None = Field(
         default=None,
         description="GitHub mergeStateStatus: CLEAN | DIRTY | BLOCKED | BEHIND | UNKNOWN | None.",

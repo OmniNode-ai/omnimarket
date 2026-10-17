@@ -72,7 +72,7 @@ def _scripted_run(
     return _run
 
 
-# Clean merge: poll CLEAN -> CodeRabbit gate clean -> merge ok -> SHA -> branch.
+# Clean merge: poll CLEAN -> review-decision gate clean -> merge ok -> SHA -> branch.
 _CLEAN_SEQUENCE = [
     (0, _pr_view("CLEAN", "APPROVED"), ""),
     (0, _pr_view("CLEAN", "APPROVED"), ""),

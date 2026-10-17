@@ -43,7 +43,6 @@ class TestIsDelegationEligible:
             "receipt_failure",
             "ci_failure",
             "conflict",
-            "coderabbit",
             "deploy_gate_contract_not_found",
             "receipt_evidence_source_autobind",
         ],

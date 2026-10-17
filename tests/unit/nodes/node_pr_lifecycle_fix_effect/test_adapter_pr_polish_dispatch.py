@@ -110,37 +110,6 @@ class TestPrPolishDispatchAdapter:
         argv = list(spawner.calls[0]["argv"])  # type: ignore[arg-type]
         assert "--ticket" not in argv
 
-    async def test_dispatch_coderabbit_reply_uses_coderabbit_node(
-        self, tmp_path: Path
-    ) -> None:
-        spawner = _RecordingSpawner()
-        adapter = PrPolishDispatchAdapter(
-            python_bin="/usr/bin/python-test", state_dir=tmp_path, spawner=spawner
-        )
-
-        result = await adapter.dispatch_coderabbit_reply("OmniNode-ai/omnimarket", 7)
-
-        assert "dispatched coderabbit-reply" in result
-        argv = list(spawner.calls[0]["argv"])  # type: ignore[arg-type]
-        assert argv[:3] == [
-            "/usr/bin/python-test",
-            "-m",
-            "omnimarket.nodes.node_coderabbit_triage",
-        ]
-        assert "--repo" in argv
-        assert "OmniNode-ai/omnimarket" in argv
-        assert "--pr" in argv
-        assert "7" in argv
-        assert spawner.calls[0]["cwd"] is not None
-        env = spawner.calls[0]["env"]  # type: ignore[assignment]
-        assert isinstance(env, dict)
-        assert "PYTHONPATH" in env
-
-        run_dirs = list((tmp_path / "pr-polish").iterdir())
-        assert len(run_dirs) == 1
-        breadcrumb = json.loads((run_dirs[0] / "dispatch.json").read_text())
-        assert breadcrumb["kind"] == "coderabbit-reply"
-
     async def test_dispatch_does_not_write_breadcrumb_when_spawn_fails(
         self, tmp_path: Path
     ) -> None:

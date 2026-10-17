@@ -661,8 +661,6 @@ state_machine:
 #   * rerun_runs, update_branch and disarm stay dry_run in every repository
 #     until the landing controller stops taking those actions for the same
 #     repositories (plan slice S8): one owner per class of PR action.
-#   * review threads: omnimarket's dev branch requires no conversation
-#     resolution and no review, so an unresolved thread cannot block the merge.
 #   * observed prompts: omnimarket publishes no autobind prompt since its
 #     cut-over, so the PR watcher's observations prompt its reads instead.
 # The other M4 repositories, each from its own facts (dev branch classic
@@ -703,12 +701,6 @@ landing_config:
     - OmniNode-ai/omnibase_infra
   queue_repositories:
     - OmniNode-ai/omnibase_infra
-  review_threads_not_required_repositories:
-    - OmniNode-ai/omnimarket
-    - OmniNode-ai/omnibase_infra
-    - OmniNode-ai/omnibase_core
-    - OmniNode-ai/omniclaude
-    - OmniNode-ai/omnidash
   observed_prompt_repositories:
     - OmniNode-ai/omnimarket
     - OmniNode-ai/omnibase_infra

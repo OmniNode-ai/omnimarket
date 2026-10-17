@@ -430,13 +430,13 @@ def test_same_head_reruns_by_reason() -> None:
             from_state=EnumPrLifecyclePhase.BRANCH_CHECKS,
             to_state=EnumPrLifecyclePhase.BRANCH_CHECKS,
             at=_T0 + timedelta(seconds=2),
-            reason_code=EnumMergeRerunReason.CODERABBIT_UNRESOLVED,
+            reason_code=EnumMergeRerunReason.DEPLOY_GATE,
         ),
     ]
     m = compute_merge_flow_metrics(txns)
     assert m.same_head_reruns_by_reason == {
         "stale_occ_preflight": 2,
-        "coderabbit_unresolved": 1,
+        "deploy_gate": 1,
     }
 
 
