@@ -21,6 +21,7 @@ repos:
     hooks:
       - id: check-public-runner-placement
         args: [--repo, omnimarket, --visibility, public]
+        require_serial: true
   # Stub implementation detection + receipt-honesty gate + transport-mock lint
   # sourced from omnibase_core. Rev bumped to OMN-13026 (transport-mock-lint).
   - repo: https://github.com/OmniNode-ai/omnibase_core

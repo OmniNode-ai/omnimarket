@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_lab_fill_effect
 version: "0.1.0"
-description: "Effect: the I/O of a lab-fill run - read the lab pool and the ownership sources, launch decided lanes through the remote-lane runner, read their receipts and append the run's STATUS row over the bus. Decisions are node_lab_fill_plan_compute's. Hosted by a serve process on the host that holds the ledger, the runner and the PR watcher state, never by a shared runtime."
+description: "Effect: the I/O of a lab-fill run - read the lab pool and the ownership sources, launch decided lanes through the remote-lane runner, read their receipts and append the run's STATUS row over the bus. Decisions are node_lab_fill_plan_compute's, except run_lab_fill_tick, which fills free slots from the approved-work list with no model in the loop. Hosted by a serve process on the host that holds the ledger, the runner and the PR watcher state, never by a shared runtime."
 pack: operator_tooling
 node_role: effect
 display_name: "Lab Fill Effect"

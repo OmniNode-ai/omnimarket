@@ -293,6 +293,11 @@ requirements:
     acceptance:
       - id: "AC57"
         statement: "AC57: git_mirror.REGISTRY_REPOS, both merge-sweep _DEFAULT_REPOS lists and the PR snapshot DEFAULT_REPOS name no change-control repository, and resolve_contract_subject binds a change-control checkout as PRODUCT_REPOSITORY -- falsifier: uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q fails at the merge base"
+  - id: "req-lab-fill-tick-no-model"
+    statement: "One lab-fill tick fills a fire's free slots from the approved-work list with no model call: ownership read once, the Linear assignee and state re-read directly per launch, lanes launched through the remote-lane runner, and a result naming what was dispatched and why the rest was not."
+    acceptance:
+      - id: "AC58"
+        statement: "AC58: node_lab_fill_effect's run_lab_fill_tick dispatches free slots in priority order, frees a slot a refused candidate leaves for the next, skips owned and blocked rows before launch, launches nothing when apply is false, never treats an unread owner as free, and stops on a runner or standing-rules failure leaving the rest untried -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -909,3 +914,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); lists = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "REGISTRY_REPOS"]; assert len(lists) == 1; names = [c.value for c in ast.walk(lists[0]) if isinstance(c, ast.Constant) and isinstance(c.value, str)]; assert len(names) > 5; assert not [n for n in names if n.endswith("_change_control")]; print("git mirror repo list deploy probe: PASS")'
+  - id: "dod-omn17427-ac58-lab-fill-tick"
+    description: "The lab-fill tick golden and error chains pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC58"]
+  - id: "dod-omn17427-lab-fill-tick-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill effect contract at the checked-out HEAD binding run_lab_fill_tick to HandlerLabFillTick. It fails at the merge base, which has no such operation, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("run_lab_fill_tick", "HandlerLabFillTick", "ModelLabFillTickResult")); print("lab-fill tick deploy probe: PASS")'

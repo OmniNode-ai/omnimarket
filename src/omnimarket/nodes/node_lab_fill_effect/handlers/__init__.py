@@ -8,6 +8,7 @@ from .handler_lab_fill_owner_facts import HandlerLabFillOwnerFacts
 from .handler_lab_fill_probe import HandlerLabFillProbe
 from .handler_lab_fill_receipts import HandlerLabFillReceipts
 from .handler_lab_fill_status import HandlerLabFillStatus
+from .handler_lab_fill_tick import HandlerLabFillTick
 
 __all__ = [
     "HandlerLabFillFallbackHost",
@@ -16,4 +17,5 @@ __all__ = [
     "HandlerLabFillProbe",
     "HandlerLabFillReceipts",
     "HandlerLabFillStatus",
+    "HandlerLabFillTick",
 ]

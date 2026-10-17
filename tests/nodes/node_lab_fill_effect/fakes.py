@@ -70,9 +70,15 @@ class FakeApproved:
     rows: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     list_depth: int | None = None
     fail: str = ""
+    all_rows: Sequence[Mapping[str, object]] = ()
 
     def depth(self, path: str) -> int | None:
         return self.list_depth
+
+    def list_rows(self, path: str) -> Sequence[Mapping[str, object]]:
+        if self.fail:
+            raise LabFillPortError(self.fail)
+        return self.all_rows
 
     def row(self, path: str, row_id: str) -> Mapping[str, object]:
         if self.fail or row_id not in self.rows:

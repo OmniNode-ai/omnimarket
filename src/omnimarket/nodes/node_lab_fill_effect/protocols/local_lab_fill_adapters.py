@@ -212,7 +212,7 @@ class LocalLedgerReader:
 
 
 class LocalApprovedWork:
-    """The declared approved-work list (version 1): its depth, and one row by id."""
+    """The declared approved-work list (version 1): its depth, every row, and one row by id."""
 
     @staticmethod
     def _load(path: str) -> dict[str, object]:
@@ -238,6 +238,12 @@ class LocalApprovedWork:
         except LabFillPortError:
             return None
         return len(rows) if isinstance(rows, list) else None
+
+    def list_rows(self, path: str) -> Sequence[Mapping[str, object]]:
+        rows = self._load(path)["rows"]
+        return [
+            r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)
+        ]
 
     def row(self, path: str, row_id: str) -> Mapping[str, object]:
         rows = self._load(path)["rows"]
