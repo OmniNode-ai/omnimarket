@@ -356,6 +356,7 @@ node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_histor
 node_claude_code_hook_adapter_effect = "omnimarket.nodes.node_claude_code_hook_adapter_effect"
 node_claude_code_binding_render_compute = "omnimarket.nodes.node_claude_code_binding_render_compute"
 node_claude_code_binding_install_effect = "omnimarket.nodes.node_claude_code_binding_install_effect"
+node_codex_hook_registration_effect = "omnimarket.nodes.node_codex_hook_registration_effect"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
