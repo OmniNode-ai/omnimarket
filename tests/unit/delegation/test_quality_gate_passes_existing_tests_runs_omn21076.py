@@ -168,6 +168,14 @@ _EVIDENCE: tuple[tuple[str, str, ModelNamedTestRun], ...] = (
         "Report: the service handled 42 requests in the last hour.",
         _run(),
     ),
+    # OMN-17427: an evidence-comment draft with the criteria and report blocks
+    # `criteria_covered` and `entry_cites_evidence` read.
+    (
+        "AC1: test_parse passes (3 passed).",
+        "=== ACCEPTANCE CRITERIA ===\nAC1: The parser works.\n"
+        "=== LANE REPORT ===\ntest_parse: 3 passed.\n",
+        _run(),
+    ),
 )
 
 

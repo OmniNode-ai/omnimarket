@@ -77,6 +77,7 @@ class ModelDelegateSkillRequest(BaseModel):
         "summarization",
         "agent_delegation",
         "escalation",
+        "evidence_comment",
         "documentation",
         "validator_generation",
     ] = Field(

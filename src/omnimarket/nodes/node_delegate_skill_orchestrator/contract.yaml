@@ -127,6 +127,7 @@ allowed_task_types:
   - summarization
   - agent_delegation
   - escalation
+  - evidence_comment
   - documentation
   - validator_generation
 

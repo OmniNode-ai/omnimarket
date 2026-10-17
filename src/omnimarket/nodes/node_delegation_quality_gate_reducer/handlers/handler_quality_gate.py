@@ -75,9 +75,12 @@ import yaml
 
 from omnimarket.delegation.content_grounding import (
     evaluate_claim_grounding,
+    evaluate_criteria_covered,
+    evaluate_entry_cites_evidence,
     evaluate_name_resolution,
     evaluate_numeric_grounding,
     resolve_claim_grounding_policy,
+    resolve_evidence_comment_policy,
     resolve_name_resolution_policy,
     resolve_numeric_grounding_policy,
 )
@@ -2413,6 +2416,11 @@ def _evaluate_heuristic_checks(
     grounding_check = _identifier_grounding_check_name()
     numbers_check = _numeric_grounding_check_name()
     claims_check = _claim_grounding_check_name()
+    evidence_policy = resolve_evidence_comment_policy()
+    evidence_checks = {
+        evidence_policy.criteria_check_name: evaluate_criteria_covered,
+        evidence_policy.evidence_check_name: evaluate_entry_cites_evidence,
+    }
 
     for check in dod_heuristic:
         if check == _SENTENCE_LIMIT_CHECK and grounding_source is None:
@@ -2432,6 +2440,24 @@ def _evaluate_heuristic_checks(
                     blocking_failures.append(reason)
                 else:
                     scored_failures.append(reason)
+            continue
+        if check in evidence_checks:
+            # OMN-17427: both read the criteria and lane report the draft was
+            # built from; with no such input they are recorded SKIPPED.
+            reason, evaluated = evidence_checks[check](
+                content=content,
+                grounding_source=grounding_source,
+                policy=evidence_policy,
+            )
+            if not evaluated:
+                skipped_heuristic.append(check)
+                continue
+            if reason is not None:
+                if _is_blocking_rule(check):
+                    blocking_failures.append(reason)
+                else:
+                    scored_failures.append(reason)
+            evaluations.append(_rule_evaluation(check, reason))
             continue
         if check == claims_check:
             reason, evaluated, claim_rows = _check_claims_grounded(
