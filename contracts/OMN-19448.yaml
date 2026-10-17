@@ -127,7 +127,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_pre_dispatch_refusal_cause_omn19448.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn19448-refused-before-dispatch-container-smoke"
+  - id: "dod-omn19448-pre-dispatch-container-smoke"
     description: "Hosted deploy probe for the delegate-skill handler: a disposable container mounts the checked-out source read-only and checks that the pre-dispatch refusal names the refused_before_dispatch cause. The probe is absent at the merge base and present at the head; the behavioural proof stays in the test_passes check of dod-omn19448-refused-before-dispatch-cause."
     source: "manual"
     checks:

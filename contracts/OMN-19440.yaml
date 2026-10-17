@@ -43,7 +43,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC1PlantedDropAndDoubleAreReported"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
   - id: "dod-omn19440-ac2"
     description: "AC2 hosted probe. An unreadable command or terminal topic, a retention-truncated window and an empty day each report indeterminate or no commands, never a zero share."
     source: "manual"
@@ -51,7 +50,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC2UnreadableIsIndeterminateNeverZero"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
   - id: "dod-omn19440-ac3"
     description: "AC3 hosted probe. A planted served replay and a planted reused correlation add no duplicate and a planted second outcome adds one, per command id."
     source: "manual"
@@ -59,7 +57,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC3CountsPerCommandId"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
   - id: "dod-omn19440-ac4"
     description: "AC4 hosted probe. The published summary headlines the duplicates-with-a-single-command count and keeps the per-correlation figure as a labelled secondary."
     source: "manual"
@@ -67,7 +64,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_delegation_terminal_join.py -q -k TestAC4PublishedSummaryHeadline"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC4"]
   - id: "dod-omn19440-ac1-accepted"
     description: "Acceptance record (2026-10-17T0045Z) for AC1, proposed by lane=dod-closeout-bind-2026-10-17T0045Z-c2 and accepted by lane=dod-closeout-accept-2026-10-17T0045Z-c2 at 2026-10-17T01:05:14Z. A synthetic day with a planted command that has no terminal and a planted double terminal returns verdict measured, terminal_share 0.75, dropped_ids c-dropped and duplicate_terminal_ids c-double; the schedule is .github/workflows/delegation-terminal-join-daily.yml (cron 5 6 * * *, window_hours 24)."
     source: "manual"
