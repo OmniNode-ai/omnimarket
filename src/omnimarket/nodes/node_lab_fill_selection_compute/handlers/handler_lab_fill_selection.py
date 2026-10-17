@@ -5,6 +5,11 @@
 OMN-20864: the slots ordinary work leaves idle fall back to pr-land lanes on parked, escalated or
 unowned-red open PRs, decided by the shared rule ``omnimarket.handlers.rules_lab_fill_pr_land``. The
 ledger replay adds what only it knows: a live lane's claim on a PR, and a landing lane's escalation.
+
+OMN-17427: a ticket skipped because its implementation merged is not finished work, it is unverified
+work. The slots ordinary and pr-land work still leave idle take those tickets as DoD-verify lanes, one
+per ticket, so a merged implementation is checked against its acceptance criteria and closed instead of
+being skipped every tick while the lab idles.
 """
 
 from __future__ import annotations
@@ -58,6 +63,9 @@ def _heads(
             if _repo_of(_pr(pr)) not in deployment.companion_repositories
         )
     )
+
+
+_UNCHANGED_OUTCOMES = frozenset({"blocked", "partial", "no-op", "noop"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +172,8 @@ def _replay(rows: list[_Row], landing_lane: str) -> _History:
             history.open_prs.extend(
                 (row.lane, pr, row.subjects) for pr in sorted(row.prs)
             )
-            lab_lane = re.match(r"^lab-fill-omn([0-9]+)-", row.lane)
+            # A DoD-verify lane (lab-fill-verify-omn<n>-...) is an attempt on its ticket too.
+            lab_lane = re.match(r"^lab-fill-(?:verify-)?omn([0-9]+)-", row.lane)
             if lab_lane and (ticket := "OMN-" + lab_lane[1]) in row.subjects:
                 attempt = _Attempt(row.lane, row.ts)
                 history.attempts.setdefault(ticket, []).append(attempt)
@@ -293,6 +302,46 @@ def _changed(
     return changed
 
 
+def dod_verify_fallback(
+    decisions: list[ModelLabFillDecision],
+    slots: int,
+    request: ModelLabFillSelectionRequest,
+    history: _History,
+    now: datetime,
+) -> tuple[ModelLabFillDecision, ...]:
+    """The implementation-merged decisions that fill ``slots`` idle slots, one per ticket.
+
+    A ticket whose last lab-fill lane is still open is owned; one whose last lane ended
+    blocked, partial or no-op inside the cooldown, or that reached the attempt limit inside
+    the window, waits, as an ordinary ticket does.
+    """
+    chosen: list[ModelLabFillDecision] = []
+    seen: set[str] = set()
+    window = now - timedelta(hours=request.attempt_window_hours)
+    for d in decisions:
+        if len(chosen) >= slots:
+            break
+        if d.reason is not EnumLabFillSkipReason.IMPLEMENTATION_MERGED:
+            continue
+        if d.ticket in seen:
+            continue
+        seen.add(d.ticket)
+        attempts = history.attempts.get(d.ticket, [])
+        if attempts:
+            latest = attempts[-1]
+            if latest.terminal is None:
+                continue
+            outcome = latest.terminal.values.get("outcome", "").lower()
+            if outcome in _UNCHANGED_OUTCOMES and now - latest.terminal.ts < timedelta(
+                hours=request.cooldown_hours
+            ):
+                continue
+            if sum(a.ts >= window for a in attempts) >= request.attempt_limit:
+                continue
+        chosen.append(d)
+    return tuple(chosen)
+
+
 class HandlerLabFillSelection:
     """Pure selection: first matching gate wins, with one decision per candidate."""
 
@@ -343,10 +392,16 @@ class HandlerLabFillSelection:
                 request.idle_slots - ordinary,
                 request.now,
             )
+        left = (
+            request.idle_slots
+            - sum(d.reason is None for d in decisions)
+            - (len(pr_land.dispatch) if pr_land is not None else 0)
+        )
         return ModelLabFillSelectionResult(
             tuple(decisions),
             tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
             pr_land,
+            dod_verify_fallback(decisions, left, request, history, now),
         )
 
     @staticmethod
@@ -495,7 +550,7 @@ class HandlerLabFillSelection:
         if latest.terminal is None:
             return decision(EnumLabFillSkipReason.OWNED, "owned", latest.lane), None
         outcome = latest.terminal.values.get("outcome", "").lower()
-        if outcome in {"blocked", "partial", "no-op", "noop"}:
+        if outcome in _UNCHANGED_OUTCOMES:
             reason, caller = (
                 EnumLabFillSkipReason.UNCHANGED_INPUT,
                 "unchanged-input:" + outcome,
