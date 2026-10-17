@@ -1,0 +1,68 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21127"
+title: "The work-ledger context source node (plan task TC.4)"
+summary: >-
+  Adds node_context_source_ledger_effect, the ledger tier behind the context-source
+  contract (handle(ModelContextSourceRequest) -> ModelContextSourceResult). It reads
+  every row up to a ledger watermark (a UTC row stamp), live from
+  work_ledger_rows.raw_row by row id or pinned from markdown ledger and archive-roll
+  files through parse_ledger_row, folds them through the projection fold and
+  close_relationships, and returns one entry per RULING and OPERATOR-CONSENT row
+  (the caller scope's cited stamps, otherwise every row in force) whose text is the
+  raw row whole. Each entry carries every CORRECTION citing it in corrected_by with
+  supersession_status corrected; a correction's operator_span yields exactly that
+  span of the row's first quoted cell as operator_words, the rest labelled recorded
+  framing. Tenants not listed in the overlay binding are denied.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ledger-source-entries"
+    statement: "The ledger source returns rulings and consents whole, each with every correction that cites it."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: for every RULING and OPERATOR-CONSENT row of one full UTC day, the
+          entry text equals the markdown row text, through the live reader shape and
+          the pinned markdown reader, and a reader that returns the 500-character
+          display cut is caught -- falsifier: a text mismatch or a truncated row
+      - id: "AC2"
+        statement: >-
+          AC2: on the D1 fixture pair the ruling's entry carries the correction's full
+          text and stamp in corrected_by with supersession_status corrected, and an
+          entry cannot be built without its corrections; a fixture CORRECTION with
+          operator_span yields operator_words exactly that span and the rest labelled
+          recorded framing, not operator words -- falsifier: the ruling without its
+          correction, or a span other than the typed one
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the ledger source's focused tests."
+    command: "uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21127-ac1-text-parity"
+    description: "Every authority row of a UTC day comes back with text equal to its markdown row; the display cut is caught."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py -q -n 0 -k 'text_equals_markdown or archive_rolls or watermark'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21127-ac2-correction-closure"
+    description: "The D1 ruling carries its correction; operator_span yields exactly the typed span."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py -q -n 0 -k 'd1 or corrections or operator_span'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21127-deploy-probe"
+    description: "Deploy probe: the node's handler read from GitHub at the checked-out commit defines HandlerContextSourceLedger. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_source_ledger_effect/handlers/handler_context_source_ledger.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerContextSourceLedger'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: context_source_ledger_effect
+version: "1.0.0"
+description: "The work-ledger context source: rulings and consents whole, with every correction that cites them."
+omnibase_core_compat: ">=0.47.44,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: false
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.47.44"
+  - "pyyaml>=6.0"
+  - "psycopg2-binary>=2.9"
+tags: [effect, work-ledger, context-source]
+pack: "data"
+display_name: "Effect: Context Source Ledger"
+node_role: "effect"
