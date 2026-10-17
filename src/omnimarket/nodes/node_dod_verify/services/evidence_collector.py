@@ -4974,15 +4974,6 @@ class EvidenceCollector:
                 logger.info("Found contract at %s", candidate)
                 return candidate
 
-        # Fallback: resolve via OMNI_HOME env var
-        omni_home = os.environ.get("OMNI_HOME", "")
-        candidate = (
-            Path(omni_home) / "onex_change_control" / "contracts" / f"{ticket_id}.yaml"
-        )
-        if candidate.exists():
-            logger.info("Found contract at %s", candidate)
-            return candidate
-
         return None
 
     def _load_yaml(self, path: Path) -> dict[str, Any] | None:

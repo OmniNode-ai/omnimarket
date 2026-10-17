@@ -13,7 +13,9 @@ Covered nodes (NODE-HANDLER default-scope side):
 * gap_compute     — ``parents[5]`` fallback resolved a ``python3.12`` root on
   the deployed path (OMN-13534), scanning nothing real.
 * duplication D3  — 60s subprocess cap < ~110s walltime -> TimeoutExpired ->
-  quiet WARN(0) (the migration-dup check was dead inside the node).
+  quiet WARN(0) (the migration-dup check was dead inside the node). D3 now
+  runs omnibase_core's migration-conflict handler in process, so it needs no
+  external command to be live.
 
 Each sweep must, with an empty payload, resolve the canonical default repo set
 and actually scan (``repos_scanned > 0``), and must FAIL LOUD (status=error /
@@ -22,10 +24,8 @@ raise) when scope is empty AND unresolvable — never report clean over zero rep
 
 from __future__ import annotations
 
-import subprocess
 import tempfile
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -294,36 +294,29 @@ class TestDuplicationSweepDispatch:
             "non-existent scan root"
         )
 
-    def test_d3_timeout_is_fail_not_quiet_warn(self) -> None:
+    def test_d3_is_live_with_no_external_command(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from omnimarket.nodes.node_duplication_sweep.handlers import (
             handler_duplication_sweep as h,
         )
 
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(
-                h, "_migration_conflict_command", return_value=(["true"], Path(tmp))
-            ),
-            mock.patch.object(
-                h.subprocess,
-                "run",
-                side_effect=subprocess.TimeoutExpired(cmd="x", timeout=240),
-            ),
-        ):
+        monkeypatch.setenv("PATH", "")
+        with tempfile.TemporaryDirectory() as tmp:
+            for repo, columns in (
+                ("repo_a", "\n  id INT,\n  a TEXT\n"),
+                ("repo_b", "\n  id INT\n"),
+            ):
+                migration = Path(tmp) / repo / "migrations" / "001_init.sql"
+                migration.parent.mkdir(parents=True)
+                (Path(tmp) / repo / ".git").mkdir()
+                migration.write_text(f"CREATE TABLE d3_live ({columns});\n")
             res = h._check_d3_migration_prefixes(tmp)
         assert res.status == "FAIL", (
-            "a real D3 subprocess timeout must FAIL the check, not degrade to a "
-            "quiet WARN(0) (the migration-dup check must not be silently dead)"
+            "D3 must find a real conflict with nothing on PATH, never degrade to "
+            "a quiet WARN (the migration-dup check must not be silently dead)"
         )
-
-    def test_d3_timeout_budget_raised(self) -> None:
-        from omnimarket.nodes.node_duplication_sweep.handlers import (
-            handler_duplication_sweep as h,
-        )
-
-        assert h._D3_SUBPROCESS_TIMEOUT_S >= 180, (
-            "D3 subprocess budget must exceed the real ~110s walltime"
-        )
+        assert res.finding_count == 1
 
 
 @pytest.mark.unit

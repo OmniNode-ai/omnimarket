@@ -1,7 +1,7 @@
 name: node_duplication_sweep
 version: "1.0.0"
 description: "Detect duplicate definitions across repos: Drizzle tables, Kafka topics, migration prefixes, model names"
-omnibase_core_compat: ">=0.39.0,<1.0.0"
+omnibase_core_compat: ">=0.47.41,<1.0.0"
 entry_points:
   onex.nodes:
     node_duplication_sweep: "omnimarket.nodes.node_duplication_sweep"
@@ -14,7 +14,7 @@ capabilities:
   requires_docker: false
   side_effect_class: read_only
 dependencies:
-  - "omnibase_core>=0.39.0"
+  - "omnibase_core>=0.47.41"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["sweep", "duplication", "drizzle", "kafka", "migrations", "quality"]

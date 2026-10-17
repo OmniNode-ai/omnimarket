@@ -2,23 +2,20 @@
 # SPDX-License-Identifier: MIT
 """Tests for _resolve_root behavior in integration_sweep and dod_sweep handlers.
 
-Both handlers resolve their contracts/artifact root from ONEX_CC_REPO_PATH. A
-stale/container value (the in-container mount /onex_change_control) can leak
-into a local infra-venv run where it has no contracts/ dir. The handler falls
-back to the canonical registry clone at ``$OMNI_HOME/onex_change_control``
-before failing, so the sweep stays runnable locally (OMN-13994, WS-M).
-
-Fail-fast (CLAUDE.md rule #8) is preserved: the fallback reads
-``os.environ["OMNI_HOME"]`` (KeyError when unset — never a silent default), and
-a fallback that itself lacks contracts/ still raises.
+Both handlers resolve their contracts/artifact root from an explicit configured
+root or from ONEX_CC_REPO_PATH, and nothing else. They used to fall back to a
+change-control clone located under ``$OMNI_HOME`` when ONEX_CC_REPO_PATH was
+stale; that fallback is gone, so neither handler locates a change-control
+repository on its own (OMN-17427). A stale or container-only ONEX_CC_REPO_PATH
+now fails fast (CLAUDE.md rule #8) whatever ``$OMNI_HOME`` holds.
 
 Covers, for BOTH handlers:
   - ONEX_CC_REPO_PATH unset + no explicit root → RuntimeError
   - ONEX_CC_REPO_PATH set to valid root (exists + contracts/) → returns it
   - Explicit configured root always resolves without touching env
-  - ONEX_CC_REPO_PATH invalid + OMNI_HOME registry has contracts/ → fallback
-  - ONEX_CC_REPO_PATH invalid + OMNI_HOME lacks the fallback → RuntimeError
-  - ONEX_CC_REPO_PATH invalid + OMNI_HOME unset → still raises (fail-fast)
+  - ONEX_CC_REPO_PATH invalid + OMNI_HOME holds a registry clone → RuntimeError
+  - ONEX_CC_REPO_PATH invalid + OMNI_HOME lacks a registry clone → RuntimeError
+  - ONEX_CC_REPO_PATH invalid + OMNI_HOME unset → RuntimeError
 """
 
 from __future__ import annotations
@@ -53,13 +50,6 @@ _HANDLERS = [
 def _without_cc_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Remove ONEX_CC_REPO_PATH from the environment for the test."""
     monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
-
-
-def _make_registry(root: Path) -> Path:
-    """Build an OMNI_HOME-style registry with onex_change_control/contracts."""
-    cc = root / "onex_change_control"
-    (cc / "contracts").mkdir(parents=True)
-    return cc
 
 
 # ---------------------------------------------------------------------------
@@ -106,50 +96,54 @@ def test_explicit_configured_root_overrides_env(
 
 
 # ---------------------------------------------------------------------------
-# OMNI_HOME registry fallback (behavioral — the sweep now runs locally)
+# No OMNI_HOME registry fallback: a stale ONEX_CC_REPO_PATH fails fast
 # ---------------------------------------------------------------------------
 
 
+def _make_registry(root: Path) -> Path:
+    """Build an OMNI_HOME-style registry holding the change-control clone."""
+    cc = root / "onex_change_control"
+    (cc / "contracts").mkdir(parents=True)
+    return cc
+
+
 @pytest.mark.parametrize("resolve_root", _HANDLERS)
-def test_env_nonexistent_falls_back_to_omni_home_registry(
+def test_env_nonexistent_does_not_fall_back_to_omni_home_registry(
     resolve_root, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # ONEX_CC_REPO_PATH points at a path that does not exist (stale value)…
+    # ONEX_CC_REPO_PATH points at a path that does not exist (stale value), and
+    # OMNI_HOME holds a registry clone with contracts/: the handler must not
+    # locate that clone on its own.
     monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path / "does_not_exist"))
-    # …but OMNI_HOME holds the canonical registry with contracts/.
-    registry = _make_registry(tmp_path)
+    _make_registry(tmp_path)
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
-    assert resolve_root("") == registry.resolve()
+    with pytest.raises(RuntimeError, match="does not exist or lacks a contracts/"):
+        resolve_root("")
 
 
 @pytest.mark.parametrize("resolve_root", _HANDLERS)
-def test_container_path_leak_falls_back_to_omni_home_registry(
+def test_container_path_leak_does_not_fall_back_to_omni_home_registry(
     resolve_root, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # The container mount path exists on the host but has no contracts/ dir —
-    # the exact leak that hard-failed the sweep from the infra venv.
-    leaked = tmp_path / "onex_change_control_container"
+    # The container mount path exists on the host but has no contracts/ dir.
+    leaked = tmp_path / "container_mount"
     leaked.mkdir()
     monkeypatch.setenv("ONEX_CC_REPO_PATH", str(leaked))
-    registry = _make_registry(tmp_path)
+    _make_registry(tmp_path)
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
-    assert resolve_root("") == registry.resolve()
-
-
-# ---------------------------------------------------------------------------
-# Fail-fast preserved (CLAUDE.md rule #8) — both handlers
-# ---------------------------------------------------------------------------
+    with pytest.raises(RuntimeError, match="does not exist or lacks a contracts/"):
+        resolve_root("")
 
 
 @pytest.mark.parametrize("resolve_root", _HANDLERS)
-def test_env_invalid_and_omni_home_unset_still_raises(
+def test_env_invalid_and_omni_home_unset_raises(
     resolve_root, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Env path lacks contracts/ AND OMNI_HOME is unset: fail-fast must hold —
-    # no silent default. os.environ["OMNI_HOME"] raises KeyError.
+    # Env path lacks contracts/ AND OMNI_HOME is unset: still a RuntimeError,
+    # and OMNI_HOME is never read.
     monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path))
     monkeypatch.delenv("OMNI_HOME", raising=False)
-    with pytest.raises(KeyError, match="OMNI_HOME"):
+    with pytest.raises(RuntimeError, match="does not exist or lacks a contracts/"):
         resolve_root("")
 
 
@@ -157,8 +151,8 @@ def test_env_invalid_and_omni_home_unset_still_raises(
 def test_env_invalid_and_omni_home_lacks_registry_raises(
     resolve_root, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Env path lacks contracts/, OMNI_HOME is set but has no
-    # onex_change_control/contracts fallback → RuntimeError (still fails).
+    # Env path lacks contracts/, OMNI_HOME is set but holds no registry clone
+    # → RuntimeError (still fails).
     env_dir = tmp_path / "env"
     env_dir.mkdir()
     omni_home = tmp_path / "empty_home"

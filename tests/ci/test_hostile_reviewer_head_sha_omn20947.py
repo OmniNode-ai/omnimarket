@@ -38,6 +38,8 @@ SUBSTITUTE_PINS = [
     "64b950973a5686d33e0b439fb80749d66362d06d",
     # omniintelligence#1072: the retry of an unparseable reply gets 8192 tokens.
     "3fcbf795087a79081c0ceeb676216bf64c5d49ae",
+    # OMN-19998: large reviewer votes stay structured.
+    "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0",
 ]
 
 
