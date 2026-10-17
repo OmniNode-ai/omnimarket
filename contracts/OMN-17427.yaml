@@ -1071,6 +1071,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC63"]
   - id: "dod-omn17427-lab-first-routing-deploy-probe"
+    description: "Deploy probe. GitHub serves the task-class authority at the checked-out HEAD declaring lab_first_policy and lab_rubric. The probe fails when either declaration is absent and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
