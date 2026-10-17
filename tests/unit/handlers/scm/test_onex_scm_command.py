@@ -27,6 +27,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 from omnibase_infra.errors import InfraConnectionError
+from pydantic import BaseModel, ConfigDict, create_model
 
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_scm_dispatch import (
@@ -576,6 +577,72 @@ def test_write_verb_publishes_typed_command_and_returns_terminal(
     assert answer["outcome"] == "completed"
     assert answer["bus"]["terminal_topic"] == WRITE.success
     assert answer["result"]["operation"] == spec.operation
+
+
+# The request fields the runtime deployed before check_run_create accepts
+# (node_github_repo_write_effect contract 1.2.0). Its request model forbids
+# extra inputs, so a write envelope that names any other field is refused with
+# ONEX_CORE_345 before the handler runs, whatever its value. A client that is
+# newer than the runtime must still send only these for every older operation.
+_CONTRACT_1_2_0_FIELDS = frozenset(
+    {
+        "correlation_id",
+        "operation",
+        "repo",
+        "idempotency_key",
+        "requested_by_lane",
+        "requested_by_run",
+        "claim",
+        "pr_number",
+        "expected_head_sha",
+        "title",
+        "body",
+        "head",
+        "base",
+        "draft",
+        "workflow",
+        "ref",
+        "inputs",
+        "claims_dir",
+        "dry_run",
+    }
+)
+
+
+def _contract_1_2_0_request() -> type[BaseModel]:
+    fields: dict[str, Any] = {
+        name: (info.annotation, info)
+        for name, info in ModelRepoWriteRequest.model_fields.items()
+        if name in _CONTRACT_1_2_0_FIELDS
+    }
+    assert set(fields) == _CONTRACT_1_2_0_FIELDS
+    model: type[BaseModel] = create_model(
+        "ModelRepoWriteRequestContract120",
+        __config__=ConfigDict(frozen=True, extra="forbid"),
+        **fields,
+    )
+    return model
+
+
+@pytest.mark.parametrize("verb_name", sorted(set(_WRITE_ARGS) - {"check-run-create"}))
+def test_older_write_envelopes_validate_against_the_deployed_contract(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+
+    result = _run([verb_name, *_WRITE_ARGS[verb_name], "--lane", "lane-x"])
+
+    assert result.exit_code == 0, result.output
+    _, envelope = bus.published[0]
+    payload = envelope["payload"]
+    assert set(payload) <= _CONTRACT_1_2_0_FIELDS, sorted(
+        set(payload) - _CONTRACT_1_2_0_FIELDS
+    )
+    _contract_1_2_0_request().model_validate(payload)
+    assert (
+        ModelRepoWriteRequest.model_validate(payload).model_dump(mode="json") == payload
+    )
 
 
 def test_write_idempotency_key_is_stable_across_retries(

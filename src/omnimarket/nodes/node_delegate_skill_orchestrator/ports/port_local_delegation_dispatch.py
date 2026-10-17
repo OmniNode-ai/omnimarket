@@ -314,6 +314,7 @@ from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.routing.local_byok_route import (
+    next_registered_byok_route,
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
@@ -1921,6 +1922,20 @@ class LocalDelegationDispatchPort:
                         quota_state=self._quota_snapshot(quota_observations),
                     )
 
+                # OMN-20844: the ladder offers no new responder, and the
+                # customer holds another key. That key answers next; it is a
+                # sideways hop like a sibling, never a house fallback.
+                next_customer_key: ModelResolvedDelegationBackend | None = None
+                if (
+                    customer_route
+                    and may_move_on
+                    and transport_sibling is None
+                    and escalated_backend is None
+                ):
+                    next_customer_key = next_registered_byok_route(
+                        backend, tried_backend_ids=frozenset(excluded_backend_refs)
+                    )
+
                 # A transport failure never runs the quality gate, so bank its
                 # (typically zero) metered cost directly — mirrors the
                 # post-success banking below without requiring a gate verdict.
@@ -2024,6 +2039,21 @@ class LocalDelegationDispatchPort:
                     )
                     escalation_count += 1
                     backend = _with_model_choice(escalated_backend)
+                    continue
+
+                if next_customer_key is not None:
+                    logger.info(
+                        "LocalDelegationDispatch: customer key fall-through "
+                        "task_type=%s backend=%s -> backend=%s on transport "
+                        "failure_class=%s correlation=%s reason=%s",
+                        task_type,
+                        backend.backend_id,
+                        next_customer_key.backend_id,
+                        transport_failure_class,
+                        correlation_id,
+                        transport_failure_message,
+                    )
+                    backend = _with_model_choice(next_customer_key)
                     continue
 
                 # Cannot escalate (non-retryable failure_class, budget exhausted,
@@ -2584,6 +2614,19 @@ class LocalDelegationDispatchPort:
                     spread_key=str(correlation_id),
                     quota_state=self._quota_snapshot(quota_observations),
                     stop_reasons=ladder_stop_reasons,
+                )
+            # OMN-20844: no tier offers a new responder for a customer whose
+            # answer failed the gate; their next registered key is the next
+            # responder, charged to the escalation budget like a tier.
+            if (
+                next_backend is None
+                and not ladder_stopped_by_veto
+                and pinned_backend_id is None
+                and escalation_count < max_escalations
+                and _is_customer_byok_route(backend)
+            ):
+                next_backend = next_registered_byok_route(
+                    backend, tried_backend_ids=frozenset(excluded_backend_refs)
                 )
 
             if next_backend is None:

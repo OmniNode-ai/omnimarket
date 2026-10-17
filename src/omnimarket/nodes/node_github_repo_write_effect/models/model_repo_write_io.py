@@ -19,10 +19,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
@@ -50,6 +57,21 @@ class EnumRepoWriteOperation(StrEnum):
     PR_COMMENT = "pr_comment"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
+
+
+#: Fields only one operation reads. Every other operation's serialized request
+#: leaves them out, so a field added for a new operation never changes the
+#: envelope of an existing one: a runtime that predates the field forbids extra
+#: inputs and would refuse the whole envelope for naming it, even as null.
+_OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
+    EnumRepoWriteOperation.CHECK_RUN_CREATE: (
+        "name",
+        "head_sha",
+        "status",
+        "conclusion",
+        "output",
+    ),
+}
 
 
 class EnumRepoWriteMode(StrEnum):
@@ -257,16 +279,15 @@ class ModelRepoWriteRequest(BaseModel):
                 for n, v in (("workflow", self.workflow), ("ref", self.ref))
                 if v is None
             ]
-        check_fields = {
-            "name": self.name,
-            "head_sha": self.head_sha,
-            "status": self.status,
-            "conclusion": self.conclusion,
-            "output": self.output,
-        }
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
             missing += [
-                n for n in ("name", "head_sha", "status") if check_fields[n] is None
+                n
+                for n, v in (
+                    ("name", self.name),
+                    ("head_sha", self.head_sha),
+                    ("status", self.status),
+                )
+                if v is None
             ]
             if self.status == "completed" and self.conclusion is None:
                 missing.append("conclusion")
@@ -274,10 +295,9 @@ class ModelRepoWriteRequest(BaseModel):
                 raise ValueError(
                     "check_run_create conclusion requires status completed"
                 )
-        elif any(v is not None for v in check_fields.values()):
-            raise ValueError(
-                "name, head_sha, status, conclusion and output are read only by check_run_create"
-            )
+        for owner, names in _OPERATION_ONLY_FIELDS.items():
+            if op is not owner and any(getattr(self, n) is not None for n in names):
+                raise ValueError(f"{', '.join(names)} are read only by {owner.value}")
         if missing:
             raise ValueError(f"operation {op.value!r} requires {', '.join(missing)}")
         if op is EnumRepoWriteOperation.PR_EDIT and all(
@@ -291,6 +311,18 @@ class ModelRepoWriteRequest(BaseModel):
         if self.inputs and op is not EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             raise ValueError("inputs is read only by workflow_dispatch")
         return self
+
+    @model_serializer(mode="wrap")
+    def _leave_out_other_operations_fields(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Serialize only the fields this request's operation can carry."""
+        data: dict[str, Any] = handler(self)
+        for owner, names in _OPERATION_ONLY_FIELDS.items():
+            if owner is not self.operation:
+                for name in names:
+                    data.pop(name, None)
+        return data
 
     @property
     def pr_key(self) -> str:

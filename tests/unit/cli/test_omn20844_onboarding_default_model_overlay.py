@@ -55,6 +55,12 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
         "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
         lambda: db_path,
     )
+    # The setup effect records each test beside its own store path: without this
+    # the stubbed test lands in the developer's real model_tests.json.
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup.default_evidence_db_path",
+        lambda: db_path,
+    )
     monkeypatch.setattr(
         "omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup.run_pinned_delegation",
         lambda _backend_id: (1, "", "onex delegate failed: stubbed test delegation"),

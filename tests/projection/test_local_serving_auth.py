@@ -248,11 +248,16 @@ def test_onex_dashboard_prints_the_start_url_with_this_starts_token(
     handed: list[ModelLocalDashboardServeRequest] = []
 
     class _Recorder:
+        def __init__(self, **_: object) -> None:
+            pass
+
         async def handle(self, request: ModelLocalDashboardServeRequest) -> None:
             handed.append(request)
 
     monkeypatch.setattr(cli_local, "HandlerLocalDashboardServe", _Recorder)
     monkeypatch.setattr(cli_local, "read_local_tenant_identity", lambda: None)
+    # OMN-20705: the command verifies the pages before printing the address.
+    monkeypatch.setattr(cli_local, "ensure_bundle", lambda: tmp_path)
     overlay = tmp_path / "bind.yaml"
     overlay.write_text(f'dashboard:\n  bind: "127.0.0.1:{_PORT}"\n', encoding="utf-8")
     result = CliRunner().invoke(

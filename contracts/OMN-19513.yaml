@@ -18,6 +18,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: a raw-value reference validates and projects one row, and a sha256 reference is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value fails against the pre-change wire model"
+  - id: "req-oversized-quarantined"
+    statement: "A record the producer refuses as too large is quarantined with reason payload_too_large, tried once, and the drain continues behind it."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: an oversized record at the spool head is quarantined with reason payload_too_large after one attempt and the two records behind it publish -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov fails against the pre-change handler"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -51,3 +56,10 @@ dod_evidence:
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    value: str\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn19513-ac3-payload-too-large"
+    description: "The size-refusal test spools an oversized record first, refuses it the way the producer does, and checks its quarantine reason and that the records behind it publish; an ACL refusal keeps topic_authorization_denied."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov"
+    binds_ac: ["AC3"]

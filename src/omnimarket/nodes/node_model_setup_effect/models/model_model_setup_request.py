@@ -10,7 +10,10 @@ from pydantic import BaseModel, ConfigDict
 
 #: The models a developer chooses from, in the order onboarding lists them.
 #: ``anthropic`` joined by operator ruling 2026-10-11T15:05:50Z (OMN-20990).
-ModelProvider = Literal["gemini", "openrouter", "openai", "anthropic", "ollama"]
+#: ``local`` (OMN-21162): a model server on an OpenAI-compatible URL, no key.
+ModelProvider = Literal[
+    "gemini", "openrouter", "openai", "anthropic", "ollama", "local"
+]
 
 
 class ModelModelSetupRequest(BaseModel):
@@ -25,7 +28,11 @@ class ModelModelSetupRequest(BaseModel):
     the stored set; ``remove_model`` drops the one model in ``models``.
 
     OMN-20844 (``provider`` required): ``default_model`` reads the model onboarding
-    registers for ``provider`` from the deployment overlay; nothing is stored."""
+    registers for ``provider`` from the deployment overlay; nothing is stored.
+
+    OMN-21162: ``add_local`` declares the keyless server at ``url`` serving the
+    one model in ``models`` as a backend in the local routes overlay;
+    ``remove_local`` takes it out again. Other overlay entries are kept."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -37,9 +44,12 @@ class ModelModelSetupRequest(BaseModel):
         "reorder",
         "remove_model",
         "default_model",
+        "add_local",
+        "remove_local",
     ]
     provider: ModelProvider | None = None
     models: tuple[str, ...] = ()
+    url: str | None = None
 
 
 __all__ = ["ModelModelSetupRequest", "ModelProvider"]

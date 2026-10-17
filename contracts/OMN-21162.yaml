@@ -1,0 +1,69 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21162"
+title: "onex models add takes a local model server by URL, with no key"
+summary: >-
+  onex models add local --url <base url> --model <name> asks no key, refuses a URL that does not answer an OpenAI-compatible models or chat request, declares the server as the local-url backend in the local routes overlay beside existing Ollama/provider entries, tests it with one delegation pinned to it (pass only on the stored model), and onex models list / test local / remove local handle it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-local-url-model"
+    statement: "onex models takes a keyless local model server by its OpenAI-compatible URL."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: `onex models add local --url <base url> --model <name>` asks for no key, and refuses with a named error when the URL does not answer an OpenAI-compatible models or chat request -- falsifier: uv run pytest tests -q -k model_setup_local_url"
+      - id: "AC2"
+        statement: "AC2: after a successful add, the overlay in the onex state directory declares a backend at that URL with that model, and an existing Ollama or provider entry in the overlay is kept -- falsifier: uv run pytest tests -q -k model_setup_local_url"
+      - id: "AC3"
+        statement: "AC3: the add runs one delegation pinned to the new backend and reports pass only when that backend answered on the stored model -- falsifier: uv run pytest tests -q -k model_setup_local_url"
+      - id: "AC4"
+        statement: "AC4: `onex models list` and `onex models test local` show and test the URL backend, and `onex models remove local` removes it from the overlay -- falsifier: uv run pytest tests -q -k model_setup_local_url"
+evidence_requirements:
+  - kind: "tests"
+    description: "Local URL model setup for OMN-21162."
+    command: "uv run pytest tests/unit/cli/test_model_setup_local_url_omn21162.py -q -n 0 -k model_setup_local_url"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21162-ac1-no-key-and-refusal"
+    description: "The add asks no key: it passes with no stdin. A server that answers HTML, a closed port and a non-http URL are each refused with the named error, and nothing is written or run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_model_setup_local_url_omn21162.py -q -n 0 -k 'model_setup_local_url and (no_key or refuses)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21162-ac2-overlay"
+    description: "After an add over an Ollama overlay, the overlay keeps its first-line marker and the Ollama entry, and declares local-url at the URL with the model; delegation's own loader merges it over the committed contract. A second add replaces only that entry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_model_setup_local_url_omn21162.py -q -n 0 -k 'model_setup_local_url and (overlay_declares or replaces_only)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21162-ac3-pinned-test"
+    description: "The add runs exactly one delegation pinned to local-url; it passes on the stored model and fails when the answer came on another model or from another backend."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_model_setup_local_url_omn21162.py -q -n 0 -k 'model_setup_local_url and (pinned or not_a_pass)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21162-ac4-list-test-remove"
+    description: "onex models list shows local set up with its model and last test, onex models test local pins it again, and onex models remove local takes only its entry out of the overlay; removing when none is set up is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_model_setup_local_url_omn21162.py -q -n 0 -k 'model_setup_local_url and (list_test_and_remove or remove_when_none)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21162-deploy-probe"
+    description: "Deploy probe: the model setup handler read from GitHub at the checked-out commit declares the local URL add. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def _add_local'"
+        cwd: "${OMNI_HOME}/omnimarket"
