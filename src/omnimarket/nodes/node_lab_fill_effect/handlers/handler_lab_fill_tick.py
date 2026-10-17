@@ -19,14 +19,24 @@ and two re-read each ticket's Linear owner. Here the steps are code, in order:
    for the next candidate; a failure of the runner, the standing rules or the window
    stops the tick and leaves the rest untried rather than spending them.
 
+6. Every lane made and not placed is a refusal with its reason (``refusals=`` on the
+   STATUS row reads ``none`` only when every lane made was placed). A ticket the brief
+   check refuses ``park_after`` times is parked for ``park_hours`` with its reason, not
+   retried every tick.
+7. With free slots and nothing placed for ``alarm_after`` ticks running, one diagnose
+   lane is dispatched (not again within ``diagnose_cooldown_min``) and the result carries
+   the alarm. The streak, the last diagnose and the parked tickets live in the memory file
+   at ``state_path``; without one there is no alarm and no parking.
+
 The result is the tick's event, answered whatever happened.
 """
 
 from __future__ import annotations
 
 import re
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
@@ -34,10 +44,13 @@ from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaun
 from ..models import (
     ModelLabFillLaunchRequest,
     ModelLabFillLaunchResult,
+    ModelLabFillTickAlarm,
     ModelLabFillTickDispatch,
+    ModelLabFillTickRefusal,
     ModelLabFillTickRequest,
     ModelLabFillTickResult,
     ModelLabFillTickSkip,
+    render_refusals,
 )
 from ..models.model_lab_fill_tick import PriorityClass
 from ..protocols import (
@@ -46,6 +59,8 @@ from ..protocols import (
     ProtocolLabFillApprovedWork,
     ProtocolLabFillClock,
     ProtocolLabFillOwnerReader,
+    ProtocolLabFillReceiptReader,
+    ProtocolLabFillResultWriter,
 )
 from .handler_lab_fill_launch import HandlerLabFillLaunch
 from .helpers_lab_fill_effect import default_clock
@@ -61,10 +76,66 @@ _PR = re.compile(r"^[A-Za-z0-9_.-]+#[0-9]+$")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
+def _digits(run_key: str) -> str:
+    return re.sub(r"[^0-9]", "", run_key)[4:]
+
+
 def lane_name(ticket: str, run_key: str) -> str:
     """``lab-fill-omn123-10170930`` for OMN-123 at run key 2026-10-17T0930Z."""
-    digits = re.sub(r"[^0-9]", "", run_key)[4:]
-    return f"lab-fill-{ticket.lower().replace('-', '')}-{digits}"
+    return f"lab-fill-{ticket.lower().replace('-', '')}-{_digits(run_key)}"
+
+
+def diagnose_lane_name(run_key: str) -> str:
+    """``lab-fill-diagnose-10170930`` at run key 2026-10-17T0930Z."""
+    return f"lab-fill-diagnose-{_digits(run_key)}"
+
+
+@dataclass
+class _Memory:
+    """What the tick keeps between fires, as read from and written to the memory file."""
+
+    idle_streak: int = 0
+    diagnose_at: float = 0.0
+    diagnose_lane: str = ""
+    brief_refusals: dict[str, int] = field(default_factory=dict)
+    parked: dict[str, dict[str, object]] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, object] | None) -> _Memory:
+        """A missing or malformed file is an empty memory: the streak starts over."""
+        if raw is None:
+            return cls()
+        streak, at, lane = (
+            raw.get("idle_streak"),
+            raw.get("diagnose_at"),
+            raw.get("diagnose_lane"),
+        )
+        refusals, parked = raw.get("brief_refusals"), raw.get("parked")
+        return cls(
+            idle_streak=streak if isinstance(streak, int) and streak > 0 else 0,
+            diagnose_at=float(at) if isinstance(at, int | float) else 0.0,
+            diagnose_lane=lane if isinstance(lane, str) else "",
+            brief_refusals={
+                str(k): v
+                for k, v in (refusals if isinstance(refusals, dict) else {}).items()
+                if isinstance(v, int)
+            },
+            parked={
+                str(k): dict(v)
+                for k, v in (parked if isinstance(parked, dict) else {}).items()
+                if isinstance(v, dict) and isinstance(v.get("at"), int | float)
+            },
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        return {
+            "version": 1,
+            "idle_streak": self.idle_streak,
+            "diagnose_at": self.diagnose_at,
+            "diagnose_lane": self.diagnose_lane,
+            "brief_refusals": self.brief_refusals,
+            "parked": self.parked,
+        }
 
 
 def priority_class(
@@ -132,6 +203,41 @@ def _brief(
     )
 
 
+def _join(*parts: str) -> str:
+    return "; ".join(p for p in parts if p)
+
+
+def _diagnose_brief(
+    request: ModelLabFillTickRequest,
+    lane: str,
+    result: ModelLabFillTickResult,
+    alarm: ModelLabFillTickAlarm,
+) -> str:
+    reasons = Counter(s.reason.split(":")[0] for s in result.skipped)
+    refused = "".join(
+        f"- {r.ticket} ({r.lane}@{r.host}) {r.reason}: {' '.join(r.detail.split())[:200]}\n"
+        for r in result.refusals
+    )
+    return (
+        f"# Lane {lane}: diagnose lab-fill ticks that left free slots unplaced\n\n"
+        f"ROUTE: model={request.engine} effort=high\n"
+        f"AUTHORITY: operator RULING {request.authority_ruling} "
+        f"lane={request.authority_lane}; parent ticket {request.parent_ticket}.\n"
+        f"Parent: {request.parent}. Ticket: {request.parent_ticket}. Repo: none.\n\n"
+        f"Lab-fill ticks with free slots placed no lane for {alarm.streak} ticks running.\n"
+        f"run_key={request.run_key} fire_id={request.fire_id} "
+        f"free_slots={result.free_slots} placed={result.placed} outcome={result.outcome}\n"
+        f"refusals={result.refusals_cell}\n"
+        f"skipped={','.join(f'{k}:{n}' for k, n in reasons.most_common()) or 'none'}\n"
+        f"parked={','.join(result.parked) or 'none'}\n"
+        f"{refused}\n"
+        "Find why no lane was placed and fix the cause, or write the finding where the "
+        "next tick reads it. Do not place the lanes by hand.\n\n"
+        f"Landing: hand the PR to {request.landing_lane} with needs=land; "
+        "never merge or arm it by hand.\n"
+    )
+
+
 class HandlerLabFillTick:
     """Fill a fire's free slots from the approved-work list, deterministically."""
 
@@ -141,20 +247,39 @@ class HandlerLabFillTick:
         owners: ProtocolLabFillOwnerReader | None = None,
         launch: HandlerLabFillLaunch | None = None,
         clock: ProtocolLabFillClock | None = None,
+        memory_reader: ProtocolLabFillReceiptReader | None = None,
+        memory_writer: ProtocolLabFillResultWriter | None = None,
     ) -> None:
         from ..protocols.local_lab_fill_adapters import (
             LocalApprovedWork,
             LocalOwnerReader,
+            LocalReceiptReader,
+            LocalResultWriter,
         )
 
         self._approved = approved if approved is not None else LocalApprovedWork()
         self._owners = owners if owners is not None else LocalOwnerReader()
+        self._memory_reader = (
+            memory_reader if memory_reader is not None else LocalReceiptReader()
+        )
+        self._memory_writer = (
+            memory_writer if memory_writer is not None else LocalResultWriter()
+        )
         self._clock = default_clock(clock)
         self._launch = (
             launch if launch is not None else HandlerLabFillLaunch(clock=self._clock)
         )
 
     def handle(self, request: ModelLabFillTickRequest) -> ModelLabFillTickResult:
+        memory = _Memory.from_mapping(
+            self._memory_reader.read(request.state_path) if request.state_path else None
+        )
+        result = self._fill(request, memory)
+        return self._settle(request, memory, result) if request.apply else result
+
+    def _fill(
+        self, request: ModelLabFillTickRequest, memory: _Memory
+    ) -> ModelLabFillTickResult:
         slots = _slots(request)
 
         def done(outcome: str, **kw: object) -> ModelLabFillTickResult:
@@ -224,9 +349,22 @@ class HandlerLabFillTick:
                         detail=detail,
                     )
                 )
+            elif (
+                held := self._parked(request, memory, str(row["ticket"]), now)
+            ) is not None:
+                skipped.append(
+                    ModelLabFillTickSkip(
+                        ticket=str(row["ticket"]),
+                        row_id=str(row["id"]),
+                        reason=f"parked:{held['reason']}",
+                        detail=str(held["detail"]),
+                    )
+                )
             else:
                 free.append(row)
 
+        refusals: list[ModelLabFillTickRefusal] = []
+        parked_now: list[str] = []
         dispatched: list[ModelLabFillTickDispatch] = []
         stopped = ""
         queue = deque(free)
@@ -251,6 +389,7 @@ class HandlerLabFillTick:
                     request, row, lane, host, lanes_left=len(slots) - i
                 )
                 if launched.detached:
+                    memory.brief_refusals.pop(ticket, None)
                     dispatched.append(
                         ModelLabFillTickDispatch(
                             lane=lane,
@@ -271,11 +410,36 @@ class HandlerLabFillTick:
                         detail=launched.detail,
                     )
                 )
+                refusals.append(
+                    ModelLabFillTickRefusal(
+                        lane=lane,
+                        ticket=ticket,
+                        row_id=row_id,
+                        host=host,
+                        reason=reason,
+                        detail=launched.detail,
+                    )
+                )
+                if reason == "brief-check-refused" and self._park(
+                    request, memory, ticket, launched.detail, self._clock.now_epoch_s()
+                ):
+                    parked_now.append(ticket)
                 if reason in _STOP_REASONS or reason.startswith("lane-timeout:"):
                     stopped = reason
             if stopped or not queue:
                 break
 
+        if stopped:
+            refusals.extend(
+                ModelLabFillTickRefusal(
+                    lane=lane_name(str(r["ticket"]), request.run_key),
+                    ticket=str(r["ticket"]),
+                    row_id=str(r["id"]),
+                    host=slots[0],
+                    reason=f"untried:{stopped}",
+                )
+                for r in queue
+            )
         if not request.apply:
             outcome = "planned"
         else:
@@ -286,6 +450,136 @@ class HandlerLabFillTick:
             skipped=tuple(skipped),
             untried=tuple(str(r["ticket"]) for r in queue),
             stopped=stopped,
+            refusals=tuple(refusals),
+            refusals_cell=render_refusals(tuple(refusals)),
+            parked=tuple(parked_now),
+            placed=0 if outcome == "planned" else len(dispatched),
+        )
+
+    @staticmethod
+    def _parked(
+        request: ModelLabFillTickRequest, memory: _Memory, ticket: str, now: float
+    ) -> dict[str, object] | None:
+        """The park entry that still holds the ticket; an expired one is dropped with its count."""
+        held = memory.parked.get(ticket)
+        if held is None:
+            return None
+        if now - float(str(held["at"])) < request.park_hours * 3600:
+            return {"reason": held.get("reason", ""), "detail": held.get("detail", "")}
+        del memory.parked[ticket]
+        memory.brief_refusals.pop(ticket, None)
+        return None
+
+    @staticmethod
+    def _park(
+        request: ModelLabFillTickRequest,
+        memory: _Memory,
+        ticket: str,
+        detail: str,
+        now: float,
+    ) -> bool:
+        """Count a brief-check refusal; park the ticket at the ``park_after``-th."""
+        count = memory.brief_refusals.get(ticket, 0) + 1
+        memory.brief_refusals[ticket] = count
+        if count < request.park_after:
+            return False
+        memory.parked[ticket] = {
+            "reason": "brief-check-refused",
+            "detail": f"{count} refusals: {detail}"[:300],
+            "at": now,
+        }
+        return True
+
+    def _settle(
+        self,
+        request: ModelLabFillTickRequest,
+        memory: _Memory,
+        result: ModelLabFillTickResult,
+    ) -> ModelLabFillTickResult:
+        """Count the idle streak, send the diagnose lane when it is due, and keep the memory."""
+        if not request.state_path:
+            return result.model_copy(
+                update={
+                    "detail": _join(
+                        result.detail,
+                        "memory off (no state_path): no idle alarm, no parking",
+                    )
+                }
+            )
+        now = self._clock.now_epoch_s()
+        idle = result.free_slots > 0 and result.placed == 0
+        memory.idle_streak = memory.idle_streak + 1 if idle else 0
+        alarm = ModelLabFillTickAlarm(
+            streak=memory.idle_streak, free_slots=result.free_slots
+        )
+        if idle and memory.idle_streak >= request.alarm_after:
+            alarm = self._diagnose(request, memory, result, alarm, now)
+        memory.parked = {
+            t: p
+            for t, p in memory.parked.items()
+            if now - float(str(p["at"])) < request.park_hours * 3600
+        }
+        detail = result.detail
+        try:
+            self._memory_writer.write(request.state_path, memory.to_mapping())
+        except LabFillPortError as exc:
+            detail = _join(detail, f"memory-unwritable: {str(exc)[:200]}")
+        return result.model_copy(update={"alarm": alarm, "detail": detail})
+
+    def _diagnose(
+        self,
+        request: ModelLabFillTickRequest,
+        memory: _Memory,
+        result: ModelLabFillTickResult,
+        alarm: ModelLabFillTickAlarm,
+        now: float,
+    ) -> ModelLabFillTickAlarm:
+        """One diagnose lane per cooldown: dispatched now, or deduplicated against the last."""
+        if memory.diagnose_at and now - memory.diagnose_at < (
+            request.diagnose_cooldown_min * 60
+        ):
+            return alarm.model_copy(
+                update={
+                    "diagnose": "deduplicated",
+                    "diagnose_lane": memory.diagnose_lane,
+                }
+            )
+        lane = diagnose_lane_name(request.run_key)
+        launched = self._launch.handle(
+            ModelLabFillLaunchRequest(
+                launch=ModelLabFillLaunch(
+                    lane=lane,
+                    ticket=request.parent_ticket,
+                    engine=request.engine,
+                    host=_slots(request)[0],
+                    parent=request.parent,
+                    timeout_min=request.timeout_min,
+                ),
+                kind="diagnose",
+                brief=_diagnose_brief(request, lane, result, alarm),
+                brief_dir=request.brief_dir,
+                ledger_path=request.ledger_path,
+                approved_work_path=request.approved_work_path,
+                operator_id=request.operator_id,
+                window_end_epoch_s=request.window_end_epoch_s,
+            )
+        )
+        if not launched.detached:
+            reason = launched.skipped or "runner-refused"
+            return alarm.model_copy(
+                update={
+                    "diagnose": "refused",
+                    "diagnose_lane": lane,
+                    "diagnose_detail": f"{reason}: {launched.detail}"[:300],
+                }
+            )
+        memory.diagnose_at, memory.diagnose_lane = now, lane
+        return alarm.model_copy(
+            update={
+                "diagnose": "dispatched",
+                "diagnose_lane": lane,
+                "diagnose_receipt": launched.receipt,
+            }
         )
 
     def _launch_one(
@@ -329,4 +623,9 @@ class HandlerLabFillTick:
         )
 
 
-__all__: list[str] = ["HandlerLabFillTick", "lane_name", "priority_class"]
+__all__: list[str] = [
+    "HandlerLabFillTick",
+    "diagnose_lane_name",
+    "lane_name",
+    "priority_class",
+]

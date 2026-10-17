@@ -310,11 +310,16 @@ requirements:
     acceptance:
       - id: "AC58"
         statement: "AC58: node_lab_fill_effect's run_lab_fill_tick dispatches free slots in priority order, frees a slot a refused candidate leaves for the next, skips owned and blocked rows before launch, launches nothing when apply is false, never treats an unread owner as free, and stops on a runner or standing-rules failure leaving the rest untried -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py -q fails at the merge base"
+  - id: "req-lab-fill-zero-placement-alarm"
+    statement: "A lab-fill tick that leaves free slots unplaced names every unplaced lane with its reason, acts on a second such tick in a row with one deduplicated diagnose lane and an event, and parks a candidate the brief check refused twice instead of retrying it every tick."
+    acceptance:
+      - id: "AC60"
+        statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
   - id: "req-lab-first-routing-rubric"
     statement: "The task-class contract carries a scoring rubric per class, and a check refuses a contract change that routes a class to a cloud model first unless the class has a recorded measurement below the bar."
     acceptance:
-      - id: "AC60"
-        statement: "AC60: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
+      - id: "AC61"
+        statement: "AC61: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -431,7 +436,7 @@ evidence_requirements:
     description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
     command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
   - kind: "tests"
-    description: "AC60: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
+    description: "AC61: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
 emergency_bypass:
   enabled: false
@@ -999,6 +1004,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("run_lab_fill_tick", "HandlerLabFillTick", "ModelLabFillTickResult")); print("lab-fill tick deploy probe: PASS")'
+  - id: "dod-omn17427-ac60-lab-fill-zero-placement-alarm"
+    description: "The lab-fill zero-placement chain passes: refusals count every unplaced lane, two idle ticks dispatch one diagnose lane, a twice brief-check-refused ticket is parked."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC60"]
+  - id: "dod-omn17427-lab-fill-zero-placement-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill tick handler at the checked-out HEAD with the diagnose lane and the brief-check parking. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
   - id: "dod-omn17427-ac60-lab-first-routing"
     description: "The lab-first routing check passes the shipped contracts and refuses each cloud-first mutation of them."
     source: "manual"
@@ -1006,7 +1026,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC60"]
+    binds_ac: ["AC61"]
   - id: "dod-omn17427-lab-first-routing-deploy-probe"
     description: "Deploy probe. GitHub serves the task-class contract at the checked-out HEAD declaring lab_first_policy. It fails at the merge base, which declares none, and needs only GitHub access and Python on the hosted runner."
     source: "manual"

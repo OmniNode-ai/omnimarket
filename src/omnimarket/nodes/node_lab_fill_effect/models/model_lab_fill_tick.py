@@ -10,6 +10,7 @@ row that did not go, why.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -54,6 +55,16 @@ class ModelLabFillTickRequest(BaseModel):
     mvp_repos: tuple[str, ...] = ()
     process_repos: tuple[str, ...] = ()
     window_end_epoch_s: int | None = None
+    # The tick's memory between fires: the idle streak, the diagnose lane's last dispatch
+    # and the parked candidates. Empty keeps no memory, so there is no alarm and no parking.
+    state_path: str = ""
+    # Ticks with free slots and nothing placed before the diagnose lane goes out.
+    alarm_after: int = Field(default=2, ge=1)
+    # Minutes after a diagnose dispatch in which another is deduplicated.
+    diagnose_cooldown_min: int = Field(default=180, ge=1)
+    # Brief-check refusals of one ticket before it is parked, and for how many hours.
+    park_after: int = Field(default=2, ge=1)
+    park_hours: int = Field(default=24, ge=1)
 
     @field_validator("ledger_path", "approved_work_path", "brief_dir")
     @classmethod
@@ -61,6 +72,14 @@ class ModelLabFillTickRequest(BaseModel):
         """A path is named, never walked up out of its directory, and holds no NUL."""
         if not value or "\x00" in value or ".." in value.replace("\\", "/").split("/"):
             raise ValueError("path must be non-empty, hold no NUL and no '..' segment")
+        return value
+
+    @field_validator("state_path")
+    @classmethod
+    def _state_path_stays_put(cls, value: str) -> str:
+        """The memory path is empty (no memory) or a named path with no NUL and no '..' segment."""
+        if value and ("\x00" in value or ".." in value.replace("\\", "/").split("/")):
+            raise ValueError("state_path must hold no NUL and no '..' segment")
         return value
 
 
@@ -88,6 +107,43 @@ class ModelLabFillTickSkip(BaseModel):
     detail: str = ""
 
 
+class ModelLabFillTickRefusal(BaseModel):
+    """A lane the tick made for a candidate or would have made, and did not place, with the reason."""
+
+    model_config = _FROZEN
+
+    lane: str
+    ticket: str
+    row_id: str
+    host: str
+    reason: str
+    detail: str = ""
+
+
+class ModelLabFillTickAlarm(BaseModel):
+    """Free slots went unplaced: how many ticks running, and what the tick did about it."""
+
+    model_config = _FROZEN
+
+    streak: int
+    free_slots: int
+    diagnose: Literal["none", "dispatched", "deduplicated", "refused"] = "none"
+    diagnose_lane: str = ""
+    diagnose_receipt: str = ""
+    diagnose_detail: str = ""
+
+
+def render_refusals(refusals: tuple[ModelLabFillTickRefusal, ...]) -> str:
+    """``lane@host:reason`` per refusal, comma-joined, ledger separators made harmless; ``none`` when empty."""
+    return (
+        ",".join(
+            re.sub(r"[|\n\r]", "/", f"{r.lane}@{r.host}:{r.reason}").strip()
+            for r in refusals
+        )
+        or "none"
+    )
+
+
 class ModelLabFillTickResult(BaseModel):
     """The tick's event: what went where, what did not and why, what was never tried."""
 
@@ -108,13 +164,25 @@ class ModelLabFillTickResult(BaseModel):
     untried: tuple[str, ...] = ()
     stopped: str = ""
     detail: str = ""
+    # Every lane made and not placed, with its reason; ``untried:<why>`` for the rest of a stopped tick.
+    refusals: tuple[ModelLabFillTickRefusal, ...] = ()
+    # Tickets parked by this tick after their second brief-check refusal.
+    parked: tuple[str, ...] = ()
+    alarm: ModelLabFillTickAlarm | None = None
+    # Lanes of approved work the runner detached; a plan-only tick places none.
+    placed: int = 0
+    # The STATUS row's ``refusals=`` value: ``none`` only when every lane made was placed.
+    refusals_cell: str = "none"
 
 
 __all__: list[str] = [
+    "ModelLabFillTickAlarm",
     "ModelLabFillTickDispatch",
     "ModelLabFillTickHost",
+    "ModelLabFillTickRefusal",
     "ModelLabFillTickRequest",
     "ModelLabFillTickResult",
     "ModelLabFillTickSkip",
     "PriorityClass",
+    "render_refusals",
 ]
