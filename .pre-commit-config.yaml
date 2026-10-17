@@ -12,6 +12,15 @@
 #   pre-commit run --all-files
 
 repos:
+  # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
+  # "Ci runners should be for private repos only"). CI twin job
+  # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
+  # that job's pin.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: c880801d4deeaa1627535c8622ab6c4ab8cfbecd
+    hooks:
+      - id: check-public-runner-placement
+        args: [--repo, omnimarket, --visibility, public]
   # Stub implementation detection + receipt-honesty gate + transport-mock lint
   # sourced from omnibase_core. Rev bumped to OMN-13026 (transport-mock-lint).
   - repo: https://github.com/OmniNode-ai/omnibase_core

@@ -463,7 +463,9 @@ class TestReusableWorkflowContract:
         depends on an unset variable rendering an empty/invalid value.
         """
         runs_on = str(self._job()["runs-on"])
-        assert '["self-hosted","omnibase-ci"]' in runs_on
+        # OMN-19998: a public repository's fallback is GitHub-hosted
+        # (RULING 2026-10-16T07:07:09Z), never the self-hosted fleet.
+        assert '["self-hosted","omnibase-ci"]' not in runs_on
         assert '["ubuntu-latest"]' in runs_on
 
     def test_the_job_is_unconditional(self) -> None:
