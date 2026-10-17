@@ -256,6 +256,13 @@ class ModelClaudeHookEventWire(BaseModel):
     #: OMN-17427: the appender's lane stamp. Empty means the emitter asked and
     #: resolved no lane; the fold stores that as NULL.
     lane: str | None = None
+    #: OMN-18531: the capture hook's item-identity stamp on a lineage event. This
+    #: topic carries the lineage stream only (the content stream travels on the
+    #: restricted content family), so any other stream value is refused. The
+    #: sequence is per session and per stream, starting at 1. Neither is stored:
+    #: the fold keys rows on ``event_id``.
+    stream: Literal["lineage"] | None = None
+    producer_seq: int | None = Field(default=None, ge=1, strict=True)
     lineage: ModelClaudeHookLineageWire
     payload: dict[str, JsonValue]
     content_refs: tuple[ModelClaudeHookContentRefWire, ...]

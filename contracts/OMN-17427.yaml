@@ -315,11 +315,16 @@ requirements:
     acceptance:
       - id: "AC60"
         statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
+  - id: "req-lab-fill-dod-verify-fallback"
+    statement: "Lab-fill selection takes tickets it skipped because their implementation merged as DoD-verify lanes for the slots ordinary and pr-land work leave idle, one per ticket and gated by the ticket's lab-fill attempt history, and the dispatch plan ranks them last, scopes them by the kind they were enumerated as and renders a brief that closes the ticket only on a passing DoD receipt."
+    acceptance:
+      - id: "AC61"
+        statement: "AC61: with the 2026-10-17T1730Z run's shape (9 free slots on h101:1, h202:4, h201:4, 2 eligible candidates, 41 implementation-merged) selection plus the dispatch plan dispatch at least 9 lanes where the base dispatches 2; an open or blocked-in-cooldown verify lane, a second row of the same ticket and an out-of-scope origin are not taken -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q fails at the merge base"
   - id: "req-linear-triage-local-github"
     statement: "node_linear_triage runs on a host that holds no GitHub token by reading PR state from the PR watcher state and the canonical clones, reports an unreadable state instead of an empty answer, and keeps its implementing-PR gate."
     acceptance:
-      - id: "AC61"
-        statement: "AC61: with github_source local the triage handler completes without a GITHUB_TOKEN, a merged squash commit in the clone and a merged or closed watcher record answer the merged and closed-unmerged searches, an id never matches a longer id, a merged record with no merge time is dropped, a missing watcher state returns status error, and the default github_source stays api -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q fails when the local client is removed"
+      - id: "AC62"
+        statement: "AC62: with github_source local the triage handler completes without a GITHUB_TOKEN, a merged squash commit in the clone and a merged or closed watcher record answer the merged and closed-unmerged searches, an id never matches a longer id, a merged record with no merge time is dropped, a missing watcher state returns status error, and the default github_source stays api -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q fails when the local client is removed"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -436,7 +441,7 @@ evidence_requirements:
     description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
     command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
   - kind: "tests"
-    description: "AC61: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
+    description: "AC62: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
     command: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
 emergency_bypass:
   enabled: false
@@ -1019,6 +1024,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
+  - id: "dod-omn17427-ac61-lab-fill-dod-verify-fallback"
+    description: "The lab-fill DoD-verify fallback chain passes, including the replay of the 2026-10-17T1730Z run's shape."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC61"]
+  - id: "dod-omn17427-lab-fill-dod-verify-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill dispatch plan at the checked-out HEAD with the dod-verify kind and its item builder. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_dispatch_plan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("DOD_VERIFY", "dod_verify_item", "origin_kind")); print("lab-fill dod-verify deploy probe: PASS")'
   - id: "dod-omn17427-ac61-linear-triage-local-github"
     description: "The local GitHub PR reads and the handler's local source pass their focused tests."
     source: "manual"
@@ -1026,8 +1046,8 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC61"]
-  - id: "dod-omn17427-linear-triage-local-github-deploy-probe"
+    binds_ac: ["AC62"]
+  - id: "dod-omn17427-linear-triage-local-deploy-probe"
     description: "Deploy probe. GitHub serves the triage handler at the checked-out HEAD with the local GitHub source. It fails at the merge base, which has no such source, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
