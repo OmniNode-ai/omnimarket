@@ -10,9 +10,7 @@
 -- Existing duplicates are collapsed first, keeping the row with the lowest
 -- projection_cursor: that row is the one a reaper polling ?since=<cursor> has
 -- already read or will read first, so no consumer's cursor moves backwards and
--- no merge disappears from the feed. The self-join pairs only rows of the same
--- repo and pr_number, and a row is deleted only when an older row of that pair
--- exists, so the first row of every pair, and every pair with one row, stays.
+-- no merge disappears from the feed.
 --
 -- Idempotency: the DELETE is a no-op once the key exists, and the constraint is
 -- added only when no unique constraint on exactly (pr_number, repo) is present.
