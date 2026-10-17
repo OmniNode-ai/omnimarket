@@ -24,14 +24,16 @@ def test_contract_declares_every_ticket_criterion() -> None:
     assert declared == CRITERIA
 
 
-def test_every_criterion_is_claimed_by_one_item_with_a_check() -> None:
+def test_every_criterion_is_claimed_by_an_item_with_a_check() -> None:
+    # An accepted binding record claims a criterion beside its original item,
+    # so a criterion may be claimed more than once, never zero times.
     contract = _load()
-    claimed: dict[str, int] = {}
+    claimed: set[str] = set()
     for item in contract.dod_evidence:
         for label in item.binds_ac:
-            claimed[label] = claimed.get(label, 0) + 1
+            claimed.add(label)
             assert item.checks, item.id
-    assert claimed == dict.fromkeys(CRITERIA, 1)
+    assert claimed == CRITERIA
 
 
 def test_each_criterion_names_its_own_test_class() -> None:
