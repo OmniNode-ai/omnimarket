@@ -145,6 +145,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_run_steps_omn19972.py -q -p no:cacheprovider -p no:warnings -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19972-run-trace-resolves-slug"
+    binds_ac: ["AC3"]
+    description: "The run-trace writer resolves a step's tenant through the tenant mirror before it stores the step, as the delegation writer does (Jonah's ruling on the ticket, c2939bce). A step that carries the install's slug is stored and published under the uuid the mirror holds, with the session tenant equal to the row's; an unknown slug, or a uuid the mirror does not hold, is refused and writes nothing; a redelivery stores nothing new. The second check drives the writer itself on a real Postgres with the run_trace and tenant-mirror migrations applied, as the writer role that forced row-level security binds, and reads the row back by the tenant's uuid. Both fail at the merge base, where the writer stores the raw slug. This is the writer half of AC3's Runs readback; the lab readback lands separately."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_run_trace/test_writer_resolves_the_tenant_slug_omn19972.py -q -p no:cacheprovider -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19972_run_trace_tenant_real_postgres.py -q -p no:cacheprovider -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-deploy-container-run-trace"
     description: "Hosted deploy probe: a disposable Python container installs the evaluated checkout and drives its runtime dispatch port, event-envelope decode and run-trace writer fold. The readback requires seven ordered rows for the dispatched correlation id. It fails against the merge-base port, which publishes no run steps. It uses an in-memory bus and SQLite; it does not claim a deployed Kafka or compose-Postgres readback."
     source: "manual"
