@@ -479,6 +479,7 @@ node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liv
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
+node_lab_story_log_effect = "omnimarket.nodes.node_lab_story_log_effect"
 node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
 node_platform_readiness = "omnimarket.nodes.node_platform_readiness"
 node_platform_diagnostics = "omnimarket.nodes.node_platform_diagnostics"
@@ -984,6 +985,9 @@ scm = "omnimarket.handlers.scm.scm_cli:scm_group"
 # under a CPU, IO and bandwidth budget, then free the local copy. A shim over
 # node_lab_history_archive_effect, discovered over installed distributions like the groups above.
 lab-archive = "omnimarket.nodes.node_lab_history_archive_effect.cli:lab_archive_group"
+# `onex lab-story-log` -- write one ISO week of the work ledger as a sanitized story log for the
+# lab-journey article series; run weekly by a host tick. Discovered over installed distributions.
+lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry

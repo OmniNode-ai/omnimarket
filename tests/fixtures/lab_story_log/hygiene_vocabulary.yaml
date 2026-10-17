@@ -1,0 +1,13 @@
+# Synthetic stand-in for the gate's private vocabulary (same restricted YAML subset). Every name here is invented.
+schema_version: 1
+private_repo_names:
+  - "orchard-private"
+  - "vault_internal"
+person_names:
+  - "Zelda"
+host_nicknames:
+  - '(?<![A-Za-z0-9_-])(?:rig-\d+|studio-box)(?![A-Za-z0-9_])'
+machine_path_patterns:
+  - '/srv/secret-lab/\S+'
+tracker_url_patterns:
+  - 'https://tracker\.example\.test/\S+'
