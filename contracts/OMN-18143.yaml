@@ -43,13 +43,15 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn18143_deploy_effect_publishes_and_returns.py tests/test_omn19377_deploy_effect_skips_repeats.py tests/test_omn19377_deploy_effect_durable_publish_record.py tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py tests/test_deploy_publish_monitor_rebuild_rejected_dispatch_omn18816.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn18143-ac2-pending-depth-deploy-probe"
-    description: "AC2 deploy probe: the deploy effect's publish record served by GitHub at the PR's code commit counts pending depth per lane, and the handler returns it as the pending_depth metric. The dev tree has neither, so the probe fails there."
+    description: "AC2 deploy probe: the deploy effect's publish record served by GitHub at the checked-out commit counts pending depth per lane, and the handler returns it as the pending_depth metric. The dev tree has neither, so the probe fails there."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_redeploy_deploy_effect/handlers/deploy_publish_record.py?ref=c06ffc7741fc2d4eccae91d1623f676d09a4fc03 --jq .content | base64 -d | grep -c 'def pending_depth(self, runtime_lane: str) -> int:'"
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_redeploy_deploy_effect/handlers/deploy_publish_record.py" | grep -c "def pending_depth(self, runtime_lane: str) -> int:"'
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_redeploy_deploy_effect/handlers/handler_deploy_publish_monitor.py?ref=c06ffc7741fc2d4eccae91d1623f676d09a4fc03 --jq .content | base64 -d | grep -c 'def _pending_depth_metric'"
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_redeploy_deploy_effect/handlers/handler_deploy_publish_monitor.py" | grep -c "def _pending_depth_metric"'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
