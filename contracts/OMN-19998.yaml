@@ -123,6 +123,16 @@ requirements:
         statement: "AC22: node_lab_daemon_sync_effect installs main through the declared installer for a lagging daemon, reverts an expired branch install to main and holds an unexpired one, and for a refusing installer publishes lab-daemon-install-refused naming the blocker and dispatches exactly one fix lane across two ticks -- falsifier: uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_effect.py -q fails at the merge base, which has no such node"
       - id: "AC23"
         statement: "AC23: given deploy_drifts facts, the throughput tick decision prints MISSING deploy-drift:<daemon>@<host> for a lag older than deploy_drift_max_hours (default 2), and a NOTE for a younger lag or one an unexpired branch install holds -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_deploy_drift_throughput_tick_decision_compute.py -q fails at the merge base, whose request model refuses deploy_drifts"
+  - id: "req-runner-route-check-hosted-fallback"
+    statement: "The reusable runner-route check accepts a hosted trusted-seam fallback while retaining the original fleet fallback and fork isolation."
+    acceptance:
+      - id: "AC24"
+        statement: "AC24: the runner fallback guard accepts hosted and fleet trusted defaults and refuses self-hosted public defaults, unknown labels, incomplete fleet labels and empty labels; the workflow checks still pass -- falsifier: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q fails at the merge base because the hosted fallback guard does not exist"
+  - id: "req-omn19998-public-runner-placement"
+    statement: "Operator RULING 2026-10-16T07:07:09Z: CI runners are for private repositories only. omnimarket is public, so no workflow routing fallback may name the self-hosted fleet except the two lab carve-outs (OMNI_REVIEW_RUNS_ON_JSON, OMNI_PR_MERGED_PUBLISHER_RUNS_ON_JSON), and omnibase_core's check-public-runner-placement runs as a CI Summary registered job and as a pre-commit hook at one core pin."
+    acceptance:
+      - id: "AC25"
+        statement: "AC25: no workflow line outside the two carve-outs carries the self-hosted fleet fallback, the Public Runner Placement job is unconditional, hosted, carries a positive control and the same core pin as the hook, and CI Summary registers it -- falsifier: uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q fails at the merge base, where 18 fallback lines name the fleet and neither the job nor the hook exists"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -133,6 +143,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The committed dep-health allowlist has no expired row."
     command: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries"
+  - kind: "tests"
+    description: "The placement tests read every workflow file for the fleet fallback, the ci.yml job, .pre-commit-config.yaml and the CI Summary gate list."
+    command: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -506,3 +519,31 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_daemon_sync_effect/handlers/handler_lab_daemon_sync.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def decide_daemon('
+
+  - id: "dod-omn19998-route-check-hosted-fallback"
+    description: "The reusable runner-route checks retain the seam and fork constraints and exercise accepted and rejected fallback labels."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q"
+    binds_ac: ["AC24"]
+  - id: "dod-omn19998-route-check-hosted-deploy-probe"
+    description: "Hosted-runner probe calls the check's fallback guard with the hosted trusted default; the base has no guard and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q -k test_runner_fallback_guard_accepts_hosted_and_fleet_seams"
+  - id: "dod-omn19998-ac22-public-runner-placement"
+    description: "AC25 tests read the workflows, the CI job, the pre-commit hook and the CI Summary gate list."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC25"]
+  - id: "dod-omn19998-public-runner-placement-deploy-probe"
+    description: "Hosted-runner probe requires hosted routing fallbacks and the registered runner-placement CI job and hook; the merge base lacks them and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"

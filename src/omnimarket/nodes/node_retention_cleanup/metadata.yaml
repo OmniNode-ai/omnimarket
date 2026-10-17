@@ -1,6 +1,6 @@
 name: node_retention_cleanup
 version: "1.0.0"
-description: "Prunes stale records from projection tables per declarative retention policy"
+description: "Prunes stale records from projection tables and retires aged lab files per declarative retention policy"
 display_name: "Retention Cleanup"
 node_role: "effect"
 pack: "operations"
@@ -10,6 +10,8 @@ tags:
   - cleanup
   - projections
   - database
+  - files
+  - archive
 author: OmniNode Team
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:

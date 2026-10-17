@@ -18,6 +18,13 @@ from .model_lab_fill_effect import (
     ModelLabFillStatusWriteRequest,
     ModelLabFillStatusWriteResult,
 )
+from .model_lab_fill_tick import (
+    ModelLabFillTickDispatch,
+    ModelLabFillTickHost,
+    ModelLabFillTickRequest,
+    ModelLabFillTickResult,
+    ModelLabFillTickSkip,
+)
 
 __all__ = [
     "ModelLabFillFallbackHostRequest",
@@ -34,4 +41,9 @@ __all__ = [
     "ModelLabFillReceiptsResult",
     "ModelLabFillStatusWriteRequest",
     "ModelLabFillStatusWriteResult",
+    "ModelLabFillTickDispatch",
+    "ModelLabFillTickHost",
+    "ModelLabFillTickRequest",
+    "ModelLabFillTickResult",
+    "ModelLabFillTickSkip",
 ]

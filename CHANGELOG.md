@@ -1,3 +1,41 @@
+## v0.4.316 (2026-10-17)
+
+### Release
+- Cut omnimarket from dev at 0.4.316 by the scheduled release train.
+- 29 release-relevant commit(s) merged since v0.4.315.
+- Opened by the release train, which cuts only when the repo's declared lab-evidence premise holds for the exact candidate commit.
+
+### Included Since v0.4.315
+- refactor: sweeps and dod_verify stop locating the change-control clone under OMNI_HOME (#4043)
+- : Rebase OmniNode-ai/omnimarket#4040 and update duplication sweep D3 (#4040)
+- feat: add node_lab_story_log_effect and onex lab-story-log verb (#4038)
+- feat(omnimarket): add node_lab_history_archive_effect (#4039)
+- feat: add rescue patch review compute and effect nodes (#4019)
+- fix: emit effect quarantines a record the producer refuses as too large (#4031)
+- fix: try next registered key when run would end (#4034)
+- fix: onex dashboard verifies the bundle before printing its address, and a failure exits 1 named on stderr (#4030)
+- feat: onex models add takes a local model server by URL, with no key (#4028)
+- fix: scope repo write request fields to check_run_create (#4027)
+- feat: usage rows carry their tier and share of the day's calls (#4002)
+- feat: add the context compaction replay manifest compute node (#4021)
+- feat: the model-routing view lists each tier's models with run count, share and cost (#3991)
+- feat: serve each run's modelled saving, written in one transaction (#4001)
+- feat: an unpriced delegation call is stored and summed as null on Postgres (#3989)
+- feat: omnimarket ticket-opening nodes stamp, label and admit lane intake (#4026)
+- feat(scm): add typed GitHub check-run creation to repository write effect (#4018)
+- fix: onboarding gets a packaged OpenRouter default when no overlay names one (#4025)
+- fix: rebackfill omninode savings_estimates to house UUID (#3947)
+- feat: the captured-secret writer creates through the secret store effect node (#3752)
+- fix: retain mirror merges until broker acknowledgement (#4023)
+- feat: add composite capture operations to the item identity node (#4015)
+- feat: accept a generated handler only through its must-fail test control (#3985)
+- fix: serve gh reads from local sources in node_dod_verify (#3928)
+- feat: declare trace_id and span_id on the delegate-skill models and copy them to the terminal (#3966)
+- feat: keep the gate flag and hold the construction pair on the Market receiver (#3981)
+- feat: add external dead-man check compute node (#4011)
+- fix: a quality escalation never climbs to the backend it just rejected (#4014)
+- feat: run a bus request's named tests before the delegation gate (#3933)
+
 ## v0.4.315 (2026-10-16)
 
 ### Release

@@ -25,7 +25,7 @@ RUNS_ON = """${{
   (github.event_name == 'pull_request' &&
    github.event.pull_request.head.repo.full_name != github.repository)
   && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-  || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+  || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
 }}"""
 
 # Decision statements from the caller's pinned reusable, 6adc28168d023d027bf9c1172f262ac03c9d9055.

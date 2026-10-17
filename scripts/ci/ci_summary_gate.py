@@ -319,6 +319,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # default-deny sweep, and this row makes a skipped or absent conclusion fail
     # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Canonical File Shape (OMN-20304)",  # canonical-file-shape
+    # OMN-19998: public-repository runner placement; unconditional in ci.yml
+    # (no needs/if), so a skip or absence fails closed here.
+    "Public Runner Placement (OMN-19998)",  # public-runner-placement
     # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
     # change to the generic test job's selection cannot drop them. Registered
     # on the same terms as the rows above; unconditional in ci.yml.
