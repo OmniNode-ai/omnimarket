@@ -28,6 +28,10 @@ from omnimarket.inference.request_instruction import (
     opening_sentence,
 )
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
+from omnimarket.models.delegation.model_lab_rubric import (
+    ModelLabFirstPolicy,
+    ModelLabRubric,
+)
 
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
@@ -840,6 +844,13 @@ class ModelTaskClassAuthorityEntry(BaseModel):
         ),
     )
     escalation_policy: ModelTaskClassEscalationPolicy | None = None
+    lab_rubric: ModelLabRubric | None = Field(
+        default=None,
+        description=(
+            "The lab model's scored verdict for this class (OMN-17427). Every "
+            "routable class declares one; the lab-first check reads it."
+        ),
+    )
 
 
 class ModelTaskClassAuthority(BaseModel):
@@ -857,6 +868,10 @@ class ModelTaskClassAuthority(BaseModel):
         default_factory=dict,
         description="Per-task-type model id overrides.",
         json_schema_extra=deployment_fact(EnumDeploymentFactKind.MODEL_NAME),
+    )
+    lab_first_policy: ModelLabFirstPolicy | None = Field(
+        default=None,
+        description="The lab tier and the adequacy bar a class must meet there (OMN-17427).",
     )
     quality_rules: dict[str, ModelQualityRule] = Field(default_factory=dict)
     reasoning_preamble: ModelReasoningPreamblePolicy | None = Field(

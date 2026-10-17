@@ -81,6 +81,29 @@ version: "1.0"
 # local-coder/local-heavy-reasoning and routing_tiers.yaml for the matching backend
 # model ids this id-match escape hatch resolves against).
 default_task_model_ref: "Qwen3.8-27B"
+# OMN-17427 / RULING 2026-10-08T23:48:01Z (OMN-20422): lab models first for
+# appropriate tasks, with a scoring rubric. This is the rubric.
+#
+# `lab_tier` names the routing_tiers.yaml tier that is the lab. `bar` is what a
+# class's held-out set must score there: the shipped value is the 21-of-28 bar
+# the code_review measurement used. Each routable class declares `lab_rubric`:
+# `verdict` is pass, fail or unmeasured, and a pass or fail carries the
+# `measured` score it was earned from; the check refuses a verdict its score
+# does not earn. A class is released from lab-first ONLY by a recorded fail; an
+# unmeasured class keeps the default. For every other routable class the
+# lab-first check (node_lab_first_routing_check_compute, run by the
+# lab-first-routing pre-commit hook and a ci.yml step) refuses a tier_order that does
+# not open on the lab tier, an entry_share that starts a fraction elsewhere, and
+# a model pin the lab tier does not serve. A class with no serving tier
+# (routing_availability) declares no rubric.
+lab_first_policy:
+  lab_tier: local
+  bar:
+    adequate: 21
+    of: 28
+  rationale: >-
+    Appropriate tasks go to the lab models first; a class leaves the lab only on
+    a recorded measurement below the bar, never on a contract edit alone.
 task_model_overrides:
   # OMN-17427 / RULING 2026-10-01T15:49:37Z: ordinary code tasks start on
   # the local served model. Gemini remains declared for backend-id tests only.
@@ -848,6 +871,9 @@ facts_first_prompt:
 
 task_classes:
   code_generation:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
     prompt_shape: facts_first
     gateway_exposure: public
@@ -1074,6 +1100,9 @@ task_classes:
   # output PASS at $0 exactly like code_generation. (A minimal-diff / precision DoD
   # for surgical edits to large files is tracked separately under OMN-14214.)
   refactor:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: patch, verification: patch_and_test, execution_required: true}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -1144,6 +1173,9 @@ task_classes:
         - cheap_cloud
         - claude
   documentation:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -1246,6 +1278,9 @@ task_classes:
   # `raises:`) and score 0.000 on both tiers (live CID a604cd40). The docstring
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first
     gateway_exposure: public
@@ -1354,6 +1389,9 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   research:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first
     gateway_exposure: public
@@ -1424,6 +1462,9 @@ task_classes:
         - cheap_cloud
         - claude
   test:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -1598,6 +1639,9 @@ task_classes:
         - cheap_cloud
         - claude
   validator_generation:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: code, verification: test_run, execution_required: true}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -1664,6 +1708,9 @@ task_classes:
         - cheap_cloud
         - claude
   reasoning:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first
     gateway_exposure: public
@@ -1732,6 +1779,9 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   complex_reasoning:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -1783,6 +1833,9 @@ task_classes:
         - local
         - claude
   planning:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: structured, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -1836,6 +1889,9 @@ task_classes:
         - local
         - cheap_cloud
   review:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first
     gateway_exposure: public
@@ -1905,6 +1961,14 @@ task_classes:
   # but with code-review-specific DoD heuristics and a declared fallback ladder.
   # OMN-17427: the class stays declared; delegation is withheld below.
   code_review:
+    # OMN-17427: the lab model scored 0 of 28 on this class, below the policy bar.
+    lab_rubric:
+      verdict: fail
+      measured:
+        model: Qwen3.8-27B
+        adequate: 0
+        of: 28
+        source: "OMN-17427 RULING 2026-10-02T19:33:51Z, lane deleg-quality-low-2a21"
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     # OMN-19432: held back by operator instruction until re-measured (it improved
     # under facts-first in the 2026-09-30 re-ask, 9% to 25%).
@@ -1991,6 +2055,9 @@ task_classes:
       # OMN-17427: withheld and no tier serves it, so no tier_order is declared.
       # Restore the ladder in the same change that restores use_for entries.
   summarization:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: public
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -2208,6 +2275,9 @@ task_classes:
       # OMN-17427: no tier serves agent_orchestration yet, so no tier_order is
       # declared; declare that ladder in the change that wires the producer.
   escalation:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric:
+      verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}

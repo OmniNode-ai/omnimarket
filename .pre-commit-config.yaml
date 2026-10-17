@@ -837,6 +837,18 @@ repos:
         files: ^(src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/validators/routing_tier_backend_bindability\.py)$
         stages: [pre-commit]
 
+      # OMN-17427 / RULING 2026-10-08T23:48:01Z: lab models first for appropriate
+      # tasks. Refuses a routing contract change that sends a class the lab has
+      # not measured below the bar to a cloud model first (tier_order, entry_share
+      # or a model pin). SYNC with ci.yml step "Lab-first routing gate (OMN-17427)".
+      - id: lab-first-routing
+        name: Lab-first routing check (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -n 0 -p no:randomly --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/nodes/node_lab_first_routing_check_compute/.*|src/omnimarket/models/delegation/model_lab_rubric\.py|tests/unit/delegation/test_lab_first_routing_omn17427\.py)$
+        stages: [pre-commit]
+
       # OMN-18311 (release criterion C12, third clause). A customer catalogue
       # row that resolves to a HOUSE credential renders identically to a
       # bring-your-own-key row and bills to us. Same entry point as the
