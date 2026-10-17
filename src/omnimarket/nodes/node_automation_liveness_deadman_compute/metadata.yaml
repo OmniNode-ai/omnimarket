@@ -1,0 +1,23 @@
+name: node_automation_liveness_deadman_compute
+version: "1.0.0"
+description: "Automation-liveness dead-man compute: PRIMARY_SILENT, one ledger row per episode phase and the daily canary check (OMN-20807) -- no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_automation_liveness_deadman_compute: "omnimarket.nodes.node_automation_liveness_deadman_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["liveness", "deadman", "compute", "deterministic", "OMN-20807"]
+pack: "liveness"
+display_name: "Automation Liveness Dead-man"
+node_role: "compute"
