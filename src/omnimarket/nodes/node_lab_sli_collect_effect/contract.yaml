@@ -60,7 +60,9 @@ runtime_dispatch:
 config:
   lab_sli_collect:
     merge_window_minutes: 240
-    launchd_label_prefixes: ["ai.omninode.", "com.omninode.", "com.onex."]
+    # Reverse-DNS label domains; a label is ours when it equals a domain or
+    # continues it with a dot.
+    launchd_label_domains: ["ai.omninode", "com.omninode", "com.onex"]
     # The store sits at the root of the boot volume and, on a sealed system
     # volume, of the APFS data volume; the data volume's mount point is read
     # from `mount` at run time.

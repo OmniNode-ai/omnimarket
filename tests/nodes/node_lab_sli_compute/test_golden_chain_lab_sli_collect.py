@@ -224,3 +224,21 @@ def test_an_unknown_operating_system_is_a_source_error_not_a_healthy_host() -> N
     )
     assert batch.readings == ()
     assert batch.source_errors == ("host-probe: no reader for Plan9",)
+
+
+def test_a_launchd_label_counts_only_inside_a_whole_label_domain() -> None:
+    from omnimarket.nodes.node_lab_sli_collect_effect.handlers.handler_lab_sli_collect import (
+        _launchd_failures,
+    )
+
+    listing = (
+        "PID\tStatus\tLabel\n"
+        "-\t78\tcom.onex.vpn-autoconnect\n"
+        "-\t5\tcom.onex\n"
+        "-\t1\tcom.onexample.unrelated\n"
+        "-\t2\tai.omninodex.unrelated\n"
+    )
+    assert _launchd_failures(listing, ("ai.omninode", "com.onex")) == [
+        "com.onex.vpn-autoconnect=78",
+        "com.onex=5",
+    ]

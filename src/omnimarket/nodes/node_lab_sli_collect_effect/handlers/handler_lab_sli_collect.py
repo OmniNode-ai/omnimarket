@@ -44,7 +44,7 @@ class ModelLabSliCollectConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     merge_window_minutes: int = Field(ge=1)
-    launchd_label_prefixes: tuple[str, ...]
+    launchd_label_domains: tuple[str, ...]
     fseventsd_dir_name: str = Field(min_length=1)
 
 
@@ -193,11 +193,15 @@ def _meminfo(text: str, field: str) -> float:
     return int(match.group(1)) * 1024 / _GB
 
 
-def _launchd_failures(listing: str, prefixes: tuple[str, ...]) -> list[str]:
+def _launchd_failures(listing: str, domains: tuple[str, ...]) -> list[str]:
+    prefixes = tuple(f"{domain}." for domain in domains)
     failing = []
     for line in listing.splitlines()[1:]:
         parts = line.split("\t")
-        if len(parts) != 3 or not parts[2].startswith(prefixes):
+        if len(parts) != 3:
+            continue
+        label = parts[2]
+        if label not in domains and not label.startswith(prefixes):
             continue
         status = parts[1].strip()
         if status not in ("0", "-"):
@@ -362,7 +366,7 @@ class HandlerLabSliCollect:
         raise ProbeError("; ".join(problems))
 
     def _scheduler(self, host: str, listing: str) -> ModelLabSliReading:
-        failing = _launchd_failures(listing, self._config.launchd_label_prefixes)
+        failing = _launchd_failures(listing, self._config.launchd_label_domains)
         return _one(
             "scheduled_job_failures",
             host,
