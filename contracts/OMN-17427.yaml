@@ -315,6 +315,11 @@ requirements:
     acceptance:
       - id: "AC60"
         statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
+  - id: "req-evidence-comment-class"
+    statement: "A done-evidence comment is drafted on the lab rung as the internal evidence_comment task class, and a draft that cites an identifier absent from the lane report, skips or reorders a criterion, or restates a criterion as its evidence is refused before use."
+    acceptance:
+      - id: "AC61"
+        statement: "AC61: a drafted evidence comment citing a sha, pull request number or ticket id absent from the lane report is refused by the gate, as is one that skips or reorders a criterion, restates its criterion, or cites no token of the report -- falsifier: the focused pytest accepts any of those drafts, or refuses the faithful draft"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -1011,3 +1016,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
+  - id: "dod-omn17427-ac61-evidence-comment-class"
+    description: "The evidence_comment class chain passes: the class is internal, local only and never selected from a prompt, a faithful draft is accepted, and a draft with an identifier absent from the report, a missing or reordered criterion, a restated criterion or an entry with no report token is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_evidence_comment_class.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC61"]
+  - id: "dod-omn17427-evidence-comment-class-deploy-probe"
+    description: "Deploy probe. GitHub serves the task-class contract at the checked-out HEAD declaring evidence_comment with the criteria_covered and entry_cites_evidence checks. It fails at the merge base, which declares neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("evidence_comment:", "criteria_covered", "entry_cites_evidence")); print("evidence-comment class deploy probe: PASS")'
