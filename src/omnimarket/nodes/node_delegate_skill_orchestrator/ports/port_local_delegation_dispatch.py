@@ -314,6 +314,7 @@ from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.routing.local_byok_route import (
+    next_chosen_model_byok_route,
     next_registered_byok_route,
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
@@ -1590,6 +1591,11 @@ class LocalDelegationDispatchPort:
         # tiers that declare the same concrete backend for a task type made
         # escalation a functional no-op (identical backend+model re-attempted).
         excluded_backend_refs: set[str] = set()
+        # OMN-21059: every (backend_id, model_id) of a customer key already
+        # attempted in THIS dispatch, so the walk through a key's chosen models
+        # ends with the list. ``excluded_backend_refs`` cannot say this: it names
+        # the key, not the model.
+        tried_byok_models: set[tuple[str, str]] = set()
         # OMN-19215: a sibling hop must remember every exhausted quality
         # rejection, including when the intervening sibling fails transport.
         quality_rejected_model_ids: set[str] = set()
@@ -1887,6 +1893,17 @@ class LocalDelegationDispatchPort:
                     and not (customer_route and typed_refusal)
                 )
 
+                # OMN-21059: the customer chose more than one model for this
+                # key. The next one in their order answers before any other
+                # responder; it stays on the same key, so it is not an
+                # escalation. A model the caller named is never swapped.
+                tried_byok_models.add((backend.backend_id, backend.model_id))
+                next_chosen_model: ModelResolvedDelegationBackend | None = None
+                if customer_route and may_move_on and model is None:
+                    next_chosen_model = next_chosen_model_byok_route(
+                        backend, tried_models=frozenset(tried_byok_models)
+                    )
+
                 # OMN-13640: exclude the BACKEND first, and only give up on the
                 # TIER once the routing authority reports it has no untried
                 # backend left for this task class. Excluding the tier on the
@@ -1895,7 +1912,7 @@ class LocalDelegationDispatchPort:
                 # free-tier 429 terminated the whole delegation while the same
                 # tier's GLM rung sat untried.
                 transport_sibling: ModelResolvedDelegationBackend | None = None
-                if may_move_on:
+                if may_move_on and next_chosen_model is None:
                     transport_sibling = self._resolve_sibling_backend(
                         current_tier=current_tier,
                         task_type=task_type,
@@ -1903,12 +1920,17 @@ class LocalDelegationDispatchPort:
                         excluded_model_ids=frozenset(quality_rejected_model_ids),
                         quota_state=self._quota_snapshot(quota_observations),
                     )
-                if transport_sibling is None and not byok_same_backend_retry:
+                if (
+                    transport_sibling is None
+                    and not byok_same_backend_retry
+                    and next_chosen_model is None
+                ):
                     excluded_tiers.add(current_tier)
 
                 escalated_backend: ModelResolvedDelegationBackend | None = None
                 if (
                     transport_sibling is None
+                    and next_chosen_model is None
                     and may_move_on
                     and escalation_count < max_escalations
                 ):
@@ -1931,6 +1953,7 @@ class LocalDelegationDispatchPort:
                     and may_move_on
                     and transport_sibling is None
                     and escalated_backend is None
+                    and next_chosen_model is None
                 ):
                     next_customer_key = next_registered_byok_route(
                         backend, tried_backend_ids=frozenset(excluded_backend_refs)
@@ -2000,6 +2023,22 @@ class LocalDelegationDispatchPort:
                         correlation_id,
                         transport_failure_message,
                     )
+                    continue
+
+                if next_chosen_model is not None:
+                    logger.info(
+                        "LocalDelegationDispatch: customer model fall-through "
+                        "task_type=%s backend=%s model=%s -> model=%s on "
+                        "transport failure_class=%s correlation=%s reason=%s",
+                        task_type,
+                        backend.backend_id,
+                        backend.model_id,
+                        next_chosen_model.model_id,
+                        transport_failure_class,
+                        correlation_id,
+                        transport_failure_message,
+                    )
+                    backend = next_chosen_model
                     continue
 
                 if transport_sibling is not None:
@@ -2548,6 +2587,35 @@ class LocalDelegationDispatchPort:
             # a sibling serving the same model id is skipped here. It would only
             # re-draw the same model on another host. A transport failure above
             # keeps same-model siblings, since unavailability is what they are for.
+            # OMN-21059: a customer's next chosen model on the same key is asked
+            # before any other responder, like the transport branch above.
+            tried_byok_models.add((backend.backend_id, backend.model_id))
+            next_chosen_model_after_gate: ModelResolvedDelegationBackend | None = None
+            if (
+                not ladder_stopped_by_veto
+                and pinned_backend_id is None
+                and model is None
+                and not no_escalation
+                and _is_customer_byok_route(backend)
+            ):
+                next_chosen_model_after_gate = next_chosen_model_byok_route(
+                    backend, tried_models=frozenset(tried_byok_models)
+                )
+            if next_chosen_model_after_gate is not None:
+                logger.info(
+                    "LocalDelegationDispatch: customer model fall-through "
+                    "task_type=%s backend=%s model=%s -> model=%s after a "
+                    "quality-gate rejection correlation=%s reason=%s",
+                    task_type,
+                    backend.backend_id,
+                    backend.model_id,
+                    next_chosen_model_after_gate.model_id,
+                    correlation_id,
+                    gate_failure_message,
+                )
+                backend = next_chosen_model_after_gate
+                continue
+
             gate_sibling = (
                 None
                 if ladder_stopped_by_veto or pinned_backend_id is not None

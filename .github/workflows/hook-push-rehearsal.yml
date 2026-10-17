@@ -1,0 +1,29 @@
+---
+# OMN-17427: hook push rehearsal. A controller worker's push runs this repository's pre-push hook
+# set, and a refused push loses the fix. On a pull request that changes a hook path in path-regex,
+# the reusable workflow in omnibase_core pushes a sample commit through the pre-push set with the
+# worker's environment and its 1,800 s push timeout, and fails when the push is refused, runs past
+# the timeout or leaves a file in the work tree. Any other pull request and a merge-queue entry
+# pass without a push.
+# The pin is the head commit of omnibase_core#2025, which adds the reusable workflow.
+name: Hook Push Rehearsal
+
+on:
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hook-push-rehearsal:
+    permissions:
+      contents: read
+    uses: OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml@17b1c270050cbfa7036ac987ae36e617253ec1a3
+    with:
+      path-regex: '^(\.pre-commit-config\.yaml|\.pre-commit-hooks\.yaml|\.pre-commit-hooks/|scripts/hooks/|\.github/workflows/hook-push-rehearsal\.yml)'
+      sample-file: src/omnimarket/adapters/adk/models.py

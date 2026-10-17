@@ -62,6 +62,7 @@ from pathlib import Path
 from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
+    resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
@@ -324,6 +325,50 @@ def substitute_any_registered_byok_route(
     return backend
 
 
+def next_chosen_model_byok_route(
+    failed: ModelResolvedDelegationBackend,
+    *,
+    tried_models: frozenset[tuple[str, str]],
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend | None:
+    """The next model the customer chose for the key behind ``failed``, or ``None`` (OMN-21059).
+
+    ``onex models`` keeps an ordered list of models per key. The route a key
+    resolves to carries the first; when that model fails, the run stays on the
+    same key and moves to the next entry of the list that this dispatch has not
+    tried, in the order the customer set. ``tried_models`` holds the
+    ``(backend_id, model_id)`` pairs already attempted, and ``failed`` itself
+    counts as tried, so the walk ends with the list.
+
+    ``None`` when ``failed`` is not a customer key route, when the key stores no
+    list, or when every listed model was tried. The caller then moves on to the
+    customer's next key exactly as before. Never a house key: the route is
+    rebuilt from the customer's own registration.
+    """
+    row = resolve_byok_backend_by_id(failed.backend_id)
+    if row is None:
+        return None
+    attempted = tried_models | {(failed.backend_id, failed.model_id)}
+    for model_id in resolve_local_byok_credential_models(row.provider, db_path=db_path):
+        if (row.backend_id, model_id) in attempted:
+            continue
+        route = _registered_byok_route(
+            row, replaced=None, tier=failed.tier, db_path=db_path
+        )
+        if route is None:
+            return None
+        return route.model_copy(
+            update={
+                "model_id": model_id,
+                "max_tokens": failed.max_tokens,
+                "timeout_ms": failed.timeout_ms,
+                "extra_headers": dict(failed.extra_headers),
+                "substituted_from_backend_id": failed.substituted_from_backend_id,
+            }
+        )
+    return None
+
+
 def next_registered_byok_route(
     failed: ModelResolvedDelegationBackend,
     *,
@@ -376,6 +421,7 @@ __all__: list[str] = [
     "ByokKeyNotRegisteredError",
     "ByokPinNotPermittedError",
     "house_provider_slug",
+    "next_chosen_model_byok_route",
     "next_registered_byok_route",
     "resolve_pinned_byok_route",
     "substitute_any_registered_byok_route",

@@ -14,6 +14,7 @@ import json
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import cast
 
 import pytest
 
@@ -41,6 +42,7 @@ class _StubInference:
     def __init__(self, response: str) -> None:
         self._response = response
         self.calls: list[tuple[str, str]] = []
+        self.system_prompts: list[str] = []
 
     async def infer(
         self,
@@ -49,8 +51,11 @@ class _StubInference:
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: object | None = None,
+        protocol_selection: object | None = None,
     ) -> str:
         self.calls.append((model_key, user_prompt))
+        self.system_prompts.append(system_prompt)
         return self._response
 
 
@@ -86,6 +91,17 @@ class TestGenerate:
         assert "NodeGreeterCompute" in user_prompt
         assert "NodeCompute" in user_prompt
         assert "handle" in user_prompt
+
+    async def test_system_prompt_states_what_the_type_check_gate_requires(
+        self,
+    ) -> None:
+        """The factory type-checks the module alone: an import outside the standard
+        library or an unannotated function is rejected, so the model is told."""
+        stub = _StubInference("x = 1\n")
+        await HandlerLlmCodegen(stub).handle(_command())
+        assert "standard library" in stub.system_prompts[0]
+        assert "annotate" in stub.system_prompts[0]
+        assert "declares no methods" in stub.system_prompts[0]
 
 
 @pytest.mark.unit
@@ -182,7 +198,7 @@ class TestDefaultAdapterReachesTheLabModel:
         _declare_backend(
             monkeypatch,
             endpoint_url=f"{lab_model.url}/v1/chat/completions",
-            model_name="Lab-Coder-1",
+            model_name="Qwen3.8-27B",
         )
 
         result = await HandlerLlmCodegen().handle(_command())
@@ -191,7 +207,29 @@ class TestDefaultAdapterReachesTheLabModel:
         assert len(lab_model.requests) == 1
         path, body = lab_model.requests[0]
         assert path == "/v1/chat/completions"
-        assert body["model"] == "Lab-Coder-1"
+        assert body["model"] == "Qwen3.8-27B"
+
+    @pytest.mark.asyncio
+    async def test_default_handler_turns_the_reasoning_trace_off(
+        self, monkeypatch: pytest.MonkeyPatch, lab_model: _LabModelServer
+    ) -> None:
+        """Qwen3.8-27B on the lab spends the request's 2048-token budget thinking
+        and returns an empty ``content``; the bridge then hands the reasoning text
+        back as the source, which the validator rejects as a syntax error. The
+        node asks for the no-think protocol profile so the module comes back in
+        ``content``."""
+        _declare_backend(
+            monkeypatch,
+            endpoint_url=f"{lab_model.url}/v1/chat/completions",
+            model_name="Qwen3.8-27B",
+        )
+
+        await HandlerLlmCodegen().handle(_command())
+
+        _path, body = lab_model.requests[0]
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        messages = cast("list[dict[str, str]]", body["messages"])
+        assert messages[-1]["content"].startswith("/no_think")
 
     @pytest.mark.parametrize(
         ("endpoint_url", "model_name"),

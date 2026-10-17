@@ -20,6 +20,8 @@ TASKS = {
     # OMN-20864, operator RULING 2026-10-10T04:08:23Z: an idle lab slot lands a PR the landing controller
     # parked, escalated or left red with no owner, as a per-PR landing lane.
     "pr-land": "Land {pr} ({ticket}) with /omni:pr-land. Lab-fill chose it for an idle lab slot ({title}): under operator RULING 2026-10-10T04:08:23Z a per-PR landing lane is the default work for an open PR the landing controller parked, escalated or left red with no owner. Run pr-land end to end on its exact head: claim, live read, hold check, CI triage, a fix on the PR's own branch in a worktree at {where}, then land it. If what is left is a cause this lane cannot fix on the PR, write your TERMINAL with outcome=blocked and cause=<required-approval|base-red|held|external-owner> and stop: lab-fill does not send it again until its head or that cause changes.",
+    # OMN-17427: a ticket skipped because its implementation merged is verified and closed, not skipped.
+    "dod-verify": "Verify and close {ticket}. Lab-fill chose it for an idle lab slot because its {title}. Read the ticket and its acceptance criteria live, then run /onex:dod_verify against its contract on the merged code. If every criterion has evidence, record the dod_evidence the receipt names on the ticket and move it to Done. If a criterion has none, name it, build the smallest change that meets it with tests in a worktree at {where}, and open one PR whose title contains {ticket}. If the ticket is already Done or the merged work belongs to another ticket, write your TERMINAL with outcome=no-op naming why and stop.",
 }
 APPROVED_TASK = "Finish approved {kind} {id} ({ticket}) in {repo}. Its goal and acceptance check are row {id} of the approved-work list, read by id when this brief was written:\n{marker}\nRead the ticket live and integrate existing work before building. Close-out scope: process fixes and finishing or wiring partially built work only. Worktree: {where}. Run focused RED tests first, open a PR and hand it off."
 LINES = [
@@ -34,6 +36,13 @@ LINES = [
 ]
 
 
+# A dod-verify lane closes its ticket on a passing DoD receipt, so its Done rule names that receipt.
+DOD_VERIFY_RULES = (
+    (
+        "never flip a ticket Done.",
+        "flip the ticket Done only on a passing /onex:dod_verify receipt with its dod_evidence.",
+    ),
+)
 # A pr-land lane lands through /omni:pr-land itself, so its rules replace the hand-off ones.
 PR_LAND_RULES = (
     (
@@ -97,9 +106,10 @@ class HandlerLabFillLaneRender:
         if not fallback and getattr(item, "repo_source", None):
             parts.extend([LINES[5].format_map(values), ""])
         rules = LINES[7]
-        if item.kind == "pr-land":
-            for old, new in PR_LAND_RULES:
-                rules = rules.replace(old, new)
+        for old, new in {"pr-land": PR_LAND_RULES, "dod-verify": DOD_VERIFY_RULES}.get(
+            item.kind, ()
+        ):
+            rules = rules.replace(old, new)
         parts.extend(
             [
                 LINES[6].format_map(values),

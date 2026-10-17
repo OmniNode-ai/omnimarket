@@ -269,6 +269,8 @@ class _StubInference:
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: object | None = None,
+        protocol_selection: object | None = None,
     ) -> str:
         return self._response
 
