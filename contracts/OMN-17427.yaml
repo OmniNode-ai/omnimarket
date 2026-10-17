@@ -62,13 +62,6 @@ requirements:
       - id: "AC12"
         statement: |-
           AC12: a PR lifecycle fix command carrying dry_run reaches no injected adapter on any of the eight block reasons and calls no outcome reporter -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_fix_effect_honours_dry_run.py -q fails at the merge base
-  - id: "req-heal-repo-evidence-family"
-    statement: |-
-      The scheduled companion merge heal re-runs the repo-evidence dod-verify job and the Repo Evidence Dependency pollers that waited on a companion which merged afterwards.
-    acceptance:
-      - id: "AC13"
-        statement: |-
-          AC13: occ_companion_merge_heal.py admits repo-evidence / dod-verify and Repo Evidence Dependency under the pre-merge control -- falsifier: uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q fails on the unfixed script
   - id: "req-unbound-local-model-probe"
     statement: |-
       The routing explain CLI reports every provider-local backend that the contract and overlay merge leaves with an endpoint but no model name, the binding the routing reducer refuses at dispatch.
@@ -265,6 +258,11 @@ requirements:
         statement: "AC52: node_lab_story_log_effect writes the ISO week's rulings, incidents and merged pull requests grouped by theme with their timestamps and figures, leaves out rows outside the week and the operator's quoted words, and replaces private repository names, addresses, host names, lane ids and person names by roles -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'no_private_name_survives or only_rows_inside or operators_own_words'"
       - id: "AC53"
         statement: "AC53: a sanitizer that lets a private name through stops the write, and a vocabulary with no private repository names is refused -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'surviving_private_name or no_private_repos or missing_vocabulary'"
+  - id: "req-occ-companion-producer-dropped"
+    statement: "omnimarket carries no workflow, publisher or check of the OCC companion producer once every caller that still reaches it reads it at an immutable ref."
+    acceptance:
+      - id: "AC54"
+        statement: "AC54: occ-emitter-golden-gate.yml, occ-s7-replay.yml, publish_occ_companion_effect_command.py, occ_companion_merge_heal.py, check_minted_evidence_is_probative.py and check_self_bind_entry_binding.py do not exist and CI Summary expects no OCC Emitter Golden Gate context -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py tests/ci/test_occ_callers_removed_omn20073.py -q -p no:randomly fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -299,9 +297,6 @@ evidence_requirements:
   - kind: "tests"
     description: "A dry_run fix command reaches no adapter and posts no marker on any block reason."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_fix_effect_honours_dry_run.py -q"
-  - kind: "tests"
-    description: "The companion merge heal re-runs the repo-evidence family."
-    command: "uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q"
   - kind: "tests"
     description: "The routing explain CLI flags a local backend bound to an endpoint but no model."
     command: "uv run pytest tests/unit/delegation/test_unbound_local_model_probe_omn17427.py -q"
@@ -374,6 +369,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC52 and AC53: the weekly lab story log over fixture ledger rows, with a planted private name that must not survive and a sanitizer that lets one through."
     command: "uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q"
+  - kind: "tests"
+    description: "AC54: the OCC companion producer's workflows, publisher and checks are gone and CI Summary expects no emitter golden gate context."
+    command: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py tests/ci/test_occ_callers_removed_omn20073.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -451,14 +449,6 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_fix_effect_honours_dry_run.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC12"]
-  - id: "dod-omn17427-ac13-heal-repo-evidence"
-    description: "The companion merge heal re-runs the repo-evidence dod-verify job and Repo Evidence Dependency pollers."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_occ_companion_merge_heal_omn18812.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC13"]
   - id: "dod-omn17427-ac14-unbound-local-model-probe"
     description: "The routing explain CLI flags a local backend bound to an endpoint but no model and exits 1 with --fail-on-unbound-local."
     source: "manual"
@@ -792,3 +782,11 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_story_log_effect/handlers/handler_lab_story_log.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerLabStoryLog" for n in tree.body); assert "LabStoryLogLeakError" in source and "clean.leaks" in source; print("lab story log deploy probe: PASS")'
+  - id: "dod-omn17427-ac54-occ-companion-producer-dropped"
+    description: "The OCC companion producer's workflows, publisher and checks do not exist and CI Summary expects no emitter golden gate context."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py tests/ci/test_occ_callers_removed_omn20073.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC54"]

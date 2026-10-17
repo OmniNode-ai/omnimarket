@@ -166,7 +166,7 @@ def test_repo_evidence_summary_queue_expects_no_occ_contexts() -> None:
     assert CONTEXT not in queue
     assert set(queue) == set(gate.EXPECTED_EXTERNAL_CONTEXTS) - {CONTEXT}
     assert "occ-preflight / eligibility" not in queue
-    assert "OCC Emitter Golden Gate" in queue
+    assert "OCC Emitter Golden Gate" not in queue
     assert "ONEX Change Control Schema Compatibility" in queue
     assert "verify / verify" not in queue
     assert "call-reject-skip-token / occ-preflight / eligibility" not in queue

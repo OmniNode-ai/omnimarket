@@ -124,7 +124,6 @@ scripts/ci/check_integration_skips.py
 scripts/ci/check_lane_job_placement.py
 scripts/ci/check_merge_reason_codes.py
 scripts/ci/check_migration_base_before_view.py
-scripts/ci/check_minted_evidence_is_probative.py
 scripts/ci/check_mixed_category_routing.sh
 scripts/ci/check_model_registry_served_names.py
 scripts/ci/check_nightly_corpus_budget.py
@@ -135,7 +134,6 @@ scripts/ci/check_pr_hold_marker.py
 scripts/ci/check_projection_write_path_db_gate.py
 scripts/ci/check_registry_projection_reconcile.py
 scripts/ci/check_rls_read_tenant_seam.py
-scripts/ci/check_self_bind_entry_binding.py
 scripts/ci/check_shell_hygiene.sh
 scripts/ci/check_single_hold_vocabulary.py
 scripts/ci/check_subscriber_dispatcher_resolution.sh
@@ -162,7 +160,6 @@ scripts/ci/install_canary/run_install_canary.py
 scripts/ci/install_canary/stub_openai_server.py
 scripts/ci/merge_queue_enqueue.py
 scripts/ci/merge_test_durations.py
-scripts/ci/occ_companion_merge_heal.py
 scripts/ci/occ_receipt_runner.py
 scripts/ci/parity_red_on_base_baseline.py
 scripts/ci/post_release_dev_bump.py
@@ -217,7 +214,6 @@ scripts/publish_canary_command.py
 scripts/publish_incremental_scan.py
 scripts/publish_kb_adr_command.py
 scripts/publish_occ_autobind_command.py
-scripts/publish_occ_companion_effect_command.py
 scripts/publish_pr_merged_event.py
 scripts/run-projection-migrations.py
 scripts/run_codex_runtime_request.py

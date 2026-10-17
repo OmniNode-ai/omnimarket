@@ -67,11 +67,10 @@ Three pure decision functions, one per heal, over inputs a :class:`GhPort` reads
   other reds, otherwise the gate alone. A re-run's own failure names the new
   tag as its base, making this once per release per head.
 
-Both refusals are enumerated one outcome per branch, as in
-``occ_companion_merge_heal.py`` (OMN-18812): a heal that says "nothing to do"
-for both "nothing was stale" and "I could not tell" is the defect that module
-was rebuilt to remove, so an unreadable state is its own outcome and a pass
-that cannot read the open-PR list exits non-zero.
+Both refusals are enumerated one outcome per branch: a heal that says "nothing
+to do" for both "nothing was stale" and "I could not tell" is a defect
+(OMN-18812), so an unreadable state is its own outcome and a pass that cannot
+read the open-PR list exits non-zero.
 
 Why not ``bulk_pr_throttle.py``
 -------------------------------

@@ -121,8 +121,9 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     assert resolved == EXPECTED_EXTERNAL_CONTEXTS
     # The owning ticket's historical count was 53; the integrated base has 55,
     # OMN-20287 adds the Deployment Fact Gate, OMN-20781 adds the public-repo
-    # hygiene gate and OMN-20940 adds its deployment-config job.
-    assert len(resolved) == 58
+    # hygiene gate and OMN-20940 adds its deployment-config job. The OCC
+    # emitter golden gate left the tuple with the OCC companion producer.
+    assert len(resolved) == 57
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
