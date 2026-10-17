@@ -35,14 +35,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_contracts.py -q -p no:randomly --no-cov"
   - id: "dod-omn21113-deploy-container-fallback"
-    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    description: "Hosted deploy probe. uv run --frozen --no-dev installs the checkout without dev dependencies and sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
           uv run --frozen --no-dev python -c '
           from uuid import UUID
           from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
