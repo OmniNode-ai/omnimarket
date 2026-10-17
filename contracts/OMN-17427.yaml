@@ -819,6 +819,32 @@ dod_evidence:
     description: 'AC58: consumer-gate parity tests run against the omnibase_core ports with no onex_change_control checkout.'
     source: manual
     checks:
+    - check_type: command
+      check_value: |
+        uv run python - <<'PY'
+        import ast
+        import subprocess
+
+        expected = {
+            "scripts/lint_contract_check_values.py": "omnibase_core.handlers.handler_contract_check_values_lint",
+            "scripts/validation/check_contract_substance_floor.py": "omnibase_core.handlers.handler_contract_substance_floor",
+            "src/onex_change_control/scripts/contract_compliance_check.py": "omnibase_core.handlers.handler_contract_compliance_check",
+            "src/onex_change_control/validation/evidence_admissibility.py": "omnibase_core.handlers.handler_evidence_admissibility",
+        }
+        # Inspect the subject commit: the control overlays the new tests on the
+        # merge base, so executing those tests alone cannot detect this migration.
+        for name in ("test_occ_autobind_contention_omn_15247.py", "test_occ_emitter_literal_pins_omn_15407.py"):
+            path = "tests/unit/nodes/node_pr_lifecycle_fix_effect/" + name
+            source = subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+            tree = ast.parse(source)
+            ports = [node for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_CORE_PORTS" for target in node.targets)]
+            assert len(ports) == 1 and ast.literal_eval(ports[0].value) == expected, path + ": core port mapping missing or incorrect"
+            loader = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_load_occ_module")
+            assert ast.unparse(loader.body[-1]) == "return importlib.import_module(_CORE_PORTS[relpath])", path + ": loader does not import the core port"
+            assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "spec_from_file_location" for node in ast.walk(loader)), path + ": sibling checkout loader remains"
+            print(path + ": committed core port imports verified")
+        PY
+      cwd: ${OMNI_HOME}/omnimarket
     - check_type: test_passes
       check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q -p no:randomly -k "ConsumerGateParity"
       cwd: ${OMNI_HOME}/omnimarket
