@@ -25,10 +25,13 @@ Failure modes each test is written against:
 * the row goes STALE while the dashboard is still serving, because nothing
   re-reports it, or the heartbeat moves last_change;
 * a failing environment write stops the dashboard from serving.
+* the dashboard node writes through another node's private handler package
+  instead of the shared write seam.
 """
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import sqlite3
@@ -273,3 +276,21 @@ def test_a_failing_environment_write_does_not_stop_serving(
     )
     assert served == [True]
     assert "disk I/O error" in caplog.text
+
+
+def test_the_dashboard_writes_through_the_shared_seam_not_another_node() -> None:
+    import omnimarket.nodes.node_local_dashboard_serve_effect as node
+
+    imported: set[str] = set()
+    for source in Path(node.__file__).parent.rglob("*.py"):
+        for statement in ast.walk(ast.parse(source.read_text())):
+            if isinstance(statement, ast.ImportFrom) and statement.module:
+                imported.add(statement.module)
+            elif isinstance(statement, ast.Import):
+                imported.update(alias.name for alias in statement.names)
+    assert "omnimarket.handlers.handler_local_environment_store" in imported
+    assert not {
+        name
+        for name in imported
+        if name.startswith("omnimarket.nodes.node_projection_local_environment")
+    }

@@ -18,6 +18,9 @@ description: >
   node_projection_read_effect's handler (decision D1 (a), OMN-20159), which owns
   all SQL, over the store the local writers fill. Tenant-scoped reads are
   pinned to this install's identity; another tenant answers 422.
+  At start and on each heartbeat it writes this install's native environment
+  row into the existing local store, through the shared local-environment
+  write; it never creates a store.
 node_type: effect
 input_model:
   name: ModelLocalDashboardServeRequest
