@@ -14,6 +14,12 @@ can happen then, and the read path, not the browser, says so.
 already stored; the local SQLite path applies its plan here and the Postgres
 writer applies the same plan in one transaction, so the two stores cannot judge
 differently.
+
+Every row of a mode is judged at the newest time that mode has seen, never
+earlier, so a late report cannot revive a service the mode already holds as
+silent past the deadline. The read, the plan and the writes run in one write
+transaction when the store offers one, so two writers never interleave and a
+failure part way leaves nothing behind for the replay guard to refuse.
 """
 
 from __future__ import annotations
@@ -136,6 +142,11 @@ def plan_local_environment_write(
             last_change = _as_datetime(previous["last_change"])
 
     siblings = [row for row in stored_rows if str(row["service"]) != report.service]
+    # The mode's clock only moves forward: a late report is judged at the
+    # newest time any row of the mode has been seen, never at its own.
+    evaluated_at = max(
+        [report.observed_at, *(_as_datetime(row["last_seen"]) for row in siblings)]
+    )
     reported = ModelLocalServiceHealth(
         tenant_id=report.tenant_id,
         mode=report.mode,
@@ -146,7 +157,7 @@ def plan_local_environment_write(
         last_change=last_change,
     )
     verdicts, _ = judge_local_services(
-        (reported, *(_health(row) for row in siblings)), report.observed_at, rules
+        (reported, *(_health(row) for row in siblings)), evaluated_at, rules
     )
     stamp = _iso(updated_at)
     writes: list[dict[str, object]] = [
@@ -192,7 +203,23 @@ def apply_local_environment_status(
     db: DatabaseAdapter,
     rules: ModelLocalAlertRules,
 ) -> bool:
-    """Store a report through the portable adapter; a replay or a late report writes nothing."""
+    """Store a report through the portable adapter; a replay or a late report writes nothing.
+
+    With a store that offers ``write_transaction`` (the local SQLite store),
+    the read and every write are one transaction under its write lock.
+    """
+    transaction = getattr(db, "write_transaction", None)
+    if transaction is None:
+        return _apply(report, db, rules)
+    with transaction() as tx:
+        return _apply(report, tx, rules)
+
+
+def _apply(
+    report: ModelLocalEnvironmentStatus,
+    db: DatabaseAdapter,
+    rules: ModelLocalAlertRules,
+) -> bool:
     stored = db.query(
         LOCAL_ENVIRONMENT_TABLE,
         {"tenant_id": report.tenant_id, "mode": report.mode.value},

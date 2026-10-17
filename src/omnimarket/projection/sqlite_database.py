@@ -24,7 +24,8 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
 from importlib.resources import files
@@ -1165,6 +1166,31 @@ class SqliteDatabaseAdapter:
             return float(value)
         return value
 
+    @contextmanager
+    def write_transaction(self) -> Iterator[SqliteWriteTransaction]:
+        """One write transaction: every read and write inside it, or none of them.
+
+        Taken with BEGIN IMMEDIATE, so a second writer waits for the lock rather
+        than interleaving its read and its writes with this one's (OMN-19988).
+        It carries plain reads and upserts only: a table whose columns are not
+        all declared, an expression column or a derived write goes through
+        ``upsert_returning`` instead.
+        """
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            yield SqliteWriteTransaction(
+                conn,
+                encode=self._encode,
+                columns=lambda table: self._existing_columns(conn, table),
+            )
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def reconcile(self) -> None:
         """Bring an existing store's tables and one-time steps up to date.
 
@@ -1362,6 +1388,46 @@ class SqliteDatabaseAdapter:
             conn.close()
 
 
+class SqliteWriteTransaction:
+    """Reads and upserts on the one connection of a ``write_transaction``."""
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        encode: Callable[[str, object], object],
+        columns: Callable[[str], set[str]],
+    ) -> None:
+        self._conn = conn
+        self._encode = encode
+        self._columns = columns
+
+    def query(
+        self, table: str, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]:
+        existing = self._columns(table)
+        if not filters:
+            rows = self._conn.execute(f"SELECT * FROM {table}").fetchall()
+            return [dict(row) for row in rows]
+        unknown = [key for key in filters if key not in existing]
+        if unknown:
+            raise ValueError(f"unknown column(s) {unknown} for table {table!r}")
+        where = " AND ".join(f"{key} = :{key}" for key in filters)
+        params = {key: self._encode(key, value) for key, value in filters.items()}
+        rows = self._conn.execute(
+            f"SELECT * FROM {table} WHERE {where}", params
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
+        statement = build_upsert_plan(
+            table=table, conflict_key=conflict_key, row=row
+        ).render(dialect="qmark_named")
+        params = {column: self._encode(column, value) for column, value in row.items()}
+        self._conn.execute(statement, params)
+        return True
+
+
 def reconcile_existing_store(db_path: Path) -> None:
     """Upgrade an existing local store before something only reads it (OMN-20226).
 
@@ -1384,6 +1450,7 @@ def reconcile_existing_store(db_path: Path) -> None:
 __all__ = [
     "SQLITE_SCHEMES",
     "SqliteDatabaseAdapter",
+    "SqliteWriteTransaction",
     "default_evidence_db_path",
     "reconcile_existing_store",
     "sqlite_path_from_dsn",

@@ -24,11 +24,20 @@ Failure modes each test is written against:
 * last_change moves on every report instead of only when the state changes;
 * a native install grows compose rows, or loses its versions and access line;
 * a report with no tenant or no service is stored under a default.
+* two writers interleave: one plans, the other commits a newer report, and the
+  first then overwrites it with an older one (the read and the writes are not
+  one transaction);
+* a write fails part way, so the reported row is stored while its siblings are
+  not re-judged, and the replay guard then refuses the retry for good;
+* a late report is judged at its own time, so a service the mode has already
+  seen as silent past the deadline reads RUNNING again.
 """
 
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +50,12 @@ from omnimarket.enums.enum_local_alert_severity import EnumLocalAlertSeverity
 from omnimarket.enums.enum_local_environment_mode import EnumLocalEnvironmentMode
 from omnimarket.enums.enum_local_service_state import EnumLocalServiceState
 from omnimarket.enums.enum_local_service_verdict import EnumLocalServiceVerdict
+from omnimarket.handlers import handler_local_environment_store as store
+from omnimarket.handlers.handler_local_environment_store import (
+    LOCAL_ENVIRONMENT_TABLE,
+    apply_local_environment_status,
+    plan_local_environment_write,
+)
 from omnimarket.models.model_local_environment_status import (
     ModelLocalEnvironmentStatus,
 )
@@ -54,12 +69,10 @@ from omnimarket.nodes.node_local_alert_compute.handlers.handler_local_alert impo
     load_local_alert_rules,
 )
 from omnimarket.nodes.node_local_alert_compute.models import ModelLocalAlertRequest
-from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_store import (
-    LOCAL_ENVIRONMENT_TABLE,
-    apply_local_environment_status,
-    plan_local_environment_write,
+from omnimarket.projection.sqlite_database import (
+    SqliteDatabaseAdapter,
+    SqliteWriteTransaction,
 )
-from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 pytestmark = pytest.mark.unit
 
@@ -519,3 +532,110 @@ def test_a_report_without_a_tenant_or_a_service_is_refused() -> None:
             reason="ok",
             observed_at=T0,
         )
+
+
+def test_a_writer_that_planned_first_never_overwrites_a_newer_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Two processes write one store: the t10 writer plans, then pauses; the t20
+    # writer arrives. The t20 DOWN must survive, whichever commits first.
+    db_path = tmp_path / "delegation.sqlite"
+    SqliteDatabaseAdapter(db_path).query(LOCAL_ENVIRONMENT_TABLE, {})
+    planned = threading.Event()
+    release = threading.Event()
+    real_plan = store.plan_local_environment_write
+    calls = {"n": 0}
+
+    def plan_then_pause(*args: Any, **kwargs: Any) -> list[dict[str, object]]:
+        calls["n"] += 1
+        writes = real_plan(*args, **kwargs)
+        if calls["n"] == 1:
+            planned.set()
+            release.wait(5)
+        return writes
+
+    monkeypatch.setattr(store, "plan_local_environment_write", plan_then_pause)
+    first = threading.Thread(
+        target=apply_local_environment_status,
+        args=(
+            _report(
+                "postgres", EnumLocalServiceState.RUNNING, T0 + timedelta(seconds=10)
+            ),
+            SqliteDatabaseAdapter(db_path),
+            _rules(),
+        ),
+    )
+    first.start()
+    assert planned.wait(5)
+    second = threading.Thread(
+        target=apply_local_environment_status,
+        args=(
+            _report("postgres", EnumLocalServiceState.DOWN, T0 + timedelta(seconds=20)),
+            SqliteDatabaseAdapter(db_path),
+            _rules(),
+        ),
+    )
+    second.start()
+    time.sleep(0.3)
+    release.set()
+    first.join(10)
+    second.join(10)
+    row = _by_service(db_path)["postgres"]
+    assert (row["observed_state"], row["last_seen"]) == (
+        "down",
+        (T0 + timedelta(seconds=20)).isoformat(),
+    )
+
+
+def test_a_write_that_fails_part_way_leaves_nothing_and_the_retry_applies(
+    db: SqliteDatabaseAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _boot_roster(db)
+    before = _rows(db.db_path)
+    late = _report(
+        "postgres", EnumLocalServiceState.RUNNING, T0 + timedelta(seconds=90)
+    )
+    real_upsert = SqliteWriteTransaction.upsert
+    calls = {"n": 0}
+
+    def fail_on_the_second(self: Any, *args: Any, **kwargs: Any) -> bool:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise sqlite3.OperationalError("disk I/O error")
+        return real_upsert(self, *args, **kwargs)
+
+    monkeypatch.setattr(SqliteWriteTransaction, "upsert", fail_on_the_second)
+    with pytest.raises(sqlite3.OperationalError):
+        apply_local_environment_status(late, db, _rules())
+    assert _rows(db.db_path) == before
+
+    monkeypatch.setattr(SqliteWriteTransaction, "upsert", real_upsert)
+    assert apply_local_environment_status(late, db, _rules()) is True
+    rows = _by_service(db.db_path)
+    assert rows["postgres"]["last_seen"] == (T0 + timedelta(seconds=90)).isoformat()
+    assert {s for s, r in rows.items() if r["verdict"] == "stale"} == set(ROSTER) - {
+        "postgres"
+    }
+
+
+def test_a_late_report_is_judged_at_the_newest_time_its_mode_has_seen(
+    db: SqliteDatabaseAdapter,
+) -> None:
+    _boot_roster(db)
+    apply_local_environment_status(
+        _report("postgres", EnumLocalServiceState.RUNNING, T0 + timedelta(seconds=90)),
+        db,
+        _rules(),
+    )
+    assert _by_service(db.db_path)["valkey"]["verdict"] == "stale"
+    # valkey's own report from t20 arrives now: newer than what was stored for
+    # valkey, but 70 s older than the mode's newest report, so still STALE.
+    apply_local_environment_status(
+        _report("valkey", EnumLocalServiceState.RUNNING, T0 + timedelta(seconds=20)),
+        db,
+        _rules(),
+    )
+    row = _by_service(db.db_path)["valkey"]
+    assert row["last_seen"] == (T0 + timedelta(seconds=20)).isoformat()
+    assert (row["verdict"], row["alert_code"]) == ("stale", "HEALTH_UNKNOWN")
+    assert row["verdict_reason"] == "no report for 70 s"
