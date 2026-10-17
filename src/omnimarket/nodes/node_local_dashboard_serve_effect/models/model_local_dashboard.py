@@ -7,8 +7,16 @@ from __future__ import annotations
 import ipaddress
 import secrets
 from collections.abc import Mapping
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    model_validator,
+)
 
 # The standalone projection API (``projection/api_server.py``) and OmniDash's
 # Express bridge own this port; the local dashboard never takes it.
@@ -51,6 +59,14 @@ class ModelLocalDashboardServeRequest(BaseModel):
         description=(
             "Minted per start; every request must carry it (OMN-19916). Handed to "
             "the developer once, in the start URL, and never written to a page."
+        ),
+    )
+    token_minted_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description=(
+            "When this start's token was minted (OMN-19988, OMN-21015 AC10). The "
+            "local environment report carries it; the token itself never leaves "
+            "this process except in the start URL."
         ),
     )
 
