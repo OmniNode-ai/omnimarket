@@ -1,0 +1,126 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21108"
+title: "TA.6 node_session_context_sources_effect, pinned mode first"
+summary: "A context source in the TC.1 shape reads the session tiers of a context pack. Pinned mode reads one case of the T0.2 compaction replay bundle under ONEX_CONTEXT_REPLAY_ROOT, only its pinned bytes, and returns OPERATOR_WORDS_UNRECORDED by the carry rule (section 5 item 2, decision D10) and REPO_STATE as unavailable where the case excludes it. Live mode returns REPO_STATE unavailable and refuses the other factors with a typed error until its captured-row reader is built."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-pinned-session-sources"
+    statement: "Pinned mode reads only the pinned case bytes and carries operator words by the carry rule; failures are typed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1 (pinned slice): on a fixed pinned bundle, the result is byte-identical across two runs -- falsifier: a diff of the two dumps."
+      - id: "AC3"
+        statement: "AC3: a two-instruction prompt with a ruling covering one instruction is carried whole; a cited prompt with a whitespace-only residual is absent; an uncited prompt is present verbatim; an uncited one-character reply (a checkmark, a cross, a thumbs-up emoji) is present verbatim; a cited prompt whose residual is a lone symbol is present whole -- falsifier: fixture table."
+      - id: "AC4"
+        statement: "AC4 (D10, pinned slice): with a RULING row carrying reviewed=<range> in the pinned ledger prefix, prompts inside the range are absent and counted as reviewed and prompts outside it stay verbatim -- falsifier: fixture table. Supersession of a review row waits on the TA.5 reducer."
+      - id: "AC5"
+        statement: "AC5 (synthetic two-boundary case in the T0.2 bundle format): an unrecorded instruction given before the first boundary is present verbatim, and no compact summary text is -- falsifier: the instruction absent, or summary text present."
+      - id: "AC7"
+        statement: "AC7: in pinned mode, a ruling written after the case's boundary is absent from every factor served -- falsifier: it appears."
+      - id: "AC9"
+        statement: "AC9: a missing ONEX_CONTEXT_REPLAY_ROOT in pinned mode fails with a typed error, and sources with no timestamp fail with NO_SOURCE_TIMESTAMP -- falsifier: either returns ok."
+      - id: "AC11"
+        statement: "AC11 (live half): live mode returns REPO_STATE as unavailable and never fills it from the request's cwd -- falsifier: a live REPO_STATE artifact."
+evidence_requirements:
+  - kind: "tests"
+    description: "The carry-rule fixture table, the pinned bundle reads and the contract tests."
+    command: "uv run pytest tests/nodes/node_session_context_sources_effect -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21108-ac1"
+    description: "AC1: two pinned reads of one bundle dump byte-identical JSON."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'two_runs_are_byte_identical'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21108-ac3"
+    description: "AC3: the carry-rule fixture table."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'carry_rule_fixture_table or citation_of_another_prompt or pinned_ruling_covering'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21108-ac4"
+    description: "AC4: a review range of five prompts naming the second to the fourth, in the pure rule and from a pinned ledger row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'reviewed_range or review_range or review_row_removes or unresolved_not_empty'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21108-ac5"
+    description: "AC5: the two-boundary case carries the early instruction and no summary text."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'two_boundary_case or carries_operator_words_across_both'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21108-ac7"
+    description: "AC7: a ledger row after the case's last boundary changes nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'written_after_the_boundary'"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21108-ac9"
+    description: "AC9: an unset or empty replay root, and a chain record with no timestamp, are typed errors."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'missing_replay_root or no_source_timestamp'"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21108-ac11"
+    description: "AC11 (live half): live REPO_STATE is unavailable with no entries."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k 'live_repo_state'"
+    binds_ac: ["AC11"]
+  - id: "dod-omn21108-contracts"
+    description: "The node contract declares its topics, its handler has the context-source signature, it is an onex.nodes entry point, and it imports no envelope and no other node."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_contracts.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21108-deploy-container-pinned-read"
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, builds a one-boundary replay bundle with the T0.2 manifest builder under /tmp, reads OPERATOR_WORDS_UNRECORDED through the product handler and asserts the operator prompt is carried verbatim with status resolved, and that an unset replay root is the typed REPLAY_ROOT_MISSING error. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          uv run --frozen --no-dev python -c '
+          import yaml
+          from datetime import datetime, UTC
+          from pathlib import Path
+          from omnimarket.handlers import context_compaction_bundle as io
+          from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest import HandlerReplayManifestBuilder as B
+          from omnimarket.nodes.node_context_compaction_manifest_compute import models as M
+          from omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources import HandlerSessionContextSources as H
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.models.context.model_context_access import ModelContextAccess as A
+          from omnibase_core.models.context.model_context_source_request import ModelContextSourceRequest as Q
+          def t(m): return datetime(2025, 2, 15, 0, m, tzinfo=UTC)
+          def r(i, k, m, c): return M.ModelCapturedRecord(event_id=i, session_id="s", content_kind=k, emitted_at=t(m), content=c)
+          w = "keep the retry budget"
+          spec = M.ModelCaseSpec(case_id="c", finding="f", census_status="CONFIRMED", census_ref="x", session_id="s", boundary_pre_event_ids=("pre",), expected_statements=(M.ModelExpectedStatement(statement_id="S", prompt_event_id="op", required_spans=(w,)),), post_boundary_evidence=(M.ModelPostBoundaryEvidence(event_id="late", kind="RESTATED", required_spans=("retry",)),), question="q", expected_answer="a")
+          pre = M.ModelHookBoundaryEvent(event_id="pre", session_id="s", hook_event_name=M.EnumBoundaryHook.PRE, emitted_at=t(40), trigger="manual")
+          b = B().handle(M.ModelBuildManifestRequest(specs=(spec,), events=(pre,), records=(r("op", "operator_prompt", 10, w), r("late", "prompt", 50, "retry again")), ledger_files=(M.ModelLedgerFile(name="l.md", content=b"2025-02-15T00:01:00Z | STATUS | lane=a | x\n"),), census_ref="x"))
+          root = Path("/tmp/omn21108-replay")
+          io.write_bundle_files(root, b.bundle_files)
+          (root / "manifest.yaml").write_text(b.manifest_yaml)
+          pin = yaml.safe_load(b.manifest_yaml)["cases"][0]["transcript_chain"]["sha256"]
+          def q(): return Q(factor=F.OPERATOR_WORDS_UNRECORDED, scopes=("case:c",), access=A(tenant_id="t"), revision=pin)
+          res = H(env={"ONEX_CONTEXT_REPLAY_ROOT": str(root)}).handle(q())
+          assert res.status.value == "resolved" and [x.text for x in res.entries] == [w], res
+          miss = H(env={}).handle(q())
+          assert miss.error_message.startswith("REPLAY_ROOT_MISSING"), miss
+          print(res.entries[0].text_sha256, dict(res.entry_counts))'
