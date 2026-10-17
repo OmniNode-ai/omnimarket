@@ -107,6 +107,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
@@ -1053,9 +1054,6 @@ def _occ_root() -> Path | None:
     explicit = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
     if explicit and Path(explicit).is_dir():
         return Path(explicit)
-    omni_home = os.environ.get("OMNI_HOME", "").strip()
-    if omni_home and (Path(omni_home) / "onex_change_control").is_dir():
-        return Path(omni_home) / "onex_change_control"
     return None
 
 
@@ -1075,6 +1073,7 @@ def _occ_head_sha(occ: Path) -> str:
             capture_output=True,
             text=True,
             timeout=15,
+            env=scrub_git_location_env(os.environ),
         )
     except (OSError, subprocess.SubprocessError):
         return "unknown"
@@ -1439,7 +1438,7 @@ class TestOccLiveCorpusDriftDiagnostic:
     @pytest.mark.skipif(
         _OCC_ROOT is None,
         reason="host-only drift diagnostic: no onex_change_control clone reachable "
-        "(ONEX_CC_REPO_PATH / OMNI_HOME). AC5 is proven by "
+        "(ONEX_CC_REPO_PATH). AC5 is proven by "
         "TestAc5PinnedCorpusReCensus, which never skips.",
     )
     def test_live_corpus_has_no_surviving_tokenizer_damage(self) -> None:
@@ -1477,7 +1476,7 @@ class TestOccLiveCorpusDriftDiagnostic:
     @pytest.mark.skipif(
         _OCC_ROOT is None,
         reason="host-only drift diagnostic: no onex_change_control clone reachable "
-        "(ONEX_CC_REPO_PATH / OMNI_HOME). AC5 is proven by "
+        "(ONEX_CC_REPO_PATH). AC5 is proven by "
         "TestAc5PinnedCorpusReCensus, which never skips.",
     )
     def test_live_corpus_has_no_prefix_builtin_only_check_value(self) -> None:

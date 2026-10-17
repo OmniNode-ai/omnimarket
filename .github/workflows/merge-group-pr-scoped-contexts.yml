@@ -239,7 +239,7 @@ jobs:
               ;;
           esac
 
-  ctx-onex-change-control-schema-compatibility:
+  ctx-onex-schema-compatibility:
     name: "ONEX Change Control Schema Compatibility"
     runs-on: ubuntu-latest
     timeout-minutes: 5

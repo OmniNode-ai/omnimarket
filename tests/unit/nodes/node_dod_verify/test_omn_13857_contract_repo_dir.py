@@ -105,17 +105,16 @@ class TestResolveContractRepoDir:
         plain.write_text("ticket_id: OMN-3\n", encoding="utf-8")
         assert EvidenceCollector()._resolve_contract_repo_dir(plain) == "/cc/repo"
 
-    def test_omni_home_fallback(
+    def test_omni_home_is_not_a_fallback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # OMN-17427: the change-control clone is never located under OMNI_HOME.
         _clear_repo_env(monkeypatch)
         (tmp_path / "onex_change_control").mkdir()
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         plain = tmp_path / "OMN-4.yaml"
         plain.write_text("ticket_id: OMN-4\n", encoding="utf-8")
-        assert EvidenceCollector()._resolve_contract_repo_dir(plain) == str(
-            tmp_path / "onex_change_control"
-        )
+        assert EvidenceCollector()._resolve_contract_repo_dir(plain) is None
 
     def test_unresolvable_returns_none(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

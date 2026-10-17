@@ -335,7 +335,7 @@ def _isolate_occ_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
-    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path / "onex_change_control"))
     return tmp_path / "onex_change_control"
 
 

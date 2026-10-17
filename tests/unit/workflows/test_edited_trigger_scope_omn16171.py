@@ -67,7 +67,6 @@ MUST_NOT_LIST_EDITED: tuple[str, ...] = (
     "canonical-inference-gate.yml",
     "url-authority-gate.yml",
     "no-faked-boundary.yml",
-    "occ-emitter-golden-gate.yml",
     "projection-exposure-drift-gate.yml",
     "reject-leaked-literals.yml",
 )
