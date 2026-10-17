@@ -59,7 +59,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c 'set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq "event.operational_outcome)" "$f"; grep -Fq "event.content_verdict)" "$f"; done'
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq \"event.operational_outcome)\" \"\$f\"; grep -Fq \"event.content_verdict)\" \"\$f\"; done"'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-stop-reason-columns-ac2"
     description: "The local dispatch payload and the canonical terminal carry the deciding rung's stop reason, and the projection writes both columns, keeps them across a sparse terminal, and leaves them NULL for an unknown stop reason."
