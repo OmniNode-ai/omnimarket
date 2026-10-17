@@ -283,6 +283,11 @@ requirements:
     acceptance:
       - id: "AC56"
         statement: "AC56: with only OMNI_HOME pointing at a registry that holds a change-control clone, _find_contract, _resolve_occ_root and _resolve_contract_repo_dir resolve nothing, _infer_occ_cwd returns the tree the contract was read from, and ONEX_CC_REPO_PATH still resolves -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_17427_find_contract_roots.py -q fails at the merge base"
+  - id: "req-default-repo-lists-off-change-control"
+    statement: "The default repository lists of the git mirror sync, the merge sweep and the PR snapshot name no change-control repository, and a checkout of any repository binds a DoD contract as a product repository."
+    acceptance:
+      - id: "AC57"
+        statement: "AC57: git_mirror.REGISTRY_REPOS, both merge-sweep _DEFAULT_REPOS lists and the PR snapshot DEFAULT_REPOS name no change-control repository, and resolve_contract_subject binds a change-control checkout as PRODUCT_REPOSITORY -- falsifier: uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -395,6 +400,9 @@ evidence_requirements:
   - kind: "tests"
     description: "D3 runs omnibase_core's migration-conflict handler with no change-control checkout."
     command: "uv run pytest tests/test_golden_chain_duplication_sweep.py tests/test_sweep_dispatch_scope_resolution.py -q -k d3"
+  - kind: "tests"
+    description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
+    command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -866,3 +874,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); names = {"_resolve_occ_root", "_infer_occ_cwd", "_resolve_contract_repo_dir"}; funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in names]; assert len(funcs) == 3; assert not any(isinstance(c, ast.Constant) and c.value == "OMNI_HOME" for f in funcs for c in ast.walk(f)); roots = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "_DEFAULT_CONTRACT_ROOTS"]; assert len(roots) == 1; assert not any(isinstance(c, ast.Constant) and "OMNI_HOME" in str(c.value) for c in ast.walk(roots[0])); print("dod_verify occ root deploy probe: PASS")'
+  - id: "dod-omn17427-ac57-default-repo-lists-off-change-control"
+    description: "The default repository lists name no change-control repository and a change-control checkout binds as a product repository."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC57"]
+  - id: "dod-omn17427-default-repo-lists-deploy-probe"
+    description: "Deploy probe. GitHub serves the git mirror sync at the checked-out HEAD with no change-control repository in REGISTRY_REPOS. It fails at the merge base, where the list names one, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); lists = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "REGISTRY_REPOS"]; assert len(lists) == 1; names = [c.value for c in ast.walk(lists[0]) if isinstance(c, ast.Constant) and isinstance(c.value, str)]; assert len(names) > 5; assert not [n for n in names if n.endswith("_change_control")]; print("git mirror repo list deploy probe: PASS")'

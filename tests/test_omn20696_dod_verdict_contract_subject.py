@@ -158,11 +158,12 @@ def test_an_inherited_git_dir_does_not_retarget_the_lookup(
     assert subject.commit_sha == _git(repo, "rev-parse", "HEAD")
 
 
-def test_a_change_control_checkout_is_named_as_such(tmp_path: Path) -> None:
+def test_a_change_control_checkout_is_a_product_repository(tmp_path: Path) -> None:
+    """Contracts live in the caller's own repository; no checkout is special."""
     repo = _checkout(tmp_path, "git@github.com:OmniNode-ai/onex_change_control.git")
     subject = resolve_contract_subject(repo / _CONTRACT_REL)
 
-    assert subject.source is EnumDodContractSource.ONEX_CHANGE_CONTROL
+    assert subject.source is EnumDodContractSource.PRODUCT_REPOSITORY
     assert subject.repository == "OmniNode-ai/onex_change_control"
     assert subject.commit_sha == _git(repo, "rev-parse", "HEAD")
 
