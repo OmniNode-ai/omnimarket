@@ -42,3 +42,45 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_response_contract_conformance_runner_omn18700.py -k json_receipt -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn19385-ticket-ac1-accepted-core-carrier"
+    description: "Ticket AC1 accepted binding: the Core carrier keeps exact text, sha256 and byte count under the 64 KiB bound and refuses a hash mismatch, a length mismatch and dropped text under the bound."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_core_raw_response_carrier_bounds_omn19385.py -q -p no:cacheprovider'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19385-ticket-ac2-accepted-carrier-stamping"
+    description: "Ticket AC2 accepted binding: the provider-boundary effects and LocalDelegationDispatchPort stamp the exact provider content onto the carrier and the terminal carries it."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k "provider_boundary_field_set or local_effect_field_set or local_terminal_retains" -q -p no:cacheprovider'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19385-ticket-ac3-accepted-raw-bytes-bar"
+    description: "Ticket AC3 accepted binding: run_live_manifest refuses a prose-after-JSON trial and passes a clean JSON trial, both on the raw_provider_bytes basis."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k "followed_with_prose_is_refused or clean_json_answer_is_measured" -q -p no:cacheprovider'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19385-ticket-ac4-accepted-carrier-field-set"
+    description: "Ticket AC4 accepted binding: the carrier dump equals exactly source_field, sha256, utf8_bytes and the message content text. Limit: no credential header is sent in the fixture, so a credential leak is covered only by the exact-equality assertion."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k field_set -q -p no:cacheprovider'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19385-ticket-ac5-live-lab-raw-carrier"
+    description: "Ticket AC5 live probe: a bounded JSON classifier delegation through the deployed dev lane returns a terminal whose raw carrier hashes to its sha256 and is judged by the output-only bar on the raw_provider_bytes basis. Run only at the local Done gate, where the deployed lane and the lab-served model are reachable; the hosted verifier does not evaluate it. Limit: one trial per contract, so it shows the carrier reaches the caller, not a pass rate. The runner prints one JSON receipt whose contracts[] each carry a trials[] array (response_contract_conformance_runner.py, contract receipt key trials); jq -e exits 1 when no trial matches or any trial fails the three conditions, and 4 when the runner printed nothing."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |
+          env -u PYTHONPATH uv run python scripts/ci/run_delegation_response_contract_conformance.py --trials 1 | jq -e '[.contracts[] | select(.contract_id == "l11-json-classifier") | .trials[]] | length > 0 and all(.raw_response_carrier.sha256_verified == true and .output_only.evidence_basis == "raw_provider_bytes" and .output_only.accepted == true)'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
