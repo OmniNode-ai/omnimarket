@@ -121,9 +121,13 @@ dod_evidence:
           uv run python -c 'from scripts import delegation_terminal_join as j; w=j.window_for(now_ms=1790280000000, window_hours=24, grace_ms=900000); r=j.measure_with_planted_controls(window=w, commands=j.TopicRead(topic="commands", records=[], error="unreadable"), terminals=[]); assert r.verdict == "indeterminate" and r.terminal_share is None and r.dropped_ids is None'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19440-criteria-test"
-    description: "The contract criteria test admits an accepted binding record that claims a criterion beside its original item, and still refuses a criterion no item claims, an unknown label, and a claiming item with no check."
+    description: "The contract criteria test admits accepted bindings beside original items while requiring checks for every claimed criterion. The AC1-AC4 job probes measure planted drops and doubles, unreadable topics, replay and reuse classification, and the published headline."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest -q tests/test_omn19440_contract_criteria.py -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest -q tests/unit/scripts/test_delegation_terminal_join.py -k 'TestAC1PlantedDropAndDoubleAreReported or TestAC2UnreadableIsIndeterminateNeverZero or TestAC3CountsPerCommandId or TestAC4PublishedSummaryHeadline' -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
