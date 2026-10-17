@@ -261,18 +261,23 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         if not cli_command:
             msg = f"Model route {model_key!r} is missing cli_command"
             raise ValueError(msg)
+        raw_cli_args = cfg.get("cli_args")
+        cli_args = (
+            [str(arg) for arg in raw_cli_args] if isinstance(raw_cli_args, list) else []
+        )
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
         # Non-blocking subprocess dispatch: a synchronous subprocess.run() here
         # would stall the event loop for the full CLI-model latency, starving
         # every concurrent infer() / review / grader task on the same loop.
         proc = await asyncio.create_subprocess_exec(
             cli_command,
+            *cli_args,
             combined_prompt,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout_bytes, _stderr_bytes = await asyncio.wait_for(
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout_seconds
             )
         except TimeoutError as exc:
@@ -282,10 +287,16 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
             proc.kill()
             await proc.wait()
             raise subprocess.TimeoutExpired(
-                cmd=[cli_command, combined_prompt], timeout=timeout_seconds
+                cmd=[cli_command, *cli_args, combined_prompt], timeout=timeout_seconds
             ) from exc
-        # check=False semantics preserved: non-zero exit is tolerated; we return
-        # whatever the CLI wrote to stdout regardless of returncode.
+        # check=False semantics preserved by default: non-zero exit is tolerated;
+        # we return whatever the CLI wrote to stdout regardless of returncode.
+        # A route that sets fail_on_nonzero_exit (the Codex review fallback,
+        # OMN-17427) treats a failed engine as no review rather than as output.
+        if cfg.get("fail_on_nonzero_exit") and proc.returncode:
+            detail = stderr_bytes.decode(errors="replace").strip()[-500:]
+            msg = f"Model route {model_key!r} CLI exited {proc.returncode}: {detail}"
+            raise RuntimeError(msg)
         return stdout_bytes.decode().strip()
 
 

@@ -48,6 +48,22 @@ class ModelHostileReviewerCompletedEvent(BaseModel):
             "instead of trusting a bare SUCCESS/0-findings verdict."
         ),
     )
+    fallback_engine: str | None = Field(
+        default=None,
+        description=(
+            "Route key of the fallback engine that produced the review when no "
+            "requested route did (OMN-17427); None when the requested routes "
+            "reviewed. Additive field with a default so replayed events recorded "
+            "before this field existed still parse."
+        ),
+    )
+    fallback_for: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Requested route keys that produced no review output and were "
+            "replaced by fallback_engine (OMN-17427)."
+        ),
+    )
 
 
 __all__: list[str] = ["ModelHostileReviewerCompletedEvent"]

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -134,12 +135,23 @@ def _coerce_cli_config(
         msg = f"hostile reviewer route {key!r} requires cli_command"
         raise ValueError(msg)
 
-    return {
+    config: dict[str, object] = {
         "transport": "cli",
         "cli_command": cli_command,
         "context_window": int(declaration.get("context_window", 64000)),
         "timeout_seconds": float(declaration.get("timeout_seconds", 120.0)),
     }
+    cli_args = declaration.get("cli_args")
+    if cli_args is not None:
+        if not isinstance(cli_args, list) or not all(
+            isinstance(arg, str) for arg in cli_args
+        ):
+            msg = f"hostile reviewer route {key!r} cli_args must be a list of strings"
+            raise ValueError(msg)
+        config["cli_args"] = list(cli_args)
+    if "fail_on_nonzero_exit" in declaration:
+        config["fail_on_nonzero_exit"] = bool(declaration["fail_on_nonzero_exit"])
+    return config
 
 
 def _coerce_model_config(
@@ -196,6 +208,48 @@ def build_model_configs(
     return configs
 
 
+@dataclass(frozen=True, slots=True)
+class ModelFallbackRoute:
+    """The contract-declared review-engine fallback, resolved to a route config."""
+
+    key: str
+    config: dict[str, object]
+    timeout_seconds: float
+
+
+def load_fallback_route(
+    runtime_model_configs: Mapping[str, Mapping[str, Any]] | None = None,
+) -> ModelFallbackRoute | None:
+    """Resolve ``model_routing.fallback`` (OMN-17427), or ``None`` if undeclared.
+
+    A route config under the fallback ``route_key`` in the route-config env (or
+    in ``runtime_model_configs``) overrides the contract's ``default_route``.
+    Unlike requested keys the fallback is optional in the env: an unset env
+    leaves the contract default in force.
+    """
+    fallback = _load_contract_model_routing().get("fallback")
+    if not fallback:
+        return None
+    key = str(fallback.get("route_key", "")).strip()
+    if not key:
+        msg = "hostile reviewer model_routing.fallback.route_key is required"
+        raise ValueError(msg)
+    if runtime_model_configs is not None:
+        runtime_configs: Mapping[str, Mapping[str, Any]] = runtime_model_configs
+    elif os.environ.get(_route_config_env_name(_load_contract_model_routing())):
+        runtime_configs = _load_runtime_model_configs(_load_contract_model_routing())
+    else:
+        runtime_configs = {}
+    declaration = runtime_configs.get(key) or fallback.get("default_route")
+    if not isinstance(declaration, Mapping):
+        msg = f"hostile reviewer fallback route {key!r} has no route config"
+        raise ValueError(msg)
+    config = _coerce_model_config(key, declaration)
+    return ModelFallbackRoute(
+        key=key, config=config, timeout_seconds=float(str(config["timeout_seconds"]))
+    )
+
+
 def build_from_contract(
     requested_keys: list[str] | None = None,
     runtime_model_configs: Mapping[str, Mapping[str, Any]] | None = None,
@@ -213,4 +267,9 @@ def build_from_contract(
     return AdapterInferenceBridge(ModelInferenceBridgeConfig(model_configs=configs))
 
 
-__all__: list[str] = ["build_from_contract", "build_model_configs"]
+__all__: list[str] = [
+    "ModelFallbackRoute",
+    "build_from_contract",
+    "build_model_configs",
+    "load_fallback_route",
+]

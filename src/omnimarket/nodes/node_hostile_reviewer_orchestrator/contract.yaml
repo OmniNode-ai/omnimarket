@@ -99,8 +99,25 @@ model_routing:
       required_fields:
         - "cli_command"
       optional_fields:
+        - "cli_args"
+        - "fail_on_nonzero_exit"
         - "context_window"
         - "timeout_seconds"
+  # Review-engine fallback (OMN-17427, operator ruling 2026-10-10T15:10:25Z):
+  # when no requested route produced review output, the review is run once on
+  # this route instead. The completed event names the engine that reviewed
+  # (fallback_engine / fallback_for); when the fallback also produces nothing
+  # the run is FAILED, never a pass. A route config under route_key in
+  # route_config_env overrides default_route.
+  fallback:
+    route_key: "codex"
+    default_route:
+      transport: "cli"
+      cli_command: "codex"
+      cli_args: ["exec", "-s", "read-only", "--skip-git-repo-check"]
+      fail_on_nonzero_exit: true
+      context_window: 128000
+      timeout_seconds: 600
 
 dependencies:
   nodes:
