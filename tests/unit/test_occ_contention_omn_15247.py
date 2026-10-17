@@ -11,7 +11,7 @@ EXISTS-but-WRONG distinction that matters is exercised in
 asserts on the CONTRACT's declared check_value — the artifact the OCC
 contract-compliance runner actually executes.
 
-Wired into the blocking ``occ-emitter-golden-gate.yml`` suite list.
+Run by the ``occ-emitter-golden`` pre-commit hook.
 """
 
 from __future__ import annotations

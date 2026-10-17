@@ -5,11 +5,11 @@
 The contract-topic-graph job used to check out the governance repo only to read
 its contract.yaml files for census completeness. omnimarket is cut over to its
 own contracts, so that checkout, and the graph's reference to the package, are
-gone. Three occ-* workflows only operated on companions that nothing in this
-repository mints any more and are deleted; two stay until the retirement plan's
-S9 (see KEPT_UNTIL_S9). The consumer-side companion scripts with no caller left
-in this repository, and the lists that name the governance repository as a
-sibling to protect, scan or import, are gone too.
+gone. Five occ-* workflows (the S7 replay and the emitter golden gate among
+them) only operated on companions that nothing in this repository mints any more
+and are deleted. The companion scripts with no caller left in this repository,
+and the lists that name the governance repository as a sibling to protect, scan
+or import, are gone too.
 
 These tests read this repository's own files, so they run on every runner.
 """
@@ -35,16 +35,14 @@ pytestmark = pytest.mark.unit
 
 # Dead: the autobind caller and occ-receipt-runner.yml they act through are gone
 # from this repository, the N=10 auto-author window has no companions to count,
-# and the backfill writes new OCC contracts on a schedule.
+# and the backfill writes new OCC contracts on a schedule. The S7 replay and the
+# emitter golden gate went once every remaining caller of the companion
+# publisher read it at an immutable ref (the omniclaude reusables default to a
+# release tag, and the one other caller pins those reusables by commit).
 DELETED = (
     "occ-conflicted-companion-remint.yml",
     "occ-behavior-proof-backfill.yml",
     "occ-n10-streak-report.yml",
-)
-# Stay until S9: the S7 replay is still dispatched for the repositories that have
-# not cut over, and the emitter golden gate guards the companion emitter node
-# that still serves them.
-KEPT_UNTIL_S9 = (
     "occ-s7-replay.yml",
     "occ-emitter-golden-gate.yml",
 )
@@ -85,24 +83,29 @@ def test_dead_occ_workflow_is_deleted(name: str) -> None:
     assert not (WORKFLOWS / name).exists()
 
 
-@pytest.mark.parametrize("name", KEPT_UNTIL_S9)
-def test_occ_workflow_kept_until_s9_still_present(name: str) -> None:
-    assert (WORKFLOWS / name).is_file()
-
-
-# Consumer-side companion scripts that no workflow, hook, node or bound contract
-# in this repository calls. occ_companion_merge_heal.py and occ_receipt_runner.py
-# stay: contracts OMN-17427 (AC13) and OMN-19267 (AC5) bind tests of them.
+# Companion scripts that no workflow, hook, node or bound contract in this
+# repository calls. occ_receipt_runner.py stays: contract OMN-19267 (AC5) binds
+# a test of it.
 DELETED_SCRIPTS = (
     "scripts/ci/occ_window_quiet_wait.py",
     "scripts/ci/build_occ_observation_effect_payload.py",
     "scripts/ci/check_occ_companion_merged.py",
+    "scripts/ci/occ_companion_merge_heal.py",
+    "scripts/ci/check_minted_evidence_is_probative.py",
+    "scripts/ci/check_self_bind_entry_binding.py",
+    "scripts/publish_occ_companion_effect_command.py",
 )
 
 
 @pytest.mark.parametrize("relative", DELETED_SCRIPTS)
 def test_script_without_a_caller_is_deleted(relative: str) -> None:
     assert not (ROOT / relative).exists()
+
+
+def test_script_deletion_positive_control() -> None:
+    """The same read finds a companion script that is still there, so the
+    absences above are not an unreadable tree."""
+    assert (ROOT / "scripts/ci/occ_receipt_runner.py").is_file()
 
 
 # Files that listed the governance repository as a repository to protect, scan or

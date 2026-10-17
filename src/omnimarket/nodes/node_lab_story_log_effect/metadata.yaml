@@ -1,0 +1,25 @@
+name: node_lab_story_log_effect
+version: "1.0.0"
+description: "Writes one ISO week of the work ledger as a sanitized lab story log, private names replaced by roles"
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_lab_story_log_effect: "omnimarket.nodes.node_lab_story_log_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "pydantic>=2.0"
+  - "click>=8.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "ledger", "story-log", "sanitized", "articles"]
+pack: "observability"
+display_name: "Lab Story Log Effect"
+node_role: "effect"

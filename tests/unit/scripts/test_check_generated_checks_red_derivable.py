@@ -567,33 +567,16 @@ class TestTheGateIsActuallyInvoked:
     """OMN-15317's filing reason, asserted directly.
 
     Before this ticket the ONLY references to the checker were this test file in
-    the workflow's pytest arg list and the script path inside a pre-commit
-    ``files:`` trigger regex — neither of which executes it. These assertions go
-    RED if the executing steps are removed again.
+    a pytest arg list and the script path inside a pre-commit ``files:``
+    trigger regex — neither of which executes it. These assertions go RED if the
+    executing step is removed again.
     """
 
-    # The SCRIPT path, not the bare filename: the workflow's pytest arg list and
-    # the occ-emitter-golden pre-commit entry both name the checker's TEST file,
+    # The SCRIPT path, not the bare filename: the occ-emitter-golden pre-commit
+    # entry names the checker's TEST file,
     # whose basename contains the script's basename. Matching loosely here would
     # let the exact non-wiring OMN-15317 was filed for pass this assertion.
     _SCRIPT_INVOCATION = "scripts/ci/check_generated_checks_red_derivable.py"
-
-    def test_the_blocking_workflow_runs_the_script_in_both_modes(self) -> None:
-        workflow = yaml.safe_load(
-            (
-                _REPO_ROOT / ".github" / "workflows" / "occ-emitter-golden-gate.yml"
-            ).read_text()
-        )
-        runs = [
-            str(step.get("run", ""))
-            for job in workflow["jobs"].values()
-            for step in job["steps"]
-            if self._SCRIPT_INVOCATION in str(step.get("run", ""))
-        ]
-        assert len(runs) == 2, f"expected a static and a live step, got {len(runs)}"
-        assert sum("--live" in r for r in runs) == 1
-        assert all("--min-content-bound" in r for r in runs)
-        assert all("--min-checks" in r for r in runs)
 
     def test_a_precommit_hook_executes_the_script(self) -> None:
         config = yaml.safe_load((_REPO_ROOT / ".pre-commit-config.yaml").read_text())

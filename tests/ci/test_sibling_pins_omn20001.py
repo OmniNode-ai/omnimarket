@@ -119,8 +119,12 @@ def test_scan_sees_sibling_reads() -> None:
     reads = sibling_reads(_steps())
     assert len(reads) > 50
     # OMN-20885: the schema-compat job installs the locked omnibase_spi wheel and
-    # clones no sibling, so no workflow reads omnibase_spi from git any more.
-    assert {r[2] for r in reads} >= set(SIBLINGS) - {"omnibase_spi"}
+    # clones no sibling, so no workflow reads omnibase_spi from git any more. The
+    # OCC emitter golden gate was the last workflow to clone onex_change_control.
+    assert {r[2] for r in reads} >= set(SIBLINGS) - {
+        "omnibase_spi",
+        "onex_change_control",
+    }
 
 
 def test_every_sibling_read_is_pinned() -> None:
