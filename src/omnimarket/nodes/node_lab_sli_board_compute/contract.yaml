@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab SLI Board Compute (OMN-17427)
+#
+# Pure definition-B compute: handle(ModelLabSliBoardRequest) -> ModelLabSliBoard.
+# Folds each evaluation batch into the indicator history (the projection) and
+# renders the one-page board from it. The projection goes in and comes out; the
+# effect that serves the page persists it.
+name: node_lab_sli_board_compute
+contract_name: node_lab_sli_board_compute
+node_name: node_lab_sli_board_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  The lab indicator board. Appends one history point per indicator per interval
+  to the projection, keeps the newest history_points_per_indicator points of
+  each, and renders one page (HTML and markdown) listing every indicator with
+  its severity, status, latest value against target, worst subject, action and
+  a trend of its kept history. Rows sort by severity, breaches first.
+
+handler:
+  module: omnimarket.nodes.node_lab_sli_board_compute.handlers.handler_lab_sli_board
+  class: HandlerLabSliBoard
+  input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliBoardRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: render_lab_sli_board
+      handler:
+        name: HandlerLabSliBoard
+        module: omnimarket.nodes.node_lab_sli_board_compute.handlers.handler_lab_sli_board
+      input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliBoardRequest
+      output_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliBoard
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelLabSliBoardRequest
+  module: omnimarket.models.lab_sli.model_lab_sli
+  description: One evaluation batch and the projection so far.
+output_model:
+  name: ModelLabSliBoard
+  module: omnimarket.models.lab_sli.model_lab_sli
+  description: The folded projection and the rendered board page.
+
+terminal_event: onex.evt.omnimarket.lab-sli-board-rendered.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.lab-sli-evaluated.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-sli-board-rendered.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-sli-board-rendered.v1
+
+config:
+  lab_sli_board:
+    # 96 points at a 15-minute interval is one day of trend per indicator.
+    history_points_per_indicator: 96
+    trend_points: 24
