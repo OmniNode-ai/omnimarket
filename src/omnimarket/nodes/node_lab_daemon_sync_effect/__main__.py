@@ -49,7 +49,7 @@ def _expand(value: object, missing: set[str]) -> object:
 
 
 def load_overlay(path: Path, diagnostics: list[str]) -> ModelDaemonOverlay:
-    """Expand the overlay from the environment; a daemon naming an unset variable is dropped."""
+    """Expand the overlay from the environment; entries naming unset variables are dropped."""
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError(f"{path} is not a mapping")
@@ -62,12 +62,43 @@ def load_overlay(path: Path, diagnostics: list[str]) -> ModelDaemonOverlay:
             diagnostics.append(f"{name}: skipped, unset {', '.join(sorted(missing))}")
             continue
         daemons.append(expanded)
+    chores = []
+    for chore in raw.get("chores") or []:
+        missing = set()
+        expanded = _expand(chore, missing)
+        if missing:
+            name = chore.get("name") if isinstance(chore, dict) else chore
+            diagnostics.append(f"{name}: skipped, unset {', '.join(sorted(missing))}")
+            continue
+        chores.append(expanded)
+    raw_clones = raw.get("clones")
+    if isinstance(raw_clones, dict) and "extra_repos_file" in raw_clones:
+        missing = set()
+        _expand(raw_clones["extra_repos_file"], missing)
+        if missing:
+            diagnostics.append(
+                f"clones.extra_repos_file: skipped, unset {', '.join(sorted(missing))}"
+            )
+            raw_clones = {
+                k: v for k, v in raw_clones.items() if k != "extra_repos_file"
+            }
+    missing = set()
+    clones = _expand(raw_clones, missing)
+    if missing:
+        diagnostics.append(f"clones: skipped, unset {', '.join(sorted(missing))}")
+        clones = None
     missing = set()
     fix_lane = _expand(raw.get("fix_lane"), missing)
     if missing:
         raise ValueError(f"fix_lane names unset {', '.join(sorted(missing))}")
     return ModelDaemonOverlay.model_validate(
-        {**raw, "daemons": daemons, "fix_lane": fix_lane}
+        {
+            **raw,
+            "daemons": daemons,
+            "clones": clones,
+            "chores": chores,
+            "fix_lane": fix_lane,
+        }
     )
 
 
