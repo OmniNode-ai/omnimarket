@@ -48,11 +48,11 @@ dod_evidence:
     binds_ac: ["AC1"]
   - id: "dod-omn21093-node-suites"
     description: >-
-      The Claude Code adapter node suites (hook adapter, install, render) still pass over
+      Regression evidence (unbound: the adapter suite passes at the merge base too, so it
+      is not a must-fail control): the Claude Code adapter node suites still pass over
       the re-exported models.
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
