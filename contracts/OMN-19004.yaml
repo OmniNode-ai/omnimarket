@@ -42,3 +42,25 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_omn19004_zero_attempts_refused_before_dispatch.py tests/unit/delegation/test_omn19004_terminal_derives_from_its_record.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn19004-deploy-zero-attempts-smoke"
+    description: "Hosted deploy artifact probe: an isolated Python container reads this checkout mounted read-only and requires the refused-before-dispatch terminal to state zero and the terminal model's lower bound to permit zero. The probe fails against the pre-fix source. Behavioural proof remains in the AC1 and AC2 test_passes checks; this does not claim a live runtime deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace python:3.12-alpine python -c '
+          import ast
+          from pathlib import Path
+          handler = ast.parse(Path("src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py").read_text())
+          calls = [{k.arg: k.value for k in n.keywords} for n in ast.walk(handler) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "ModelDelegateSkillFailed"]
+          refusals = [kw for kw in calls if ast.unparse(kw.get("terminal_failure_cause", ast.Constant(None))) == "EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH"]
+          assert len(refusals) == 1, "expected one pre-dispatch refusal terminal"
+          assert ast.literal_eval(refusals[0].get("attempts_count", ast.Constant(-1))) == 0, "pre-dispatch refusal must state zero attempts"
+          model = ast.parse(Path("src/omnimarket/models/delegation/wire/model_delegate_skill_response.py").read_text())
+          fields = [n.value for n in ast.walk(model) if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "attempts_count"]
+          assert len(fields) == 1 and isinstance(fields[0], ast.Call), "expected one attempts_count field"
+          bounds = {k.arg: k.value for k in fields[0].keywords}
+          assert ast.literal_eval(bounds["ge"]) == 0, "terminal model must permit zero attempts"
+          print("OMN-19004 deploy artifact smoke passed: refusal count=0, model minimum=0")
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
