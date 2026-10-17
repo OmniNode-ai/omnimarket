@@ -2,18 +2,23 @@
 name: retention_cleanup
 contract_version:
   major: 1
-  minor: 2
+  minor: 3
   patch: 0
 node_type: effect
 node_version:
   major: 1
-  minor: 1
+  minor: 2
   patch: 0
 description: >
   Prunes stale records from projection tables per declarative retention policy.
   Deletes never-store topics immediately, high-volume topics after 3 days,
   and general events after 5 days. Tables and retention windows are
   declared in this contract — changes require a contract bump, not a handler edit.
+  A target with batch_size deletes in bounded batches, one committed
+  transaction each. Runs once per schedule.run_interval_seconds on the
+  platform runtime tick of each lab runtime, and publishes one completed event
+  per run with rows removed per table. Ledger, credential, tenant registry and
+  migration history tables are refused at load.
 handler:
   module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
   class: NodeRetentionCleanup
@@ -22,23 +27,46 @@ handler:
 handler_routing:
   handlers:
     - operation: retention_cleanup
+      topic: onex.cmd.omnimarket.retention-cleanup-requested.v1
       handler:
         name: NodeRetentionCleanup
         module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
+    # The schedule's entry. Same handler class as the manual operation: the
+    # elapsed-time stamp is per-instance state.
+    - operation: retention_cleanup.scheduled_run
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: NodeRetentionCleanup
+        module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on retention_policy.schedule.run_interval_seconds elapsed since
+        the last scheduled run; when due, run retention_cleanup against the
+        database in retention_policy.schedule.database_url_env.
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "retention_cleanup.scheduled_run"
 descriptor:
   node_archetype: effect
   purity: impure
   idempotent: false
-  timeout_ms: 120000
+  timeout_ms: 1800000
   runtime_profiles:
     - effects
 terminal_event: onex.evt.omnimarket.retention-cleanup-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.retention-cleanup-requested.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.retention-cleanup-completed.v1
 retention_policy:
+  schedule:
+    run_interval_seconds: 3600
+    database_url_env: OMNIDASH_ANALYTICS_DB_URL
+    dry_run: false
   targets:
     - table: agent_actions
       column: created_at
@@ -46,6 +74,20 @@ retention_policy:
     - table: agent_routing_decisions
       column: created_at
       retention_days: 30
+    # One row per (consumer_group, topic) per 30 s window, about 1.8 million
+    # rows a day on the lab dev lane. Its readers need minutes: the board's
+    # live read is the last 10 minutes, the stall alert reads N trailing
+    # windows, the serving exposure the newest limit * 4 rows. Seven days
+    # keeps a week of history over that.
+    - schema: omninode_internal
+      table: consumer_flow_windows
+      column: window_start
+      retention_days: 7
+      batch_size: 10000
+      max_batches: 500
+      # No index leads with window_start; the unique cursor index rises with
+      # insertion, so each batch reads the oldest rows first.
+      batch_order_column: projection_cursor
 
 metadata:
   transport_type: kafka

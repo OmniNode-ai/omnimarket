@@ -10,6 +10,7 @@ from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
@@ -466,6 +467,18 @@ class ModelThroughputTickRequest(BaseModel):
         default=30,
         ge=0,
         description="A divergence older than this is an ALARM; a younger one is a NOTE.",
+    )
+    deploy_drifts: list[ModelLabDaemonDrift] | None = Field(
+        default=None,
+        description=(
+            "Drift rows node_lab_daemon_sync_effect wrote on each lab host; None skips the "
+            "deploy-drift finding (and its `checked` entry) (OMN-19998)."
+        ),
+    )
+    deploy_drift_max_hours: float = Field(
+        default=2.0,
+        gt=0,
+        description="A daemon lagging its source tip for longer than this is MISSING; a younger lag is a NOTE.",
     )
     repo_status: ModelRepoStatusFacts | None = Field(
         default=None,

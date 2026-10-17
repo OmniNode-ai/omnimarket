@@ -1,12 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Kind of a client binding row (OMN-18531)."""
+"""Kind of a client binding row — re-exports core (OMN-18531, moved by OMN-21093)."""
 
-from enum import StrEnum
+from omnibase_core.enums.enum_binding_kind import EnumBindingKind
 
-
-class EnumBindingKind(StrEnum):
-    """REPLACING rows render into the mod module; ADDITIVE rows into user-settings command hooks."""
-
-    REPLACING = "replacing"
-    ADDITIVE = "additive"
+__all__ = ["EnumBindingKind"]

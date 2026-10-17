@@ -231,6 +231,11 @@ requirements:
         statement: "AC42: the named-test runner preserves the source workspace, scrubs parent secrets, bounds resources and output, kills timed-out process groups, and refuses writes through escaping symlinks -- falsifier: the focused runner module fails at the merge base."
       - id: "AC43"
         statement: "AC43: the deployed orchestrator runs the named tests a bus request carries in the sandbox runner before its gate intent leaves, the gate reducer judges the answer on that run, a request naming none stays UNTESTED, and named tests no runner ran are refused as INSUFFICIENT -- falsifier: the four deployed-chain cases fail at the merge base."
+  - id: "req-declared-table-retention"
+    statement: "The retention node prunes every registered lab table to its declared window in bounded, committed batches on the runtime tick, and never touches a ledger, credential, tenant registry or migration history table."
+    acceptance:
+      - id: "AC44"
+        statement: "AC44: node_retention_cleanup registers omninode_internal.consumer_flow_windows, deletes a batched target in bounded batches with one committed transaction each and the tenant GUC first, isolates a failing target, refuses a protected table at load, and runs once per declared interval on the runtime tick -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q fails at the merge base"
   - id: req-verified-delete
     statement: A local file is deleted only after Drive reports the size and md5 of the staged part that holds it.
     acceptance:
@@ -254,8 +259,8 @@ requirements:
   - id: req-consumer-gate-parity-on-core
     statement: The golden-gate consumer-gate parity tests drive omnibase_core's ports of the onex_change_control gate scripts and need no onex_change_control checkout.
     acceptance:
-    - id: AC57
-      statement: 'AC57: the consumer-gate parity tests import the omnibase_core ports of lint_contract_check_values, check_contract_substance_floor, contract_compliance_check and evidence_admissibility and none of them skips for a missing onex_change_control checkout -- falsifier: the focused pytest reports a skip naming the onex_change_control checkout, or an import of a sibling onex_change_control path'
+    - id: AC58
+      statement: 'AC58: the consumer-gate parity tests import the omnibase_core ports of lint_contract_check_values, check_contract_substance_floor, contract_compliance_check and evidence_admissibility and none of them skips for a missing onex_change_control checkout -- falsifier: the focused pytest reports a skip naming the onex_change_control checkout, or an import of a sibling onex_change_control path'
   - id: "req-lab-story-log"
     statement: "The work ledger's week becomes a sanitized story log by a node, with private names replaced by roles from the public-repo hygiene vocabulary, and the log is never written when a private name survives."
     acceptance:
@@ -288,6 +293,11 @@ requirements:
     acceptance:
       - id: "AC56"
         statement: "AC56: with only OMNI_HOME pointing at a registry that holds a change-control clone, _find_contract, _resolve_occ_root and _resolve_contract_repo_dir resolve nothing, _infer_occ_cwd returns the tree the contract was read from, and ONEX_CC_REPO_PATH still resolves -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_17427_find_contract_roots.py -q fails at the merge base"
+  - id: "req-default-repo-lists-off-change-control"
+    statement: "The default repository lists of the git mirror sync, the merge sweep and the PR snapshot name no change-control repository, and a checkout of any repository binds a DoD contract as a product repository."
+    acceptance:
+      - id: "AC57"
+        statement: "AC57: git_mirror.REGISTRY_REPOS, both merge-sweep _DEFAULT_REPOS lists and the PR snapshot DEFAULT_REPOS name no change-control repository, and resolve_contract_subject binds a change-control checkout as PRODUCT_REPOSITORY -- falsifier: uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -400,6 +410,9 @@ evidence_requirements:
   - kind: "tests"
     description: "D3 runs omnibase_core's migration-conflict handler with no change-control checkout."
     command: "uv run pytest tests/test_golden_chain_duplication_sweep.py tests/test_sweep_dispatch_scope_resolution.py -q -k d3"
+  - kind: "tests"
+    description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
+    command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -767,6 +780,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_with_named_test_run", "asyncio.to_thread", "named_tests_requested")); print("deployed named-tests deploy probe: PASS")'
+  - id: "dod-omn17427-ac44-declared-table-retention"
+    description: "The retention node's batched, scheduled, protected-table tests pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py tests/nodes/test_omn15797_retention_cleanup_tenant_seam.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC44"]
+  - id: "dod-omn17427-declared-table-retention-deploy-probe"
+    description: "Deploy probe. GitHub serves the retention handler and contract at the checked-out HEAD with batched deletes, the protected-table refusal and the consumer_flow_windows target. It fails at the merge base, which has none of them, and needs no lab network on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_retention_cleanup/handlers/handler_retention_cleanup.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_run_batched", "_PROTECTED_MARKERS", "ModelRuntimeTick", "batch_order_column")); print("declared table retention deploy probe: PASS")'
   - id: dod-omn17427-ac46-ac47-archive
     description: 'AC46 and AC47: verified-then-delete and host refusal pass.'
     source: manual
@@ -787,15 +815,15 @@ dod_evidence:
     binds_ac:
     - AC48
     - AC49
-  - id: dod-omn17427-ac57-consumer-gate-parity-on-core
-    description: 'AC57: consumer-gate parity tests run against the omnibase_core ports with no onex_change_control checkout.'
+  - id: dod-omn17427-ac58-consumer-gate-parity-on-core
+    description: 'AC58: consumer-gate parity tests run against the omnibase_core ports with no onex_change_control checkout.'
     source: manual
     checks:
     - check_type: test_passes
       check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q -p no:randomly -k "ConsumerGateParity"
       cwd: ${OMNI_HOME}/omnimarket
     binds_ac:
-    - AC57
+    - AC58
   - id: "dod-omn17427-ac52-lab-story-log"
     description: "The weekly story log keeps the week's rows, themes and figures, and no planted private name or quoted operator word survives."
     source: "manual"
@@ -880,3 +908,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); names = {"_resolve_occ_root", "_infer_occ_cwd", "_resolve_contract_repo_dir"}; funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in names]; assert len(funcs) == 3; assert not any(isinstance(c, ast.Constant) and c.value == "OMNI_HOME" for f in funcs for c in ast.walk(f)); roots = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "_DEFAULT_CONTRACT_ROOTS"]; assert len(roots) == 1; assert not any(isinstance(c, ast.Constant) and "OMNI_HOME" in str(c.value) for c in ast.walk(roots[0])); print("dod_verify occ root deploy probe: PASS")'
+  - id: "dod-omn17427-ac57-default-repos-off-occ"
+    description: "The default repository lists name no change-control repository and a change-control checkout binds as a product repository."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC57"]
+  - id: "dod-omn17427-default-repo-lists-deploy-probe"
+    description: "Deploy probe. GitHub serves the git mirror sync at the checked-out HEAD with no change-control repository in REGISTRY_REPOS. It fails at the merge base, where the list names one, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); lists = [n for n in tree.body if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "REGISTRY_REPOS"]; assert len(lists) == 1; names = [c.value for c in ast.walk(lists[0]) if isinstance(c, ast.Constant) and isinstance(c.value, str)]; assert len(names) > 5; assert not [n for n in names if n.endswith("_change_control")]; print("git mirror repo list deploy probe: PASS")'
