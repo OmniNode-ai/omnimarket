@@ -15,6 +15,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_output import (
+    ModelAggregatedFinding,
+)
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_phase import (
     EnumHostileReviewerPhase,
 )
@@ -38,6 +41,21 @@ class ModelHostileReviewerCompletedEvent(BaseModel):
             "Logical route keys whose inference call completed without error "
             "(OMN-15152). Additive field with a default so replayed events "
             "recorded before this field existed still parse."
+        ),
+    )
+    verdict: str | None = Field(
+        default=None,
+        description=(
+            "The aggregator's verdict over the merged findings: clean, "
+            "risks_noted or blocking_issue. None when no review output was "
+            "produced (a failed run), so a consumer never reads a failure as clean."
+        ),
+    )
+    findings: list[ModelAggregatedFinding] = Field(
+        default_factory=list,
+        description=(
+            "The deduplicated findings with their source models, severity and "
+            "weighted score, so a gate consumes the findings rather than a count."
         ),
     )
     models_failed: list[str] = Field(

@@ -10,6 +10,7 @@ Shape preserved verbatim from the deleted node_hostile_reviewer shell
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +31,15 @@ class ModelHostileReviewerStartCommand(BaseModel):
         ...,
         min_length=1,
         description="Caller-provided logical model route keys to use for review.",
+    )
+    route: Literal["bridge", "delegation"] = Field(
+        default="bridge",
+        description=(
+            "How the model calls go out. 'bridge' resolves each key in models "
+            "from the route config; 'delegation' sends each call through the "
+            "delegation node's review task class with the key as the pinned "
+            "backend id."
+        ),
     )
     max_passes: int = Field(default=10, ge=1, description="Max review passes.")
     dry_run: bool = Field(default=False)
