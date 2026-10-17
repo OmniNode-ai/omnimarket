@@ -22,6 +22,8 @@ description: >
   unexpired branch install is held; a held installer lock skips the tick. A refusal publishes
   an alarm naming the blocker and dispatches one fix lane through the remote-lane runner.
   Every tick writes the host's drift rows, which the throughput tick reads as deploy_drifts.
+  Registry clones are cloned when missing and fast-forwarded when clean, chores such as the
+  pre-commit cache gc run every tick, and the completed event lists what the run changed.
 input_model: omnimarket.nodes.node_lab_daemon_sync_effect.models.model_lab_daemon_sync.ModelLabDaemonSyncCommand
 output_model: omnimarket.nodes.node_lab_daemon_sync_effect.models.model_lab_daemon_sync.ModelLabDaemonSyncResult
 handler:

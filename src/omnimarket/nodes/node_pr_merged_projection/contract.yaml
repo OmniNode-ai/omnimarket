@@ -6,7 +6,7 @@
 #
 # Materializes onex.evt.github.pr-merged.v1 events (published by the
 # pr-merged-publisher GHA workflow, OMN-13226 / T2) into the pr_merged_events
-# projection table, deduped by event_id with a strictly-monotonic
+# projection table, deduped by (repo, pr_number) with a strictly-monotonic
 # projection_cursor. The generic projection API serves the rows at
 # GET /projection/onex.evt.github.pr-merged.v1?since=<cursor> on the local :3002
 # lane so the per-machine worktree reaper (OMN-13228 / T4) can discover newly
@@ -26,8 +26,8 @@ lifecycle: experimental
 
 description: >
   Projects GitHub PR-merged events (onex.evt.github.pr-merged.v1) into the
-  pr_merged_events table — one row per merged PR, deduped by the publisher
-  event_id, with a strictly-monotonic projection_cursor BIGSERIAL. Enables the
+  pr_merged_events table — one row per merged PR, deduped by (repo, pr_number)
+  (migration 0003), with a strictly-monotonic projection_cursor BIGSERIAL. Enables the
   per-machine worktree reaper (T4, OMN-13228) to poll
   GET /projection/onex.evt.github.pr-merged.v1?since=<cursor> on the local
   projection API to discover newly merged PRs and trigger prune-worktrees.sh on

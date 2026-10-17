@@ -4,8 +4,9 @@
 
 Consumes ``onex.evt.github.pr-merged.v1`` (published by the pr-merged-publisher
 GHA workflow on every repo merge, OMN-13226 / T2) and UPSERTs one row per event
-into the ``pr_merged_events`` table, deduped by ``event_id``. Idempotent:
-projecting the same event twice leaves exactly one row.
+into the ``pr_merged_events`` table, deduped by ``(repo, pr_number)``: a PR
+merges once, however many events announce it. Idempotent: projecting the same
+event, or the same merge under a fresh ``event_id``, leaves exactly one row.
 
 The generic projection API serves the materialized rows at
 ``GET /projection/onex.evt.github.pr-merged.v1?since=<cursor>`` on the local
@@ -44,7 +45,7 @@ from omnimarket.projection.handler_shim import (
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "pr_merged_events"
-CONFLICT_KEY = "event_id"
+CONFLICT_KEY = "repo,pr_number"
 
 
 class ModelProjectionResult(BaseModel):
@@ -92,10 +93,11 @@ class HandlerPrMergedProjection:
         event: ModelPrMergedEvent,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a single pr-merged event, deduped by ``event_id``.
+        """UPSERT a single pr-merged event, deduped by ``(repo, pr_number)``.
 
         ``projection_cursor`` is a DB-assigned monotonic BIGSERIAL and is never
-        written by the handler, so the cursor advances strictly on insert.
+        written by the handler, so the cursor advances strictly on insert and
+        stays put when a replay updates the existing row.
         """
         row: dict[str, object] = {
             "event_id": event.event_id,
