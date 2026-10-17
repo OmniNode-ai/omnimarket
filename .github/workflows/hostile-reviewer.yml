@@ -500,6 +500,8 @@ jobs:
           # exactly this commit, and only when the voters overlay declares
           # substitute_votes (OMN-20947).
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The base commit the parse veto below runs from (OMN-17427).
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           # LOCAL_LLM_SHARED_SECRET is wired from a GitHub Actions secret
           # (OMN-14176): the omniintelligence LLM HTTP transport HMAC-signs every
           # call with it and fail-closes if it is absent. The earlier assumption
@@ -552,6 +554,34 @@ jobs:
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          # OMN-17427: a voter's claim that a Python, YAML or JSON file is
+          # syntactically invalid is checkable without a model. Each blocking
+          # finding that makes it is verified by parsing that file at the head
+          # and dropped, with a logged reason, when it parses (omnimarket#4063 was
+          # blocked for an "invalid Python" test file that ast.parse accepts).
+          # Findings of every other class are left as the voters raised them.
+          # The check runs from the BASE commit, never the checkout under review,
+          # so a pull request cannot supply the code that vets its own findings;
+          # a base that does not carry the node yet skips the check. Any other
+          # failure leaves the reviewer's verdict exactly as it stands.
+          VETO_BASE="${RUNNER_TEMP:-/tmp}/review-finding-veto-base"
+          rm -rf "$VETO_BASE"
+          if ! git -C "$GITHUB_WORKSPACE" worktree add --detach "$VETO_BASE" "$BASE_SHA" >/dev/null; then
+            echo "::warning::review finding veto skipped: the base commit $BASE_SHA could not be checked out"
+          elif [ ! -d "$VETO_BASE/src/omnimarket/nodes/node_review_finding_veto_effect" ]; then
+            echo "::notice::the base commit carries no node_review_finding_veto_effect yet; skipping the parse veto"
+          else
+            VETO_EXIT=0
+            PYTHONPATH="$VETO_BASE/src" uv run --no-sync python -m omnimarket.nodes.node_review_finding_veto_effect \
+              --result-file "$REVIEW_JSON_FILE" \
+              --head-sha "$HEAD_SHA" \
+              --repo-root "$GITHUB_WORKSPACE" || VETO_EXIT=$?
+            if [ "$VETO_EXIT" -ne 0 ]; then
+              echo "::warning::review finding veto did not run (exit $VETO_EXIT); the reviewer's verdict stands as produced"
+            fi
+          fi
+          git -C "$GITHUB_WORKSPACE" worktree remove --force "$VETO_BASE" || true
 
           # Parse verdict from JSON using Python inline.
           # The JSON's path is passed via env var (stdin is the heredoc); the JSON

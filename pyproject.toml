@@ -483,6 +483,7 @@ node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_sched
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
 node_lab_story_log_effect = "omnimarket.nodes.node_lab_story_log_effect"
+node_review_finding_veto_effect = "omnimarket.nodes.node_review_finding_veto_effect"
 node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
 node_platform_readiness = "omnimarket.nodes.node_platform_readiness"
 node_platform_diagnostics = "omnimarket.nodes.node_platform_diagnostics"

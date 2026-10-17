@@ -315,6 +315,13 @@ requirements:
     acceptance:
       - id: "AC60"
         statement: "AC60: the tick result's refusals list every lane made and not placed with its reason and refusals_cell reads none only when every lane was placed; with free slots and zero placed for two ticks the tick dispatches one diagnose lane, deduplicates it for the cooldown and carries the alarm on its completed event; a ticket refused by the brief check twice is parked with its reason and skipped without a launch until the park expires -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py -q fails at the merge base"
+  - id: "req-review-finding-parse-veto"
+    statement: "A blocking hostile-review finding that claims a Python, YAML or JSON file is syntactically invalid is checked by parsing that file at the pull request head, and dropped with a logged reason when it parses; findings of every other class are left as the reviewers raised them."
+    acceptance:
+      - id: "AC70"
+        statement: "AC70: node_review_finding_veto_effect drops a blocking finding whose title claims a Python, YAML or JSON file is invalid when ast.parse, yaml.safe_load_all or json.loads accepts that file at the head, turns a verdict that rested only on such findings into passed, and logs the reason -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py -q -k 'pr4063 or yaml_and_json' fails at the merge base"
+      - id: "AC71"
+        statement: "AC71: a syntax claim stays blocking when the file does not parse or cannot be read at the head, names another file or language, or is about text parsed at run time, and findings of other classes and warnings are never examined; the hostile-reviewer workflow runs the veto from the base commit before it reads the verdict -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -430,6 +437,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
     command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
+  - kind: "tests"
+    description: "AC70 and AC71: the parse veto drops the omnimarket#4063 'invalid Python' block, keeps true and unrelated findings, and runs from the base commit before the verdict."
+    command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1011,3 +1021,26 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("diagnose_lane_name", "_diagnose", "brief-check-refused")); print("lab-fill zero-placement deploy probe: PASS")'
+  - id: "dod-omn17427-ac70-review-finding-parse-veto"
+    description: "A blocking 'invalid Python' finding on the omnimarket#4063 test file, which parses at its blocked head, is dropped with a reason and the verdict becomes passed; a Python, YAML or JSON file that does not parse keeps its finding."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py -q -k 'pr4063 or yaml_and_json or does_not_parse'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC70"]
+  - id: "dod-omn17427-ac71-review-finding-veto-keeps-other-findings"
+    description: "Other finding classes, warnings, claims about another file, run-time parse claims and unreadable files are untouched, and the workflow runs the veto from the base commit before the verdict."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-review-finding-veto-deploy-probe"
+    description: "Deploy probe. GitHub serves the veto handler at the checked-out HEAD with its parse checks. It fails at the merge base, which has no such node, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_veto.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerReviewFindingVeto", "ast.parse", "yaml.safe_load_all", "json.loads")); print("review finding veto deploy probe: PASS")'
