@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: rescue_patch_review_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Scan unreviewed saved patches, read two git facts with a scratch index, write one VERDICT.json per patch and a last-run.json heartbeat on every run.
+
+input_model: omnimarket.nodes.node_rescue_patch_review_effect.models.model_rescue_patch_scan_request.ModelRescuePatchScanRequest
+output_model: omnimarket.nodes.node_rescue_patch_review_effect.models.model_rescue_patch_scan_result.ModelRescuePatchScanResult
+handler:
+  module: omnimarket.nodes.node_rescue_patch_review_effect.handlers.handler_rescue_patch_scan
+  class: HandlerRescuePatchScan
+  input_model: omnimarket.nodes.node_rescue_patch_review_effect.models.model_rescue_patch_scan_request.ModelRescuePatchScanRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: scan_rescue_patches
+      handler:
+        name: HandlerRescuePatchScan
+        module: omnimarket.nodes.node_rescue_patch_review_effect.handlers.handler_rescue_patch_scan
+      input_model: omnimarket.nodes.node_rescue_patch_review_effect.models.model_rescue_patch_scan_request.ModelRescuePatchScanRequest
+      output_model: omnimarket.nodes.node_rescue_patch_review_effect.models.model_rescue_patch_scan_result.ModelRescuePatchScanResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - git reads of the registry clones with a scratch index, nothing checked out or fetched
+    - one VERDICT.json per unreviewed saved patch directory, never overwriting an existing one
+    - the heartbeat last-run.json in the state directory
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.rescue-patch-scan-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.rescue-patch-scan-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.rescue-patch-scan-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.rescue-patch-scan-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.rescue-patch-scan-completed.v1
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

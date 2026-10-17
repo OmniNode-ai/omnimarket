@@ -245,6 +245,26 @@ requirements:
         statement: "AC44: node_retention_cleanup registers omninode_internal.consumer_flow_windows, deletes a batched target in bounded batches with one committed transaction each and the tenant GUC first, isolates a failing target, refuses a protected table at load, and runs once per declared interval on the runtime tick -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q fails at the merge base"
       - id: "AC45"
         statement: "AC45: the consumer-flow projection declares an index leading with window_start, built concurrently -- falsifier: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0006_add_window_start_index.sql is absent at the merge base"
+  - id: req-verified-delete
+    statement: A local file is deleted only after Drive reports the size and md5 of the staged part that holds it.
+    acceptance:
+    - id: AC46
+      statement: 'AC46: a part Drive reports with a different md5, a missing object or a failed upload deletes nothing and stops the run, and a file changed after staging is kept -- falsifier: the focused pytest finds a deleted source file after a corrupt md5, a missing object, a failed upload or a post-staging change'
+  - id: req-safety
+    statement: The node refuses the landing controller host and never archives protected or fresh files.
+    acceptance:
+    - id: AC47
+      statement: 'AC47: a host whose overlay roles include landing_controller, or that the overlay does not list, is refused before any file is read, and the live ledger, memory files, symlinks and files inside the seven-day window are never archived -- falsifier: the focused pytest finds a file read or deleted on the controller host, or a protected or fresh file archived'
+  - id: req-throttle
+    statement: Staging and upload run under a bounded CPU, IO and bandwidth budget through a CLI uploader, not Drive for desktop.
+    acceptance:
+    - id: AC48
+      statement: 'AC48: every staged command carries nice and an IO class, the upload carries a bytes-per-second cap and one stream, the uploader is rclone and no argument names Drive for desktop''s folder, and a missing uploader remote is a typed credential refusal -- falsifier: the focused pytest finds an un-niced command, an uncapped upload or a Drive for desktop path'
+  - id: req-nightly
+    statement: The archive is a nightly Eastern off-peak host tick and an onex verb.
+    acceptance:
+    - id: AC49
+      statement: 'AC49: the contract subscribes to the runtime tick with a 01:00 to 05:00 America/New_York window, a tick runs once per interval inside it, and onex lab-archive run is registered and exits 2 on a refused host -- falsifier: the focused pytest finds a run outside the window, a second run inside the interval, or an unregistered verb'
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -345,6 +365,12 @@ evidence_requirements:
   - kind: "tests"
     description: "The deployed orchestrator runs a bus request's named tests before the gate and the gate judges the run."
     command: "uv run pytest tests/unit/delegation/test_deployed_named_tests_omn17427.py -q"
+  - kind: tests
+    description: 'AC46 and AC47: archive, verification, refusal and protection tests pass.'
+    command: uv run pytest tests/nodes/node_lab_history_archive_effect/test_golden_chain_lab_history_archive_effect.py -q -p no:randomly
+  - kind: tests
+    description: 'AC48 and AC49: uploader, overlay, contract and verb tests pass.'
+    command: uv run pytest tests/nodes/node_lab_history_archive_effect/test_adapters_overlay_cli.py -q -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ""
@@ -743,3 +769,23 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_retention_cleanup/handlers/handler_retention_cleanup.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_run_batched", "_PROTECTED_MARKERS", "ModelRuntimeTick", "batch_order_column")); print("declared table retention deploy probe: PASS")'
+  - id: dod-omn17427-ac46-ac47-archive
+    description: 'AC46 and AC47: verified-then-delete and host refusal pass.'
+    source: manual
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/nodes/node_lab_history_archive_effect/test_golden_chain_lab_history_archive_effect.py -q -p no:randomly
+      cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+    - AC46
+    - AC47
+  - id: dod-omn17427-ac48-ac49-throttle-tick
+    description: 'AC48 and AC49: throttled uploader, nightly tick and verb pass.'
+    source: manual
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/nodes/node_lab_history_archive_effect/test_adapters_overlay_cli.py -q -p no:randomly
+      cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+    - AC48
+    - AC49

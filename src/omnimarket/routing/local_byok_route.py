@@ -324,6 +324,39 @@ def substitute_any_registered_byok_route(
     return backend
 
 
+def next_registered_byok_route(
+    failed: ModelResolvedDelegationBackend,
+    *,
+    tried_backend_ids: frozenset[str],
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend | None:
+    """The customer's next registered key after ``failed``, or ``None`` (OMN-20844).
+
+    A customer's responders are their own keys. When the ladder has no new
+    responder left after ``failed`` (the platform rungs that carry another of
+    their providers can be ``explicit_pin_only``, so neither a sibling nor the
+    next tier offers it), the next key they registered answers instead, in the
+    catalogue order :func:`substitute_any_registered_byok_route` already uses.
+    Never a house key: only a provider the customer holds a key for is named,
+    and every key already tried in this dispatch is skipped, so the walk ends.
+    """
+    registered = set(registered_local_byok_providers(db_path=db_path))
+    for provider in customer_provider_catalogue():
+        if provider not in registered:
+            continue
+        plan = resolve_local_byok_credential_plan(provider, db_path=db_path)
+        byok = resolve_byok_provider_backend(provider, plan=plan)
+        if byok is None or byok.backend_id in tried_backend_ids:
+            continue
+        route = _registered_byok_route(
+            byok, replaced=failed, tier=failed.tier, db_path=db_path
+        )
+        if route is not None:
+            # The failed route's headers belong to its own provider.
+            return route.model_copy(update={"extra_headers": {}})
+    return None
+
+
 #: The ladder tier a pinned BYOK route reports. A customer's provider model is
 #: a metered cloud model, which is what the ``cheap_cloud`` tier prices.
 _BYOK_TIER = "cheap_cloud"
@@ -343,6 +376,7 @@ __all__: list[str] = [
     "ByokKeyNotRegisteredError",
     "ByokPinNotPermittedError",
     "house_provider_slug",
+    "next_registered_byok_route",
     "resolve_pinned_byok_route",
     "substitute_any_registered_byok_route",
     "substitute_local_byok_route",
