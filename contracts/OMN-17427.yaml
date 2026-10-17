@@ -320,11 +320,16 @@ requirements:
     acceptance:
       - id: "AC61"
         statement: "AC61: with the 2026-10-17T1730Z run's shape (9 free slots on h101:1, h202:4, h201:4, 2 eligible candidates, 41 implementation-merged) selection plus the dispatch plan dispatch at least 9 lanes where the base dispatches 2; an open or blocked-in-cooldown verify lane, a second row of the same ticket and an out-of-scope origin are not taken -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -q fails at the merge base"
+  - id: "req-hook-push-rehearsal-caller"
+    statement: "A pull request that changes the pre-push set runs omnibase_core's hook push rehearsal before it merges."
+    acceptance:
+      - id: "AC62"
+        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a full 40-hex SHA, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
   - id: "req-lab-first-routing-rubric"
     statement: "The task-class contract carries a scoring rubric per class, and a check refuses a contract change that routes a class to a cloud model first unless the class has a recorded measurement below the bar."
     acceptance:
-      - id: "AC62"
-        statement: "AC62: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
+      - id: "AC63"
+        statement: "AC63: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -441,7 +446,10 @@ evidence_requirements:
     description: "AC57: the default repository lists name no change-control repository and a change-control checkout binds as a product repository."
     command: "uv run pytest tests/test_omn17427_default_repo_lists_off_change_control.py tests/test_omn20696_dod_verdict_contract_subject.py -q"
   - kind: "tests"
-    description: "AC62: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
+    description: "AC62: the hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin and its path-regex selects the hook paths."
+    command: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC63: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
 emergency_bypass:
   enabled: false
@@ -1039,14 +1047,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_dispatch_plan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("DOD_VERIFY", "dod_verify_item", "origin_kind")); print("lab-fill dod-verify deploy probe: PASS")'
-  - id: "dod-omn17427-ac62-lab-first-routing"
+  - id: "dod-omn17427-ac62-hook-push-rehearsal-caller"
+    description: "The hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin, and its path-regex selects the hook paths and no source path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC62"]
+  - id: "dod-omn17427-hook-push-rehearsal-deploy-probe"
+    description: "Deploy probe. GitHub serves the hook push rehearsal caller at the checked-out HEAD calling omnibase_core's reusable hook push rehearsal at a full SHA with a path-regex that matches .pre-commit-config.yaml. It fails at the merge base, where the caller does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
+  - id: "dod-omn17427-ac63-lab-first-routing"
     description: "The lab-first routing check passes the shipped contracts and refuses each cloud-first mutation of them."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC62"]
+    binds_ac: ["AC63"]
   - id: "dod-omn17427-lab-first-routing-deploy-probe"
     source: "manual"
     checks:

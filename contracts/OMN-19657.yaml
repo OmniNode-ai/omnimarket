@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19657"
+title: "The dead-letter prune schedule's interval-gate criterion selects the tests that exercise the gate"
+summary: >-
+  The daily runtime-tick schedule of node_dead_letter_prune_effect is on dev. Its second
+  criterion names the falsifier "pytest ... -k interval_gate", and on dev that selector
+  matched none of the 25 tests in the file, so the falsifier ran nothing. The two tests
+  that drive the elapsed-time gate are renamed so the selector picks them up. No handler,
+  contract or runtime behaviour changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dead-letter-prune-daily-schedule"
+    statement: "node_dead_letter_prune_effect runs on the daily runtime tick, gated in-process on elapsed time."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_dead_letter_prune_effect's contract declares a runtime-tick subscription and a daily interval in its config block, the same shape node_github_pr_poller_effect declares poll_interval_seconds -- falsifier: uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -k schedule"
+      - id: "AC2"
+        statement: "AC2: the handler runs the prune only after the declared interval has elapsed since the last run (in-process elapsed-time gate, not every tick) -- falsifier: uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -k interval_gate"
+evidence_requirements:
+  - kind: "tests"
+    description: "The schedule contract test, the two interval-gate tests and the rest of the dead-letter prune golden chain."
+    command: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19657-ac1-schedule-contract"
+    description: "AC1: the contract's runtime-tick subscription and the 86400 second schedule interval are asserted by the -k schedule selection (3 tests)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -k schedule"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19657-ac2-interval-gate"
+    description: "AC2: the -k interval_gate selection runs the first-tick-runs-second-tick-skipped test and the run-again-after-the-interval test (2 tests). On dev the same selector matched 0 tests and pytest exited 5."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q -k interval_gate"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19657-golden-chain"
+    description: "The whole dead-letter prune golden chain still passes (25 tests)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
