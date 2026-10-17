@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21126"
+title: "The git source and the corpus select computes: the invariants select compute"
+summary: >-
+  node_context_invariants_select_compute selects, from an invariant registry read at a pinned
+  commit, the active entries tagged with a profile's scopes, each as a context-source entry whose
+  text is the registry item's own lines, stamped path@sha#id with its line span and labelled a
+  paraphrase, and lists every superseded entry as excluded. It applies no token budget and
+  computes no pack hash.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-invariants-select-compute"
+    statement: "The invariants tier of the context service is an omnimarket compute node in canonical shape (contract, node, handler) with its topics declared in its contract."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: on a registry at a pinned sha, a request with scope delegation gets exactly the active entries tagged delegation in file order, each statement and enforcement line byte-equal to the file's inside an entry text that is a contiguous substring of the file at its stamped line span, labelled paraphrase, and every superseded entry listed as excluded with its successor -- falsifier: uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0 fails at the merge base, where the node package does not exist"
+      - id: "AC2"
+        statement: "AC2: the select compute applies no token budget and computes no hash over the selection: an oversize fixture of 300 entries returns all 300, and the result model has no budget or hash field -- falsifier: uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0 -k no_budget fails at the merge base"
+      - id: "AC3"
+        statement: "AC3: no file the change adds names a private repository -- falsifier: grep -rliE 'knowledge.base.internal|omninode.infra|omnibase.internal' over the node package and its tests lists a file"
+evidence_requirements:
+  - kind: "tests"
+    description: "Invariants select compute for OMN-21126."
+    command: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21126-ac1-invariants-select"
+    description: "The select tests pass at the head; at the merge base the node package does not exist and the file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21126-ac2-no-budget"
+    description: "The oversize fixture returns every entry and the result model carries no budget or hash field."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0 -k no_budget"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21126-ac3-no-private-names"
+    description: "No file under the node package or its tests names a private repository."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          ! grep -rqiE 'knowledge.base.internal|omninode.infra|omnibase.internal' src/omnimarket/nodes/node_context_invariants_select_compute tests/nodes/node_context_invariants_select_compute
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21126-deploy-probe"
+    description: "Hosted-runner probe reads the handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_invariants_select_compute/handlers/handler_context_invariants_select.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContextInvariantsSelect'
+    binds_ac: ["AC1"]

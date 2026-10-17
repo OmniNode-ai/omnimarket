@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_context_invariants_select_compute
+# Pure compute: the INVARIANTS tier of the context service (OMN-21126).
+---
+name: node_context_invariants_select_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Select from an invariant registry, read by a git source at a pinned commit,
+  the active entries tagged with at least one of the request's scopes, in file
+  order. Each admitted entry is a context-source entry whose text is the
+  registry item's own lines (statement and enforcement line byte-equal to the
+  file's), stamped path@sha#id with its line span and labelled a paraphrase.
+  Every superseded entry is listed as excluded with its successor. A malformed
+  registry or a scope outside the registry's vocabulary is a typed refusal. No
+  token budget and no pack hash: the builder owns both. No I/O, same input =
+  same output.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: context_invariants_select
+      handler:
+        name: HandlerContextInvariantsSelect
+        module: omnimarket.nodes.node_context_invariants_select_compute.handlers.handler_context_invariants_select
+      input_model: omnimarket.nodes.node_context_invariants_select_compute.models.model_context_invariants_select.ModelInvariantsSelectRequest
+      output_model: omnimarket.nodes.node_context_invariants_select_compute.models.model_context_invariants_select.ModelInvariantsSelectResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.context-invariants-select-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-invariants-select-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-invariants-select-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-invariants-select-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-invariants-select-completed.v1
+
+metadata:
+  ticket: OMN-21126
+  transport_type: kafka
