@@ -61,15 +61,22 @@ answers. So each start mints a random token (the request model's
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 import secrets
 import urllib.parse
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
+from omnimarket.handlers.handler_local_environment_judgement import (
+    load_local_alert_rules,
+)
 from omnimarket.models.model_projection_read import (
     ModelProjectionReadRequest,
     ModelProjectionReadResult,
@@ -78,10 +85,18 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     DashboardBundleError,
     ensure_bundle,
 )
+from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_native_environment_report import (
+    build_native_report,
+    heartbeat_seconds,
+    installed_versions,
+)
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,
     ModelLocalDashboardServeResult,
     is_loopback_host,
+)
+from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_store import (
+    apply_local_environment_status,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
@@ -96,6 +111,7 @@ from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import projection_read_binding_from_overlay_env
 from omnimarket.projection.sqlite_database import (
+    SqliteDatabaseAdapter,
     default_evidence_db_path,
     reconcile_existing_store,
 )
@@ -103,6 +119,8 @@ from omnimarket.projection.table_reader import (
     ProtocolProjectionRowSource,
     TableRowSource,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ProtocolProjectionReadNode(Protocol):
@@ -409,7 +427,8 @@ async def _serve_with_uvicorn(app: FastAPI, host: str, port: int) -> None:
 class HandlerLocalDashboardServe:
     """Serve the declared exposures on a loopback port until the process stops.
 
-    ``topic_map``, ``row_source``, ``serve`` and ``pages`` are for tests;
+    ``topic_map``, ``row_source``, ``serve``, ``pages``, ``heartbeat_seconds``,
+    ``clock`` and ``on_environment_report`` are for tests;
     ``onex dashboard`` constructs the handler with none, so the exposures come
     from the installed contracts, the store from
     :func:`resolve_local_row_source`, the pages from the pinned bundle, and the
@@ -424,12 +443,18 @@ class HandlerLocalDashboardServe:
         serve: Callable[[FastAPI, str, int], Awaitable[None]] | None = None,
         pages: Path | None = None,
         resolve_pages: Callable[[], Path] | None = None,
+        heartbeat_seconds: float | None = None,
+        clock: Callable[[], datetime] | None = None,
+        on_environment_report: Callable[[], None] | None = None,
     ) -> None:
         self._topic_map = topic_map
         self._row_source = row_source
         self._serve = serve or _serve_with_uvicorn
         self._pages = pages
         self._resolve_pages = resolve_pages or ensure_bundle
+        self._heartbeat_seconds = heartbeat_seconds
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._on_environment_report = on_environment_report
 
     async def handle(
         self, request: ModelLocalDashboardServeRequest
@@ -444,6 +469,14 @@ class HandlerLocalDashboardServe:
             if self._row_source is not None
             else resolve_local_row_source()
         )
+        # OMN-19988 mode 1: only the install's own local store gets the native
+        # report, never a store a caller handed in or a read binding names.
+        report_store = (
+            default_evidence_db_path()
+            if self._row_source is None
+            and projection_read_binding_from_overlay_env() is None
+            else None
+        )
         pages = self._pages if self._pages is not None else self._resolve_pages()
         app = create_dashboard_app(
             handler=HandlerProjectionRead(topic_map=topics, row_source=source),
@@ -455,12 +488,82 @@ class HandlerLocalDashboardServe:
         require_local_access(
             app, token=request.access_token.get_secret_value(), port=request.port
         )
-        await self._serve(app, request.host, request.port)
+        reporter = self._environment_reporter(request, report_store, len(topics))
+        heartbeat: asyncio.Task[None] | None = None
+        if reporter is not None:
+            reporter()
+            heartbeat = asyncio.create_task(self._heartbeat(reporter))
+        try:
+            await self._serve(app, request.host, request.port)
+        finally:
+            if heartbeat is not None:
+                heartbeat.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat
         return ModelLocalDashboardServeResult(
             url=f"http://{request.host}:{request.port}",
             exposure_count=len(topics),
             tenant_id=request.tenant_id,
         )
+
+    def _environment_reporter(
+        self,
+        request: ModelLocalDashboardServeRequest,
+        store: Path | None,
+        exposure_count: int,
+    ) -> Callable[[], None] | None:
+        """OMN-19988 mode 1: write the native report now and on each heartbeat.
+
+        A failed write is said on stderr and never stops the dashboard: the
+        environment panel is one panel, and serving the rest matters more.
+        """
+        # No store yet means no install has written here, so none is created
+        # for the report (OMN-20226 C13). `onex local init` creates it when it
+        # mints the tenant identity the report needs anyway.
+        if store is None or not store.exists():
+            return None
+        if request.tenant_id is None:
+            logger.warning(
+                "onex dashboard: the environment panel stays empty until this "
+                "install has a tenant identity; run `onex local init` once."
+            )
+            return None
+        tenant_id = request.tenant_id
+        rules = load_local_alert_rules()
+        versions = installed_versions()
+
+        def report() -> None:
+            try:
+                apply_local_environment_status(
+                    build_native_report(
+                        tenant_id=tenant_id,
+                        store_location=store,
+                        token_minted_at=request.token_minted_at,
+                        observed_at=self._clock(),
+                        exposure_count=exposure_count,
+                        versions=versions,
+                    ),
+                    SqliteDatabaseAdapter(store),
+                    rules,
+                )
+            except Exception as exc:  # the write must never stop serving
+                logger.warning(
+                    "onex dashboard: the environment report was not written: %s", exc
+                )
+            if self._on_environment_report is not None:
+                self._on_environment_report()
+
+        return report
+
+    async def _heartbeat(self, report: Callable[[], None]) -> None:
+        interval = (
+            self._heartbeat_seconds
+            if self._heartbeat_seconds is not None
+            else heartbeat_seconds()
+        )
+        while True:
+            await asyncio.sleep(interval)
+            report()
 
 
 __all__ = [

@@ -43,3 +43,10 @@ handler:
   module: omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve
   class: HandlerLocalDashboardServe
   input_model: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard.ModelLocalDashboardServeRequest
+
+config:
+  local_environment_report:
+    # OMN-19988 mode 1: the native report is written at start and again on
+    # this interval while the dashboard serves, so it is never older than the
+    # local alert compute's 60 s freshness deadline while the dashboard is up.
+    heartbeat_seconds: 15
