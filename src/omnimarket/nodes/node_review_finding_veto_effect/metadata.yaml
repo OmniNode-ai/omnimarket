@@ -1,6 +1,6 @@
 name: node_review_finding_veto_effect
 version: "1.0.0"
-description: "Drops blocking review findings that claim a Python, YAML or JSON file is invalid when the file parses at the head"
+description: "Drops blocking review findings that claim a Python, YAML or JSON file is invalid when the file parses at the head, and lets only introduced, evidenced, non-style findings block"
 omnibase_core_compat: ">=0.46.13,<0.47.0"
 entry_points:
   onex.nodes:
@@ -19,7 +19,7 @@ dependencies:
   - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "review", "hostile-reviewer", "veto"]
+tags: ["effect", "review", "hostile-reviewer", "veto", "policy"]
 pack: "review"
 display_name: "Review Finding Veto Effect"
 node_role: "effect"

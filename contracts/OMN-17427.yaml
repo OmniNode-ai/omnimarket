@@ -322,6 +322,15 @@ requirements:
         statement: "AC70: node_review_finding_veto_effect drops a blocking finding whose title claims a Python, YAML or JSON file is invalid when ast.parse, yaml.safe_load_all or json.loads accepts that file at the head, turns a verdict that rested only on such findings into passed, and logs the reason -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py -q -k 'pr4063 or yaml_and_json' fails at the merge base"
       - id: "AC71"
         statement: "AC71: a syntax claim stays blocking when the file does not parse or cannot be read at the head, names another file or language, or is about text parsed at run time, and findings of other classes and warnings are never examined; the hostile-reviewer workflow runs the veto from the base commit before it reads the verdict -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q fails at the merge base"
+  - id: "req-review-finding-evidence"
+    statement: "The hostile reviewer blocks only on an Important finding the pull request introduced, with a file and line inside its diff, that is not of a style or cleanup class; after three review rounds on one pull request it re-reviews only the new diff and does not repeat a finding it has posted."
+    acceptance:
+      - id: "AC72"
+        statement: "AC72: a blocking finding on a line the pull request did not add or change is classed Pre-existing and dropped, and a finding whose file the pull request does not change, or whose line is past the end of the file at the head, is refused for want of evidence; a finding on a changed line keeps blocking -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'pre_existing or refused or changed or past_the_end' fails at the merge base"
+      - id: "AC73"
+        statement: "AC73: a finding of a style or cleanup class is dropped as a Nit, while a security, logic, integration or contract category, a title that names a defect and a finding bound to a standing rule keep blocking -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'style_and_cleanup or real_defect or standing_rule' fails at the merge base"
+      - id: "AC74"
+        statement: "AC74: from the fourth review round of one pull request a finding already posted is not repeated and a finding on a line outside the diff since the previous round does not block, while rounds one to three and a rerun of one head repeat nothing; the gate comment carries the round state only from the Actions bot -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -440,6 +449,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC70 and AC71: the parse veto drops the omnimarket#4063 'invalid Python' block, keeps true and unrelated findings, and runs from the base commit before the verdict."
     command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q"
+  - kind: "tests"
+    description: "AC72 to AC74: only an introduced, evidenced, non-style Important finding blocks, and past round three only the new diff is re-reviewed without repeating a posted finding."
+    command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1044,3 +1056,34 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_veto.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerReviewFindingVeto", "ast.parse", "yaml.safe_load_all", "json.loads")); print("review finding veto deploy probe: PASS")'
+  - id: "dod-omn17427-ac72-review-finding-evidence"
+    description: "A blocking finding on a line the pull request left unchanged is dropped as Pre-existing, one with no file inside the diff or a line past the end of the file is refused, and the recorded real defect on a changed line keeps blocking."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'pre_existing or refused or changed or past_the_end'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC72"]
+  - id: "dod-omn17427-ac73-review-finding-nits-never-block"
+    description: "Style and cleanup findings are dropped as Nits; a defect category, a defect-naming title and a standing-rule finding keep blocking."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py -q -k 'style_and_cleanup or real_defect or standing_rule'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC73"]
+  - id: "dod-omn17427-ac74-review-rounds-re-review-new-diff"
+    description: "Past round three a posted finding is not repeated and only the diff since the previous round is re-reviewed; rounds one to three and a rerun of one head repeat nothing, and only the Actions bot can set the round."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC74"]
+  - id: "dod-omn17427-review-finding-policy-deploy-probe"
+    description: "Deploy probe. GitHub serves the finding policy handler at the checked-out HEAD with its diff-based classes. It fails at the merge base, which has no such handler, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_policy.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerReviewFindingPolicy", "PRE_EXISTING", "NO_EVIDENCE", "ROUND_LIMIT")); print("review finding policy deploy probe: PASS")'

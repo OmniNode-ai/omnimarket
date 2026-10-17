@@ -485,6 +485,33 @@ jobs:
           echo "::error::Retry-budget invariant check failed (OMN-15066) — see output above. Either the budget genuinely exceeds this job's timeout-minutes, or the check itself errored. Do not bypass; fix the underlying mismatch."
           exit 1
 
+      # OMN-17427: the gate remembers, in a marker in its own pull request comment,
+      # how many heads it has reviewed and which blocking findings it has shown. Only
+      # a comment the Actions bot wrote is read, so no one else can set the round.
+      - name: Read the previous review round
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const out = path.join(process.env.RUNNER_TEMP, 'hostile-review-prior-state.json');
+            fs.rmSync(out, { force: true });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            for (const c of comments.reverse()) {
+              if (c.user.type !== 'Bot' || c.user.login !== 'github-actions[bot]') continue;
+              const m = /<!-- hostile-review-state:([A-Za-z0-9+/=]+) -->/.exec(c.body || '');
+              if (!m) continue;
+              fs.writeFileSync(out, Buffer.from(m[1], 'base64').toString('utf8'));
+              core.info('previous review round read from comment ' + c.id);
+              break;
+            }
+
       - name: Run adversarial review
         # Skipped only when the preflight proved the endpoint unreachable; the
         # identical DEGRADED verdict is emitted by the preflight step instead.
@@ -566,17 +593,29 @@ jobs:
           # a base that does not carry the node yet skips the check. Any other
           # failure leaves the reviewer's verdict exactly as it stands.
           VETO_BASE="${RUNNER_TEMP:-/tmp}/review-finding-veto-base"
-          rm -rf "$VETO_BASE"
+          REVIEW_REPORT_FILE="${RUNNER_TEMP:-/tmp}/hostile-review-report.json"
+          REVIEW_PRIOR_STATE_FILE="${RUNNER_TEMP:-/tmp}/hostile-review-prior-state.json"
+          rm -rf "$VETO_BASE" "$REVIEW_REPORT_FILE"
           if ! git -C "$GITHUB_WORKSPACE" worktree add --detach "$VETO_BASE" "$BASE_SHA" >/dev/null; then
             echo "::warning::review finding veto skipped: the base commit $BASE_SHA could not be checked out"
           elif [ ! -d "$VETO_BASE/src/omnimarket/nodes/node_review_finding_veto_effect" ]; then
             echo "::notice::the base commit carries no node_review_finding_veto_effect yet; skipping the parse veto"
           else
+            # OMN-17427: only an Important finding the pull request introduced, with a
+            # file and line inside its diff, and not of a style or cleanup class, may
+            # block; from the fourth review of one pull request only the diff since the
+            # previous round is re-reviewed and a finding already posted is not repeated.
+            # The same base-commit node does it, when the base carries the policy.
+            POLICY_ARGS=()
+            if [ -f "$VETO_BASE/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_policy.py" ]; then
+              POLICY_ARGS=(--base-sha "$BASE_SHA" --prior-state-file "$REVIEW_PRIOR_STATE_FILE" --report-out "$REVIEW_REPORT_FILE")
+            fi
             VETO_EXIT=0
             PYTHONPATH="$VETO_BASE/src" uv run --no-sync python -m omnimarket.nodes.node_review_finding_veto_effect \
               --result-file "$REVIEW_JSON_FILE" \
               --head-sha "$HEAD_SHA" \
-              --repo-root "$GITHUB_WORKSPACE" || VETO_EXIT=$?
+              --repo-root "$GITHUB_WORKSPACE" \
+              ${POLICY_ARGS[@]+"${POLICY_ARGS[@]}"} || VETO_EXIT=$?
             if [ "$VETO_EXIT" -ne 0 ]; then
               echo "::warning::review finding veto did not run (exit $VETO_EXIT); the reviewer's verdict stands as produced"
             fi
@@ -717,6 +756,56 @@ jobs:
               note = '\n\n> **Action required**: Resolve CRITICAL/ERROR findings before merge.';
             }
 
+            // OMN-17427: the policy report left by the finding veto step, if it ran.
+            const fs = require('fs');
+            const path = require('path');
+            let report = null;
+            try {
+              report = JSON.parse(fs.readFileSync(
+                path.join(process.env.RUNNER_TEMP, 'hostile-review-report.json'), 'utf8'));
+            } catch (e) {
+              core.info('no review policy report: ' + e.message);
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.user.login === 'github-actions[bot]' &&
+              c.body.includes('Hostile Reviewer')
+            );
+
+            // A run that produced no report keeps the state the comment already carries.
+            let marker = '';
+            if (report && report.state) {
+              marker = '<!-- hostile-review-state:' +
+                Buffer.from(JSON.stringify(report.state)).toString('base64') + ' -->';
+            } else if (existing) {
+              const m = /<!-- hostile-review-state:[A-Za-z0-9+/=]+ -->/.exec(existing.body);
+              if (m) marker = m[0];
+            }
+
+            // Finding text is model output: no mention, tag or link survives into the comment.
+            const esc = t => String(t).replace(/@/g, '@\u200b').replace(/</g, '&lt;').replace(/\]\(/g, '] (');
+            const detail = [];
+            if (report && report.state && report.state.round > 3) {
+              detail.push('', `> **Round ${report.state.round}**: after three review rounds this ` +
+                'gate re-reviews only the diff since the previous round and does not repeat a ' +
+                'finding it has posted. If the same concerns keep coming back, reconsider the approach.');
+            }
+            if (report && report.kept && report.kept.length) {
+              detail.push('', '**Findings that block** (Important, introduced by this pull request):',
+                ...report.kept.map(k => `- ${esc(k)}`));
+            }
+            if (report && report.dropped && report.dropped.length) {
+              detail.push('', '<details><summary>Findings that do not block (' + report.dropped.length +
+                ')</summary>', '', ...report.dropped.map(d => `- \`${d.disposition}\`: ${esc(d.reason)}`),
+                '', '</details>');
+            }
+
             const body = [
               `## ${icon} Hostile Reviewer — ${label}`,
               '',
@@ -724,6 +813,7 @@ jobs:
               `**Total findings**: ${total}  `,
               `**Models succeeded**: ${models || 'none'}`,
               note,
+              ...detail,
               '',
               '---',
               '',
@@ -736,17 +826,8 @@ jobs:
               '| `degraded` | Fewer than 2 models succeeded (infra unavailable/timeout) | **Yes** (OMN-15110) |',
               '',
               '_Powered by [omniintelligence.review_pairing.cli_review](https://github.com/OmniNode-ai/omniintelligence) — node-based adversarial review via HandlerLlmCliSubprocess (OMN-8524)_',
+              marker,
             ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const existing = comments.find(c =>
-              c.body.includes('Hostile Reviewer')
-            );
 
             if (existing) {
               await github.rest.issues.updateComment({
