@@ -39,7 +39,16 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py tests/test_golden_chain_lab_job_check_schedule_compute.py tests/test_golden_chain_audit_trail_compact_schedule.py tests/test_audit_trail_compact_schedule_runtime_boot.py tests/unit/nodes/test_runtime_tick_schedule_fires.py tests/unit/nodes/node_lab_job_check/test_lab_job_check_schedule.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py tests/unit/nodes/node_lab_job_check/test_lab_job_check_schedule.py -q -p no:randomly --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_lab_job_check_schedule_compute.py -q -p no:randomly --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_audit_trail_compact_schedule.py tests/test_audit_trail_compact_schedule_runtime_boot.py -q -p no:randomly --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly --no-cov -k audit_trail"
         cwd: "."
     binds_ac: ["AC2"]
   - id: "dod-omn20234-deploy-probe"
