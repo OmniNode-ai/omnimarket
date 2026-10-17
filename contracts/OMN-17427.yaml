@@ -238,6 +238,33 @@ requirements:
         statement: "AC42: the named-test runner preserves the source workspace, scrubs parent secrets, bounds resources and output, kills timed-out process groups, and refuses writes through escaping symlinks -- falsifier: the focused runner module fails at the merge base."
       - id: "AC43"
         statement: "AC43: the deployed orchestrator runs the named tests a bus request carries in the sandbox runner before its gate intent leaves, the gate reducer judges the answer on that run, a request naming none stays UNTESTED, and named tests no runner ran are refused as INSUFFICIENT -- falsifier: the four deployed-chain cases fail at the merge base."
+  - id: req-verified-delete
+    statement: A local file is deleted only after Drive reports the size and md5 of the staged part that holds it.
+    acceptance:
+    - id: AC46
+      statement: 'AC46: a part Drive reports with a different md5, a missing object or a failed upload deletes nothing and stops the run, and a file changed after staging is kept -- falsifier: the focused pytest finds a deleted source file after a corrupt md5, a missing object, a failed upload or a post-staging change'
+  - id: req-safety
+    statement: The node refuses the landing controller host and never archives protected or fresh files.
+    acceptance:
+    - id: AC47
+      statement: 'AC47: a host whose overlay roles include landing_controller, or that the overlay does not list, is refused before any file is read, and the live ledger, memory files, symlinks and files inside the seven-day window are never archived -- falsifier: the focused pytest finds a file read or deleted on the controller host, or a protected or fresh file archived'
+  - id: req-throttle
+    statement: Staging and upload run under a bounded CPU, IO and bandwidth budget through a CLI uploader, not Drive for desktop.
+    acceptance:
+    - id: AC48
+      statement: 'AC48: every staged command carries nice and an IO class, the upload carries a bytes-per-second cap and one stream, the uploader is rclone and no argument names Drive for desktop''s folder, and a missing uploader remote is a typed credential refusal -- falsifier: the focused pytest finds an un-niced command, an uncapped upload or a Drive for desktop path'
+  - id: req-nightly
+    statement: The archive is a nightly Eastern off-peak host tick and an onex verb.
+    acceptance:
+    - id: AC49
+      statement: 'AC49: the contract subscribes to the runtime tick with a 01:00 to 05:00 America/New_York window, a tick runs once per interval inside it, and onex lab-archive run is registered and exits 2 on a refused host -- falsifier: the focused pytest finds a run outside the window, a second run inside the interval, or an unregistered verb'
+  - id: "req-lab-story-log"
+    statement: "The work ledger's week becomes a sanitized story log by a node, with private names replaced by roles from the public-repo hygiene vocabulary, and the log is never written when a private name survives."
+    acceptance:
+      - id: "AC52"
+        statement: "AC52: node_lab_story_log_effect writes the ISO week's rulings, incidents and merged pull requests grouped by theme with their timestamps and figures, leaves out rows outside the week and the operator's quoted words, and replaces private repository names, addresses, host names, lane ids and person names by roles -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'no_private_name_survives or only_rows_inside or operators_own_words'"
+      - id: "AC53"
+        statement: "AC53: a sanitizer that lets a private name through stops the write, and a vocabulary with no private repository names is refused -- falsifier: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'surviving_private_name or no_private_repos or missing_vocabulary'"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -338,6 +365,15 @@ evidence_requirements:
   - kind: "tests"
     description: "The deployed orchestrator runs a bus request's named tests before the gate and the gate judges the run."
     command: "uv run pytest tests/unit/delegation/test_deployed_named_tests_omn17427.py -q"
+  - kind: tests
+    description: 'AC46 and AC47: archive, verification, refusal and protection tests pass.'
+    command: uv run pytest tests/nodes/node_lab_history_archive_effect/test_golden_chain_lab_history_archive_effect.py -q -p no:randomly
+  - kind: tests
+    description: 'AC48 and AC49: uploader, overlay, contract and verb tests pass.'
+    command: uv run pytest tests/nodes/node_lab_history_archive_effect/test_adapters_overlay_cli.py -q -p no:randomly
+  - kind: "tests"
+    description: "AC52 and AC53: the weekly lab story log over fixture ledger rows, with a planted private name that must not survive and a sanitizer that lets one through."
+    command: "uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -713,3 +749,46 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_with_named_test_run", "asyncio.to_thread", "named_tests_requested")); print("deployed named-tests deploy probe: PASS")'
+  - id: dod-omn17427-ac46-ac47-archive
+    description: 'AC46 and AC47: verified-then-delete and host refusal pass.'
+    source: manual
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/nodes/node_lab_history_archive_effect/test_golden_chain_lab_history_archive_effect.py -q -p no:randomly
+      cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+    - AC46
+    - AC47
+  - id: dod-omn17427-ac48-ac49-throttle-tick
+    description: 'AC48 and AC49: throttled uploader, nightly tick and verb pass.'
+    source: manual
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/nodes/node_lab_history_archive_effect/test_adapters_overlay_cli.py -q -p no:randomly
+      cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+    - AC48
+    - AC49
+  - id: "dod-omn17427-ac52-lab-story-log"
+    description: "The weekly story log keeps the week's rows, themes and figures, and no planted private name or quoted operator word survives."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'no_private_name_survives or only_rows_inside or operators_own_words or incidents_group_by_theme'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC52"]
+  - id: "dod-omn17427-ac53-lab-story-log-refusals"
+    description: "A surviving private name stops the write, and a vocabulary with no private repository names or a missing vocabulary is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py -q -k 'surviving_private_name or no_private_repos or missing_vocabulary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC53"]
+  - id: "dod-omn17427-lab-story-log-deploy-probe"
+    description: "Deploy probe. GitHub serves the story log handler at the checked-out HEAD with its leak check; it fails at the merge base, which has no such node, and needs no lab network on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_story_log_effect/handlers/handler_lab_story_log.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast, sys; source = sys.stdin.read(); tree = ast.parse(source); assert any(isinstance(n, ast.ClassDef) and n.name == "HandlerLabStoryLog" for n in tree.body); assert "LabStoryLogLeakError" in source and "clean.leaks" in source; print("lab story log deploy probe: PASS")'

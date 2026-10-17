@@ -57,6 +57,7 @@ from omnimarket.nodes.node_local_alert_compute.models import ModelLocalAlertRequ
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_store import (
     LOCAL_ENVIRONMENT_TABLE,
     apply_local_environment_status,
+    plan_local_environment_write,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
@@ -403,6 +404,69 @@ def test_last_change_moves_only_when_the_state_changes(
         _by_service(db.db_path)["postgres"]["last_change"]
         == (T0 + timedelta(seconds=30)).isoformat()
     )
+
+
+def test_a_rewritten_row_takes_a_cursor_after_every_other_row(
+    db: SqliteDatabaseAdapter,
+) -> None:
+    # The exposure walks rows by cursor; a row that changed in place must sort
+    # after the rows read before it, or a reader resuming from its last cursor
+    # never sees the change. Both the reported row's rewrite and a sibling's
+    # re-judgement move it.
+    apply_local_environment_status(
+        _report("postgres", EnumLocalServiceState.RUNNING, T0), db, _rules()
+    )
+    apply_local_environment_status(
+        _report("valkey", EnumLocalServiceState.RUNNING, T0), db, _rules()
+    )
+    first = {s: r["projection_cursor"] for s, r in _by_service(db.db_path).items()}
+    assert first["postgres"] < first["valkey"]
+
+    apply_local_environment_status(
+        _report("postgres", EnumLocalServiceState.DOWN, T0 + timedelta(seconds=15)),
+        db,
+        _rules(),
+    )
+    second = {s: r["projection_cursor"] for s, r in _by_service(db.db_path).items()}
+    assert second["postgres"] > first["valkey"]
+    assert second["valkey"] == first["valkey"]
+
+    # 75 s later postgres reports again: valkey is re-judged STALE in place.
+    apply_local_environment_status(
+        _report("postgres", EnumLocalServiceState.DOWN, T0 + timedelta(seconds=75)),
+        db,
+        _rules(),
+    )
+    third = {s: r["projection_cursor"] for s, r in _by_service(db.db_path).items()}
+    assert third["valkey"] > second["postgres"]
+
+
+def test_rows_of_another_tenant_or_mode_are_never_judged_or_rewritten() -> None:
+    stored = [
+        {
+            "tenant_id": "another-tenant",
+            "mode": "compose",
+            "service": "valkey",
+            "observed_state": "running",
+            "reason": "valkey running",
+            "last_seen": T0.isoformat(),
+            "last_change": T0.isoformat(),
+            "verdict": "running",
+            "verdict_reason": "valkey running",
+            "alert_code": None,
+            "alert_severity": None,
+            "alert_since": None,
+            "versions": "{}",
+            "report_id": "r",
+        }
+    ]
+    writes = plan_local_environment_write(
+        _report("postgres", EnumLocalServiceState.RUNNING, T0 + timedelta(seconds=90)),
+        stored,
+        _rules(),
+        T0,
+    )
+    assert [(w["tenant_id"], w["service"]) for w in writes] == [(TENANT, "postgres")]
 
 
 def test_a_native_install_has_one_native_row_and_no_compose_rows(

@@ -115,6 +115,14 @@ def plan_local_environment_write(
     sibling whose verdict or alert the report's time changes, in full with only
     its verdict columns and updated_at replaced. Times are ISO strings.
     """
+    # Only the report's own tenant and mode are judged: a caller's wider read
+    # never leaks another tenant's rows into this write.
+    stored_rows = [
+        row
+        for row in stored_rows
+        if str(row["tenant_id"]) == report.tenant_id
+        and str(row["mode"]) == report.mode.value
+    ]
     previous = next(
         (row for row in stored_rows if str(row["service"]) == report.service), None
     )

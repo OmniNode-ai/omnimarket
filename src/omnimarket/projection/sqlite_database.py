@@ -656,6 +656,10 @@ _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view_unpriced.sql",
 )
+# OMN-19988: the local environment table, its cursor sequence and triggers. A
+# store step, not a statement on every connect: the sequence seed is a write, so
+# a read-only store, or a reader on a busy one, must not run it.
+_LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -726,11 +730,6 @@ class SqliteDatabaseAdapter:
         conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_DDL)
         conn.execute(_RUN_TRACE_DDL)
-        conn.execute(_LOCAL_ENVIRONMENT_DDL)
-        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL)
-        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
-        for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
-            conn.execute(trigger)
         conn.execute(_METERING_SUMMARY_DDL)
         conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)
@@ -915,6 +914,14 @@ class SqliteDatabaseAdapter:
                     "listed each tier's models in the delegation model-routing view",
                 )
             )
+        if not cls._store_step_recorded(conn, _LOCAL_ENVIRONMENT_STEP):
+            pending.append(
+                (
+                    _LOCAL_ENVIRONMENT_STEP,
+                    cls._create_local_environment,
+                    "created the local environment table and its cursor",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -1068,6 +1075,15 @@ class SqliteDatabaseAdapter:
             ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
             conn.execute(f"DROP VIEW IF EXISTS {view}")
             conn.execute(ddl)
+
+    @staticmethod
+    def _create_local_environment(conn: sqlite3.Connection) -> None:
+        """OMN-19988: the local environment table, its cursor sequence and triggers."""
+        conn.execute(_LOCAL_ENVIRONMENT_DDL)
+        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL)
+        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
+        for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
+            conn.execute(trigger)
 
     @staticmethod
     def _replace_delegation_model_routing_view(conn: sqlite3.Connection) -> None:

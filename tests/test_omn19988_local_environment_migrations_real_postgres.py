@@ -23,9 +23,10 @@ Failure modes each test is written against:
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
@@ -33,6 +34,17 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.enums.enum_local_environment_mode import EnumLocalEnvironmentMode
+from omnimarket.enums.enum_local_service_state import EnumLocalServiceState
+from omnimarket.handlers.handler_local_environment_judgement import (
+    load_local_alert_rules,
+)
+from omnimarket.models.model_local_environment_status import (
+    ModelLocalEnvironmentStatus,
+)
+from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_store import (
+    plan_local_environment_write,
+)
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +61,39 @@ _SCHEMA = "omn19988_local_environment_migrations_test"
 _TENANT_A = "6c24401e-0000-4000-8000-00000000000a"
 _TENANT_B = "11111111-2222-4333-8444-555555555555"
 _AT = datetime(2026, 10, 17, 4, tzinfo=UTC)
+
+
+# The plan's rows carry times as ISO strings and versions as a dict; the
+# Postgres columns are TIMESTAMPTZ and JSONB.
+_TIME_COLUMNS = frozenset(
+    {"last_seen", "last_change", "alert_since", "token_minted_at", "updated_at"}
+)
+
+
+async def _store_planned(
+    conn: asyncpg.Connection, schema: str, row: dict[str, Any]
+) -> None:
+    columns = list(row)
+    values = []
+    for name in columns:
+        if name == "versions":
+            values.append(f"${len(values) + 1}::text::jsonb")
+        elif name in _TIME_COLUMNS:
+            values.append(f"${len(values) + 1}::text::timestamptz")
+        else:
+            values.append(f"${len(values) + 1}")
+    updates = ", ".join(
+        f"{c} = EXCLUDED.{c}"
+        for c in columns
+        if c not in {"tenant_id", "mode", "service"}
+    )
+    params = [json.dumps(row[c]) if c == "versions" else row[c] for c in columns]
+    await conn.execute(
+        f"INSERT INTO {schema}.local_environment ({', '.join(columns)}) "
+        f"VALUES ({', '.join(values)}) "
+        f"ON CONFLICT (tenant_id, mode, service) DO UPDATE SET {updates}",
+        *params,
+    )
 
 
 def _dsn_or_skip() -> str:
@@ -368,4 +413,92 @@ async def test_real_postgres_a_session_with_no_tenant_set_reads_and_writes_nothi
         await conn.execute("RESET ROLE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await _drop_role(conn, role)
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_every_row_the_plan_writes_satisfies_the_table() -> None:
+    """Rows a SQLite store accepts must also satisfy the Postgres table's types and checks.
+
+    SQLite takes any value in any column; Postgres refuses a time that is not a
+    timestamp, versions that are not JSON, and an alert without its severity or
+    start. Each row shape the plan produces -- the reported row, a re-judged
+    sibling, a STALE row and a native row with its token mint time -- is
+    written through the real table.
+    """
+    conn = await _connect_or_skip()
+    schema = f"{_SCHEMA}_planned"
+    rules = load_local_alert_rules()
+
+    def report(
+        service: str,
+        state: EnumLocalServiceState,
+        seconds: int,
+        mode: EnumLocalEnvironmentMode = EnumLocalEnvironmentMode.COMPOSE,
+        **extra: Any,
+    ) -> ModelLocalEnvironmentStatus:
+        return ModelLocalEnvironmentStatus(
+            tenant_id=_TENANT_A,
+            mode=mode,
+            service=service,
+            observed_state=state,
+            reason=f"{service} {state.value}",
+            observed_at=_AT + timedelta(seconds=seconds),
+            versions={"omnimarket": "0.4.317"},
+            **extra,
+        )
+
+    try:
+        await _fresh(conn, schema)
+        stored: list[dict[str, Any]] = []
+        written: list[dict[str, Any]] = []
+        for item in (
+            report("postgres", EnumLocalServiceState.RUNNING, 0),
+            report("valkey", EnumLocalServiceState.UNHEALTHY, 0),
+            report("redpanda", EnumLocalServiceState.DOWN, 10),
+            report("postgres", EnumLocalServiceState.RUNNING, 90),
+            report(
+                "local-runtime",
+                EnumLocalServiceState.RUNNING,
+                0,
+                mode=EnumLocalEnvironmentMode.NATIVE,
+                store_kind="sqlite",
+                store_location="~/.omninode/delegation/delegation.sqlite",
+                access_mode="loopback-token",
+                token_minted_at=_AT,
+                rotate_hint="restart onex dashboard",
+            ),
+        ):
+            same_mode = [r for r in stored if r["mode"] == item.mode.value]
+            rows = plan_local_environment_write(item, same_mode, rules, _AT)
+            for row in rows:
+                await _store_planned(conn, schema, row)
+                stored = [
+                    r
+                    for r in stored
+                    if (r["mode"], r["service"]) != (row["mode"], row["service"])
+                ]
+                stored.append(row)
+            written.extend(rows)
+        verdicts = {
+            (r["mode"], r["service"]): (r["verdict"], r["alert_code"])
+            for r in await conn.fetch(
+                f"SELECT mode, service, verdict, alert_code FROM {schema}.local_environment"
+            )
+        }
+        assert verdicts == {
+            ("compose", "postgres"): ("running", None),
+            ("compose", "valkey"): ("stale", "HEALTH_UNKNOWN"),
+            ("compose", "redpanda"): ("stale", "HEALTH_UNKNOWN"),
+            ("native", "local-runtime"): ("running", None),
+        }
+        # Positive control: the rows were not all one shape.
+        assert {w["verdict"] for w in written} >= {
+            "running",
+            "unhealthy",
+            "down",
+            "stale",
+        }
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.close()

@@ -479,6 +479,7 @@ node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liv
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
+node_lab_story_log_effect = "omnimarket.nodes.node_lab_story_log_effect"
 node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
 node_platform_readiness = "omnimarket.nodes.node_platform_readiness"
 node_platform_diagnostics = "omnimarket.nodes.node_platform_diagnostics"
@@ -698,6 +699,7 @@ node_pr_lifecycle_merge_effect = "omnimarket.nodes.node_pr_lifecycle_merge_effec
 node_pr_lifecycle_worktree_prune_effect = "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect"
 node_verification_sweep_orchestrator = "omnimarket.nodes.node_verification_sweep_orchestrator"
 node_retention_cleanup = "omnimarket.nodes.node_retention_cleanup"
+node_lab_history_archive_effect = "omnimarket.nodes.node_lab_history_archive_effect"
 node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scanner"
 node_linear_triage = "omnimarket.nodes.node_linear_triage"
 node_autopilot_orchestrator = "omnimarket.nodes.node_autopilot_orchestrator"
@@ -979,6 +981,13 @@ seed = "omnimarket.cli.cli_seed:seed_command"
 # the bus; the rest publish the node's typed command and wait for its terminal
 # event. Discovered over installed distributions like the groups above.
 scm = "omnimarket.handlers.scm.scm_cli:scm_group"
+# OMN-17427: `onex lab-archive` -- archive lab history older than seven days to Drive
+# under a CPU, IO and bandwidth budget, then free the local copy. A shim over
+# node_lab_history_archive_effect, discovered over installed distributions like the groups above.
+lab-archive = "omnimarket.nodes.node_lab_history_archive_effect.cli:lab_archive_group"
+# `onex lab-story-log` -- write one ISO week of the work ledger as a sanitized story log for the
+# lab-journey article series; run weekly by a host tick. Discovered over installed distributions.
+lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
