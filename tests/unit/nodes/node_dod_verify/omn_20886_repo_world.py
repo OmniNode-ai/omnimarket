@@ -223,7 +223,9 @@ class World:
         state_path.write_text(json.dumps(self.state))
         monkeypatch.setenv("OMNI_HOME", str(self.registry))
         monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(state_path))
-        monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+        monkeypatch.setenv(
+            "ONEX_CC_REPO_PATH", str(self.registry / "onex_change_control")
+        )
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
         monkeypatch.setattr(hd_mod, "_default_local_source", DodEvidenceLocalSource)
 
