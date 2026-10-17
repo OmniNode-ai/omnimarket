@@ -74,3 +74,13 @@ dod_evidence:
         check_value: 'env -u PYTHONPATH uv run pytest tests/unit/delegation/test_output_only_raw_response_carrier.py -k field_set -q -p no:cacheprovider'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn19385-ticket-ac5-live-lab-raw-carrier"
+    description: "Ticket AC5 live probe: a bounded JSON classifier delegation through the deployed dev lane returns a terminal whose raw carrier hashes to its sha256 and is judged by the output-only bar on the raw_provider_bytes basis. Run only at the local Done gate, where the deployed lane and the lab-served model are reachable; the hosted verifier does not evaluate it. Limit: one trial per contract, so it shows the carrier reaches the caller, not a pass rate."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |
+          env -u PYTHONPATH uv run python scripts/ci/run_delegation_response_contract_conformance.py --trials 1 | jq -e '[.contracts[] | select(.contract_id == "l11-json-classifier") | .trials[]] | length > 0 and all(.raw_response_carrier.sha256_verified == true and .output_only.evidence_basis == "raw_provider_bytes" and .output_only.accepted == true)'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
