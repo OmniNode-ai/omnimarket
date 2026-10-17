@@ -35,7 +35,9 @@ description: >
   the dispatch window, and appends the run's STATUS row to the rolling ledger over
   the bus append. Decides nothing about which work runs where, except in
   run_lab_fill_tick, which fills a fire's free slots from the approved-work list in
-  priority order with no model in the loop.
+  priority order with no model in the loop, names every lane it did not place, parks a
+  ticket the brief check refused twice, and dispatches one deduplicated diagnose lane
+  when free slots go unplaced for two ticks running.
 input_model:
   name: "ModelLabFillProbeRequest"
   module: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect"
@@ -114,7 +116,7 @@ published_events:
     description: "The outcome of one lab-fill effect operation, answered whatever happened."
   - event_type: ModelLabFillTickResult
     topic: onex.evt.omnimarket.lab-fill-effect-completed.v1
-    description: "One lab-fill tick: the lanes dispatched with host and receipt, each skipped row with its reason, the rows never tried and why the tick stopped."
+    description: "One lab-fill tick: the lanes dispatched with host and receipt, each skipped row with its reason, the rows never tried and why the tick stopped, every lane made and not placed with its reason (refusals, refusals_cell), the tickets parked after a second brief-check refusal, and the zero-placement alarm (idle streak and the diagnose lane's dispatch) when free slots went unplaced."
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-fill-effect-completed.v1
   - onex.evt.omnimarket.lab-fill-effect-failed.v1
