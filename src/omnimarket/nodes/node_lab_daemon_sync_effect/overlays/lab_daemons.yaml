@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The lab daemons node_lab_daemon_sync_effect converges on each host tick (OMN-19998). The node
+# holds no daemon, path or host: they live here, and a host passes another overlay with --overlay.
+# `$VAR` and `${VAR}` expand from the tick's environment when the overlay loads; a daemon naming
+# an unset variable is skipped on that host with a diagnostic, never run half-expanded.
+# ONEX_PLUGIN_SOURCE_CLONE is the canonical clone carrying the plugin and controller source, and
+# ONEX_INSTALLERS_HOME the canonical clone carrying the launchd installers; the host tick sets both.
+# `present_when` is a path that exists only on a host where the daemon is installed, so one
+# overlay serves every lab host without naming them.
+schema_version: 1
+fix_lane_repeat_hours: 6
+# One detached fix lane per refusal, through the remote-lane runner.
+fix_lane:
+  - python3
+  - ${OMNI_PLUGIN_ROOT}/skills/remote-lane/scripts/onex_remote_lane.py
+  - run
+  - --detach
+  - --brief
+  - "{brief}"
+  - --lane
+  - "{lane}"
+  - --model
+  - sonnet
+  - --ticket
+  - OMN-19998
+  - --priority-class
+  - process-fix
+daemons:
+  - name: landing-controller
+    description: >
+      The launchd landing controller. Installed revision is the plugin source clone's main commit
+      its last verified refresh recorded; its installer is the controller's own refresh-install, which
+      takes install.lock and tick.lock, runs the prove-install gate on the lab, and calls
+      install.sh --refresh-install. A branch install's branch_until (install.sh --branch-hours)
+      holds it until expiry and reverts to main after.
+    present_when: ${HOME}/Library/LaunchAgents/ai.omninode.landing-controller.plist
+    installed:
+      kind: json_file
+      path: ${HOME}/.local/state/omni/landing/installed-revision.json
+      key: source_commit
+    source:
+      kind: command
+      argv: [git, -C, "${ONEX_PLUGIN_SOURCE_CLONE}", rev-parse, origin/main]
+    installer:
+      - env
+      - -u
+      - PYTHONPATH
+      - /opt/homebrew/bin/python3.13
+      - ${HOME}/.omninode/landing-controller/skills/merge-drain/scripts/landing_g_act.py
+      - refresh-install
+      - --config
+      - ${HOME}/.omninode/landing-controller/landing_install.json
+      - --state-dir
+      - ${HOME}/.local/state/omni/landing
+      - --installed-script
+      - ${HOME}/.omninode/landing-controller/skills/merge-drain/scripts/landing_controller.py
+    installer_timeout_s: 3600
+    locks:
+      - ${HOME}/.local/state/omni/landing/install.lock
+      - ${HOME}/.local/state/omni/landing/tick.lock
+    branch_record:
+      path: ${HOME}/.omninode/landing-controller/landing_install.json
+  - name: pr-watcher
+    description: >
+      The launchd PR watcher node host. Its installer is idempotent (an identical plist stays
+      loaded). It records no installed revision yet, so until it does every tick refuses with that
+      blocker and dispatches one fix lane to add the record.
+    present_when: ${HOME}/Library/LaunchAgents/ai.omninode.pr-watcher.plist
+    installed:
+      kind: json_file
+      path: ${HOME}/.omninode/pr-watcher/installed-revision.json
+      key: source_commit
+    source:
+      kind: command
+      argv: [git, -C, "${ONEX_INSTALLERS_HOME}", rev-parse, origin/main]
+    installer: [bash, "${ONEX_INSTALLERS_HOME}/launchd/pr-watcher/install.sh"]
+  - name: omni-plugin
+    description: >
+      The omni plugin installed for Claude Code on this host, compared by version with
+      plugins/omni/.claude-plugin/plugin.json on the plugin source clone's main.
+    present_when: ${HOME}/.claude/plugins/installed_plugins.json
+    installed:
+      kind: json_file
+      path: ${HOME}/.claude/plugins/installed_plugins.json
+      key: plugins.omni@omninode-internal.0.version
+    source:
+      kind: command
+      argv:
+        - git
+        - -C
+        - ${ONEX_PLUGIN_SOURCE_CLONE}
+        - show
+        - origin/main:plugins/omni/.claude-plugin/plugin.json
+      key: version
+    installer: [claude, plugin, update, omni@omninode-internal]
+    installer_timeout_s: 600
+  - name: dispatch-venv
+    description: >
+      The dispatch venv's omnimarket, compared by the commit its direct_url.json records with
+      omnimarket dev. Its installer is the host reconcile node in repair mode, which owns the venv.
+    source_branch: dev
+    present_when: ${ONEX_DISPATCH_VENV}/bin/python
+    installed:
+      kind: command
+      argv:
+        - ${ONEX_DISPATCH_VENV}/bin/python
+        - -c
+        - "import json, importlib.metadata as m; print(json.loads(m.distribution('omnimarket').read_text('direct_url.json'))['vcs_info']['commit_id'])"
+    source:
+      kind: command
+      argv: [git, -C, "${OMNI_HOME}/omnimarket", rev-parse, origin/dev]
+    installer:
+      - ${ONEX_DISPATCH_VENV}/bin/python
+      - -m
+      - omnimarket.nodes.node_host_reconcile_effect
+      - --omni-home
+      - ${OMNI_HOME}

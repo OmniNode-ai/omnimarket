@@ -527,15 +527,12 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "No Faked Boundary Gate",
     # OMN-20173: enforce the standalone endpoint validator before merge.
     "No Coding Plan Endpoint",
-    # OMN-20073 S6: branch protection no longer requires these two, but they
-    # test omnimarket's own OCC companion emitter and its schema compatibility
-    # against a pinned onex_change_control checkout. Neither reads a PR's
-    # companion, so CI Summary keeps enforcing them until the emitter itself is
-    # retired (plan S7 to S9). OMN-20885: the schema-compatibility job now
+    "Omni Standards Gate",
+    # OMN-20073 S6: branch protection no longer requires this one, but it tests
+    # the ticket-contract schema compatibility and reads no PR's companion, so
+    # CI Summary keeps enforcing it. OMN-20885: the schema-compatibility job now
     # reads the ticket-contract schema from omnibase_core, its owner, and checks
     # out no onex_change_control; it keeps its context name.
-    "OCC Emitter Golden Gate",
-    "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
     "Precommit Fail-Loud Gate",
@@ -1722,12 +1719,6 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("pull_request",),
             (),
             ("non-dev-base-guard",),
-        ),
-        (
-            "occ-emitter-golden-gate.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("OCC Emitter Golden Gate",),
         ),
         (
             "omni-standards-compliance.yml",

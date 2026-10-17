@@ -1,0 +1,79 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21093
+title: "omnimarket re-exports the core-resident Claude Code binding install models"
+summary: >-
+  The binding install wire family moved to omnibase_core (omnibase_core#2019,
+  released in 0.47.46); every former omnimarket import path now re-exports the
+  identical core class instead of forking it. The omnimarket.models.
+  claude_code_binding modules for ModelClientBinding, ModelClientArgument and
+  the three enums, and the install node's request/result model modules, become
+  thin re-exports; identity tests pin that each re-export IS the core class.
+  This is the omnimarket half of the relocation that lets omnibase_infra's
+  skill mapping name ModelBindingInstallResult without a cross-repo node
+  reach-in (OMN-17427/OMN-20703).
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21093-reexport-identity"
+    statement: "Every former omnimarket binding-model import path yields the identical core class."
+    acceptance:
+      - id: "AC1"
+        statement: 'AC1: the package''s enums and models, and the install node''s request and
+          result, imported from their historical omnimarket paths, are the very classes
+          omnibase_core.models.claude_code_binding and omnibase_core.enums export, and a
+          request still validates the OMN-18531 shapes (plugin default, REPLACING kind
+          default) -- falsifier: identity tests fail at the merge base with ImportError
+          (the core package arrives in omnibase-core 0.47.46, above the base''s floor).'
+evidence_requirements:
+  - kind: "tests"
+    description: "Identity pins between the omnimarket re-exports and the core classes, plus shape checks."
+    command: "uv run pytest tests/unit/models/test_claude_code_binding_core_reexport_omn21093.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21093-ac1-reexport-identity"
+    description: >-
+      Each historical import path resolves to the identical core class and the node's
+      request keeps the OMN-18531 shapes. Fails at the merge base (ImportError: the core
+      family arrives with omnibase-core 0.47.46).
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/test_claude_code_binding_core_reexport_omn21093.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21093-node-suites"
+    description: >-
+      Regression evidence (unbound: the adapter suite passes at the merge base too, so it
+      is not a must-fail control): the Claude Code adapter node suites still pass over
+      the re-exported models.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21093-terminal-failure-causes"
+    description: >-
+      The delegation response contract declares every terminal failure cause from
+      the upgraded core dependency, including refused_before_dispatch. Both enum
+      completeness tests fail when the refusal cause is missing.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_terminal_failure_cause_contract_enum_omn19561.py tests/unit/nodes/node_delegate_skill_orchestrator/test_handler_delegate_skill_budget_omn15504.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21093-deploy-contract-readback"
+    description: >-
+      Hosted deploy probe: read the runtime node contract served by GitHub at
+      the checked-out commit and require the refused_before_dispatch terminal
+      cause. A commit with the incomplete response contract fails this probe.
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("      - refused_before_dispatch")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"

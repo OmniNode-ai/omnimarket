@@ -142,7 +142,7 @@ dependencies = [
     # TA.2). ModelContextProfile validates them, compaction_orchestrator selects
     # them, and node_context_pack_render_compute classifies chunks by them.
     # Raised in BOTH places.
-    "omnibase-core>=0.47.44,<0.48.0",
+    "omnibase-core>=0.47.46,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -339,6 +339,7 @@ node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
 node_capture_item_identity_effect = "omnimarket.nodes.node_capture_item_identity_effect"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
+node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
 node_rescue_patch_review_compute = "omnimarket.nodes.node_rescue_patch_review_compute"
 node_rescue_patch_review_effect = "omnimarket.nodes.node_rescue_patch_review_effect"
 node_pr_claim_registry_effect = "omnimarket.nodes.node_pr_claim_registry_effect"
@@ -1146,7 +1147,7 @@ override-dependencies = [
     # OMN-20885: floor raised 0.47.36 -> 0.47.39 (core#1935), the ticket-contract
     # refusals Contract Compliance Check relies on. Raised in BOTH places.
     # OMN-21106 / OMN-21109: floor raised 0.47.39 -> 0.47.44 (core#1987, TA.2).
-    "omnibase-core>=0.47.44,<0.48.0",
+    "omnibase-core>=0.47.46,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

@@ -96,6 +96,38 @@ requirements:
     acceptance:
       - id: "AC17"
         statement: "AC17: node_rescue_patch_review_compute discards an empty, already-on-base, junk-only or whitespace-only patch and leaves any other change for a read, node_rescue_patch_review_effect writes one VERDICT.json per unreviewed patch, never rewrites one, counts a patch whose clone or base is missing as unjudgeable and writes last-run.json on every run, and both declare their command and event topics in their contracts -- falsifier: uv run pytest tests/nodes/node_rescue_patch_review_compute/test_rescue_patch_review.py tests/test_golden_chain_rescue_patch_review_compute.py tests/test_golden_chain_rescue_patch_review_effect.py -q fails at the merge base"
+  - id: "req-hostile-reviewer-structured-votes-pin"
+    statement: "The Hostile Reviewer clones omniintelligence at the revision that keeps large reviewer votes structured, so a voter's free-text reply no longer leaves the gate degraded."
+    acceptance:
+      - id: "AC18"
+        statement: "AC18: hostile-reviewer.yml clones omniintelligence at 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0, a descendant of the previous pin 3fcbf795087a79081c0ceeb676216bf64c5d49ae -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py -q fails over the merge base's workflow, which pins 3fcbf795087a79081c0ceeb676216bf64c5d49ae"
+  - id: "req-prrp-snapshot-publish-node-in-omnimarket"
+    statement: "The placement gate's Actions-variables snapshot publish (one gate read per registry repository merged into one dated file, complete or nothing, copied and read back on every available host, with a heartbeat and a failure record) is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract and the host list handed in by the caller."
+    acceptance:
+      - id: "AC19"
+        statement: "AC19: node_prrp_snapshot_publish_effect publishes no file when one repository's gate read fails, dates the merged snapshot by its oldest read, writes each available host and skips an unavailable one, fails the run on a copy that does not read back identical while the other hosts still get the file, writes heartbeat.json only on a complete run and failure.json otherwise, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/test_golden_chain_prrp_snapshot_publish_effect.py -q fails at the merge base"
+  - id: "req-prrp-snapshot-effects-runtime-owner"
+    statement: "The snapshot publisher command subscription belongs to the effects runtime."
+    acceptance:
+      - id: "AC20"
+        statement: "AC20: node_prrp_snapshot_publish_effect declares descriptor.runtime_profiles exactly [effects], so the effects runtime owns its command subscription -- falsifier: uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py -q -k test_the_effects_runtime_owns_the_publisher_command_subscription fails when the publisher declares [main] and at the merge base"
+  - id: "req-hostile-reviewer-large-result-verdict"
+    statement: "The Hostile Reviewer verdict step reads cli_review's result from a file, so a review result over the 128 KiB per-string exec limit still yields a verdict instead of failing as unknown with Argument list too long."
+    acceptance:
+      - id: "AC21"
+        statement: "AC21: hostile-reviewer.yml writes cli_review's stdout to REVIEW_JSON_FILE and the verdict parser reads that file, so a 300000-byte review result yields its quorum verdict -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_large_result_omn19998.py -q fails over the merge base's workflow with Argument list too long, exit 126"
+  - id: "req-lab-daemons-converge-to-main"
+    statement: "Operator 2026-10-17: merged means running for every lab daemon. A host-timer node reads the declared daemons from an overlay, installs the source tip through each daemon's own installer when the installed revision lags it or a branch install's expiry has passed, and on a refused install publishes an alarm naming the blocker and dispatches one fix lane; the throughput tick prints MISSING deploy-drift:<daemon>@<host> when a lag lasts beyond 2 hours."
+    acceptance:
+      - id: "AC22"
+        statement: "AC22: node_lab_daemon_sync_effect installs main through the declared installer for a lagging daemon, reverts an expired branch install to main and holds an unexpired one, and for a refusing installer publishes lab-daemon-install-refused naming the blocker and dispatches exactly one fix lane across two ticks -- falsifier: uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_effect.py -q fails at the merge base, which has no such node"
+      - id: "AC23"
+        statement: "AC23: given deploy_drifts facts, the throughput tick decision prints MISSING deploy-drift:<daemon>@<host> for a lag older than deploy_drift_max_hours (default 2), and a NOTE for a younger lag or one an unexpired branch install holds -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_deploy_drift_throughput_tick_decision_compute.py -q fails at the merge base, whose request model refuses deploy_drifts"
+  - id: "req-runner-route-check-hosted-fallback"
+    statement: "The reusable runner-route check accepts a hosted trusted-seam fallback while retaining the original fleet fallback and fork isolation."
+    acceptance:
+      - id: "AC24"
+        statement: "AC24: the runner fallback guard accepts hosted and fleet trusted defaults and refuses self-hosted public defaults, unknown labels, incomplete fleet labels and empty labels; the workflow checks still pass -- falsifier: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q fails at the merge base because the hosted fallback guard does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -410,3 +442,86 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_rescue_patch_review_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]'
+  - id: "dod-omn19998-hostile-reviewer-structured-votes-pin"
+    description: "The workflow pins omniintelligence at the structured-votes revision; the merge base's pin fails the test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC18"]
+  - id: "dod-omn19998-prrp-snapshot-publish-node"
+    description: "The publisher and golden-chain tests pass at the head; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/test_golden_chain_prrp_snapshot_publish_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC19"]
+  - id: "dod-omn19998-prrp-snapshot-publish-deploy-probe"
+    description: "Hosted-runner probe reads the snapshot publisher at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prrp_snapshot_publish_effect/handlers/handler_prrp_snapshot_publish.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerPrrpSnapshotPublish'
+  - id: "dod-omn19998-prrp-snapshot-effects-runtime-owner"
+    description: "The publisher's own contract test requires descriptor.runtime_profiles exactly [effects] and the runtime ownership contract test accepts it; at the merge base the node package does not exist and the publisher test fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/validation/test_runtime_profile_contracts.py -q -k 'test_the_effects_runtime_owns_the_publisher_command_subscription or test_effectful_command_consumers_declare_effects_runtime_profile'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC20"]
+  - id: "dod-omn19998-prrp-effects-runtime-deploy-probe"
+    description: "Hosted-runner probe reads the publisher contract at this commit and refuses any runtime owner other than effects."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prrp_snapshot_publish_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys,yaml; c=yaml.safe_load(sys.stdin); assert c["descriptor"]["runtime_profiles"] == ["effects"], "snapshot publisher must belong to effects"'
+  - id: "dod-omn19998-hostile-reviewer-large-result-verdict"
+    description: "The verdict step reads a review result over 128 KiB from a file and prints its verdict; the merge base's workflow fails the test with Argument list too long."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_large_result_omn19998.py tests/ci/test_hostile_reviewer_quorum_verdict.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
+  - id: "dod-omn19998-lab-daemon-sync"
+    description: "The lag, branch-expired and installer-refused fixtures pass at the head; the merge base has no lab daemon sync node."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
+  - id: "dod-omn19998-deploy-drift-tick-line"
+    description: "The deploy-drift scenarios pass at the head and fail at the merge base, whose request model refuses deploy_drifts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_deploy_drift_throughput_tick_decision_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC23"]
+  - id: "dod-omn19998-lab-daemon-sync-deploy-probe"
+    description: "Hosted-runner probe reads the lab daemon sync handler at this commit; the base lacks it and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_daemon_sync_effect/handlers/handler_lab_daemon_sync.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def decide_daemon('
+
+  - id: "dod-omn19998-route-check-hosted-fallback"
+    description: "The reusable runner-route checks retain the seam and fork constraints and exercise accepted and rejected fallback labels."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q"
+    binds_ac: ["AC24"]
+  - id: "dod-omn19998-route-check-hosted-deploy-probe"
+    description: "Hosted-runner probe calls the check's fallback guard with the hosted trusted default; the base has no guard and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q -k test_runner_fallback_guard_accepts_hosted_and_fleet_seams"
