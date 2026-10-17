@@ -13,8 +13,7 @@ summary: >-
   reach-in (OMN-17427/OMN-20703).
 is_seam_ticket: true
 interface_change: false
-interfaces_touched:
-  - public_api
+interfaces_touched: []
 requirements:
   - id: "req-omn21093-reexport-identity"
     statement: "Every former omnimarket binding-model import path yields the identical core class."
