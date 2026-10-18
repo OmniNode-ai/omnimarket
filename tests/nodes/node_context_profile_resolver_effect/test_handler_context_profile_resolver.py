@@ -164,3 +164,50 @@ def test_contract_declares_one_terminal_topic_and_the_resolve_outputs() -> None:
         "failure_class",
         "errors",
     }
+
+
+def test_session_resume_profile_data() -> None:
+    # Plan section 4.4 row session_resume (OMN-21119).
+    result = _resolve("session_resume")
+    profile = result.profile
+    assert isinstance(profile, ModelContextProfile)
+    assert set(profile.required_factors) == {
+        F.OPEN_WORK,
+        F.OPERATOR_RULINGS,
+        F.ORCHESTRATION_STATE,
+    }
+    assert set(profile.optional_factors) == {
+        F.TRANSCRIPT_EXTRACTS,
+        F.TAIL_SUMMARY,
+        F.PLAN_EXCERPTS,
+    }
+    assert profile.binding_kind is EnumContextBindingKind.INLINE
+    assert profile.factor_precedence[0] is F.OPERATOR_RULINGS
+    assert profile.factor_precedence[-1] is F.TAIL_SUMMARY
+    assert profile.extraction_task_class is not None
+    assert profile.summary_task_class is not None
+    assert profile.conversation_tail_messages is None
+    assert profile.latency_budget_ms is None
+
+
+def test_delegation_payload_local_profile_data() -> None:
+    # Plan section 4.4 row delegation_payload_local (OMN-21119): nothing is
+    # required, so a source outage never blocks a delegation.
+    result = _resolve("delegation_payload_local")
+    profile = result.profile
+    assert isinstance(profile, ModelContextProfile)
+    assert profile.required_factors == ()
+    assert profile.optional_factors == (
+        F.INVARIANTS,
+        F.CANONICAL_SHAPES,
+        F.EXEMPLAR,
+        F.ARCHITECTURE_PATTERNS,
+    )
+    assert set(profile.stable_factors) == set(profile.optional_factors)
+    assert profile.scopes == ("delegation",)
+    assert profile.binding_kind is EnumContextBindingKind.INLINE
+    assert profile.token_budget == 8000
+    # No model role in v5.
+    assert profile.selection_task_class is None
+    assert profile.extraction_task_class is None
+    assert profile.summary_task_class is None

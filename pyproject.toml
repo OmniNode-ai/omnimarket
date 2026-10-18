@@ -338,6 +338,7 @@ node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_comp
 node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
 node_hook_refusal_row_compute = "omnimarket.nodes.node_hook_refusal_row_compute"
+node_session_capability_digest_effect = "omnimarket.nodes.node_session_capability_digest_effect"
 node_capture_item_identity_effect = "omnimarket.nodes.node_capture_item_identity_effect"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"

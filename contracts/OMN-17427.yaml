@@ -325,6 +325,11 @@ requirements:
     acceptance:
       - id: "AC62"
         statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a full 40-hex SHA, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
+  - id: "req-session-capability-digest"
+    statement: "A session that opens inside a registry root starts with the cached capability digest, a stale or missing digest is named with its fix, and a session elsewhere is not touched, decided by a contract-declared effect node that reads two cached files and never blocks a session."
+    acceptance:
+      - id: "AC63"
+        statement: "AC63: node_session_capability_digest_effect prints the cached digest inside a registry root, prints nothing outside every root, prints a STALE line with its launchd fix for a missing or over-45-minute digest, prints one pointer line on a compact restart, opens no socket and exits 0 on every input -- falsifier: uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
@@ -443,6 +448,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC62: the hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin and its path-regex selects the hook paths."
     command: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC63: the session-start capability digest node prints inside a registry root, stays silent outside, names a stale digest with its fix and exits 0 on every input."
+    command: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1054,3 +1062,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
+  - id: "dod-omn17427-ac63-session-capability-digest"
+    description: "node_session_capability_digest_effect prints the cached digest inside a registry root, nothing outside, a STALE line with its fix when the digest is missing or old, and exits 0 on every input."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC63"]
+  - id: "dod-omn17427-ac63-digest-deploy-probe"
+    description: "Deploy probe. GitHub serves the session capability digest handler at the checked-out HEAD with its freshness bound and its STALE line. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_capability_digest_effect/handlers/handler_session_capability_digest.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("STALE_AFTER_MINUTES = 45", "CAPABILITY DIGEST STALE")); print("session capability digest deploy probe: PASS")'
