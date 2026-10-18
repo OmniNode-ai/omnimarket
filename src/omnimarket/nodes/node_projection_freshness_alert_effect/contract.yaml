@@ -1,0 +1,127 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_freshness_alert_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_freshness_alert_effect.models.model_freshness_trigger.ModelFreshnessTrigger
+description: >
+  OMN-19513. Checks projection freshness on the runtime heartbeat, alerting
+  through the canonical Slack publisher only while independent demand is active.
+  Unreadable sources produce UNKNOWN findings on the terminal event and ERROR logs.
+
+handler:
+  module: omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_projection_freshness_alert
+  class: HandlerProjectionFreshnessAlert
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_freshness_alert
+      handler:
+        name: HandlerProjectionFreshnessAlert
+        module: omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_projection_freshness_alert
+      handler_module: omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_projection_freshness_alert
+
+terminal_event: onex.evt.omnimarket.projection-freshness-alert-evaluated.v1
+
+golden_path:
+  - "The existing onex.evt.platform.node-heartbeat.v1 triggers a contract-throttled evaluation"
+  - "The read-only effect reads supply max timestamp and independent demand distinct actors"
+  - "Pure classification derives IDLE, FRESH, STALE or UNKNOWN from the observations and contract thresholds"
+  - "STALE publishes onex.cmd.omnimarket.slack-publish.v1 for node_slack_publish_effect with a renotify-bucketed key"
+  - "Every verdict and publication attempt leaves on onex.evt.omnimarket.projection-freshness-alert-evaluated.v1"
+
+freshness_policy:
+  check_interval_seconds: 300
+  renotify_after_seconds: 3600
+
+reads_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+
+freshness_checks:
+  - check_id: claude_hook_events
+    max_age_seconds: 900
+    supply:
+      relation: omninode_internal.claude_hook_events
+      timestamp_column: emitted_at
+    demand:
+      relation: omninode_internal.work_events
+      timestamp_column: emitted_at
+      distinct_column: actor_id
+      window_seconds: 900
+      min_distinct: 1
+
+db_io:
+  db_tables:
+    - name: claude_hook_events
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_claude_hook_events.sql"
+      access: read
+      role: claude_hook_events
+    - name: work_events
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_work_events.sql"
+      access: read
+      role: work_events
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack destination resolved at the effect boundary through the canonical
+      secret store using this contract's ref; no channel literal or direct env read.
+    required: true
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.cmd.omnimarket.slack-publish.v1
+    - onex.evt.omnimarket.projection-freshness-alert-evaluated.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-freshness-alert-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-freshness-alert-evaluated.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dod_evidence:
+  - test: tests/test_omn19513_projection_freshness_alert.py::test_classifier_states
+    description: "Supply age alerts only with active demand; exact-limit and future rows are fresh"
+  - test: tests/test_omn19513_projection_freshness_alert.py::test_stale_publishes_canonical_slack_command
+    description: "Stale supply publishes a canonical Slack command with facts and bucketed idempotency"
+  - test: tests/test_omn19513_projection_freshness_alert.py::test_reader_failure_is_unknown
+    description: "An unreadable source is UNKNOWN, logged at ERROR, and never alerts to Slack"
+  - test: tests/test_omn19513_projection_freshness_alert.py::test_contract_thresholds_change_behaviour
+    description: "Changing cadence and max age in a contract copy changes behaviour without editing Python"
+  - test: tests/test_omn19513_projection_freshness_alert.py::test_no_threshold_literal_lives_in_python
+    description: "No Python default substitutes for a contract threshold"
+  - test: tests/test_omn19513_projection_freshness_real_postgres.py::test_old_supply_with_active_demand_reads_back_stale
+    description: "Against real Postgres the reader's two aggregates return an aware datetime and an integer, and a 132-minute-old supply with active demand classifies STALE"
+  - test: tests/test_golden_chain_projection_freshness_alert.py::test_golden_chain_rides_heartbeat_and_reaches_slack
+    description: "Heartbeat and Slack hops meet shipped contracts and the terminal event is externally consumed"
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pyyaml>=6.0"
+    - "pydantic>=2.0"
+    - "psycopg2-binary>=2.9"
+
+metadata:
+  transport_type: kafka
+  description: "Demand-aware projection freshness alert effect"
+  author: "OmniNode Platform Team"
+  tags: [effect, observability, alerting, freshness]
+  related_tickets: ["OMN-19513"]

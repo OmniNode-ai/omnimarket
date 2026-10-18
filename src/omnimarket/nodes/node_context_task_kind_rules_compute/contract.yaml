@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeContextTaskKindRulesCompute (OMN-21131, plan task TC.8)
+
+name: node_context_task_kind_rules_compute
+version: "1.0.0"
+contract_name: node_context_task_kind_rules_compute
+node_name: node_context_task_kind_rules_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure evaluation of a context profile's declared task-kind rules over the request's typed caller scope. Conditions are exact equals or full-path globs over caller-scope fields, combined by all or any; a field the caller did not supply never matches. Matched rules are ordered by priority then rule id and the first names the task kind; an unmatched request is task_kind unknown and admits only the profile's unconditional factors. An evaluation that cannot run is a typed error, never a silent false. Deterministic; no I/O.
+
+input_model:
+  name: ModelContextTaskKindRulesRequest
+  module: omnimarket.nodes.node_context_task_kind_rules_compute.models
+
+output_model:
+  name: ModelContextTaskKindRulesResult
+  module: omnimarket.nodes.node_context_task_kind_rules_compute.models
+
+handler:
+  module: omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules
+  class: HandlerContextTaskKindRules
+  input_model: omnimarket.nodes.node_context_task_kind_rules_compute.models.ModelContextTaskKindRulesRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextTaskKindRules
+        module: omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules
+      event_model:
+        name: ModelContextTaskKindRulesRequest
+        module: omnimarket.nodes.node_context_task_kind_rules_compute.models
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.task_kind_rules.evaluate
+    description: Evaluate a context profile's task-kind rules over a caller scope
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-task-kind-rules-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-task-kind-rules-evaluated.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-task-kind-rules-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-task-kind-rules-evaluated.v1
+
+terminal_event: onex.evt.omnimarket.context-task-kind-rules-evaluated.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21131
+  maturity: alpha
+  tags:
+    - context-pack
+    - task-kind-rules
