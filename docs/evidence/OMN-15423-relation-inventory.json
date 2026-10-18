@@ -2386,6 +2386,7 @@
       "readers": [
         "node_data_flow_sweep",
         "node_database_sweep",
+        "node_delegation_admission_compute",
         "node_projection_routing_decision",
         "node_retention_cleanup",
         "node_session_orchestrator"
