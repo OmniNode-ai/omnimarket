@@ -14,7 +14,13 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.handlers.handler_internal_release_path_guard import (
+    HandlerInternalReleasePathGuard,
+)
 from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
+from omnimarket.models.model_internal_release_path_guard import (
+    ModelInternalReleasePathGuardRequest,
+)
 
 from ..models import (
     ModelLabFillLaunchRequest,
@@ -200,6 +206,19 @@ class HandlerLabFillLaunch:
                     skipped="approved-row-unresolved",
                     detail=str(exc)[:300],
                 )
+        guard = HandlerInternalReleasePathGuard().handle(
+            ModelInternalReleasePathGuardRequest(
+                proposed_actions=brief,
+                consumer_scope=request.dependency_consumer_scope,
+                dependency_strategy=request.dependency_strategy,
+            )
+        )
+        if not guard.allowed:
+            return result(
+                detached=False,
+                skipped="internal-release-path",
+                detail=guard.remediation,
+            )
         try:
             Path(request.brief_dir).mkdir(parents=True, exist_ok=True)
             Path(brief_path).write_text(brief, encoding="utf-8")

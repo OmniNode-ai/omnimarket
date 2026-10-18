@@ -6,12 +6,12 @@
 # (branch heads and GitHub pull refs) and answers the PR reads git can answer,
 # so lanes stop spending GitHub API quota on them. Git transport only; the one
 # GitHub API call it can make is a labelled fallback when a git fetch fails.
-# Invoked by its CLI (__main__.py) and scheduled as a sync tick; the bus path
-# below is declared the way the other directly invoked nodes declare theirs.
+# Invoked by its CLI (__main__.py) and, on the bus, by its command topic:
+# node_git_mirror_sync_schedule_compute publishes a detecting sync there on the
+# runtime tick (OMN-19998), and the runtime wires this node to that topic.
 name: "node_git_query_mirror_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
-runtime_profiles: [effects]
 contract_version:
   major: 0
   minor: 1
@@ -56,9 +56,13 @@ handler_routing:
       handler:
         name: "HandlerGitQueryMirrorEffect"
         module: "omnimarket.nodes.node_git_query_mirror_effect.handlers.handler_git_query_mirror"
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.git-query-mirror-requested.v1"
+    operation: "git_query"
 descriptor:
   node_archetype: effect
   purity: impure
+  runtime_profiles: [effects]
   idempotent: true
   timeout_ms: 600000
 event_bus:
@@ -66,13 +70,25 @@ event_bus:
     major: 1
     minor: 0
     patch: 0
-  subscribe_topics: []
+  subscribe_topics:
+    - "onex.cmd.omnimarket.git-query-mirror-requested.v1"
   publish_topics:
     - "onex.evt.github.pr-merged.v1"
+    - "onex.evt.omnimarket.git-query-mirror-completed.v1"
+# The query response goes here. Without it the runtime would fall back to the
+# first publish topic and put the response on the pr-merged topic.
+terminal_event: "onex.evt.omnimarket.git-query-mirror-completed.v1"
+# A sync's response lists the merges it published (merged_prs): the provenance
+# of a mirror-produced pr-merged event. Read by the proof, consumed by no node yet.
+externally_consumed_topics:
+  - "onex.evt.omnimarket.git-query-mirror-completed.v1"
 published_events:
   - topic: "onex.evt.github.pr-merged.v1"
     event_type: "MirrorPrMerged"
     description: "A squash merge with source mirror and the shared UUIDv5 event_id of (repo, pr_number, merge sha), durably pending before the scan advances and recorded published only after broker acknowledgement."
+  - topic: "onex.evt.omnimarket.git-query-mirror-completed.v1"
+    event_type: "GitQueryResponse"
+    description: "The typed answer to one request; a detecting sync's result lists the merges it found in merged_prs."
 env_dependencies:
   KAFKA_BOOTSTRAP_SERVERS:
     required: true
