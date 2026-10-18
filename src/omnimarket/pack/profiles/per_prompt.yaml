@@ -1,0 +1,86 @@
+# Context profile added on each Claude Code prompt (plan task TC.8, section 4.4).
+# Additive UserPromptSubmit binding, promoted last. Nothing is required, and every
+# factor loads only by a declared rule over the caller scope; nothing is derived
+# from prompt text. Values are the plan's first values; a profile changes only
+# through a data PR that cites measured evidence (TC.9, TC.12).
+model_id: claude-code-session
+profile_version: 1.0.0
+injection_point: UserPromptSubmit
+binding_kind: additive
+required_factors: []
+optional_factors:
+  - architecture_patterns
+  - exemplar
+  - plan_excerpts
+# Authority order, section 4.2: patterns and exemplars, then cited plans.
+factor_precedence:
+  - architecture_patterns
+  - exemplar
+  - plan_excerpts
+stable_factors:
+  - architecture_patterns
+  - exemplar
+token_budget: 1500
+# Window data (port item AP-B5): the consumer's window minus its reserved output and
+# system shares. reserved_system_tokens is the measured median main-session preamble
+# (plan section 4.4); the window and reserved output are first values, measured by TC.12.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 95771
+latency_budget_ms: 500
+selection_task_class: context_selection
+task_kind_rules:
+  # Path-glob routes ported from omniclaude plugins/onex/hooks/config/file_path_routes.yaml.
+  # There the first matching route wins; here route order is the priority, and the
+  # workspace-relative path splits into the repository and a repository-relative glob.
+  - rule_id: route_omnidash_consumers
+    task_kind: kafka_consumer_conventions
+    priority: critical
+    conditions:
+      - {scope_field: repository, operator: equals, value: omnidash}
+      - {scope_field: request_paths, operator: glob, value: "server/consumers/**"}
+    factors: [architecture_patterns]
+  - rule_id: route_omnidash_migrations
+    task_kind: migration_conventions
+    priority: critical
+    conditions:
+      - {scope_field: repository, operator: equals, value: omnidash}
+      - {scope_field: request_paths, operator: glob, value: "migrations/**"}
+    factors: [architecture_patterns]
+  - rule_id: route_omniclaude_hooks
+    task_kind: hook_conventions
+    priority: critical
+    conditions:
+      - {scope_field: repository, operator: equals, value: omniclaude}
+      - {scope_field: request_paths, operator: glob, value: "plugins/onex/hooks/**"}
+    factors: [architecture_patterns]
+  - rule_id: route_tests
+    task_kind: test_conventions
+    priority: high
+    conditions:
+      - {scope_field: request_paths, operator: glob, value: "**/tests/**"}
+    factors: [architecture_patterns]
+  - rule_id: route_migrations
+    task_kind: migration_conventions
+    priority: medium
+    conditions:
+      - {scope_field: request_paths, operator: glob, value: "**/migrations/**"}
+    factors: [architecture_patterns]
+  # Exemplars by the node archetype the caller names.
+  - rule_id: archetype_named
+    task_kind: node_work
+    priority: low
+    condition_logic: any
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: compute}
+      - {scope_field: node_archetype, operator: equals, value: effect}
+      - {scope_field: node_archetype, operator: equals, value: reducer}
+      - {scope_field: node_archetype, operator: equals, value: orchestrator}
+    factors: [exemplar]
+  # Plan excerpts only for plans the caller cites.
+  - rule_id: plan_cited
+    task_kind: plan_work
+    priority: low
+    conditions:
+      - {scope_field: cited_plan_paths, operator: glob, value: "**/*.md"}
+    factors: [plan_excerpts]
