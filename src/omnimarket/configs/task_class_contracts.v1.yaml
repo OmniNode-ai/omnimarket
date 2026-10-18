@@ -1895,9 +1895,21 @@ task_classes:
         - local
         - cheap_cloud
   review:
-    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    # OMN-17427: the lab model scored 25 of 60 on this class, below the policy bar.
+    # 60 merged omnimarket source diffs (2026-10-01 to 2026-10-18), one local
+    # review each through the delegate with the house tenant, one blind Sonnet
+    # rater per answer (a second rater on 15 of them agreed on 13): adequate
+    # means no finding the diff contradicts and either a real defect found or a
+    # clean "No defects found" on a diff the rater found clean. The class gate
+    # accepted all 60 at score 1.0 and 35 of them were inadequate (58 percent,
+    # Wilson 95 percent interval 46 to 70), so the gate cannot be the evidence.
     lab_rubric:
-      verdict: unmeasured
+      verdict: fail
+      measured:
+        model: Qwen3.8-27B
+        adequate: 25
+        of: 60
+        source: "OMN-17427 lane deleg-exp-replicate-1-2200, 2026-10-18, replication of the criteria false-accept experiment"
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first
     gateway_exposure: public
