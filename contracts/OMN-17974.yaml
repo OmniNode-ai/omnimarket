@@ -59,4 +59,3 @@ dod_evidence:
           r = ModelCloseoutReceipt(correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV, proof_set=EnumProofSet.FULL, final_phase=EnumCloseoutPhase.COMPLETED)
           assert r.recompute_recommendation() is EnumCloseoutRecommendation.HOLD, r
           print(r.recompute_recommendation().value)'
-    binds_ac: ["AC1"]
