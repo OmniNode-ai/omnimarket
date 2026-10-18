@@ -1,0 +1,1119 @@
+{
+  "recorded_from": "omniclaude@4276b65aaac6bed5d35ca93fb48bf6e89c408401",
+  "flattening": "json.dumps(tool_input)",
+  "rows": [
+    {
+      "id": "research-summarize",
+      "group": "classifier",
+      "tool_input": {
+        "description": "summarize module",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nResearch and summarize how the routing reducer folds events.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "research"
+      }
+    },
+    {
+      "id": "research-explain",
+      "group": "classifier",
+      "tool_input": {
+        "description": "explain design",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nExplain the design of the event bus wiring and compare the two options.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "research-investigate",
+      "group": "classifier",
+      "tool_input": {
+        "description": "investigate behaviour",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nInvestigate why the projection lags and analyze the likely causes.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "debug"
+      }
+    },
+    {
+      "id": "research-review",
+      "group": "classifier",
+      "tool_input": {
+        "description": "review a plan",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nReview this plan and summarize the open questions.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "research-what-is",
+      "group": "classifier",
+      "tool_input": {
+        "description": "what is the contract",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWhat is the purpose of the contract handler_routing section? Explain it.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "research"
+      }
+    },
+    {
+      "id": "research-find",
+      "group": "classifier",
+      "tool_input": {
+        "description": "find usages",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nFind where the size band thresholds are defined and explain them.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "research"
+      }
+    },
+    {
+      "id": "research-compare",
+      "group": "classifier",
+      "tool_input": {
+        "description": "compare approaches",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nCompare a reducer and an orchestrator for this workflow and analyze tradeoffs.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "research-understand",
+      "group": "classifier",
+      "tool_input": {
+        "description": "understand flow",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nHelp me understand the delegation flow end to end.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "document-write-docs",
+      "group": "classifier",
+      "tool_input": {
+        "description": "write docs",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWrite documentation for the admission policy fields.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "document-docstring",
+      "group": "classifier",
+      "tool_input": {
+        "description": "add docstrings",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nAdd docstrings to every public function and document the parameters.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "document-readme",
+      "group": "classifier",
+      "tool_input": {
+        "description": "draft readme",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nGenerate docs for the README describing setup and usage.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "document-changelog",
+      "group": "classifier",
+      "tool_input": {
+        "description": "changelog entry",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nDocument the change in a changelog entry with a short summary.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "document-create-doc",
+      "group": "classifier",
+      "tool_input": {
+        "description": "create doc",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nCreate doc pages that explain each reason code.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "test-write-tests",
+      "group": "classifier",
+      "tool_input": {
+        "description": "write tests",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWrite tests for the sensitivity gate covering every pattern.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "test-unit",
+      "group": "classifier",
+      "tool_input": {
+        "description": "write unit test",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWrite unit test cases for the classifier confidence arithmetic.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "test-add",
+      "group": "classifier",
+      "tool_input": {
+        "description": "add tests",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nAdd test coverage for the empty input case.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "test-generate",
+      "group": "classifier",
+      "tool_input": {
+        "description": "generate tests",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nGenerate test fixtures for the golden table.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "test-pytest",
+      "group": "classifier",
+      "tool_input": {
+        "description": "pytest cases",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nCreate tests with pytest parametrize for each band.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "implement-create",
+      "group": "classifier",
+      "tool_input": {
+        "description": "create handler",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nCreate a new handler that reads the policy and returns a verdict.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "implement-build",
+      "group": "classifier",
+      "tool_input": {
+        "description": "build node",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nBuild the ONEX compute node with its contract and models.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "implement-add-feature",
+      "group": "classifier",
+      "tool_input": {
+        "description": "add feature",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nImplement a feature flag for the cohort lookup.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "implement-domain",
+      "group": "classifier",
+      "tool_input": {
+        "description": "domain only",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nONEX authentication system with an effect node and a reducer.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "debug-error",
+      "group": "classifier",
+      "tool_input": {
+        "description": "fix error",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nDebug the error in the consumer and fix the failing import.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "debug"
+      }
+    },
+    {
+      "id": "debug-traceback",
+      "group": "classifier",
+      "tool_input": {
+        "description": "traceback",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWhy does this traceback happen? The test fails with a KeyError bug.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "debug"
+      }
+    },
+    {
+      "id": "debug-broken",
+      "group": "classifier",
+      "tool_input": {
+        "description": "broken build",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nThe build is broken; troubleshoot the issue and fix it.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "debug"
+      }
+    },
+    {
+      "id": "refactor-cleanup",
+      "group": "classifier",
+      "tool_input": {
+        "description": "refactor",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nRefactor the handler to remove duplication and clean up naming.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "refactor"
+      }
+    },
+    {
+      "id": "refactor-rename",
+      "group": "classifier",
+      "tool_input": {
+        "description": "rename",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nRestructure the module and simplify the helpers.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "refactor"
+      }
+    },
+    {
+      "id": "database-migration",
+      "group": "classifier",
+      "tool_input": {
+        "description": "migration",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWrite a SQL migration that adds an index to the claims table.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "database"
+      }
+    },
+    {
+      "id": "database-query",
+      "group": "classifier",
+      "tool_input": {
+        "description": "query",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nOptimize the postgres query and the schema for the projection table.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "database"
+      }
+    },
+    {
+      "id": "vision-screenshot",
+      "group": "classifier",
+      "tool_input": {
+        "description": "screenshot",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nLook at this screenshot and describe the image.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "vision-diagram",
+      "group": "classifier",
+      "tool_input": {
+        "description": "diagram",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nSummarize the architecture diagram in the attached figure.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "tool-run-tests",
+      "group": "classifier",
+      "tool_input": {
+        "description": "run tests",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nRun the tests and report which fail.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "research"
+      }
+    },
+    {
+      "id": "tool-git-commit",
+      "group": "classifier",
+      "tool_input": {
+        "description": "commit",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nCommit the change with git and push the branch.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "tool-deploy",
+      "group": "classifier",
+      "tool_input": {
+        "description": "deploy",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nDeploy the service to the lab and check the logs.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "tool-execute",
+      "group": "classifier",
+      "tool_input": {
+        "description": "execute",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nExecute the migration script against the database.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "database"
+      }
+    },
+    {
+      "id": "tool-shell",
+      "group": "classifier",
+      "tool_input": {
+        "description": "shell",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nOpen a shell and list the files in the directory.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "unknown-greeting",
+      "group": "classifier",
+      "tool_input": {
+        "description": "hello",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nHello there.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "unknown-vague",
+      "group": "classifier",
+      "tool_input": {
+        "description": "thoughts",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nThoughts?",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "mixed-research-implement",
+      "group": "classifier",
+      "tool_input": {
+        "description": "research then build",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nResearch the options, then implement the chosen one.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "mixed-test-debug",
+      "group": "classifier",
+      "tool_input": {
+        "description": "tests and debug",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWrite tests that reproduce the bug and debug the failure.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "test"
+      }
+    },
+    {
+      "id": "long-research",
+      "group": "classifier",
+      "tool_input": {
+        "description": "long research",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nResearch, analyze, summarize and explain the tradeoffs between the three caching strategies, and review the evidence for each one.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "research"
+      }
+    },
+    {
+      "id": "long-document",
+      "group": "classifier",
+      "tool_input": {
+        "description": "long document",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nWrite documentation and document every endpoint, with docstrings and a readme section for each one.",
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "opus-research",
+      "group": "classifier",
+      "tool_input": {
+        "description": "opus research",
+        "prompt": "ROUTE: band=B4 score=14 dims=S2A2R2V2N2C2J2 dest=lane model=opus effort=high\nResearch and summarize the routing tiers.",
+        "subagent_type": "general-purpose",
+        "model": "opus",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "research"
+      }
+    },
+    {
+      "id": "opus-document",
+      "group": "classifier",
+      "tool_input": {
+        "description": "opus document",
+        "prompt": "ROUTE: band=B4 score=14 dims=S2A2R2V2N2C2J2 dest=lane model=opus effort=high\nWrite documentation for the routing tiers.",
+        "subagent_type": "general-purpose",
+        "model": "opus",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "document"
+      }
+    },
+    {
+      "id": "guard-fork",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "fork",
+        "description": "continue the lane",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "subagent_type 'fork' always inherits the parent session's model, so the background model can never be chosen explicitly. Dispatch a normal subagent with an explicit model instead",
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "unknown"
+      }
+    },
+    {
+      "id": "guard-fork-opus",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "fork",
+        "model": "opus",
+        "description": "x",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "subagent_type 'fork' always inherits the parent session's model, so the background model can never be chosen explicitly. Dispatch a normal subagent with an explicit model instead",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-sonnet-no-route",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "description": "do a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "the ROUTE line is missing, so the task's complexity band was never scored; the model choice is unjustified",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-opus-no-route",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "opus",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "the ROUTE line is missing, so the task's complexity band was never scored; the model choice is unjustified",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-haiku",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "haiku",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "model 'haiku' is not an allowed background model (allowed: opus, sonnet); haiku is removed from the background-agent allowlist (OMN-17427); trivial text work goes to `onex delegate` (local lab models) instead",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-haiku-full",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "claude-haiku-4-5-20251001",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "model 'claude-haiku-4-5-20251001' is not an allowed background model (allowed: opus, sonnet); haiku is removed from the background-agent allowlist (OMN-17427); trivial text work goes to `onex delegate` (local lab models) instead",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-no-model",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "description": "do a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "the Agent call declares no model, so it inherits the parent session's model",
+        "sensitive": false,
+        "delegatable": false,
+        "classified_intent": "unknown"
+      }
+    },
+    {
+      "id": "guard-fable",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "fable",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "model 'fable' is not an allowed background model (allowed: opus, sonnet)",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-route-b3-ok",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "description": "d",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\nwork",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-route-b4-sonnet",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "description": "d",
+        "prompt": "ROUTE: band=B4 score=14 dims=S2A2R2V2N2C2J2 dest=lane model=opus effort=high",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "ROUTE model=opus does not match declared model 'sonnet'",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-route-unparsable",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B3 model=sonnet\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "the ROUTE line is unparsable (expected 'ROUTE: band=<B> score=<n> dims=S<s>A<a>R<r>V<v>N<n>C<c>J<j> dest=<d> model=<m> effort=<e>')",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-route-in-description",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "description": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high",
+        "prompt": "do a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-floor-r3",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B3 score=9 dims=S1A1R3V1N1C1J1 dest=lane model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "hard floor: R=3 needs band B4 or above, but ROUTE says band B3",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-floor-j3",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B3 score=9 dims=S1A1R1V1N1C1J3 dest=lane model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "hard floor: J=3 needs band B4 or above, but ROUTE says band B3",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-floor-b4-low-score",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "opus",
+        "prompt": "ROUTE: band=B4 score=3 dims=S0A0R3V0N0C0J0 dest=lane model=opus effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": null,
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-score-sum",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B3 score=10 dims=S2A1R1V2N1C1J1 dest=lane model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "ROUTE score=10 is not the sum of its dims (9)",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-below-score-band",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B3 score=14 dims=S2A2R2V2N2C2J2 dest=lane model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "band B3 is below the band score 14 implies; a task is never routed beneath its score",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-effort",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "opus",
+        "prompt": "ROUTE: band=B5 score=18 dims=S3A3R2V2N3C2J3 dest=lane model=opus effort=low\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "ROUTE effort=low is not allowed for band B5 (allowed: xhigh)",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-band-b0",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B0 score=2 dims=S1A1R0V0N0C0J0 dest=x model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "band B0 is below the band score 2 implies; a task is never routed beneath its score",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-band-b1",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B1 score=2 dims=S1A1R0V0N0C0J0 dest=x model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "band B1 dispatches no Claude agent (destination: onex delegate); an agent() or Agent call needs band B2 to B5",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-band-b1c",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B1c score=2 dims=S1A1R0V0N0C0J0 dest=x model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "band B1c dispatches no Claude agent (destination: Jev (node_typed_decision_effect)); an agent() or Agent call needs band B2 to B5",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-band-model",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "opus",
+        "prompt": "ROUTE: band=B3 score=9 dims=S2A1R1V2N1C1J1 dest=lane model=opus effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "band B3 allows only: sonnet; ROUTE model 'opus' is not in that set",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    },
+    {
+      "id": "guard-floor-b3-r3",
+      "group": "guard",
+      "tool_input": {
+        "subagent_type": "general-purpose",
+        "model": "sonnet",
+        "prompt": "ROUTE: band=B3 score=11 dims=S2A1R3V2N1C1J1 dest=lane model=sonnet effort=high\ndo a thing",
+        "run_in_background": false
+      },
+      "omniclaude": {
+        "guard_reason": "hard floor: R=3 needs band B4 or above, but ROUTE says band B3",
+        "sensitive": false,
+        "delegatable": true,
+        "classified_intent": "implement"
+      }
+    }
+  ]
+}
