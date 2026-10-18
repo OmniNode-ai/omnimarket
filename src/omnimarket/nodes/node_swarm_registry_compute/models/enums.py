@@ -22,6 +22,9 @@ class EnumEndpointStatus(StrEnum):
     reachable = "reachable"
     unreachable = "unreachable"
     timeout = "timeout"
+    # The two statuses node_swarm_endpoint_health_effect reports beyond the above.
+    auth_failed = "auth_failed"
+    unknown = "unknown"
 
 
 class EnumModelStatus(StrEnum):

@@ -578,6 +578,10 @@ jobs:
       - name: Ticket contract authoring refusal controls (OMN-20864)
         run: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
 
+      # Paired with tool-result-reduction-safety (pre-commit).
+      - name: Bash tool-result reduction preserves diagnostics (OMN-21120)
+        run: uv run pytest tests/nodes/node_tool_result_reduce_compute/test_tool_result_reduce.py -q --no-cov
+
       # The checkout has full history, so read the actual PR head, not the
       # synthetic merge tree. Paired with ticket-contract-prerequisite (pre-push).
       - name: Ticket contract prerequisite at PR head (OMN-20864)
@@ -601,6 +605,11 @@ jobs:
       # 'dod-verify-every-criterion-bound'.
       - name: dod_verify refuses partly bound criteria (OMN-20032)
         run: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+      # OMN-17427: the repo-evidence caller pins the receipt-gate reusable that refuses
+      # a verifier below 0.4.303 (ruling 2026-10-10T11:04:11Z). SYNC with pre-commit
+      # hook 'call-repo-evidence-gate-verifier-floor'.
+      - name: call-repo-evidence-gate refuses a verifier below the floor (OMN-17427)
+        run: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov
       # OMN-21062: a binding is accepted by a second lane that reruns its check
       # (ruling 2026-10-03T00:40:00Z). One run per selector, so a renamed or
       # deleted case selects nothing and fails. SYNC with pre-commit hook
