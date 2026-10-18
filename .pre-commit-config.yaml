@@ -1922,6 +1922,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: patch-apply-dispatch
+        name: Patch apply dispatch node (OMN-17427)
+        language: system
+        entry: uv run --frozen pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_patch_apply_dispatch_effect/|tests/test_golden_chain_patch_apply_dispatch_effect\.py|pyproject\.toml|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20865: SYNC with the ci.yml landing decision scenario step.
       - id: landing-decision-scenarios
         name: Landing decision scenarios (OMN-20865)
