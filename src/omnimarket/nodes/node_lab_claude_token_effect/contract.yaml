@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Claude Token Effect (OMN-19998)
+#
+# CLI-run effect, discovered through onex.nodes and invoked locally by the
+# `onex lab claude-token` shim. It has no bus subscription or runtime consumer.
+name: lab_claude_token_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+# The local CLI's build_handler supplies HandlerLocalTokenStore and
+# HandlerLabHostShell for these constructor ports.
+dependency_ownership:
+  - store
+  - shell
+
+description: >
+  Lab Claude token EFFECT. Stores an operator-made Claude token in the secret
+  store under lab.claude_token.<host>.<account>, writes it to the host's
+  ~/.config/omni/claude-oauth-token (mode 0600) over the lab ssh path, asks
+  Claude the cheap question placement's limit re-probe asks, and on a clean
+  answer removes the host's .limited-<host> placement marker; on no answer it
+  restores the previous token on the host and in the store. Keeps a pool of
+  spare account tokens and rotates a host placement benched onto a spare with
+  headroom, returning the rotation as an event and appending it to
+  <placement_dir>/claude-token-rotations.jsonl; with no spare it says so once
+  per marker. No script, argv, event, result or line carries a token.
+
+output_model: omnimarket.nodes.node_lab_claude_token_effect.models.model_lab_claude_token_result.ModelLabClaudeTokenResult
+
+handler:
+  module: omnimarket.nodes.node_lab_claude_token_effect.handlers.handler_lab_claude_token
+  class: HandlerLabClaudeToken
+  input_model: omnimarket.nodes.node_lab_claude_token_effect.models.model_lab_claude_token_request.ModelLabClaudeTokenRequest
+  output_model: omnimarket.nodes.node_lab_claude_token_effect.models.model_lab_claude_token_result.ModelLabClaudeTokenResult
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_lab_claude_token_effect.handlers.handler_lab_claude_token:HandlerLabClaudeToken
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false  # a rotation moves a host to another account
+  timeout_ms: 600000
+  runtime_profiles: []
+
+# The node publishes nothing: it RETURNS the rotation event in its result and
+# appends it to the placement directory's rotation record. Declaring a topic
+# here would claim a publish the node never makes.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: The onex lab claude-token CLI invokes the typed handler locally.
+
+metadata:
+  transport_type: local

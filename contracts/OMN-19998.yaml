@@ -156,6 +156,11 @@ requirements:
       - id: "AC30"
         statement: "AC30: the canonical internal release-path check refuses an internal release strategy or instruction, accepts a git pin, blocks lab-fill dispatch before file writes and controller worker/cause briefs before construction, and runs through its contract-declared bus topics -- falsifier: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q fails at the merge base"
 
+  - id: "req-lab-claude-token-rotation-node"
+    statement: "Claude-token rotation for lab hosts is an omnimarket node in canonical shape (contract, node, handler) with an onex CLI verb: the token is read from stdin only, stored under a per-host, per-account secret-store reference, deployed mode 0600, probed with placement's limit re-probe question, and a limited host is rotated onto a spare pool account with headroom; no script, argv, result, event or line carries a token value."
+    acceptance:
+      - id: "AC29"
+        statement: "AC29: node_lab_claude_token_effect, against a fake host and a fake store, stores, deploys and probes a set token and removes the host's .limited marker on an answer, restores the previous token on the host and in the store on a limit notice or failed deploy, rotates a limited host onto the first spare that answers and records the rotation event, says no-spare once per marker, and onex lab claude-token takes no token argument and never echoes the piped token -- falsifier: uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -639,3 +644,46 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+  - id: "dod-omn19998-lab-claude-token-node"
+    description: "The handler and CLI tests pass at the head against a fake host and a fake store; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
+  - id: "dod-omn19998-lab-claude-token-deploy-probe"
+    description: "Hosted-runner probe reads the token handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_claude_token_effect/handlers/handler_lab_claude_token.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerLabClaudeToken'
+  - id: "dod-omn19998-lab-claude-token-local-discovery"
+    description: "The inventory discovers the token node and validates its typed local invocation at the head. The inventory test is generic and also passes at the merge base, so this item carries no binds_ac; AC29 is bound by the node's own handler and CLI tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q -k test_market_node_runtime_dogfood_inventory_classifies_all_entry_points"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-claude-token-discovery-deploy-probe"
+    description: "Hosted-runner readback loads the installed node entry point and validates the local contract's handler models, trigger, empty bus topics and runtime profiles; the dispatch head has no node entry point and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.metadata import entry_points; from scripts.audit.market_node_runtime_dogfood import _contract_for, _local_invocation_check; n="node_lab_claude_token_effect"; e=next(e for e in entry_points(group="onex.nodes") if e.name == n); assert e.load().__name__ == "omnimarket.nodes." + n; assert _local_invocation_check(_contract_for(n)) == (True, "")'
+  - id: "dod-omn19998-claude-token-dependency-ownership"
+    description: "The focused runtime ownership guard accepts the CLI effect's required store and shell ports. The generic guard passes without this node at the merge base, so AC29 remains bound by the node's own handler and CLI tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contract_ownership.py -q -k node_lab_claude_token_effect"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-claude-token-ownership-deploy-probe"
+    description: "Hosted-runner readback loads the installed node and requires its contract to declare the CLI-owned store and shell ports while retaining empty runtime profiles. The previous contract lacks dependency_ownership and fails this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.metadata import entry_points; from pathlib import Path; import yaml; e=next(e for e in entry_points(group="onex.nodes") if e.name == "node_lab_claude_token_effect"); c=yaml.safe_load(Path(e.load().__file__).with_name("contract.yaml").read_text()); assert c["dependency_ownership"] == ["store", "shell"]; assert c["descriptor"]["runtime_profiles"] == []'
