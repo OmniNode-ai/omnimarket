@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_client_verdict_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The client verdict table of the delegation adapter (context and delegation adapter plan
+  section 7.2) as contract data, applied by the Claude Code adapter. Maps observed admission
+  and terminal facts to proceed_native, answer or refuse. Deterministic, with no I/O other
+  than loading this contract, no clock and no randomness.
+input_model:
+  name: ModelDelegationClientVerdictRequest
+  module: omnimarket.nodes.node_delegation_client_verdict_compute.models.model_delegation_client_verdict
+output_model:
+  name: ModelDelegationClientVerdictResult
+  module: omnimarket.nodes.node_delegation_client_verdict_compute.models.model_delegation_client_verdict
+handler:
+  module: omnimarket.nodes.node_delegation_client_verdict_compute.handlers.handler_delegation_client_verdict
+  class: HandlerDelegationClientVerdict
+  input_model: omnimarket.nodes.node_delegation_client_verdict_compute.models.model_delegation_client_verdict.ModelDelegationClientVerdictRequest
+  output_model: omnimarket.nodes.node_delegation_client_verdict_compute.models.model_delegation_client_verdict.ModelDelegationClientVerdictResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_delegation_client_verdict_compute.handlers.handler_delegation_client_verdict:HandlerDelegationClientVerdict
+  handlers:
+    - operation: decide_delegation_client_verdict
+      handler:
+        name: HandlerDelegationClientVerdict
+        module: omnimarket.nodes.node_delegation_client_verdict_compute.handlers.handler_delegation_client_verdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier for this delegation.}
+  client_max_mode: {type: str, required: true, enum: [observe, selective, required]}
+  effective_mode: {type: str, required: false, description: Mode echoed in admission; absent when no admission event arrived.}
+  outcome: {type: str, required: true, enum: [refused_before_publish, admission_unknown, not_admitted, admission_observe, terminal, terminal_timeout]}
+  task_type_allowlisted: {type: bool, required: false}
+  admission_reason: {type: str, required: false}
+  terminal_status: {type: str, required: false}
+  terminal_quality_gate_passed: {type: bool, required: false}
+  terminal_failure_cause: {type: str, required: false}
+  client_call_key: {type: str, required: false}
+  request_fingerprint: {type: str, required: false}
+  echoed_client_call_key: {type: str, required: false}
+  echoed_request_fingerprint: {type: str, required: false}
+outputs:
+  action: {type: str, enum: [proceed_native, answer, refuse]}
+  reason: {type: str}
+  row: {type: str}
+  mode: {type: str, enum: [observe, selective, required]}
+  correlation_id: {type: str}
+terminal_event: onex.evt.omnimarket.delegation-client-verdict-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-client-verdict-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-client-verdict-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-client-verdict-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-client-verdict-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Client verdict table of the delegation adapter
+  author: OmniNode Team
+  created: "2026-10-17"
+  related_tickets: [OMN-21098]
+verdict_table:
+  - {row: refused_before_publish, mode: selective, action: proceed_native, reason: "delegation lane unavailable; nothing published"}
+  - {row: refused_before_publish, mode: required, action: refuse, reason: "delegation lane unavailable"}
+  - {row: admission_unknown, mode: selective, action: refuse, reason: "admission unknown; correlation_id {correlation_id}"}
+  - {row: admission_unknown, mode: required, action: refuse, reason: "admission unknown; correlation_id {correlation_id}"}
+  - {row: not_admitted, mode: observe, action: proceed_native, reason: "not admitted: {admission_reason}"}
+  - {row: not_admitted, mode: selective, action: proceed_native, reason: "not admitted: {admission_reason}"}
+  - {row: not_admitted, mode: required, allowlisted: false, action: proceed_native, reason: "not admitted: {admission_reason}"}
+  - {row: not_admitted, mode: required, allowlisted: true, action: refuse, reason: "not admitted: {admission_reason}; correlation_id {correlation_id}"}
+  - {row: admission_observe, mode: observe, action: proceed_native, reason: "effective mode observe"}
+  - {row: terminal_accepted, mode: selective, action: answer, reason: ""}
+  - {row: terminal_accepted, mode: required, action: answer, reason: ""}
+  - {row: terminal_rejected, mode: selective, action: refuse, reason: "delegation {terminal_status} {terminal_failure_cause}; correlation_id {correlation_id}"}
+  - {row: terminal_rejected, mode: required, action: refuse, reason: "delegation {terminal_status} {terminal_failure_cause}; correlation_id {correlation_id}"}
+  - {row: terminal_identity_mismatch, mode: selective, action: refuse, reason: "identity mismatch; correlation_id {correlation_id}"}
+  - {row: terminal_identity_mismatch, mode: required, action: refuse, reason: "identity mismatch; correlation_id {correlation_id}"}
+  - {row: terminal_timeout, mode: selective, action: refuse, reason: "unavailable; correlation_id {correlation_id}"}
+  - {row: terminal_timeout, mode: required, action: refuse, reason: "unavailable; correlation_id {correlation_id}"}
+  - {row: effective_mode_above_max, mode: selective, action: refuse, reason: "effective mode above client max; correlation_id {correlation_id}"}
+  - {row: effective_mode_above_max, mode: required, action: refuse, reason: "effective mode above client max; correlation_id {correlation_id}"}
+  - {row: inconsistent_observation, mode: observe, action: refuse, reason: "inconsistent observation; correlation_id {correlation_id}"}
+  - {row: inconsistent_observation, mode: selective, action: refuse, reason: "inconsistent observation; correlation_id {correlation_id}"}
+  - {row: inconsistent_observation, mode: required, action: refuse, reason: "inconsistent observation; correlation_id {correlation_id}"}
