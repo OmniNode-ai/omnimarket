@@ -1215,7 +1215,7 @@ dod_evidence:
         check_value: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC68"]
-  - id: "dod-omn17427-publisher-fixture-one-copy-deploy-probe"
+  - id: "dod-omn17427-ac68-one-copy-deploy-probe"
     description: "Deploy probe. GitHub serves the omnimarket publisher fixture at the checked-out HEAD importing the omnibase_infra corpus. It fails at the merge base, where the fixture carries its own index, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
