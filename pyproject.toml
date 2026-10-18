@@ -432,6 +432,7 @@ node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_comput
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
 node_context_pack_render_compute = "omnimarket.nodes.node_context_pack_render_compute"
 node_context_profile_resolver_effect = "omnimarket.nodes.node_context_profile_resolver_effect"
+node_context_compaction_orchestrator = "omnimarket.nodes.node_context_compaction_orchestrator"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
 node_context_exploration_policy_compute = "omnimarket.nodes.node_context_exploration_policy_compute"
 node_context_selection_policy_compute = "omnimarket.nodes.node_context_selection_policy_compute"

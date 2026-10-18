@@ -345,11 +345,16 @@ requirements:
     acceptance:
       - id: "AC66"
         statement: "AC66: the sixteen removed prose files are absent and README.md has three to five lines including the public knowledge_base link -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q"
+  - id: "req-linear-triage-local-github"
+    statement: "node_linear_triage runs on a host that holds no GitHub token by reading PR state from the PR watcher state and the canonical clones, reports an unreadable state instead of an empty answer, and keeps its implementing-PR gate."
+    acceptance:
+      - id: "AC67"
+        statement: "AC67: with github_source local the triage handler completes without a GITHUB_TOKEN, a merged squash commit in the clone and a merged or closed watcher record answer the merged and closed-unmerged searches, an id never matches a longer id, a merged record with no merge time is dropped, a missing watcher state returns status error, and the default github_source stays api -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q fails when the local client is removed"
   - id: "req-hostile-reviewer-codex-fallback"
     statement: "When a hostile-reviewer run's requested review routes produce no review output, the review runs on the Codex route the node contract declares, the completed event records which engine reviewed and which routes it replaced, and a run where no engine reviewed returns FAILED instead of a clean pass."
     acceptance:
-      - id: "AC67"
-        statement: "AC67: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
+      - id: "AC68"
+        statement: "AC68: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
@@ -474,6 +479,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC63: the session-start capability digest node prints inside a registry root, stays silent outside, names a stale digest with its fix and exits 0 on every input."
     command: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC67: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
+    command: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1181,6 +1189,21 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC66"]
+  - id: "dod-omn17427-ac61-linear-triage-local-github"
+    description: "The local GitHub PR reads and the handler's local source pass their focused tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC67"]
+  - id: "dod-omn17427-linear-triage-local-deploy-probe"
+    description: "Deploy probe. GitHub serves the triage handler at the checked-out HEAD with the local GitHub source. It fails at the merge base, which has no such source, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/handlers/handler_linear_triage.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("LocalGitHubPrReads", "github_source")); print("linear-triage local github deploy probe: PASS")'
   - id: "dod-omn17427-ac67-hostile-reviewer-codex-fallback"
     description: "The hostile-reviewer Codex fallback chain passes: an offline primary is reviewed by Codex and the engine is recorded, a healthy primary never touches the fallback, both engines offline is FAILED, and a silent primary counts as offline."
     source: "manual"
@@ -1188,7 +1211,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC67"]
+    binds_ac: ["AC68"]
   - id: "dod-omn17427-codex-fallback-deploy-probe"
     description: "Deploy probe. GitHub serves the hostile-reviewer orchestrator handler at the checked-out HEAD with the fallback route and the fallback fields. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
     source: "manual"

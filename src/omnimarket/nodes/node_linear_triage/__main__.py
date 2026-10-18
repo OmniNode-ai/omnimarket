@@ -71,6 +71,21 @@ def main() -> None:
         help="Select the packaged explicit env mapping for exported Linear/GitHub keys.",
     )
     parser.add_argument(
+        "--github-source",
+        choices=("api", "local"),
+        default="api",
+        help=(
+            "api reads PR state with GITHUB_TOKEN; local reads the PR watcher "
+            "state and the canonical clones and needs no GitHub token."
+        ),
+    )
+    parser.add_argument(
+        "--flag-only",
+        choices=("true", "false"),
+        default="true",
+        help="true (default) never writes to Linear; false lets gated closes write.",
+    )
+    parser.add_argument(
         "--threshold-days",
         type=int,
         default=14,
@@ -108,6 +123,8 @@ def main() -> None:
         ),
         threshold_days=args.threshold_days,
         dry_run=args.dry_run,
+        flag_only=args.flag_only == "true",
+        github_source=args.github_source,
         team=args.team,
     )
 
