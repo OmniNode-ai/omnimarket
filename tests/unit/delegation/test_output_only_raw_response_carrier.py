@@ -280,6 +280,105 @@ def _json_manifest() -> dict[str, object]:
     return manifest
 
 
+@pytest.mark.unit
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+@pytest.mark.parametrize("trailing", ["", "\n\nAn explanation after the JSON."])
+async def test_hosted_provider_terminal_and_live_grader_keep_the_same_raw_bytes(
+    provider_boundary: tuple[str, dict[str, Any], list[dict[str, Any]]],
+    trusted_workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    trailing: str,
+) -> None:
+    """Reproduce the live handoff on hosted runners with an isolated HTTP provider.
+
+    The provider, effect, dispatch port and orchestrator run here; only the
+    external wrapper invocation is replaced by the terminal they produced.
+    The separate local Done probe still measures the deployed dev lane.
+    """
+    endpoint, body, seen = provider_boundary
+    raw = f" \n{_JSON_ANSWER}{trailing}\n "
+    body["choices"][0]["message"]["content"] = raw
+    monkeypatch.setattr(
+        delegation_backend_resolution,
+        "load_bifrost_backends",
+        lambda **_: [
+            {
+                "backend_id": "local-coder",
+                "endpoint_url": endpoint,
+                "model_name": _MODEL,
+                "tier": "local",
+                "max_tokens": 8192,
+                "timeout_ms": 30000,
+                "capabilities": ["agent_delegation", "reasoning"],
+            }
+        ],
+    )
+    manifest = _json_manifest()
+    entries = manifest["contracts"]
+    assert isinstance(entries, list)
+    entry = entries[0]
+    assert isinstance(entry, dict)
+    assert entry["task_type"] == "reasoning"
+    handler = HandlerDelegateSkill(
+        dispatch_port=LocalDelegationDispatchPort(
+            effect_handler=HandlerLlmDelegationCall(),
+            evidence_db_path=tmp_path / "hosted-delegation.sqlite",
+            effect_process_boundary=False,
+        )
+    )
+    terminal = await handler.handle(
+        ModelDelegateSkillRequest(
+            prompt=str(entry["prompt"]),
+            task_type="reasoning",
+            source="codex",
+            backend_id="local-coder",
+            response_contract=entry["response_contract"],
+            requested_timeout_seconds=30,
+        )
+    )
+    assert terminal is not None
+    assert terminal.status == "completed"
+    assert len(seen) == 1
+    evidence = terminal.response_contract_evidence
+    assert evidence is not None
+    assert evidence.raw_response is not None
+    assert evidence.raw_response.model_dump(mode="json") == _carrier(raw)
+    wrapper_stdout = json.dumps(
+        {"run_id": str(uuid4()), "result": terminal.model_dump(mode="json")}
+    )
+
+    def completed(command: list[str], **_: object) -> CompletedProcess[str]:
+        assert "--json" in command
+        return CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=wrapper_stdout,
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "omnimarket.delegation.response_contract_conformance_runner.subprocess.run",
+        completed,
+    )
+    receipt = run_live_manifest(manifest, timeout_seconds=30, locus="in-process")
+    contracts = receipt["contracts"]
+    assert isinstance(contracts, list)
+    trial = contracts[0]["trials"][0]
+    assert trial["raw_response_carrier"] == {
+        "present": True,
+        "retained": True,
+        "sha256_verified": True,
+    }
+    assert (
+        trial["output_only"]["raw_sha256"] == hashlib.sha256(raw.encode()).hexdigest()
+    )
+    assert trial["output_only"]["evidence_basis"] == "raw_provider_bytes"
+    assert trial["output_only"]["accepted"] is (not trailing)
+    assert trial["passed"] is (not trailing)
+    assert trial["failure_class"] == ("output_only_refused" if trailing else None)
+
+
 def _carrier(text: str) -> dict[str, object]:
     encoded = text.encode("utf-8")
     return {
