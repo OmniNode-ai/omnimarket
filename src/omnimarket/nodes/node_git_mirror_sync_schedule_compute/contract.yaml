@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Git Mirror Sync Schedule Compute (OMN-19998)
+#
+# Pure definition-B compute: handle(ModelRuntimeTick) -> ModelGitMirrorSyncRequested | None.
+# Subscribes to the platform runtime tick and, once per interval, returns a
+# detecting sync of one watched repository, which the runtime publishes to the
+# git query mirror's command topic. The mirror publishes each squash merge it
+# finds as onex.evt.github.pr-merged.v1, so pr-merged events reach the bus with
+# no webhook and no GitHub API call. Stateless: the window and the repository
+# are derived from the tick's own clock and interval.
+name: node_git_mirror_sync_schedule_compute
+contract_name: node_git_mirror_sync_schedule_compute
+node_name: node_git_mirror_sync_schedule_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Interval schedule for the git query mirror's detecting sync. Subscribes to
+  the platform runtime tick; the tick that opens a window of
+  config.git_mirror_sync.schedule returns a sync request for one repository of
+  config.git_mirror_sync.repos (the repositories take turns, one per window),
+  every other tick returns nothing. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerGitMirrorSyncSchedule
+        module: omnimarket.nodes.node_git_mirror_sync_schedule_compute.handlers.handler_git_mirror_sync_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_git_mirror_sync_schedule_compute.handlers.handler_git_mirror_sync_schedule
+  class: HandlerGitMirrorSyncSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "git_mirror_sync_schedule"
+
+output_model:
+  name: ModelGitMirrorSyncRequested
+  module: omnimarket.models.git_mirror.model_git_mirror_sync_requested
+  description: The detecting sync for the window this tick opens, or no output on any other tick.
+
+config:
+  git_mirror_sync:
+    schedule:
+      workflow: git-mirror-sync
+      interval_seconds: 120
+      offset_seconds: 30
+    # The repositories whose default-branch squash merges the mirror publishes.
+    # omnimarket first: its pr-merged-publisher workflow is the first lab job
+    # this replaces.
+    repos:
+      - OmniNode-ai/omnimarket
+
+# The command the runtime publishes on the handler's behalf when a window opens.
+terminal_event: onex.cmd.omnimarket.git-query-mirror-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.git-query-mirror-requested.v1
+
+metadata:
+  description: "Runtime-tick schedule of the git query mirror's detecting sync"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-10-17"
+  tags: [compute, git, schedule, pure]
+  related_tickets: ["OMN-19998"]

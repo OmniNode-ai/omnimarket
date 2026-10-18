@@ -199,10 +199,6 @@ allowlisted_handlers:
     violations:
       - missing_handler_routing
     ticket: OMN-11883
-  - path: omnimarket/nodes/node_context_bundle_generator_compute/handlers/handler_context_bundle.py
-    violations:
-      - missing_handler_routing
-    ticket: OMN-11883
   - path: omnimarket/nodes/node_context_pack_builder_compute/handlers/handler_context_pack_builder.py
     violations:
       - missing_handler_routing

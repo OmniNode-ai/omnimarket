@@ -1,0 +1,23 @@
+name: node_delegation_admission_compute
+version: "0.1.0"
+description: "Pure computation: one Agent call in; admitted, task_type and reason out, from call origin, path, agent-model guard, sensitivity gate and task classifier checks. No prompt text in the result."
+pack: pipeline
+node_role: compute
+display_name: "Delegation Admission Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_admission_compute: "omnimarket.nodes.node_delegation_admission_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "admission"]
