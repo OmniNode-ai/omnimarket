@@ -53,6 +53,12 @@
 #   replaces the hardcoded keyword table the `onex delegate` CLI used to carry;
 #   see ModelTaskClassSelection in inference/task_class_authority.py.
 #
+# context_profile: OPTIONAL context profile name (a file stem under
+#   src/omnimarket/pack/profiles, e.g. delegation_payload_local; OMN-21119).
+#   The delegation orchestrator requests that profile's context pack before
+#   dispatching a task of this class. Absent means no pack. No class here sets
+#   it until the profile is promoted on its measured evidence.
+#
 # response_contract_ref: OPTIONAL dotted "module.path.AttrName" naming a pydantic
 #   model (or a discriminated Union type alias) whose JSON Schema
 #   (resolve_task_class_response_contract, node_delegation_routing_reducer)
