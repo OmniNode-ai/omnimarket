@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_context_role_adoption_verdict_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Deterministic TE.5 adoption verdict over recorded round-one results (OMN-21142).
+  Reads no files, calls no model, has no clock. A promotion is only ever a
+  routing-contract entry for the role's task class, made in a separate PR.
+input_model:
+  name: ModelRoleAdoptionVerdictRequest
+  module: omnimarket.nodes.node_context_role_adoption_verdict_compute.models.model_role_adoption_verdict
+output_model:
+  name: ModelRoleAdoptionVerdictResult
+  module: omnimarket.nodes.node_context_role_adoption_verdict_compute.models.model_role_adoption_verdict
+handler:
+  module: omnimarket.nodes.node_context_role_adoption_verdict_compute.handlers.handler_role_adoption_verdict
+  class: HandlerRoleAdoptionVerdict
+  input_model: omnimarket.nodes.node_context_role_adoption_verdict_compute.models.model_role_adoption_verdict.ModelRoleAdoptionVerdictRequest
+  output_model: omnimarket.nodes.node_context_role_adoption_verdict_compute.models.model_role_adoption_verdict.ModelRoleAdoptionVerdictResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_context_role_adoption_verdict_compute.handlers.handler_role_adoption_verdict:HandlerRoleAdoptionVerdict
+  handlers:
+    - operation: decide_role_adoption
+      handler:
+        name: HandlerRoleAdoptionVerdict
+        module: omnimarket.nodes.node_context_role_adoption_verdict_compute.handlers.handler_role_adoption_verdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  evaluation_id: {type: str, required: true, description: Recorded round-one evaluation identifier.}
+  task_class: {type: str, required: true, description: The role's task class for a routing promotion.}
+  repeats_required: {type: int, required: false, description: Required repeats per case and rung; defaults to three.}
+  cases: {type: list, required: true, description: Case labels and controls fixed before evaluation.}
+  baseline: {type: object, required: true, description: Measured native compaction summary results.}
+  control_without_events: {type: object, required: true, description: Measured package results without model events.}
+  rungs: {type: list, required: true, description: Per-case and per-repeat measurements for each candidate rung.}
+  cascade_min_tokens_in: {type: int, required: true, description: Positive input-token threshold for TE.7; zero disables it.}
+  cascade_min_cost_usd: {type: float, required: true, description: Positive cost threshold for TE.7; zero disables it.}
+outputs:
+  evaluation_id: {type: str}
+  task_class: {type: str}
+  outcome: {type: str, enum: [adopt, no_rung_passed]}
+  passed: {type: list}
+  failed: {type: list}
+  lowest_cost: {type: list}
+  promotions: {type: list}
+  recommendation: {type: str}
+  cascade_justified: {type: bool}
+  cascade_reason: {type: str}
+terminal_event: onex.evt.omnimarket.context-role-adoption-verdict-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-role-adoption-verdict-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-role-adoption-verdict-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-role-adoption-verdict-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-role-adoption-verdict-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Deterministic TE.5 role adoption verdict
+  author: OmniNode Team
+  created: "2026-10-18"
+  related_tickets: [OMN-21142]

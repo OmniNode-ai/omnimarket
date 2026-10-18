@@ -59,7 +59,9 @@ def test_name_that_is_not_a_bare_profile_name_is_not_found(name: str) -> None:
     assert result.failure_class is EnumContextPackFailure.PROFILE_NOT_FOUND
 
 
-def test_same_name_resolves_equal_object_and_equal_hash() -> None:
+def test_same_name_resolves_equal_object_and_equal_hash(
+    promoted_context_profile_routing: None,
+) -> None:
     first = _resolve("compaction_orchestrator")
     second = _resolve("compaction_orchestrator")
     assert first.status is EnumContextProfileResolveStatus.OK
@@ -70,7 +72,9 @@ def test_same_name_resolves_equal_object_and_equal_hash() -> None:
     assert len(first.profile_content_hash or "") == 64
 
 
-def test_compaction_orchestrator_profile_data() -> None:
+def test_compaction_orchestrator_profile_data(
+    promoted_context_profile_routing: None,
+) -> None:
     result = _resolve("compaction_orchestrator")
     profile = result.profile
     assert isinstance(profile, ModelContextProfile)
@@ -94,7 +98,9 @@ def test_compaction_orchestrator_profile_data() -> None:
     assert profile.latency_budget_ms is None
 
 
-def test_every_shipped_profile_file_resolves_by_its_stem() -> None:
+def test_every_shipped_profile_file_resolves_by_its_stem(
+    promoted_context_profile_routing: None,
+) -> None:
     files = sorted(_PROFILES_DIR.glob("*.yaml"))
     assert files, "no shipped profile data"
     for path in files:
@@ -166,7 +172,7 @@ def test_contract_declares_one_terminal_topic_and_the_resolve_outputs() -> None:
     }
 
 
-def test_session_resume_profile_data() -> None:
+def test_session_resume_profile_data(promoted_context_profile_routing: None) -> None:
     # Plan section 4.4 row session_resume (OMN-21119).
     result = _resolve("session_resume")
     profile = result.profile
