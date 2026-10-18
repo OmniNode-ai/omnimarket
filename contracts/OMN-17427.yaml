@@ -386,6 +386,11 @@ requirements:
     acceptance:
       - id: "AC70"
         statement: "AC70: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
+  - id: "req-hostile-reviewer-delegation-route"
+    statement: "The hostile reviewer can send its model calls through the delegation node's review task class and its completed event carries the merged findings and a verdict."
+    acceptance:
+      - id: "AC71"
+        statement: "AC71: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -525,6 +530,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC70: omnimarket's publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser."
     command: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+  - kind: "tests"
+    description: "AC71: the delegation review route and the completed event's verdict and findings."
+    command: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1386,3 +1394,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/testing/publisher_contract_fixture.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "from omnibase_infra.testing.publisher_contract_fixture import" in source and "parse_contract" not in source; print("publisher fixture one-copy deploy probe: PASS")'
+  - id: "dod-omn17427-ac69-hostile-review-delegation"
+    description: "The hostile reviewer's delegation route sends each model call through the review task class pinned to the route key, a delegation that does not complete fails its route, and the completed event carries the verdict and the merged findings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-hostile-review-delegation-probe"
+    description: "Deploy probe. GitHub serves the delegation review adapter at the checked-out HEAD, calling the delegate skill with the review task type. It fails at the merge base, where the adapter does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("REVIEW_TASK_TYPE", "backend_id=model_key", "HandlerDelegateSkill")); print("hostile reviewer delegation route deploy probe: PASS")'
