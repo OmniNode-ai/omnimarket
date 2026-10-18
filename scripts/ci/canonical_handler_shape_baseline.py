@@ -23,7 +23,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_build_loop_orchestrator",
     "omnimarket.nodes.node_canary_score_reducer",
     "omnimarket.nodes.node_capsule_effectiveness_feedback_reducer",
-    "omnimarket.nodes.node_claim_resolver",
     "omnimarket.nodes.node_closeout_effect",
     "omnimarket.nodes.node_context_roi_runner",
     "omnimarket.nodes.node_contract_reducer",
