@@ -390,6 +390,11 @@ requirements:
     acceptance:
       - id: "AC73"
         statement: "AC73: the gateway pr_text result carries head_repo and is_cross_repository: True for a fork head and for a head repository that is gone, False for a same-repository head compared without regard to letter case."
+  - id: "req-repo-evidence-caller-verifier-floor"
+    statement: "The repo-evidence caller workflow refuses a verifier below the receipt gate's floor, and the commit-stage hook and the CI lint step that run that refusal stay wired."
+    acceptance:
+      - id: "AC74"
+        statement: "AC74: the call-repo-evidence-gate-verifier-floor pre-commit hook and its paired ci.yml lint step run the caller verifier-floor test, and the caller's verifier-version is at or above 0.4.303 -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_floor_wiring_omn17427.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov fails when the hook or the lint step is removed or the caller's verifier-version is below 0.4.303"
   - id: "req-ci-summary-external-default-deny"
     statement: |-
       CI Summary judges every head check-run that earlier layers do not account for with a success-only external sweep, known non-PR event exemptions and validated expiring exclusions.
@@ -397,6 +402,11 @@ requirements:
       - id: "AC74"
         statement: |-
           AC74: an unregistered pull_request-event failure reaches a non-zero main() verdict, success passes, running and replacement rows hold PENDING, unknown provenance is swept, known non-PR events are exempt, and malformed or expired exclusions cannot hide a red -- falsifier: the focused external sweep, exclusion and production poller tests fail at the merge base
+  - id: "req-landing-decision-ledger-mirror"
+    statement: "The landing controller's decisions reach the work ledger from the typed landing decision event, hosted by the ledger serve process."
+    acceptance:
+      - id: "AC75"
+        statement: "AC75: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -543,9 +553,15 @@ evidence_requirements:
     description: "AC73: the gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
     command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
   - kind: "tests"
+    description: "AC74: the caller verifier-floor hook and lint step are wired, and the caller's verifier-version is at or above 0.4.303."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_floor_wiring_omn17427.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov"
+  - kind: "tests"
     description: "AC74: default-deny external sweep, bounded exclusions and the production poller refuse unregistered reds with passing controls."
     command: >-
       uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "TestExternalDefaultDenySweep or TestExternalSweepExclusions or TestSweepIsWiredIntoProductionPoller"
+  - kind: "tests"
+    description: "AC75: the landing decision mapping writes one row per action, outcome, degraded reason and violation, none for an idle tick, and the host appends a redelivered event once."
+    command: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1406,6 +1422,14 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/read_operations.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "is_cross_repository" in source; assert "head_repo" in source; print("gateway pr_text cross-repository deploy probe: PASS")'
+  - id: "dod-repo-evidence-caller-verifier-floor"
+    description: "The call-repo-evidence-gate-verifier-floor pre-commit hook and its paired ci.yml lint step run the caller verifier-floor test, and the caller's verifier-version is at or above 0.4.303. The wiring test fails when the hook or the lint step is removed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_floor_wiring_omn17427.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC74"]
   - id: "dod-omn17427-ac63-external-default-deny"
     description: "The external sweep, exclusion validation and main() fixture tests pass with refusal and success controls."
     source: "manual"
@@ -1435,3 +1459,18 @@ dod_evidence:
           print("external default-deny deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac75-landing-decision-ledger-mirror"
+    description: "The landing decision mapping writes one STATUS row per action, recorded outcome, DEGRADED reason and violation, none for an idle tick or a withheld observe-only action, and the ledger host appends a redelivered event once."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC75"]
+  - id: "dod-omn17427-landing-ledger-mirror-deploy-probe"
+    description: "Deploy probe. GitHub serves the landing decision ledger mirror contract at the checked-out HEAD, subscribed to the landing decision completed topic. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); topics = c["runtime_dispatch"]["subscribe_topics"]; assert len(topics) == 1 and topics[0].endswith("pr-landing-decision-completed.v1"); print("landing decision ledger mirror deploy probe: PASS")'
