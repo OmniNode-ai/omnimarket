@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20234"
+title: "No omnimarket node contract names a removed handler routing field, so the routing entry model's extra-ignore tolerance has no omnimarket reader left"
+summary: "The two schedule nodes node_audit_trail_compact_schedule_compute and node_lab_job_check_schedule_compute carried routing_key and handler_key on their handler_routing entry, fields the canonical routing entry model only tolerates by ignoring them. Both entries now carry the canonical handler, event_model and event_type alone, and a repo-wide test scans every node contract's handler_routing for the removed fields (routing_key, handler_key, priority, output_events, callable, lazy_import) with a positive control."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-no-removed-route-fields"
+    statement: "No node contract in omnimarket names a removed handler routing field on a handler_routing entry."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a scan of every src/omnimarket/nodes/node_*/contract.yaml handler_routing entry finds none of routing_key, handler_key, priority, output_events, callable or lazy_import -- falsifier: any contract entry naming one of them"
+  - id: "req-dispatch-preserved"
+    statement: "The two migrated schedule nodes still route the runtime tick to their handler."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the golden-chain and runtime-tick schedule tests of node_audit_trail_compact_schedule_compute and node_lab_job_check_schedule_compute pass on the migrated contracts -- falsifier: a failing schedule test after the routing fields are removed"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the repo-wide legacy-field scan with its positive control, and the schedule node tests."
+    command: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py tests/test_golden_chain_lab_job_check_schedule_compute.py tests/test_golden_chain_audit_trail_compact_schedule.py tests/test_audit_trail_compact_schedule_runtime_boot.py tests/unit/nodes/test_runtime_tick_schedule_fires.py tests/unit/nodes/node_lab_job_check/test_lab_job_check_schedule.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20234-ac1-no-removed-route-fields"
+    description: "AC1: the repo-wide scan finds no removed routing field in any node contract, and its positive control reports a fixture that carries them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py -q -p no:randomly --no-cov -k 'no_node_contract_carries_legacy_route_fields or legacy_route_scan_detects_removed_fields'"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn20234-ac2-schedule-dispatch-preserved"
+    description: "AC2: the migration scan rejects the old contracts and the schedule nodes' golden-chain, boot and tick tests pass on the migrated contracts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py tests/unit/nodes/node_lab_job_check/test_lab_job_check_schedule.py -q -p no:randomly --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_lab_job_check_schedule_compute.py -q -p no:randomly --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_audit_trail_compact_schedule.py tests/test_audit_trail_compact_schedule_runtime_boot.py -q -p no:randomly --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_runtime_tick_schedule_fires.py -q -p no:randomly --no-cov -k audit_trail"
+        cwd: "."
+    binds_ac: ["AC2"]
+  - id: "dod-omn20234-deploy-probe"
+    description: "Hosted container readback: copy the two shipped schedule contracts into an isolated Python container, parse their runtime tick routes, and assert the canonical handler and event model with every removed field absent. The same probe fails with the merge-base contracts. It needs Docker and public PyPI, without a lane container or private endpoint."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          tar -cf - src/omnimarket/nodes/node_audit_trail_compact_schedule_compute/contract.yaml src/omnimarket/nodes/node_lab_job_check_schedule_compute/contract.yaml | docker run --rm -i -e PYTHONDONTWRITEBYTECODE=1 python:3.12-alpine sh -ec 'python -m pip install --disable-pip-version-check --quiet PyYAML==6.0.3
+          mkdir /product
+          tar -xf - -C /product
+          cd /product
+          python -c '"'"'from pathlib import Path
+          import yaml
+          expected = {
+              "node_audit_trail_compact_schedule_compute": "HandlerAuditTrailCompactSchedule",
+              "node_lab_job_check_schedule_compute": "HandlerLabJobCheckSchedule",
+          }
+          removed = {"routing_key", "handler_key", "priority", "output_events", "callable", "lazy_import"}
+          for name, handler in expected.items():
+              contract = yaml.safe_load((Path("src/omnimarket/nodes") / name / "contract.yaml").read_text())
+              routes = contract["handler_routing"]["handlers"]
+              assert len(routes) == 1, (name, routes)
+              route = routes[0]
+              assert not removed.intersection(route), (name, route)
+              assert route["handler"]["name"] == handler, (name, route)
+              assert route["event_type"] == "platform.runtime-tick", (name, route)
+              assert route["event_model"] == "omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick", (name, route)
+              print(f"PASS: {name} container runtime tick route is canonical")
+          '"'"''
+        cwd: "."

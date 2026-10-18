@@ -18,10 +18,21 @@ Entities (``work_ledger_state``):
   against its own clock.
 * ``msg:<id>``: a MSG opens it; an ACK whose ``re=`` is the id answers it. An
   ACK of a hold or a ruling makes a stub with no ``opened_at``, never open.
-* ``ruling:<stamp>:<lane>`` and ``consent:<stamp>:<lane>``: opened by their row
-  and never closed.
+* ``ruling:<stamp>:<lane>`` and ``consent:<stamp>:<lane>``: opened by their row;
+  closed only by a later RULING or OPERATOR-CONSENT that ``supersedes=`` it.
 
-STATUS, FRICTION and CORRECTION rows are logged and open no entity.
+STATUS, FRICTION and CORRECTION rows open no entity.
+
+Relationships (OMN-21107, TA.5): a RULING or OPERATOR-CONSENT row's
+``supersedes=``, ``amends=`` and ``extends=`` cells, and a CORRECTION row's
+``corrects=`` cell (with its ``operator_span=``), each fold to one immutable
+link naming its target by the cell's value. A link is a function of the row's
+text alone, so ``links_for_rows`` re-derives every link from the stored
+``raw_row`` and no link table is written. ``close_relationships`` resolves
+the links against the folded state by the target row's timestamp: a
+``supersedes`` link closes its target, ``amends`` and ``extends`` link without
+closing, and a ``corrects`` link lists the correcting row on its target of any
+kind. A hold whose ``until`` is at or before ``as_of`` reads as expired.
 """
 
 from __future__ import annotations
@@ -51,6 +62,7 @@ from omnimarket.events.enum_ledger_row_type import (
 from omnimarket.events.model_ledger_row_event import (
     ModelLedgerAckEvent,
     ModelLedgerClaimEvent,
+    ModelLedgerCorrectionEvent,
     ModelLedgerHoldEvent,
     ModelLedgerMsgEvent,
     ModelLedgerOperatorConsentEvent,
@@ -62,6 +74,9 @@ from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity
     EnumWorkLedgerEntityKind as Kind,
 )
 from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity_kind import (
+    EnumWorkLedgerRelation as Relation,
+)
+from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity_kind import (
     EnumWorkLedgerStateOp as Op,
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request import (
@@ -69,6 +84,7 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_result import (
     ModelWorkLedgerFoldResult,
+    ModelWorkLedgerLink,
     ModelWorkLedgerRowRecord,
     ModelWorkLedgerStateOp,
 )
@@ -81,6 +97,17 @@ from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
 )
 
 _BARE_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+# A row timestamp inside a relationship cell (``2026-10-02T11:25:17Z``,
+# ``RULING 2026-...Z``, ``CLAIM@2026-...Z``), but not a hold or message id
+# (``2026-...Z-lane``), which continues with a hyphen.
+_STAMP_IN_REF = re.compile(
+    r"(?<![0-9A-Za-z-])(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)(?![0-9A-Za-z-])"
+)
+_RELATION_FIELDS: tuple[Relation, ...] = (
+    Relation.SUPERSEDES,
+    Relation.AMENDS,
+    Relation.EXTENDS,
+)
 
 
 class WorkLedgerFoldError(ValueError):
@@ -89,6 +116,24 @@ class WorkLedgerFoldError(ValueError):
 
 def parse_stamp(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+def target_stamp_of(ref: str) -> datetime | None:
+    """The one row timestamp a relationship cell names, or None (a line number, prose)."""
+    stamps = set(_STAMP_IN_REF.findall(ref))
+    return parse_stamp(stamps.pop()) if len(stamps) == 1 else None
+
+
+def _refs(values: tuple[str, ...]) -> tuple[str, ...]:
+    """A cell may list several targets, comma-separated; each is one link."""
+    return tuple(
+        dict.fromkeys(
+            part.strip()
+            for value in values
+            for part in value.split(",")
+            if part.strip()
+        )
+    )
 
 
 def fold_row(request: ModelWorkLedgerFoldRequest) -> ModelWorkLedgerFoldResult:
@@ -200,8 +245,32 @@ def fold_row(request: ModelWorkLedgerFoldRequest) -> ModelWorkLedgerFoldResult:
                 detail=f"APPROVED SCOPE: {event.approved_scope} | OUT OF SCOPE: {event.out_of_scope}",
             )
         )
+    links: list[ModelWorkLedgerLink] = []
+
+    def link(
+        relation: Relation, values: tuple[str, ...], operator_span: str | None = None
+    ) -> None:
+        source_key = ops[0].entity_key if ops else None
+        for ref in _refs(values):
+            links.append(
+                ModelWorkLedgerLink(
+                    source_row_id=event.row_id,
+                    source_entity_key=source_key,
+                    relation=relation,
+                    target_ref=ref,
+                    target_stamp=target_stamp_of(ref),
+                    at=at,
+                    operator_span=operator_span,
+                )
+            )
+
+    if isinstance(event, ModelLedgerRulingEvent | ModelLedgerOperatorConsentEvent):
+        for relation in _RELATION_FIELDS:
+            link(relation, getattr(event, relation.value))
+    elif isinstance(event, ModelLedgerCorrectionEvent):
+        link(Relation.CORRECTS, event.corrects, event.operator_span)
     _ = RowType  # the enum is the closed set the parser already enforced
-    return ModelWorkLedgerFoldResult(row=record, ops=tuple(ops))
+    return ModelWorkLedgerFoldResult(row=record, ops=tuple(ops), links=tuple(links))
 
 
 def _may_overwrite(
@@ -261,7 +330,94 @@ def apply_ops(
         )
 
 
-__all__: list[str] = ["WorkLedgerFoldError", "apply_ops", "fold_row", "parse_stamp"]
+def links_for_rows(raw_rows: Iterable[str]) -> tuple[ModelWorkLedgerLink, ...]:
+    """Every link the rows carry, re-derived by the same fold. Rows that are not
+    canonical ledger rows carry none."""
+    links: list[ModelWorkLedgerLink] = []
+    for raw in raw_rows:
+        try:
+            links.extend(fold_row(ModelWorkLedgerFoldRequest(raw_row=raw)).links)
+        except WorkLedgerFoldError:
+            continue
+    return tuple(links)
+
+
+def close_relationships(
+    state: dict[str, dict[str, object]],
+    links: Iterable[ModelWorkLedgerLink],
+    *,
+    as_of: datetime | None = None,
+) -> tuple[dict[str, dict[str, object]], tuple[ModelWorkLedgerLink, ...]]:
+    """Resolve links against folded state. Pure, and independent of arrival order.
+
+    Returns each entity with its incoming links (``superseded_by``,
+    ``amended_by``, ``extended_by``, ``corrected_by`` as sorted row ids, and
+    ``operator_spans`` as sorted ``(row_id, span)`` pairs), ``expired`` and the
+    closed ``is_open``; and the links whose target names no folded entity. A
+    target is every entity opened at the named timestamp other than the
+    linking row's own; a ``corrects`` target with none falls back to every
+    entity closed at it (a corrected TERMINAL or RELEASE names its claim or hold).
+    """
+    unique = {(lk.source_row_id, lk.relation, lk.target_ref): lk for lk in links}
+    opened: dict[datetime, list[str]] = {}
+    closed: dict[datetime, list[str]] = {}
+    for key, entity in state.items():
+        if isinstance(entity["opened_at"], datetime):
+            opened.setdefault(entity["opened_at"], []).append(key)
+        if isinstance(entity["closed_at"], datetime):
+            closed.setdefault(entity["closed_at"], []).append(key)
+
+    incoming: dict[str, dict[Relation, set[str]]] = {}
+    spans: dict[str, set[tuple[str, str]]] = {}
+    unresolved: list[ModelWorkLedgerLink] = []
+    for lk in unique.values():
+        stamp = lk.target_stamp
+        targets = [
+            k
+            for k in (opened.get(stamp, []) if stamp else [])
+            if k != lk.source_entity_key
+        ]
+        if not targets and stamp and lk.relation is Relation.CORRECTS:
+            targets = list(closed.get(stamp, []))
+        if not targets:
+            unresolved.append(lk)
+            continue
+        for key in targets:
+            incoming.setdefault(key, {}).setdefault(lk.relation, set()).add(
+                lk.source_row_id
+            )
+            if lk.relation is Relation.CORRECTS and lk.operator_span:
+                spans.setdefault(key, set()).add((lk.source_row_id, lk.operator_span))
+
+    closure: dict[str, dict[str, object]] = {}
+    for key, entity in state.items():
+        rel = incoming.get(key, {})
+        until = entity["until_at"]
+        expired = as_of is not None and isinstance(until, datetime) and until <= as_of
+        superseded = bool(rel.get(Relation.SUPERSEDES))
+        closure[key] = {
+            **entity,
+            "superseded_by": tuple(sorted(rel.get(Relation.SUPERSEDES, ()))),
+            "amended_by": tuple(sorted(rel.get(Relation.AMENDS, ()))),
+            "extended_by": tuple(sorted(rel.get(Relation.EXTENDS, ()))),
+            "corrected_by": tuple(sorted(rel.get(Relation.CORRECTS, ()))),
+            "operator_spans": tuple(sorted(spans.get(key, ()))),
+            "expired": expired,
+            "is_open": bool(entity["is_open"]) and not superseded and not expired,
+        }
+    unresolved.sort(key=lambda lk: (lk.source_row_id, lk.relation.value, lk.target_ref))
+    return closure, tuple(unresolved)
+
+
+__all__: list[str] = [
+    "WorkLedgerFoldError",
+    "apply_ops",
+    "close_relationships",
+    "fold_row",
+    "links_for_rows",
+    "parse_stamp",
+    "target_stamp_of",
+]
 
 
 def rows_for_records(
