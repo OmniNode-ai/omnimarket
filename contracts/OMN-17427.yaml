@@ -382,8 +382,8 @@ requirements:
         statement: "AC72: the market node runtime dogfood inventory classifies node_claude_token_pool_effect as an expected-missing entry point and reports no node directory without an onex.nodes entry point that is not on the list -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q reports a node directory with no onex.nodes entry point that is not on the list"
 evidence_requirements:
   - kind: "tests"
-    description: "AC72: the market node runtime dogfood inventory test file passes with the CLI-run token pool node on the expected-missing list."
-    command: "uv run pytest tests/test_market_node_runtime_dogfood.py -q"
+    description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
+    command: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
     command: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
@@ -528,11 +528,11 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn17427-dogfood-inventory-lists-token-pool"
-    description: "The market node runtime dogfood inventory test file passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same file."
+    description: "The market node runtime dogfood inventory test passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same test. The check names the one inventory test rather than the whole file, which takes longer than the per-check budget."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC72"]
   - id: "dod-omn17427-claude-token-pool-unit"
