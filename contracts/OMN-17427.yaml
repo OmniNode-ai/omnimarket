@@ -375,12 +375,20 @@ requirements:
     acceptance:
       - id: "AC71"
         statement: "AC71: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
+  - id: "req-cli-run-node-on-expected-missing-list"
+    statement: "A node that is run as a CLI and has no onex.nodes entry point is named on the dogfood inventory's expected-missing list, so the inventory check reports no unexplained directory."
+    acceptance:
+      - id: "AC72"
+        statement: "AC72: the market node runtime dogfood inventory classifies node_claude_token_pool_effect as an expected-missing entry point and reports no node directory without an onex.nodes entry point that is not on the list -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q reports a node directory with no onex.nodes entry point that is not on the list"
   - id: "req-hostile-reviewer-codex-fallback"
     statement: "When a hostile-reviewer run's requested review routes produce no review output, the review runs on the Codex route the node contract declares, the completed event records which engine reviewed and which routes it replaced, and a run where no engine reviewed returns FAILED instead of a clean pass."
     acceptance:
-      - id: "AC72"
-        statement: "AC72: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
+      - id: "AC73"
+        statement: "AC73: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
+    command: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
     command: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
@@ -524,6 +532,14 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-dogfood-inventory-lists-token-pool"
+    description: "The market node runtime dogfood inventory test passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same test. The check names the one inventory test rather than the whole file, which takes longer than the per-check budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC72"]
   - id: "dod-omn17427-claude-token-pool-unit"
     description: "Account rotation, reset, all-limited alarm, secret-free metadata and CLI refusal paths run against a temporary local secret store. The test file and node are absent at the merge base."
     source: "manual"
@@ -1348,7 +1364,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC72"]
+    binds_ac: ["AC73"]
   - id: "dod-omn17427-codex-fallback-deploy-probe"
     description: "Deploy probe. GitHub serves the hostile-reviewer orchestrator handler at the checked-out HEAD with the fallback route and the fallback fields. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
