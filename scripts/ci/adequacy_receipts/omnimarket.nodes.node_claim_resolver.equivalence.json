@@ -1,6 +1,6 @@
 {
   "declaration": {
-    "base_ref": "46939427e7acd170723cc91b278e732e557a2221",
+    "base_ref": "3b18b0d461fbad716bf4a8c900a0dd5b18231ec7",
     "canonical_entrypoint": "handle",
     "canonical_handler_module": "omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver",
     "canonical_handler_symbol": "HandlerClaimResolver",
