@@ -67,7 +67,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
           --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
           ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
           uv run --frozen --no-dev python -c '
