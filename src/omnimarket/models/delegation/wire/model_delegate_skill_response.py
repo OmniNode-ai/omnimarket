@@ -671,9 +671,11 @@ class ModelDelegateSkillResponse(BaseModel):
     )
     attempts_count: int = Field(
         default=1,
-        ge=1,
+        ge=0,
         description="Authoritative total inference calls including compliance "
-        "repairs, same-tier retries, and the terminal attempt.",
+        "repairs, same-tier retries, and the terminal attempt. Zero is reserved "
+        "for a request refused before dispatch (OMN-19004); an omitted count "
+        "retains one.",
     )
     attempts: list[ModelDelegateSkillAttemptRecord] = Field(
         default_factory=list,
@@ -935,11 +937,12 @@ class ModelDelegateSkillResponse(BaseModel):
         count below the list is refused after the fact, in
         ``validate_structured_terminal_evidence``.
 
-        An empty attempt list keeps the existing floor of one rather than
-        deriving zero. A run that made no attempt at all should say zero, but
-        the field is bounded at one and lowering that bound is a wire widening
-        a released consumer would refuse, so it lands consumer-first and not
-        here.
+        An empty attempt list keeps the legacy floor of one rather than
+        deriving zero: an omitted count cannot tell a run that made no attempt
+        from one whose record was lost (a handler-budget timeout). Only a
+        producer that KNOWS nothing was attempted states zero, and the model
+        accepts it for a request refused before dispatch alone, in
+        ``validate_structured_terminal_evidence``.
         """
         if not isinstance(data, dict):
             return data
@@ -1146,6 +1149,23 @@ class ModelDelegateSkillResponse(BaseModel):
                 f"attempts_count ({self.attempts_count}) is below the "
                 f"{len(self.attempts)} attempt record(s) this terminal carries; "
                 "a terminal cannot record more attempts than it counted"
+            )
+            raise ValueError(msg)
+
+        # OMN-19004. A count of zero says nothing was attempted. It cannot sit
+        # beside a recorded attempt (the clause above refuses that), and it is
+        # reserved for the one event that has no ladder -- a request refused
+        # before dispatch. A timeout or a provider fault made at least one
+        # call, and a zero there hides the rung that was in flight.
+        if (
+            self.attempts_count == 0
+            and self.terminal_failure_cause
+            is not EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+        ):
+            msg = (
+                "attempts_count (0) is reserved for a request refused before "
+                "dispatch: terminal_failure_cause must be "
+                f"refused_before_dispatch, got {self.terminal_failure_cause}"
             )
             raise ValueError(msg)
 

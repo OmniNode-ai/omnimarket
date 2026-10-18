@@ -104,6 +104,32 @@ class DeployPublishRecord:
         """Whether a rebuild command for this correlation has been published."""
         return str(correlation_id) in self._read_document().published
 
+    def pending_depth(self, runtime_lane: str) -> int:
+        """How many commands for this lane were published and have no answer yet (OMN-18143 AC2).
+
+        A command is pending from the moment its publish is recorded until the agent's
+        completion or a rejection that ends it settles it, or a ``busy`` releases it.
+        Staged entries do not count: their publish has not reached the broker. The
+        effect holds nothing while a command is pending, so this is the only place its
+        backlog for a lane can be read, and a depth that only grows is a stall.
+        """
+        published = self._read_document().published
+        return sum(
+            1
+            for entry in published.values()
+            if entry.get("runtime_lane") == runtime_lane and "settled" not in entry
+        )
+
+    def lane_of(self, correlation_id: UUID) -> str | None:
+        """The lane a published or staged command was sent to, or ``None`` if unknown."""
+        document = self._read_document()
+        key = str(correlation_id)
+        for entries in (document.published, document.staged):
+            lane = entries.get(key, {}).get("runtime_lane")
+            if isinstance(lane, str):
+                return lane
+        return None
+
     def stage(
         self,
         correlation_id: UUID,
