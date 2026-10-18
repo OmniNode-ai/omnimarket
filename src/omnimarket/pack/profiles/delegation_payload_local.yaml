@@ -1,0 +1,36 @@
+# Context profile for a delegated call's payload (plan task TA.18, section 4.4).
+# Inline behind the bus: the delegation orchestrator requests the pack for a task
+# class whose task-class contract names this profile. No production task class
+# names it until TC.13 promotes it. Nothing is required, so a source outage never
+# blocks a delegation. Every factor is stable-tier, so the whole pack sits in the
+# request's stable prefix (section 4.6 item 6). The 8000 budget is a ceiling: the
+# orchestrator lowers it per request to what the routed backend has room for.
+model_id: delegation-local-backend
+profile_version: 1.0.0
+binding_kind: inline
+required_factors: []
+optional_factors:
+  - invariants
+  - canonical_shapes
+  - exemplar
+  - architecture_patterns
+factor_precedence:
+  - invariants
+  - canonical_shapes
+  - exemplar
+  - architecture_patterns
+stable_factors:
+  - invariants
+  - canonical_shapes
+  - exemplar
+  - architecture_patterns
+scopes:
+  - delegation
+token_budget: 8000
+# Window data (port item AP-B5): the smallest local-tier context_window in
+# model_policy.yaml, so the declared ceiling fits every local backend; the reserved
+# output is the local coder policy's max_tokens. The system share is a first value that
+# TC.12 measures.
+context_window_tokens: 32000
+reserved_output_tokens: 4096
+reserved_system_tokens: 4000

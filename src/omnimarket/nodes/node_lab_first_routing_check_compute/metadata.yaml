@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_first_routing_check_compute
+version: "1.0.0"
+description: "Pure check that refuses a routing contract change sending a lab-passing task class to a cloud model first"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_first_routing_check_compute: "omnimarket.nodes.node_lab_first_routing_check_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "routing", "lab-first", "gate", "deterministic"]
+pack: "core"
+display_name: "Lab-First Routing Check"
+node_role: "compute"
