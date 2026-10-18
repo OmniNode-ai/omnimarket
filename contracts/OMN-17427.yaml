@@ -360,11 +360,16 @@ requirements:
     acceptance:
       - id: "AC69"
         statement: "AC69: the fold counts wrong and not_applicable as noise, computes one-round pass share, five-or-more-round share and mean rounds to pass per repo, returns exactly one class-fix request for a class on three distinct PRs inside the window and none for two PRs, many findings on one PR or answers older than the window, and a worker result accepts finding_dispositions -- falsifier: uv run pytest tests/test_golden_chain_node_review_finding_disposition_compute.py -q fails at the merge base"
+  - id: "req-publisher-fixture-one-copy"
+    statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
+    acceptance:
+      - id: "AC70"
+        statement: "AC70: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
   - id: "req-hostile-reviewer-delegation-route"
     statement: "The hostile reviewer can send its model calls through the delegation node's review task class and its completed event carries the merged findings and a verdict."
     acceptance:
-      - id: "AC70"
-        statement: "AC70: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
+      - id: "AC71"
+        statement: "AC71: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
@@ -496,7 +501,10 @@ evidence_requirements:
     description: "AC68: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
   - kind: "tests"
-    description: "AC70: the delegation review route and the completed event's verdict and findings."
+    description: "AC70: omnimarket's publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser."
+    command: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+  - kind: "tests"
+    description: "AC71: the delegation review route and the completed event's verdict and findings."
     command: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
@@ -1250,6 +1258,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_disposition_compute/handlers/handler_review_finding_disposition.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("NOISE_DISPOSITIONS", "class_fix_key_for", "_recurring")); print("review finding disposition deploy probe: PASS")'
+  - id: "dod-omn17427-ac70-publisher-fixture-one-copy"
+    description: "The publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser; the fence fails on the previous second copy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC70"]
+  - id: "dod-omn17427-ac70-one-copy-deploy-probe"
+    description: "Deploy probe. GitHub serves the omnimarket publisher fixture at the checked-out HEAD importing the omnibase_infra corpus. It fails at the merge base, where the fixture carries its own index, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/testing/publisher_contract_fixture.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "from omnibase_infra.testing.publisher_contract_fixture import" in source and "parse_contract" not in source; print("publisher fixture one-copy deploy probe: PASS")'
   - id: "dod-omn17427-ac69-hostile-review-delegation"
     description: "The hostile reviewer's delegation route sends each model call through the review task class pinned to the route key, a delegation that does not complete fails its route, and the completed event carries the verdict and the merged findings."
     source: "manual"
@@ -1257,7 +1280,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC70"]
+    binds_ac: ["AC71"]
   - id: "dod-omn17427-hostile-review-delegation-probe"
     description: "Deploy probe. GitHub serves the delegation review adapter at the checked-out HEAD, calling the delegate skill with the review task type. It fails at the merge base, where the adapter does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
