@@ -80,3 +80,10 @@ dod_evidence:
           q = P().handle(Q.model_validate({"cases": [{"case_id": "c", "package_text": "other words", "expected": [{"statement_id": "s1", "quote": "keep the merge queue"}]}]}))
           assert not q.all_present and q.falsifiers == ("case c: statement s1 MISSING",), q
           print(b.named_prompt_ids, q.falsifiers)'
+  - id: "dod-omn21111-deploy-hosted-source"
+    description: "Hosted deploy source probe: GitHub serves the replay scoring handler at the checked-out commit. The content read must contain both scoring handler classes; it fails at the merge base where the handler is absent. This checks source identity, not a running deployment. The preceding behavioral probe exercises the handlers."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_replay_eval_compute/handlers/handler_replay_eval.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class HandlerReviewRowSizing:\") and contains(\"class HandlerRulingPresence:\")' | grep -qx true"
+    binds_ac: ["AC1", "AC3"]
