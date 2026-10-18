@@ -104,6 +104,21 @@ def test_two_subtasks_both_succeed() -> None:
 
 
 @pytest.mark.unit
+def test_completion_content_becomes_dispatch_response_text() -> None:
+    """The answer in delegation-call-completed rides out on the dispatch."""
+    ep = _make_endpoint()
+    s = ModelSubtask(subtask_id="s1", description="task")
+    event = {**_ok_event("s1"), "content": "the answer"}
+    handler = HandlerSwarmFanout(
+        queue_publisher=_make_publisher(), queue_subscriber=_make_subscriber([event])
+    )
+
+    result = handler.handle(_make_request([s], {"s1": "ep1"}, [ep]))
+
+    assert result.dispatches[0].response_text == "the answer"
+
+
+@pytest.mark.unit
 def test_endpoint_ref_passed_through_in_command() -> None:
     """endpoint_ref from registry is forwarded in the delegation-execute payload."""
     ep = _make_endpoint(ref="LLM_CODER_FAST_URL")

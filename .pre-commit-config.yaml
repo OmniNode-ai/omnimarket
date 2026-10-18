@@ -1377,6 +1377,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # Paired with the Bash tool-result safety step in ci.yml.
+      - id: tool-result-reduction-safety
+        name: Bash tool-result reduction preserves diagnostics (OMN-21120)
+        language: system
+        entry: uv run pytest tests/nodes/node_tool_result_reduce_compute/test_tool_result_reduce.py -q --no-cov
+        files: ^(src/omnimarket/nodes/node_tool_result_reduce_compute/|tests/nodes/node_tool_result_reduce_compute/|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15909: a projection write-path diff (node_projection_*/handlers/**
       # or projection/runner.py) must ship an accompanying real-Postgres
       # @pytest.mark.integration test in the same diff -- closes the mock-DB
@@ -1568,6 +1577,19 @@ repos:
         language: system
         entry: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
         files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_every_criterion_bound\.py$|tests/unit/nodes/node_dod_verify/omn_20858_ticket_reader\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17427: the repo-evidence caller pins the receipt-gate reusable that
+      # refuses a verifier below 0.4.303, so a partly bound contract is refused here
+      # as in every repository (ruling 2026-10-10T11:04:11Z). Check-only. SYNC with
+      # the ci.yml lint step
+      # "call-repo-evidence-gate refuses a verifier below the floor (OMN-17427)".
+      - id: call-repo-evidence-gate-verifier-floor
+        name: call-repo-evidence-gate refuses a verifier below the floor (OMN-17427)
+        language: system
+        entry: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov
+        files: ^(\.github/workflows/call-repo-evidence-gate\.yml|tests/ci/test_repo_evidence_caller_verifier_floor_omn20032\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 

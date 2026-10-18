@@ -139,7 +139,11 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
             assert [topic for topic, _ in bus.groups[4:6]] == list(
                 host.delegation_topics
             )
-            groups = [group for _, group in bus.groups[6:]]
+            assert [group for _, group in bus.groups[6:7]] == [
+                "local.omnimarket.node_work_ledger_landing_mirror.consume.v1"
+            ]
+            assert [topic for topic, _ in bus.groups[6:7]] == list(host.landing_topics)
+            groups = [group for _, group in bus.groups[7:]]
             assert len(groups) == 2
             assert groups[0] == groups[1]
             assert groups[0].startswith(
