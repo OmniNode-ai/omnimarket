@@ -30,9 +30,9 @@ WORKFLOW = (
 )
 HEAD_SHA_EXPR = "${{ github.event.pull_request.head.sha }}"
 HEAD_SHA_ARG = '--head-sha "$HEAD_SHA"'
-# OMN-20910: the merged Claude API voter revision descends from the existing
+# OMN-20910: the chunk-scaled review deadline revision descends from the existing
 # receipt-substitution revision and retains the exact-head receipt boundary.
-SUBSTITUTE_PIN = "7f686d4bbca251dd3db49c1222ff8d6f738abd6c"
+SUBSTITUTE_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
 
 
 def review_step(workflow_text: str) -> dict[str, Any]:
