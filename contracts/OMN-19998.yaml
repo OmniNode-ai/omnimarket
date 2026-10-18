@@ -665,7 +665,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_git_query_mirror_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]; s=yaml.safe_load(Path("src/omnimarket/nodes/node_git_mirror_sync_schedule_compute/contract.yaml").read_text()); assert s["terminal_event"] in c["event_bus"]["subscribe_topics"]'
-  - id: "dod-omn19998-git-mirror-canonical-routing-deploy-probe"
+  - id: "dod-omn19998-git-mirror-routing-deploy-probe"
     description: "Hosted-runner source probe requires the schedule's canonical typed runtime-tick route without removed routing fields; the dispatch head fails this probe."
     source: "manual"
     checks:
