@@ -503,6 +503,7 @@ node_ledger_state_reducer = "omnimarket.nodes.node_ledger_state_reducer"
 node_lane_liveness_compute = "omnimarket.nodes.node_lane_liveness_compute"
 node_automation_liveness_watchdog_compute = "omnimarket.nodes.node_automation_liveness_watchdog_compute"
 node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liveness_watchdog_effect"
+node_automation_liveness_overlay_check_compute = "omnimarket.nodes.node_automation_liveness_overlay_check_compute"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
@@ -939,6 +940,7 @@ node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_d
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 
 [project.scripts]
+onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
 onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"

@@ -407,6 +407,11 @@ requirements:
     acceptance:
       - id: "AC75"
         statement: "AC75: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+  - id: "req-rehome-automation-liveness-overlay-check"
+    statement: "The automation-liveness overlay completeness check lives in the portable node package; the private overlay data stays in the private repository and is passed in by path."
+    acceptance:
+      - id: "AC91"
+        statement: "AC91: the node scans installers, reports a finding for each unit, installer, missing source and contradicted lifecycle state the overlay does not cover, and its console script reads a private checkout's overlay by path -- falsifier: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q fails when the node is absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1474,3 +1479,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); topics = c["runtime_dispatch"]["subscribe_topics"]; assert len(topics) == 1 and topics[0].endswith("pr-landing-decision-completed.v1"); print("landing decision ledger mirror deploy probe: PASS")'
+  - id: "dod-omn17427-ac91-automation-liveness-overlay-check"
+    description: "The overlay completeness check node and its console script pass the focused suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC91"]
+  - id: "dod-omn17427-automation-liveness-overlay-check-deploy-probe"
+    description: "Deploy probe. GitHub serves the overlay check node contract at the checked-out HEAD with its console script declared. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); assert "onex-automation-liveness-check" in c["entry_points"]["console_scripts"]; print("automation liveness overlay check deploy probe: PASS")'
