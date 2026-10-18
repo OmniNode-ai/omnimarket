@@ -8,6 +8,9 @@ ranks candidate context factors by measured effectiveness (resolved from the M2
 capsule store, passed in) and stamps every selection with the Authority 5-tuple.
 """
 
+from omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_evaluation import (
+    HandlerContextSelectionEvaluation,
+)
 from omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy import (
     ContextSelectionPolicyError,
     HandlerContextSelectionPolicy,
@@ -15,5 +18,6 @@ from omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_con
 
 __all__ = [
     "ContextSelectionPolicyError",
+    "HandlerContextSelectionEvaluation",
     "HandlerContextSelectionPolicy",
 ]

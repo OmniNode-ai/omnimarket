@@ -8,9 +8,9 @@
 # Related: OMN-12843, OMN-12837, OMN-12842
 ---
 name: node_context_selection_policy_compute
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 description: >
   Deterministic context-selection policy engine. Accepts candidate context
   factors/capsules with their M2-resolved effectiveness scores, required flags,
@@ -20,7 +20,9 @@ description: >
   selection_reason, effectiveness_score, experiment_cohort}. Rejects hidden
   authority (profile-declared candidates with no score and no cohort) and forced
   experiment arms with no matching active cohort. No LLM calls, no I/O, same
-  input = same output.
+  input = same output. The evaluate_context_selection operation scores pinned
+  Role C recordings against this ordering, with three repeats, withheld-item
+  controls, required-factor validation and conservative recall eligibility.
 
 handler:
   module: omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy
@@ -31,9 +33,28 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: context_selection_policy
+      topic: onex.cmd.omnimarket.context-selection-policy-requested.v1
       handler:
         name: HandlerContextSelectionPolicy
         module: omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy
+
+    - operation: evaluate_context_selection
+      topic: onex.cmd.omnimarket.context-selection-evaluation-requested.v1
+      event_type: omnimarket.evaluate-context-selection
+      message_category: command
+      handler:
+        name: HandlerContextSelectionEvaluation
+        module: omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_evaluation
+      event_model:
+        name: ModelSelectionEvaluationRequest
+        module: omnimarket.nodes.node_context_selection_policy_compute.models.model_selection_evaluation
+
+evaluation_policy:
+  task_class: context_selection
+  repeats: 3
+  baseline: deterministic_score_then_source
+  recall_denominator: all_labelled_relevant_optional_sources
+  alternatives: not_evaluated
 
 descriptor:
   node_archetype: compute
@@ -76,6 +97,7 @@ terminal_event: onex.evt.omnimarket.context-selection-policy-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.context-selection-policy-requested.v1
+    - onex.cmd.omnimarket.context-selection-evaluation-requested.v1
   publish_topics:
     - onex.evt.omnimarket.context-selection-policy-completed.v1
 
@@ -104,3 +126,7 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.context-selection-policy-completed.v1
+
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.context-selection-evaluation-requested.v1
+    producer: "The pinned-manifest evaluation caller publishes recorded Role C observations. This compute does not run models."
