@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeExtractionFoldCompute (OMN-21139, plan task TE.2)
+
+name: node_extraction_fold_compute
+version: "1.0.0"
+contract_name: node_extraction_fold_compute
+node_name: node_extraction_fold_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure fold of the extraction verifier's segment results for one transcript: one candidate per candidate_digest, ordered by prompt, offsets and digest; a duplicate segment is folded once; rejection counts sum over distinct segments. The result is identical under every arrival order. Nothing is a ruling and nothing appends to the ledger; no I/O.
+
+input_model:
+  name: ModelExtractionFoldRequest
+  module: omnimarket.models.transcript_extraction
+
+output_model:
+  name: ModelExtractionFoldResult
+  module: omnimarket.models.transcript_extraction
+
+handler:
+  module: omnimarket.nodes.node_extraction_fold_compute.handlers.handler_extraction_fold
+  class: HandlerExtractionFold
+  input_model: omnimarket.models.transcript_extraction.ModelExtractionFoldRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerExtractionFold
+        module: omnimarket.nodes.node_extraction_fold_compute.handlers.handler_extraction_fold
+      event_model:
+        name: ModelExtractionFoldRequest
+        module: omnimarket.models.transcript_extraction
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.extraction.fold
+    description: Fold segment verifier results into one candidate list, independent of order and duplicates
+    version: 1.0.0
+
+# The request and the result both carry transcript or operator words verbatim, so
+# both topics are on the restricted onex.cmd.omniintelligence.*
+# family, never onex.evt.* (plan section 2 privacy split).
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.extraction-fold-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.extraction-folded.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.extraction-fold-requested.v1
+  terminal_events:
+    success: onex.cmd.omniintelligence.extraction-folded.v1
+
+terminal_event: onex.cmd.omniintelligence.extraction-folded.v1
+
+# The folded candidates are read by the pack orchestrator for TRANSCRIPT_EXTRACTS
+# (plan task TE.8); no node subscribes in this repository yet.
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.extraction-folded.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21139
+  maturity: alpha
+  tags:
+    - context-pack
+    - transcript-extraction
+    - fold

@@ -176,6 +176,7 @@ class HandlerExtractionVerify:
                 )
             )
         return ModelExtractionVerifyResult(
+            segment_id=request.segment_id,
             splitter_version=SPLITTER_VERSION,
             admitted=tuple(admitted),
             rejections=tuple(rejections),

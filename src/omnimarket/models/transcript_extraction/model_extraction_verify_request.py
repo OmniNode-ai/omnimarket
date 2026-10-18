@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.transcript_extraction.model_captured_prompt import (
     ModelCapturedPrompt,
@@ -12,7 +12,7 @@ from omnimarket.models.transcript_extraction.model_captured_prompt import (
 
 
 class ModelExtractionVerifyRequest(BaseModel):
-    """prompts are the captured records of the segment; proposals are the model's raw output.
+    """segment_id names the segment; prompts are the captured records of the segment; proposals are the model's raw output.
 
     Each proposal is the JSON text of one proposed event, as the delegation call returned
     it, so a proposal that does not parse is counted apart from a quote that is absent.
@@ -20,5 +20,6 @@ class ModelExtractionVerifyRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    segment_id: str = Field(min_length=1)
     prompts: tuple[ModelCapturedPrompt, ...]
     proposals: tuple[str, ...]

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.transcript_extraction.enum_extraction_rejection_reason import (
     EnumExtractionRejectionReason,
@@ -26,6 +26,7 @@ class ModelExtractionVerifyResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    segment_id: str = Field(min_length=1)
     splitter_version: str
     admitted: tuple[ModelTranscriptExtractArtifact, ...]
     rejections: tuple[ModelExtractionRejection, ...]

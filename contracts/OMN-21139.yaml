@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21139"
 title: "TE.2 Extraction event, verifier, chunker and fold"
-summary: "Plan task TE.2: the typed proposed-event model and its JSON schema, and three pure definition-B nodes: node_extraction_verify_compute (admits a model-proposed quote only as verbatim, sentence-widened operator words with a candidate_digest), node_transcript_chunk_compute (a lossless chunker) and node_extraction_fold_compute (an order-independent fold of segment results). This slice delivers the event model, its schema and the verifier; the chunker and the fold follow on the same ticket."
+summary: "Plan task TE.2: the typed proposed-event model and its JSON schema, and three pure definition-B nodes: node_extraction_verify_compute (admits a model-proposed quote only as verbatim, sentence-widened operator words with a candidate_digest), node_transcript_chunk_compute (a lossless chunker) and node_extraction_fold_compute (an order-independent fold of segment results)."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -32,8 +32,8 @@ requirements:
         statement: "AC10: `candidate_digest` is over a canonical JSON that excludes the timestamp and generated ids, so two events equal in content give one digest -- falsifier: equal events with different digests"
 evidence_requirements:
   - kind: "tests"
-    description: "The verifier's admission, widening, digest, artifact and isolation tests, and its node contract tests."
-    command: "uv run pytest tests/nodes/node_extraction_verify_compute -q -p no:randomly --no-cov"
+    description: "The verifier, chunker and fold tests, and the three node contract tests."
+    command: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -60,12 +60,26 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py -q -p no:randomly --no-cov -k 'digest'"
     binds_ac: ["AC3"]
-  - id: "dod-omn21139-ac6-verifier"
-    description: "AC6, verifier node: the handler imports no model client or ledger module, and handles a request with file and socket access patched to raise."
+  - id: "dod-omn21139-ac4"
+    description: "AC4: the fold of the same segment results is identical under every permutation, with and without duplicate segments."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute -q -p no:randomly --no-cov -k 'no_model_client or reads_no_file'"
+        check_value: "uv run pytest tests/nodes/node_extraction_fold_compute/test_fold.py -q -p no:randomly --no-cov -k 'arrival_order or duplicate or kept_once or one_segment_id or sum_over'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21139-ac5"
+    description: "AC5: a ruling straddling a core boundary lies whole in one window, and every generated span no longer than the overlap lies whole in some window; with no overlap the straddling ruling is split (negative control)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_chunk_compute/test_chunk.py -q -p no:randomly --no-cov -k 'ruling or no_longer_than_the_overlap'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21139-ac6"
+    description: "AC6: none of the three handlers imports a model client or a ledger module, and the verifier and fold handle requests with file access patched to raise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov -k 'no_model_client or reads_no_file or never_rulings'"
     binds_ac: ["AC6"]
   - id: "dod-omn21139-ac7"
     description: "AC7: an admitted event is a TRANSCRIPT_EXTRACTS artifact with verbatim_verified true, its source_ref and both offset pairs; the result holds no ruling and the path has no ledger writer."
@@ -81,12 +95,26 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py -q -p no:randomly --no-cov -k 'one_digest or digest_changes'"
     binds_ac: ["AC10"]
-  - id: "dod-omn21139-contracts"
-    description: "The verifier contract declares restricted-family topics, resolves its handler, is an onex.nodes entry point and imports no event envelope; the committed JSON schema equals the model's."
+  - id: "dod-omn21139-ac8"
+    description: "AC8: the chunk cores partition [0, len), join to the original for the fixtures and 157 generated texts at five budgets, and the loop ends at the end of the text."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute -q -p no:randomly --no-cov -k 'contract or entry_point or envelope or topic or json_schema'"
+        check_value: "uv run pytest tests/nodes/node_transcript_chunk_compute/test_chunk.py -q -p no:randomly --no-cov -k 'partition or join or terminates or empty_text or overlap_not_below'"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21139-ac9"
+    description: "AC9: no cut falls inside a code fence or a table, an oversize block is kept whole, chunk ids are content hashes identical on rerun, and no chunk is dropped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_chunk_compute/test_chunk.py -q -p no:randomly --no-cov -k 'fence or table or oversize or chunk_ids or dropped or prefer'"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21139-contracts"
+    description: "Each of the three node contracts declares restricted-family topics, resolves its handler, is an onex.nodes entry point and imports no event envelope; the committed JSON schema equals the model's."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov -k 'contract or entry_point or envelope or topic or json_schema'"
   - id: "dod-omn21139-deploy-container-verify"
     description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev and runs the product handler on one prompt: 'deploy' is admitted widened to 'Do not deploy without approval.' as a TRANSCRIPT_EXTRACTS artifact, and a fabricated quote is counted absent. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
@@ -102,7 +130,7 @@ dod_evidence:
           from omnimarket.nodes.node_extraction_verify_compute.handlers.handler_extraction_verify import HandlerExtractionVerify as H
           t = "Ship it. Do not deploy without approval."
           def e(q, s): return json.dumps({"kind": "ruling", "quote": q, "event_id": "e1", "prompt_id": "p1", "covers_start": s, "covers_end": s + len(q)})
-          r = H().handle(Q(prompts=(P(event_id="e1", prompt_id="p1", text=t, origin=O.OPERATOR_TYPED),), proposals=(e("deploy", t.index("deploy")), e("Deploy now.", 0))))
+          r = H().handle(Q(segment_id="s1", prompts=(P(event_id="e1", prompt_id="p1", text=t, origin=O.OPERATOR_TYPED),), proposals=(e("deploy", t.index("deploy")), e("Deploy now.", 0))))
           (a,) = r.admitted
           assert a.quote == "Do not deploy without approval." and a.factor.value == "transcript_extracts" and a.verbatim_verified, r
           assert r.rejection_counts["absent"] == 1, r

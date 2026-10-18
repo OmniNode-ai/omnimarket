@@ -14,6 +14,12 @@ from omnimarket.models.transcript_extraction.enum_extraction_rejection_reason im
 from omnimarket.models.transcript_extraction.model_captured_prompt import (
     ModelCapturedPrompt,
 )
+from omnimarket.models.transcript_extraction.model_extraction_fold_request import (
+    ModelExtractionFoldRequest,
+)
+from omnimarket.models.transcript_extraction.model_extraction_fold_result import (
+    ModelExtractionFoldResult,
+)
 from omnimarket.models.transcript_extraction.model_extraction_rejection import (
     ModelExtractionRejection,
 )
@@ -26,6 +32,15 @@ from omnimarket.models.transcript_extraction.model_extraction_verify_result impo
 from omnimarket.models.transcript_extraction.model_proposed_extraction_event import (
     ModelProposedExtractionEvent,
 )
+from omnimarket.models.transcript_extraction.model_transcript_chunk import (
+    ModelTranscriptChunk,
+)
+from omnimarket.models.transcript_extraction.model_transcript_chunk_request import (
+    ModelTranscriptChunkRequest,
+)
+from omnimarket.models.transcript_extraction.model_transcript_chunk_result import (
+    ModelTranscriptChunkResult,
+)
 from omnimarket.models.transcript_extraction.model_transcript_extract_artifact import (
     TRANSCRIPT_EXTRACT_LABEL,
     ModelTranscriptExtractArtifact,
@@ -37,9 +52,14 @@ __all__ = [
     "EnumExtractionKind",
     "EnumExtractionRejectionReason",
     "ModelCapturedPrompt",
+    "ModelExtractionFoldRequest",
+    "ModelExtractionFoldResult",
     "ModelExtractionRejection",
     "ModelExtractionVerifyRequest",
     "ModelExtractionVerifyResult",
     "ModelProposedExtractionEvent",
+    "ModelTranscriptChunk",
+    "ModelTranscriptChunkRequest",
+    "ModelTranscriptChunkResult",
     "ModelTranscriptExtractArtifact",
 ]

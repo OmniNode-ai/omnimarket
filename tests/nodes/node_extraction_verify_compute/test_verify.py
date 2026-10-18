@@ -81,7 +81,9 @@ def verify(
     prompts: tuple[ModelCapturedPrompt, ...], *proposals: str
 ) -> ModelExtractionVerifyResult:
     return HandlerExtractionVerify().handle(
-        ModelExtractionVerifyRequest(prompts=prompts, proposals=proposals)
+        ModelExtractionVerifyRequest(
+            segment_id="seg-1", prompts=prompts, proposals=proposals
+        )
     )
 
 
@@ -378,6 +380,7 @@ def test_the_verifier_reads_no_file_and_opens_no_socket(
 
     sentence = "Do not deploy without approval."
     request = ModelExtractionVerifyRequest(
+        segment_id="seg-1",
         prompts=(prompt(DEPLOY),),
         proposals=(proposal(sentence, *at(DEPLOY, sentence)), "garbage"),
     )
