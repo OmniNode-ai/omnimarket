@@ -209,3 +209,5 @@ DEV_CAUSE_LANE_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.dev-cause-lane-requeste
 
 PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-routing-feedback-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml terminal_event
 PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics
+REVIEW_FINDING_DISPOSITION_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-finding-disposition-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)
+REVIEW_PASS_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-pass-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)

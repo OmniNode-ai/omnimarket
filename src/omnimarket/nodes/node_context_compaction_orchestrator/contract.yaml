@@ -1,0 +1,125 @@
+---
+name: node_context_compaction_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+description: >
+  Answers one compaction command from the Claude Code hook adapter. It calls the
+  context-pack build for the compaction_orchestrator profile through the
+  ProtocolContextCompactionPackBuild port. A built package is published as
+  prepared, gets a fresh activation_id on its identity trailer, and is replied
+  as install with its installed_messages_hash after the activated receipt. Any
+  failure before activation, typed or raised, replies native and publishes
+  fallback with the failure class and the command's invocation_id; no partial
+  package is replied. Until the context-pack orchestrator is wired the default
+  port reports pack_builder_unavailable, so every invocation falls back to
+  native compaction. Receipt events carry ids, hashes and failure classes only;
+  the package reply carries content and travels on the restricted command family.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: context_compaction.orchestrate.requested
+      message_category: command
+      handler:
+        name: HandlerContextCompactionOrchestrator
+        module: omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator
+      event_model:
+        name: ModelContextCompactionRequested
+        module: omnimarket.models.context_compaction.model_context_compaction_requested
+      topic: onex.cmd.omniintelligence.context-compaction-requested.v1
+      description: "Build the compaction package, or fall back to native compaction with a typed receipt."
+
+handler:
+  module: omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator
+  class: HandlerContextCompactionOrchestrator
+  input_model: omnimarket.models.context_compaction.model_context_compaction_requested.ModelContextCompactionRequested
+  output_model: omnimarket.models.context_compaction.model_context_compaction_result.ModelContextCompactionResult
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+
+inputs:
+  invocation_id:
+    type: str
+    required: true
+  session_id:
+    type: str
+    required: true
+  cwd:
+    type: str
+    required: true
+  trigger:
+    type: str
+    enum: [manual, auto, precompute]
+  input_messages_hash:
+    type: str
+    required: true
+  newest_turn:
+    type: str
+    required: false
+    nullable: true
+  compact_model:
+    type: str
+    required: false
+    nullable: true
+
+outputs:
+  reply:
+    type: object
+  prepared:
+    type: object
+    required: false
+    nullable: true
+  activated:
+    type: object
+    required: false
+    nullable: true
+  fallback:
+    type: object
+    required: false
+    nullable: true
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.context-compaction-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.context-compaction-package.v1
+    - onex.evt.omnimarket.context-compaction-prepared.v1
+    - onex.evt.omnimarket.context-compaction-activated.v1
+    - onex.evt.omnimarket.context-compaction-fallback.v1
+
+# The runtime publishes each event the handler returns on the topic its row
+# names for the class (event_type is the class name minus its Model prefix):
+# prepared then activated then the install reply, or fallback then the native
+# reply. Only the package reply carries content.
+published_events:
+  - event_type: ContextCompactionPrepared
+    topic: onex.evt.omnimarket.context-compaction-prepared.v1
+    description: "One deterministic assembly: candidate_id, assembly_hash, version vector and profile identity."
+  - event_type: ContextCompactionActivated
+    topic: onex.evt.omnimarket.context-compaction-activated.v1
+    description: "This invocation offered this candidate: activation_id, model and final hashes, installed_messages_hash."
+  - event_type: ContextCompactionFallback
+    topic: onex.evt.omnimarket.context-compaction-fallback.v1
+    description: "A failure before activation: invocation_id and the failure class."
+  - event_type: ContextCompactionPackageReply
+    topic: onex.cmd.omniintelligence.context-compaction-package.v1
+    description: "The adapter's reply, correlated by invocation_id: install with the messages, or native."
+
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.context-compaction-package.v1
+  - onex.evt.omnimarket.context-compaction-prepared.v1
+  - onex.evt.omnimarket.context-compaction-activated.v1
+  - onex.evt.omnimarket.context-compaction-fallback.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.context-compaction-requested.v1

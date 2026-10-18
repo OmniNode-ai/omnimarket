@@ -26,6 +26,10 @@ class ModelLinearTriageStartCommand(BaseModel):
     scope: Literal["sprint", "backlog"] = "sprint"
     project_id: str = ""
     secret_resolver_config_path: str = ""
+    # github_source: "api" reads PR state through the GitHub REST API with the
+    # contract-declared GITHUB_TOKEN. "local" reads the PR watcher state and the
+    # canonical clones instead and needs no GitHub token (lane hosts hold none).
+    github_source: Literal["api", "local"] = "api"
 
     @model_validator(mode="after")
     def _validate_scope(self) -> ModelLinearTriageStartCommand:
