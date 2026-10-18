@@ -65,3 +65,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 --no-cov -k voter_model_from_overlay_ratchet_is_wired"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20910-claude-api-reviewer-pin"
+    description: "The workflow pins the merged Claude API voter revision, retaining the earlier budget-timeout fix and its known-bad control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

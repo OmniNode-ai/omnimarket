@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_session_capability_digest_effect
+version: 1.0.0
+description: Decides the text a session start prints from the cached capability
+  digest.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Session Capability Digest Effect
+entry_points:
+  onex.nodes:
+    node_session_capability_digest_effect: omnimarket.nodes.node_session_capability_digest_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- effect
+- hooks
+- session-start
+- capability
