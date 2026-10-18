@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_patch_apply_dispatch_effect
+version: 1.0.0
+description: Dispatch saved resume patches to apply-and-land lanes; close out applied
+  and expired patches.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Patch Apply Dispatch Effect
+entry_points:
+  onex.nodes:
+    node_patch_apply_dispatch_effect: omnimarket.nodes.node_patch_apply_dispatch_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase_core>=0.39.0
+- pydantic>=2.12.5
+- pyyaml>=6.0.2
+license: MIT
+tags:
+- effect
+- patches
+- dispatch
