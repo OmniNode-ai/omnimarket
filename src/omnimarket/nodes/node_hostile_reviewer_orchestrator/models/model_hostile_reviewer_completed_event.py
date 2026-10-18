@@ -15,9 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_output import (
-    ModelAggregatedFinding,
-)
+from omnimarket.models.model_aggregated_finding import ModelAggregatedFinding
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.models.model_hostile_reviewer_phase import (
     EnumHostileReviewerPhase,
 )
