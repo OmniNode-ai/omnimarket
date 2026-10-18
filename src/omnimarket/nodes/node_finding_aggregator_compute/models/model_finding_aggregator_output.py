@@ -14,6 +14,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_aggregated_finding import ModelAggregatedFinding
+
 
 @unique
 class EnumAggregatedVerdict(StrEnum):
@@ -27,41 +29,6 @@ class EnumAggregatedVerdict(StrEnum):
 
     BLOCKING_ISSUE = "blocking_issue"
     """At least one merged finding at ERROR severity."""
-
-
-class ModelAggregatedFinding(BaseModel):
-    """A single merged finding produced by the aggregator."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    rule_id: str = Field(..., min_length=1, description="Canonical rule identifier.")
-    file_path: str = Field(..., min_length=1, description="Relative file path.")
-    line_start: int = Field(..., gt=0, description="First line number (1-indexed).")
-    line_end: int | None = Field(
-        default=None, description="Last line number (inclusive), None for single-line."
-    )
-    severity: str = Field(
-        ..., description="Merged severity (error, warning, info, hint)."
-    )
-    normalized_message: str = Field(
-        ..., min_length=1, description="Normalized message for the finding."
-    )
-    source_models: tuple[str, ...] = Field(
-        ...,
-        min_length=1,
-        description="Models that reported this finding (after dedup merge).",
-    )
-    weighted_score: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Weighted confidence score based on model weights and agreement.",
-    )
-    merged_count: int = Field(
-        default=1,
-        ge=1,
-        description="Number of raw findings that were merged into this one.",
-    )
 
 
 class ModelFindingAggregatorOutput(BaseModel):
