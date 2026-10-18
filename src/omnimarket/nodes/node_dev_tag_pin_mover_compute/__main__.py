@@ -10,8 +10,10 @@ Usage:
 
 With ``--tests not_run`` the candidate is written in place so the caller can
 lock and test it, and the exit is 3. With ``--tests passed`` the move is
-written and the exit is 0. Every refusal leaves the file alone and exits 1.
-The result prints as JSON.
+written and the exit is 0. Every other refusal (consumer_tests_failed,
+not_a_dev_tag, no_tag_pin, not_forward) leaves the file alone and exits 1. The
+only write on a refusal is the candidate of ``--tests not_run``. The result
+prints as JSON.
 """
 
 from __future__ import annotations

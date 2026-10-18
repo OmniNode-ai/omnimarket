@@ -7,6 +7,11 @@
 # This is the pure half of the move: a consumer's pyproject.toml, the sibling's
 # new dev tag and the consumer's test outcome on that tag in, the moved text (or
 # a typed refusal) out. A consumer whose tests fail on the new tag keeps its pin.
+# The move is two calls: with consumer_tests not_run the refusal
+# consumer_tests_not_run carries the candidate text (and the CLI writes it in
+# place) so the caller can lock and test the consumer on it; the second call
+# names the test outcome and only passed accepts. Every other refusal carries no
+# candidate and leaves the file alone.
 # Directly invoked by the pin-move tick; it declares empty event_bus topics and
 # a typed local invocation.
 name: "node_dev_tag_pin_mover_compute"
@@ -22,7 +27,8 @@ description: >-
   Pure pin move: rewrites a consumer's uv git source for a sibling to the
   sibling's new dev tag, and refuses a tag that is not a dev tag, a consumer
   with no tag pin, a tag that is not newer, and a move the consumer's tests
-  have not passed.
+  have not passed. A refusal for tests not yet run returns the candidate text
+  for the caller to test; no other refusal returns text.
 input_model:
   name: "ModelDevTagPinMoveRequest"
   module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover"
@@ -30,7 +36,7 @@ input_model:
 output_model:
   name: "ModelDevTagPinMoveResult"
   module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover"
-  description: "The moved text when accepted, a typed refusal otherwise."
+  description: "The moved text when accepted, a typed refusal otherwise; the consumer_tests_not_run refusal also carries the candidate text to test."
 
 handler:
   module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_mover"
