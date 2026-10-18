@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Recorded excerpt of omnibase_infra commit 44542e2a0 (OMN-21146, #5011):
+# the [tool.uv] override-dependencies entry for omnibase-core, copied verbatim
+# from pyproject.toml, and the omnibase-core entry of uv.lock at that commit.
+[tool.uv]
+override-dependencies = [
+    "omnibase-core==0.47.44",
+]
+
+[[package]]
+name = "omnibase-core"
+version = "0.47.44"
