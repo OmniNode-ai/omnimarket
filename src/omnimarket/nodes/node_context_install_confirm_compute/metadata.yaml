@@ -1,0 +1,24 @@
+name: node_context_install_confirm_compute
+version: "1.0.0"
+description: "Compaction boundary algorithm: installation facts and the current context from captured transcript records"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_context_install_confirm_compute: "omnimarket.nodes.node_context_install_confirm_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-compaction", "install-confirm", "deterministic"]
+pack: "pipeline"
+display_name: "Context Install Confirm Compute"
+node_role: "compute"
+tickets: ["OMN-21115"]
