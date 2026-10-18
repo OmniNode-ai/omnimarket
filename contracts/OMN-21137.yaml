@@ -6,7 +6,7 @@ summary: "node_context_artifact_resolver_compute kept its own assembly policy: g
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "models"
+  - "public_api"
 requirements:
   - id: "req-resolver-primitives"
     statement: "The resolver applies no section selection, dedup, budget or pack hash, and returns every section of a sectioned source as a pack artifact with provenance."
