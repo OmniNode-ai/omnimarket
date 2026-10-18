@@ -22,6 +22,9 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.handlers.handler_internal_release_path_guard import (
+    check_internal_release_path,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingActionKind,
     EnumLandingBriefClass,
@@ -174,6 +177,9 @@ class ModelLandingWorkerBrief(BaseModel):
 
     @model_validator(mode="after")
     def _fixed_text(self) -> ModelLandingWorkerBrief:
+        guard = check_internal_release_path(self.instructions)
+        if not guard.allowed:
+            raise ValueError(guard.remediation)
         if self.instructions != BRIEF_INSTRUCTIONS[self.brief_class]:
             raise ValueError("a brief's instructions are fixed by its class")
         if (
@@ -225,6 +231,9 @@ class ModelLandingCauseBrief(BaseModel):
             self.brief_class is not EnumLandingBriefClass.CAUSE_DIAGNOSIS
         ):
             raise ValueError("only a diagnosis brief carries prior attempts")
+        guard = check_internal_release_path(self.instructions)
+        if not guard.allowed:
+            raise ValueError(guard.remediation)
         if self.instructions != BRIEF_INSTRUCTIONS[self.brief_class]:
             raise ValueError("a brief's instructions are fixed by its class")
         if (

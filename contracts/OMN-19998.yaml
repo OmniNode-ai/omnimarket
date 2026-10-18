@@ -150,6 +150,12 @@ requirements:
     acceptance:
       - id: "AC28"
         statement: "AC28: hostile-reviewer.yml clones omniintelligence at 037af72c2a7f49fda953fed6a99edd5ec588dede, the merge commit of omniintelligence#1095 and a descendant of the previous pin 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q fails over the merge base's workflow, which pins 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
+  - id: "req-internal-release-path-guard"
+    statement: "Internal consumer remediation uses tested git tags or immutable commits instead of a release cut or release wait."
+    acceptance:
+      - id: "AC30"
+        statement: "AC30: the canonical internal release-path check refuses an internal release strategy or instruction, accepts a git pin, blocks lab-fill dispatch before file writes and controller worker/cause briefs before construction, and runs through its contract-declared bus topics -- falsifier: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q fails at the merge base"
+
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -167,6 +173,7 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+
 dod_evidence:
   - id: "dod-omn19998-mirror-durable-outbox"
     description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
@@ -618,3 +625,17 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC28"]
+  - id: "dod-omn19998-internal-release-path-guard"
+    description: "Refusal, passing-pin, lane dispatch, controller brief, CLI and bus controls for the shared policy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn19998-internal-release-path-deploy-probe"
+    description: "Hosted runner resolves the packaged node from its contract and exercises a refused release instruction and a passing git pin; the base has no node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_internal_release_path_guard_compute.py -q"

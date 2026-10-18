@@ -850,6 +850,15 @@ repos:
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
         stages: [pre-commit]
 
+      # OMN-19998: same policy and dispatch controls as the required CI gate.
+      - id: internal-release-path-guard
+        name: Internal dependency remediation uses tested git pins
+        language: system
+        entry: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q -p no:randomly
+        pass_filenames: false
+        files: ^(src/omnimarket/(handlers/handler_internal_release_path_guard|models/model_internal_release_path_guard)\.py|src/omnimarket/nodes/(node_internal_release_path_guard_compute|node_lab_fill_effect|node_pr_landing_decision_compute)/.*|tests/nodes/node_internal_release_path_guard_compute/.*|tests/test_golden_chain_internal_release_path_guard_compute\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/ci/ci_summary_gate\.py)$
+        stages: [pre-commit]
+
       # OMN-20844: bring-your-own-key customers choose their OpenRouter model;
       # registration without a chosen model is refused and nothing is stored.
       # Check-only; same command as the `BYOK Customer Chooses Model` CI job.
