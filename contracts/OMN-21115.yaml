@@ -53,7 +53,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'contract_names'"
   - id: "dod-omn21115-deploy-container-install-confirm"
-    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, feeds a P6-shaped custom compaction (boundary, three chained replacement records, the /compact caveat) and its activation through the product handler, and asserts the activation is installed at the boundary uuid and is the current context. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the handler does not import, feeds a P6-shaped custom compaction (boundary, three chained replacement records, the /compact caveat) and its activation through the product handler, and asserts the activation is installed at the boundary uuid and is the current context. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
@@ -61,7 +61,7 @@ dod_evidence:
           env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
           --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
           ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
-          uv run --frozen --no-dev python -c '
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
           import uuid
           from omnimarket.models.context_install_confirm import ModelCapturedTranscriptRecord as R, ModelInstallConfirmRequest as Q, ModelPublishedActivation as A
           from omnimarket.models.context_pack_render import ModelContextPackRenderMessage as M
