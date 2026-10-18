@@ -325,7 +325,30 @@ requirements:
     acceptance:
       - id: "AC62"
         statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a full 40-hex SHA, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
+  - id: "req-core-pin-compatibility"
+    statement: "The omnibase-core dependency and override floors must fit the newest recorded omnibase_infra pin, and the recorded incompatible incident pair must be refused."
+    acceptance:
+      - id: "AC64"
+        statement: "AC64: the recorded incident pair is refused, floors at or below the infra pin are accepted, the recorded pin list retains the incident pin in version order, and both pyproject.toml core floors fit the newest recorded pin -- falsifier: uv run pytest tests/ci/test_core_pin_compat_omn17427.py -q"
+  - id: "req-session-capability-digest"
+    statement: "A session that opens inside a registry root starts with the cached capability digest, a stale or missing digest is named with its fix, and a session elsewhere is not touched, decided by a contract-declared effect node that reads two cached files and never blocks a session."
+    acceptance:
+      - id: "AC63"
+        statement: "AC63: node_session_capability_digest_effect prints the cached digest inside a registry root, prints nothing outside every root, prints a STALE line with its launchd fix for a missing or over-45-minute digest, prints one pointer line on a compact restart, opens no socket and exits 0 on every input -- falsifier: uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
+  - id: "req-ci-red-watcher-facts-only"
+    statement: "The CI-red triage reader uses watcher facts without launching gh, and incomplete observations record facts-unavailable without starting an effect."
+    acceptance:
+      - id: "AC65"
+        statement: "AC65: the default handler given an armed event with missing head or base facts and an armed peer invokes no subprocess, records facts-unavailable with action_applied=false, and complete watcher observations retain runner and dev-head classification -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov"
+  - id: "req-repository-prose-removed"
+    statement: "Repository prose lives in the public knowledge base; the contribution, security and changelog guides and the unused README, table and evidence text files are removed and the root README is a short signpost."
+    acceptance:
+      - id: "AC66"
+        statement: "AC66: the sixteen removed prose files are absent and README.md has three to five lines including the public knowledge_base link -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
+    command: "uv run pytest tests/ci/test_core_pin_compat_omn17427.py -q"
   - kind: "tests"
     description: "A Claude-limited Codex-allowed host with free Codex slots reports Codex headroom; other hosts keep their lines."
     command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_codex_headroom_throughput_tick_decision_compute.py -q"
@@ -443,11 +466,87 @@ evidence_requirements:
   - kind: "tests"
     description: "AC62: the hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin and its path-regex selects the hook paths."
     command: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC63: the session-start capability digest node prints inside a registry root, stays silent outside, names a stale digest with its fix and exits 0 on every input."
+    command: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-ac65-ci-red-watcher-facts-only"
+    description: "The default runtime handler and compatibility reader retain watcher facts and withhold incomplete observations without raw GitHub subprocesses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC65"]
+  - id: "dod-omn17427-ci-red-watcher-facts-deploy-probe"
+    description: "Deploy probe. The hosted runner checks the subject commit has no process or network imports in the CI-red handler and carries the facts-unavailable decision marker; the prior commit contains subprocess imports. This does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          import subprocess
+
+          path = "src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_ci_red_triage.py"
+          source = subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+          tree = ast.parse(source)
+          forbidden = {"subprocess", "os", "httpx", "requests", "urllib", "socket"}
+          imports = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imports.update(alias.name.split(".")[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom):
+                  imports.add((node.module or "").split(".")[0])
+          assert not (imports & forbidden), imports & forbidden
+          assert "start=withheld:facts-unavailable" in source
+          print("CI-red watcher facts artifact probe: PASS")
+          PY
+  - id: "dod-omn17427-ac64-core-pin-compatibility"
+    description: "The five core pin compatibility tests exercise the recorded incident, compatible floors, the pin list and both current dependency floors. This PR adds coverage; its test module and recorded fixtures are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_core_pin_compat_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC64"]
+  - id: "dod-omn17427-core-pin-compatibility-deploy-probe"
+    description: "Deploy probe. The checked-out commit contains the five compatibility tests, both recorded infra pins and both recorded TOML fixtures. Python's standard library parses the committed files on the hosted runner without sibling clones or lab services; the merge base has no compatibility test module."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          import subprocess
+          import tomllib
+
+          def committed(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+
+          tree = ast.parse(committed("tests/ci/test_core_pin_compat_omn17427.py"))
+          names = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+          assert {
+              "test_recorded_incident_pair_is_refused",
+              "test_floor_at_or_below_the_infra_pin_is_accepted",
+              "test_recorded_infra_pins_include_the_incident_pin",
+              "test_project_dependency_floor_fits_the_newest_infra_pin",
+              "test_override_floor_fits_the_newest_infra_pin",
+          } <= names
+          pins = next(node for node in tree.body if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "INFRA_CORE_PINS")
+          assert ast.literal_eval(pins.value) == (("44542e2a0", "0.47.44"), ("291f2f747", "0.47.46"))
+          root = "tests/ci/fixtures/pin_compat/"
+          requirement = tomllib.loads(committed(root + "omnimarket_v0.4.316_core_requirement.toml"))
+          infra = tomllib.loads(committed(root + "omnibase_infra_44542e2a0_core_pin.toml"))
+          assert "omnibase-core>=0.47.46,<0.48.0" in requirement["project"]["dependencies"]
+          assert "omnibase-core==0.47.44" in infra["tool"]["uv"]["override-dependencies"]
+          print("core pin compatibility deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac1-one-saving"
     description: "The local row and the receipt state the same baseline-priced saving, and the row pins the counterfactual."
     source: "manual"
@@ -1054,3 +1153,26 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
+  - id: "dod-omn17427-ac63-session-capability-digest"
+    description: "node_session_capability_digest_effect prints the cached digest inside a registry root, nothing outside, a STALE line with its fix when the digest is missing or old, and exits 0 on every input."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC63"]
+  - id: "dod-omn17427-ac63-digest-deploy-probe"
+    description: "Deploy probe. GitHub serves the session capability digest handler at the checked-out HEAD with its freshness bound and its STALE line. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_capability_digest_effect/handlers/handler_session_capability_digest.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("STALE_AFTER_MINUTES = 45", "CAPABILITY DIGEST STALE")); print("session capability digest deploy probe: PASS")'
+  - id: "dod-omn17427-ac66-repository-prose-removed"
+    description: "The removed prose files are absent and the root README links the public knowledge base. It fails at the merge base, where the files exist and the README is long."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC66"]
