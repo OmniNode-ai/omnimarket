@@ -50,6 +50,12 @@ from omnimarket.nodes.node_work_ledger_bus_mirror import (
 from omnimarket.nodes.node_work_ledger_delegation_mirror import (
     HandlerWorkLedgerDelegationMirror,
 )
+from omnimarket.nodes.node_work_ledger_landing_mirror import (
+    HandlerWorkLedgerLandingMirror,
+)
+from omnimarket.nodes.node_work_ledger_landing_mirror.models.model_work_ledger_landing_mirror import (
+    ModelWorkLedgerLandingMirrorRequest,
+)
 from omnimarket.projection.envelope import unwrap_envelope
 
 logger = logging.getLogger(__name__)
@@ -57,6 +63,7 @@ WORK_LEDGER_APPEND_NODE = "node_work_ledger_append_effect"
 GROUP_SERVICE = "omnimarket"
 WORK_LEDGER_MIRROR_NODE = "node_work_ledger_bus_mirror"
 WORK_LEDGER_DELEGATION_NODE = "node_work_ledger_delegation_mirror"
+WORK_LEDGER_LANDING_NODE = "node_work_ledger_landing_mirror"
 
 
 def load_work_ledger_mirror_topics() -> tuple[str, ...]:
@@ -72,6 +79,15 @@ def load_work_ledger_delegation_topics() -> tuple[str, ...]:
     """Completed topic first, failed second, as the contract declares them."""
     contract = yaml.safe_load(
         resources.files(f"omnimarket.nodes.{WORK_LEDGER_DELEGATION_NODE}")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    return tuple(contract["runtime_dispatch"]["subscribe_topics"])
+
+
+def load_work_ledger_landing_topics() -> tuple[str, ...]:
+    contract = yaml.safe_load(
+        resources.files(f"omnimarket.nodes.{WORK_LEDGER_LANDING_NODE}")
         .joinpath("contract.yaml")
         .read_text()
     )
@@ -162,9 +178,16 @@ class WorkLedgerAppendHost:
         self._mirror = HandlerWorkLedgerBusMirror()
         self._delegation_topics = load_work_ledger_delegation_topics()
         self._delegation_mirror = HandlerWorkLedgerDelegationMirror()
+        self._landing_topics = load_work_ledger_landing_topics()
+        self._landing_mirror = HandlerWorkLedgerLandingMirror()
         self._queue: asyncio.Queue[
             tuple[
-                ProtocolBusMessage, bool, str | None, str | None, asyncio.Future[None]
+                ProtocolBusMessage,
+                bool,
+                str | None,
+                str | None,
+                str | None,
+                asyncio.Future[None],
             ]
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
@@ -178,6 +201,10 @@ class WorkLedgerAppendHost:
     @property
     def delegation_topics(self) -> tuple[str, ...]:
         return self._delegation_topics
+
+    @property
+    def landing_topics(self) -> tuple[str, ...]:
+        return self._landing_topics
 
     async def start(self) -> None:
         if self._task is not None:
@@ -233,6 +260,19 @@ class WorkLedgerAppendHost:
                     "earliest",
                 )
             )
+        landing_group = derive_service_group_id(
+            WORK_LEDGER_LANDING_NODE, service=GROUP_SERVICE
+        )
+        for topic in self._landing_topics:
+            self._unsubscribes.append(
+                await _subscribe(
+                    self._bus,
+                    topic,
+                    partial(self._enqueue_landing, landing_topic=topic),
+                    landing_group,
+                    "earliest",
+                )
+            )
 
     async def stop(self) -> None:
         for unsubscribe in self._unsubscribes:
@@ -272,6 +312,16 @@ class WorkLedgerAppendHost:
             writer_principal=self._operator_principal,
         )
 
+    async def _enqueue_landing(
+        self, message: ProtocolBusMessage, *, landing_topic: str
+    ) -> None:
+        await self._submit(
+            message,
+            mirror=True,
+            landing_topic=landing_topic,
+            writer_principal=self._operator_principal,
+        )
+
     async def _submit(
         self,
         message: ProtocolBusMessage,
@@ -279,10 +329,11 @@ class WorkLedgerAppendHost:
         mirror: bool,
         writer_principal: str | None,
         delegation_topic: str | None = None,
+        landing_topic: str | None = None,
     ) -> None:
         done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._queue.put_nowait(
-            (message, mirror, delegation_topic, writer_principal, done)
+            (message, mirror, delegation_topic, landing_topic, writer_principal, done)
         )
         await done
 
@@ -292,6 +343,7 @@ class WorkLedgerAppendHost:
                 message,
                 mirror,
                 delegation_topic,
+                landing_topic,
                 writer_principal,
                 done,
             ) = await self._queue.get()
@@ -300,6 +352,7 @@ class WorkLedgerAppendHost:
                     message,
                     mirror=mirror,
                     delegation_topic=delegation_topic,
+                    landing_topic=landing_topic,
                     writer_principal=writer_principal,
                 )
             except Exception as exc:  # fallback-ok: callback fails for redelivery; worker serves the next request
@@ -330,9 +383,13 @@ class WorkLedgerAppendHost:
         writer_principal: str | None,
         mirror: bool = False,
         delegation_topic: str | None = None,
+        landing_topic: str | None = None,
     ) -> None:
         if delegation_topic is not None:
             await self._process_delegation(message, delegation_topic)
+            return
+        if landing_topic is not None:
+            await self._process_landing(message)
             return
         try:
             raw = json.loads(message.value)
@@ -415,6 +472,47 @@ class WorkLedgerAppendHost:
             return
         await self._append_and_publish(
             request, command_id, mirror=True, writer_principal=self._operator_principal
+        )
+
+    async def _process_landing(self, message: ProtocolBusMessage) -> None:
+        payload = unwrap_envelope(message.value)
+        raw = payload.get("_envelope", {}) if payload is not None else {}
+        if not isinstance(raw, dict):
+            raw = {}
+        command_id = _uuid_or_none(raw.get("envelope_id"))
+        try:
+            if payload is None:
+                raise ValueError("landing decision is not an object")
+            correlation_id = _uuid_or_none(raw.get("correlation_id"))
+            if correlation_id is None:
+                raise ValueError("landing decision has no correlation id")
+            if raw.get("envelope_timestamp") is None:
+                raise ValueError("landing decision has no event timestamp")
+            decision = {
+                key: value for key, value in payload.items() if key != "_envelope"
+            }
+            mapped = self._landing_mirror.handle(
+                ModelWorkLedgerLandingMirrorRequest.model_validate(
+                    {
+                        "decision": decision,
+                        "correlation_id": correlation_id,
+                        "emitted_at": raw["envelope_timestamp"],
+                    }
+                )
+            )
+        except (ValueError, ValidationError) as exc:
+            await self._publish_failure(
+                command_id, "", f"invalid landing decision: {exc}"
+            )
+            return
+        if mapped.request is None:
+            # An idle tick changed nothing worth a row; the offset advances.
+            return
+        await self._append_and_publish(
+            mapped.request,
+            command_id,
+            mirror=True,
+            writer_principal=self._operator_principal,
         )
 
     async def _append_and_publish(
