@@ -363,11 +363,16 @@ requirements:
   - id: "req-claude-account-token-pool"
     statement: "Each host keeps a local secret-store entry per Claude account, resolves the first usable token in account order, marks a usage limit on that account and reports token-free pool status."
     acceptance:
+      - id: "AC71"
+        statement: "AC71: the token-pool CLI and contract handler add accounts from stdin, rotate to the next account after a usage limit, resolve nothing and report ALARM when all accounts are limited, reuse an account after reset and keep token values out of status, metadata and refusal output -- falsifier: the focused token-pool unit or golden-chain test file fails"
+  - id: "req-publisher-fixture-one-copy"
+    statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
+    acceptance:
       - id: "AC70"
-        statement: "AC70: the token-pool CLI and contract handler add accounts from stdin, rotate to the next account after a usage limit, resolve nothing and report ALARM when all accounts are limited, reuse an account after reset and keep token values out of status, metadata and refusal output -- falsifier: the focused token-pool unit or golden-chain test file fails"
+        statement: "AC70: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
 evidence_requirements:
   - kind: "tests"
-    description: "AC70: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
+    description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
     command: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
@@ -498,6 +503,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC68: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
+  - kind: "tests"
+    description: "AC70: omnimarket's publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser."
+    command: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -510,7 +518,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC70"]
+    binds_ac: ["AC71"]
   - id: "dod-omn17427-claude-token-pool-golden-chain"
     description: "The CLI walks add, resolve, mark-limited, all-limited and reset through the contract-declared handler with fake tokens. The test file and node are absent at the merge base."
     source: "manual"
@@ -518,7 +526,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC70"]
+    binds_ac: ["AC71"]
   - id: "dod-omn17427-claude-token-pool-deploy-probe"
     description: "Deploy probe. The hosted runner reads the subject commit's token-pool contract, handler and CLI using git and Python's standard library. The merge base has no node. This checks the artifact and does not attest a live deployment."
     source: "manual"
@@ -1290,3 +1298,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_disposition_compute/handlers/handler_review_finding_disposition.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("NOISE_DISPOSITIONS", "class_fix_key_for", "_recurring")); print("review finding disposition deploy probe: PASS")'
+  - id: "dod-omn17427-ac70-publisher-fixture-one-copy"
+    description: "The publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser; the fence fails on the previous second copy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC70"]
+  - id: "dod-omn17427-ac70-one-copy-deploy-probe"
+    description: "Deploy probe. GitHub serves the omnimarket publisher fixture at the checked-out HEAD importing the omnibase_infra corpus. It fails at the merge base, where the fixture carries its own index, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/testing/publisher_contract_fixture.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "from omnibase_infra.testing.publisher_contract_fixture import" in source and "parse_contract" not in source; print("publisher fixture one-copy deploy probe: PASS")'

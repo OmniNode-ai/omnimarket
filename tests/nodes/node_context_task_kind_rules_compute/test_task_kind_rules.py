@@ -40,7 +40,10 @@ from omnimarket.nodes.node_context_task_kind_rules_compute.models import (
 )
 from omnimarket.pack.model_context_profile import ModelContextProfile
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.usefixtures("promoted_context_profile_routing"),
+]
 
 F = EnumContextFactor
 

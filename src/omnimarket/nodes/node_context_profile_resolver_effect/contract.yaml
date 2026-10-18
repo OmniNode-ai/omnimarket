@@ -6,9 +6,14 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Resolves one context profile by name from the YAML data under
   omnimarket/pack/profiles. The result carries the validated profile and the
-  sha256 of its canonical dump, or PROFILE_NOT_FOUND / INVALID_PROFILE. The
-  node reads only its packaged profile data and holds no other state. A failed
-  resolve is a typed result on the same terminal event, not a second topic.
+  sha256 of its canonical dump, or PROFILE_NOT_FOUND / INVALID_PROFILE.
+  Model-role task classes must have available entries in the task-class routing
+  contract. The contract is read on every resolution that names a model role,
+  using TASK_CLASS_CONTRACT_PATH or the packaged default, so removing a
+  promotion refuses the next resolution with INVALID_PROFILE. A missing or
+  invalid routing contract also fails closed. Profiles without model roles
+  do not depend on the routing contract. A failed resolve returns neither a
+  profile nor its hash on the same terminal event, not a second topic.
 
 handler_routing:
   routing_strategy: operation_match
