@@ -1,0 +1,19 @@
+name: node_context_compaction_orchestrator
+version: "1.0.0"
+description: "Answers a compaction command with a context package or a native fallback"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_context_compaction_orchestrator: "omnimarket.nodes.node_context_compaction_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.47.44,<0.48.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "context-pack", "compaction", "contract"]
+pack: "pipeline"
+display_name: "Context Compaction Orchestrator"
+node_role: "orchestrator"

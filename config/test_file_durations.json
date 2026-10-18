@@ -228,7 +228,6 @@
   "tests/integration/node_compliance_sweep/test_compliance_sweep_class_fix.py": 11.14,
   "tests/integration/node_compliance_sweep/test_compliance_sweep_multiparam.py": 0.36,
   "tests/integration/node_compliance_sweep/test_compliance_sweep_state_coverage.py": 0.02,
-  "tests/integration/node_context_bundle_generator_compute/test_context_bundle_bus_coverage.py": 0.04,
   "tests/integration/node_contract_drift_compute/test_contract_drift_bus_coverage.py": 0.06,
   "tests/integration/node_contract_sweep/test_contract_sweep_multiparam.py": 0.26,
   "tests/integration/node_contract_sweep/test_contract_sweep_state_coverage.py": 0.01,
