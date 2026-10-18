@@ -28,8 +28,8 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# OMN-20910: the Claude API voter revision descends from the prior fix.
-STRUCTURED_VOTES_PIN = "7f686d4bbca251dd3db49c1222ff8d6f738abd6c"
+# OMN-20910: the chunk-scaled review deadline revision descends from the prior fix.
+STRUCTURED_VOTES_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
 PRE_STRUCTURED_VOTES_PIN = "3fcbf795087a79081c0ceeb676216bf64c5d49ae"
 _PIN = re.compile(
     r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"

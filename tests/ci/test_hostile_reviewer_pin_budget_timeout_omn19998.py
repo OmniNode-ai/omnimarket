@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """OMN-19998: an exhausted review budget fails the voter as a timeout.
 
-The Hostile Reviewer now pins the Claude API voter revision (OMN-20910),
-which descends from the budget-timeout fix in omniintelligence#1095,
+The Hostile Reviewer now pins the chunk-scaled review deadline revision
+(OMN-20910), which descends from the budget-timeout fix in omniintelligence#1095,
 037af72c2a7f49fda953fed6a99edd5ec588dede. That fix descends from the
 previous pin 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0 (#1090). At the
 old pin, exhausting a voter's shared review budget makes the adapter raise a
@@ -31,8 +31,8 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# OMN-20910: the Claude API voter revision retains the budget-timeout fix.
-BUDGET_TIMEOUT_PIN = "7f686d4bbca251dd3db49c1222ff8d6f738abd6c"
+# OMN-20910: the chunk-scaled review deadline revision retains the budget-timeout fix.
+BUDGET_TIMEOUT_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
 PRE_BUDGET_TIMEOUT_PIN = "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
 _PIN = re.compile(
     r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"
