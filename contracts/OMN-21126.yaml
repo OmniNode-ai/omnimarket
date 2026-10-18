@@ -47,12 +47,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21126-ac3-no-private-names"
-    description: "No file under the node package or its tests names a private repository."
+    description: "The node handler exists and no file under the node package or its tests names a private repository; at the merge base the handler is absent and the check fails."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          ! grep -rqiE 'knowledge.base.internal|omninode.infra|omnibase.internal' src/omnimarket/nodes/node_context_invariants_select_compute tests/nodes/node_context_invariants_select_compute
+          test -f src/omnimarket/nodes/node_context_invariants_select_compute/handlers/handler_context_invariants_select.py && ! grep -rqiE 'knowledge.base.internal|omninode.infra|omnibase.internal' src/omnimarket/nodes/node_context_invariants_select_compute tests/nodes/node_context_invariants_select_compute
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21126-deploy-probe"
@@ -62,4 +62,3 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_invariants_select_compute/handlers/handler_context_invariants_select.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContextInvariantsSelect'
-    binds_ac: ["AC1"]
