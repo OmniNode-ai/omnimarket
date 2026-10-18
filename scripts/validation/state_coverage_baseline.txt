@@ -54,8 +54,6 @@ node_context_pack_builder_compute onex.evt.omnimarket.context-pack-build-failed.
 node_context_pack_builder_compute warnings
 node_context_roi_compute onex.evt.omnimarket.context-roi-score-completed.v1
 node_context_roi_compute onex.evt.omnimarket.context-roi-score-failed.v1
-node_context_selection_policy_compute error
-node_context_selection_policy_compute onex.evt.omnimarket.context-selection-policy-completed.v1
 node_contract_reducer reduced
 node_cross_cli_originator onex.cmd.omnimarket.cross-cli-delegation-requested.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-delegation-completed.v1

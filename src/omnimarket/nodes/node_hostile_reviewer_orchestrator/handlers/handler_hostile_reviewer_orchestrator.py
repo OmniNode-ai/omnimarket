@@ -250,7 +250,17 @@ class HandlerHostileReviewerOrchestrator:
         )
 
     async def _resolve_diff(self, command: ModelHostileReviewerStartCommand) -> str:
-        """Dispatch node_github_diff_effect to resolve the review target."""
+        """Resolve the review target: inline content, else node_github_diff_effect."""
+        if command.diff_content is not None:
+            if command.pr_number is not None or command.file_path is not None:
+                raise ValueError(
+                    "supply exactly one review target: diff_content OR "
+                    "(pr_number + repo) OR file_path"
+                )
+            if not command.diff_content.strip():
+                raise ValueError("inline diff_content is empty")
+            return command.diff_content
+
         diff_command = ModelGithubDiffCommand(
             correlation_id=command.correlation_id,
             repo=command.repo,

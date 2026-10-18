@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-18759
+title: "Codex marketplace registration on the dev machine points at a deleted worktree; repoint to the omniclaude clone and merge the hook registrations"
+summary: >
+  The operator Mac's Codex config named a deleted worktree as the omninode-tools
+  marketplace source, so `codex plugin marketplace list` failed, and its Codex
+  hooks file registered none of the omniclaude emitters. The repair on the Mac
+  repoints the marketplace through Codex's own `codex plugin marketplace
+  remove/add` to the clone's omninode-tools-dev marketplace root, merges the four
+  `--actor codex` bus-mirror registrations from plugins/onex/hooks/codex/hooks.json
+  into the Codex user hooks file, and trusts them through the Codex app-server
+  (hooks/list, config/batchWrite). This change adds omnimarket's
+  node_codex_hook_registration_effect, the merge as an idempotent, backed-up
+  effect node reading the registration from the omniclaude plugin root it is
+  given, so the hooks file can be re-converged instead of hand-edited again.
+  This contract binds the criteria this change proves (AC2, AC3). AC1 (`codex
+  plugin list` exits 0 and lists onex) is a live check on the operator Mac and
+  was met there by the repair; AC4 (the runbook procedure) is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn18759-hooks
+    statement: The omniclaude Codex hook registration is merged into the Codex hooks file, declaring actor=codex.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: A Codex session emits at least one journal record with `actor=codex`'
+  - id: req-omn18759-claude-unchanged
+    statement: The Claude-side hook trees are untouched and no second provider registers the same emit script.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: The two existing Claude-side hook trees still emit unchanged, with no duplicate provider introduced'
+evidence_requirements:
+  - kind: tests
+    description: "Codex hook registration node tests pass"
+    command: "uv run pytest tests/nodes/node_codex_hook_registration_effect/test_handler_codex_hook_registration.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn18759-ac2-merge
+    description: 'The shipped registration merges into a Codex user hooks file as the four bus-mirror emitters SessionStart, UserPromptSubmit, PostToolUse and SessionEnd, each running the clone''s script with `--actor codex`; a second apply changes nothing; apply backs the old file up byte-for-byte first. Fails at the merge base, which has no node_codex_hook_registration_effect.'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_codex_hook_registration_effect/test_handler_codex_hook_registration.py -q --no-cov -k 'real_registration or second_apply or backs_up or absent_target or partial_group'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn18759-ac3-preserve
+    description: 'Existing user hook groups keep their order and content and only missing commands are appended, so no emit script is registered twice; invalid input writes nothing. Fails at the merge base, which has no node_codex_hook_registration_effect.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_codex_hook_registration_effect/test_handler_codex_hook_registration.py -q --no-cov -k 'preserved_first or invalid_target or invalid_registration or does_not_mutate'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn18759-deploy-probe
+    description: 'Hosted source readback of the registration handler at the checked-out revision. The API lookup fails at the merge base, which has no handler file, and the content assertions fail if the merge call or atomic replacement is absent. This checks published source; it does not claim the operator Mac has deployed it.'
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_codex_hook_registration_effect/handlers/handler_codex_hook_registration.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | (contains(\"merged, added = merge_registration(\") and contains(\"os.replace(temporary, hooks_file)\"))' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"

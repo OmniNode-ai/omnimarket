@@ -27,6 +27,14 @@ class ModelHostileReviewerStartCommand(BaseModel):
     file_path: str | None = Field(
         default=None, description="File path to review (alternative to PR)."
     )
+    diff_content: str | None = Field(
+        default=None,
+        description=(
+            "Review target supplied inline (a unified diff or file text). "
+            "Alternative to pr_number + repo and to file_path; no GitHub or "
+            "file read is made when it is set."
+        ),
+    )
     models: list[str] = Field(
         ...,
         min_length=1,
