@@ -335,11 +335,21 @@ requirements:
     acceptance:
       - id: "AC63"
         statement: "AC63: node_session_capability_digest_effect prints the cached digest inside a registry root, prints nothing outside every root, prints a STALE line with its launchd fix for a missing or over-45-minute digest, prints one pointer line on a compact restart, opens no socket and exits 0 on every input -- falsifier: uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
+  - id: "req-ci-red-watcher-facts-only"
+    statement: "The CI-red triage reader uses watcher facts without launching gh, and incomplete observations record facts-unavailable without starting an effect."
+    acceptance:
+      - id: "AC65"
+        statement: "AC65: the default handler given an armed event with missing head or base facts and an armed peer invokes no subprocess, records facts-unavailable with action_applied=false, and complete watcher observations retain runner and dev-head classification -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov"
+  - id: "req-repository-prose-removed"
+    statement: "Repository prose lives in the public knowledge base; the contribution, security and changelog guides and the unused README, table and evidence text files are removed and the root README is a short signpost."
+    acceptance:
+      - id: "AC66"
+        statement: "AC66: the sixteen removed prose files are absent and README.md has three to five lines including the public knowledge_base link -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q"
   - id: "req-linear-triage-local-github"
     statement: "node_linear_triage runs on a host that holds no GitHub token by reading PR state from the PR watcher state and the canonical clones, reports an unreadable state instead of an empty answer, and keeps its implementing-PR gate."
     acceptance:
-      - id: "AC65"
-        statement: "AC65: with github_source local the triage handler completes without a GITHUB_TOKEN, a merged squash commit in the clone and a merged or closed watcher record answer the merged and closed-unmerged searches, an id never matches a longer id, a merged record with no merge time is dropped, a missing watcher state returns status error, and the default github_source stays api -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q fails when the local client is removed"
+      - id: "AC67"
+        statement: "AC67: with github_source local the triage handler completes without a GITHUB_TOKEN, a merged squash commit in the clone and a merged or closed watcher record answer the merged and closed-unmerged searches, an id never matches a longer id, a merged record with no merge time is dropped, a missing watcher state returns status error, and the default github_source stays api -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q fails when the local client is removed"
 evidence_requirements:
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
@@ -465,13 +475,45 @@ evidence_requirements:
     description: "AC63: the session-start capability digest node prints inside a registry root, stays silent outside, names a stale digest with its fix and exits 0 on every input."
     command: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC65: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
+    description: "AC67: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
     command: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-ac65-ci-red-watcher-facts-only"
+    description: "The default runtime handler and compatibility reader retain watcher facts and withhold incomplete observations without raw GitHub subprocesses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC65"]
+  - id: "dod-omn17427-ci-red-watcher-facts-deploy-probe"
+    description: "Deploy probe. The hosted runner checks the subject commit has no process or network imports in the CI-red handler and carries the facts-unavailable decision marker; the prior commit contains subprocess imports. This does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          import subprocess
+
+          path = "src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_ci_red_triage.py"
+          source = subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+          tree = ast.parse(source)
+          forbidden = {"subprocess", "os", "httpx", "requests", "urllib", "socket"}
+          imports = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  imports.update(alias.name.split(".")[0] for alias in node.names)
+              elif isinstance(node, ast.ImportFrom):
+                  imports.add((node.module or "").split(".")[0])
+          assert not (imports & forbidden), imports & forbidden
+          assert "start=withheld:facts-unavailable" in source
+          print("CI-red watcher facts artifact probe: PASS")
+          PY
   - id: "dod-omn17427-ac64-core-pin-compatibility"
     description: "The five core pin compatibility tests exercise the recorded incident, compatible floors, the pin list and both current dependency floors. This PR adds coverage; its test module and recorded fixtures are absent at the merge base."
     source: "manual"
@@ -1134,6 +1176,14 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_capability_digest_effect/handlers/handler_session_capability_digest.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("STALE_AFTER_MINUTES = 45", "CAPABILITY DIGEST STALE")); print("session capability digest deploy probe: PASS")'
+  - id: "dod-omn17427-ac66-repository-prose-removed"
+    description: "The removed prose files are absent and the root README links the public knowledge base. It fails at the merge base, where the files exist and the README is long."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC66"]
   - id: "dod-omn17427-ac61-linear-triage-local-github"
     description: "The local GitHub PR reads and the handler's local source pass their focused tests."
     source: "manual"
@@ -1141,7 +1191,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC65"]
+    binds_ac: ["AC67"]
   - id: "dod-omn17427-linear-triage-local-deploy-probe"
     description: "Deploy probe. GitHub serves the triage handler at the checked-out HEAD with the local GitHub source. It fails at the merge base, which has no such source, and needs only GitHub access and Python on the hosted runner."
     source: "manual"

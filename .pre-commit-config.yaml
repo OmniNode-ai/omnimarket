@@ -1643,6 +1643,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17427: missing watcher facts must never launch the GitHub CLI.
+      # SYNC with the ci.yml lint step "CI red watcher facts only (OMN-17427)".
+      - id: ci-red-watcher-facts-only
+        name: CI red watcher facts only (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/(models/ci_red_triage\.py|nodes/node_pr_lifecycle_orchestrator/handlers/handler_ci_red_triage\.py)|tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20730: the red CI triage model passes its design config, each property
       # fails on a one-knob mutation, the TLC results match the committed model,
       # configs and outputs, and VERDICT.txt approves the model's digest.
