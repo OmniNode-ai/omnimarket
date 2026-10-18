@@ -24,7 +24,10 @@ from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_
 )
 from omnimarket.pack.model_context_profile import ModelContextProfile
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.usefixtures("promoted_context_profile_routing"),
+]
 
 F = EnumContextFactor
 SRC = Path(__file__).resolve().parents[2] / "src" / "omnimarket"
