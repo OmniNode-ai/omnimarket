@@ -601,6 +601,11 @@ jobs:
       # 'dod-verify-every-criterion-bound'.
       - name: dod_verify refuses partly bound criteria (OMN-20032)
         run: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
+      # OMN-17427: the repo-evidence caller pins the receipt-gate reusable that refuses
+      # a verifier below 0.4.303 (ruling 2026-10-10T11:04:11Z). SYNC with pre-commit
+      # hook 'call-repo-evidence-gate-verifier-floor'.
+      - name: call-repo-evidence-gate refuses a verifier below the floor (OMN-17427)
+        run: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov
       # OMN-21062: a binding is accepted by a second lane that reruns its check
       # (ruling 2026-10-03T00:40:00Z). One run per selector, so a renamed or
       # deleted case selects nothing and fails. SYNC with pre-commit hook
