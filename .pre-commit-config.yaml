@@ -837,6 +837,18 @@ repos:
         files: ^(src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/validators/routing_tier_backend_bindability\.py)$
         stages: [pre-commit]
 
+      # OMN-17427 / RULING 2026-10-08T23:48:01Z: lab models first for appropriate
+      # tasks. Refuses a routing contract change that sends a class the lab has
+      # not measured below the bar to a cloud model first (tier_order, entry_share
+      # or a model pin). SYNC with ci.yml step "Lab-first routing gate (OMN-17427)".
+      - id: lab-first-routing
+        name: Lab-first routing check (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -n 0 -p no:randomly --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/nodes/node_lab_first_routing_check_compute/.*|src/omnimarket/models/delegation/model_lab_rubric\.py|tests/unit/delegation/test_lab_first_routing_omn17427\.py)$
+        stages: [pre-commit]
+
       # OMN-18311 (release criterion C12, third clause). A customer catalogue
       # row that resolves to a HOUSE credential renders identically to a
       # bring-your-own-key row and bills to us. Same entry point as the
@@ -848,6 +860,15 @@ repos:
         entry: uv run python -m omnimarket.validators.byok_catalogue_no_house_entry
         pass_filenames: false
         files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
+        stages: [pre-commit]
+
+      # OMN-19998: same policy and dispatch controls as the required CI gate.
+      - id: internal-release-path-guard
+        name: Internal dependency remediation uses tested git pins
+        language: system
+        entry: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q -p no:randomly
+        pass_filenames: false
+        files: ^(src/omnimarket/(handlers/handler_internal_release_path_guard|models/model_internal_release_path_guard)\.py|src/omnimarket/nodes/(node_internal_release_path_guard_compute|node_lab_fill_effect|node_pr_landing_decision_compute)/.*|tests/nodes/node_internal_release_path_guard_compute/.*|tests/test_golden_chain_internal_release_path_guard_compute\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|scripts/ci/ci_summary_gate\.py)$
         stages: [pre-commit]
 
       # OMN-20844: bring-your-own-key customers choose their OpenRouter model;
@@ -1631,6 +1652,16 @@ repos:
         language: system
         entry: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
         files: ^(src/omnimarket/nodes/node_omniclaude_pin_bump_compute/.*|tests/ci/test_omniclaude_release_notice_omn20001\.py|\.github/workflows/omniclaude-pin-bump\.yml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17427: missing watcher facts must never launch the GitHub CLI.
+      # SYNC with the ci.yml lint step "CI red watcher facts only (OMN-17427)".
+      - id: ci-red-watcher-facts-only
+        name: CI red watcher facts only (OMN-17427)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/(models/ci_red_triage\.py|nodes/node_pr_lifecycle_orchestrator/handlers/handler_ci_red_triage\.py)|tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
         pass_filenames: false
         stages: [pre-commit]
 
