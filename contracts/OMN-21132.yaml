@@ -46,7 +46,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute -q -p no:randomly --no-cov -k 'target_comes_from_the_contract or contract_config_validates or custom_contract_policy'"
+        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute/test_retrieval_eval.py tests/nodes/node_retrieval_eval_compute/test_contracts.py -q -p no:randomly --no-cov -k 'target_comes_from_the_contract or contract_config_validates or custom_contract_policy'"
     binds_ac: ["AC3"]
   - id: "dod-omn21132-ac4"
     description: "AC4: the same queries in two orders give an identical report JSON, and the bootstrap follows the fixed-seed percentile rule."
