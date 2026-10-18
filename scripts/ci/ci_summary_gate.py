@@ -176,6 +176,7 @@ DETECT_CHANGES_JOB = "Detect Changes"
 # — draft-induced or otherwise — still fails ``CI Summary`` closed. The "no
 # legitimate if:" derivation above is otherwise unchanged for every other row.
 STRICT_GATE_JOBS: tuple[str, ...] = (
+    "Internal Release Path Guard (OMN-19998)",  # internal-release-path-guard
     # Repo-owned evidence dependency — non-PR events keep their existing gates;
     # no ``if:``, so the job is always present + completed.
     "Repo Evidence Dependency",

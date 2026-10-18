@@ -155,6 +155,12 @@ requirements:
     acceptance:
       - id: "AC29"
         statement: "AC29: the marker's if names only merge_group and a push to refs/heads/dev, every heavy job's if carries the waiver clause, CI Summary passes a waived snapshot with the marker succeeded and fails it with the marker absent, skipped, failed or cancelled, and a skipped light gate still fails it -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest fails at the merge base"
+  - id: "req-internal-release-path-guard"
+    statement: "Internal consumer remediation uses tested git tags or immutable commits instead of a release cut or release wait."
+    acceptance:
+      - id: "AC30"
+        statement: "AC30: the canonical internal release-path check refuses an internal release strategy or instruction, accepts a git pin, blocks lab-fill dispatch before file writes and controller worker/cause briefs before construction, and runs through its contract-declared bus topics -- falsifier: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q fails at the merge base"
+
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -172,6 +178,7 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+
 dod_evidence:
   - id: "dod-omn19998-mirror-durable-outbox"
     description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
@@ -638,3 +645,17 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'import yaml; j=yaml.safe_load(open(".github/workflows/ci.yml"))["jobs"]; c="!(github.event_name == \x27merge_group\x27 || (github.event_name == \x27push\x27 && github.ref == \x27refs/heads/dev\x27))"; w=j["queue-retest-waiver"]["if"]; assert "merge_group" in w and "refs/heads/dev" in w and "pull_request" not in w; assert all(c in " ".join(j[k]["if"].split()) for k in ("detect-changes", "coverage-sweep-gate"))'
+  - id: "dod-omn19998-internal-release-path-guard"
+    description: "Refusal, passing-pin, lane dispatch, controller brief, CLI and bus controls for the shared policy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn19998-internal-release-path-deploy-probe"
+    description: "Hosted runner resolves the packaged node from its contract and exercises a refused release instruction and a passing git pin; the base has no node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_internal_release_path_guard_compute.py -q"
