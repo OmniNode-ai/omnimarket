@@ -50,6 +50,9 @@ dod_evidence:
     description: "The node handler exists and no file under the node package or its tests names a private repository; at the merge base the handler is absent and the check fails."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0 -k no_private_names"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: >-
           test -f src/omnimarket/nodes/node_context_invariants_select_compute/handlers/handler_context_invariants_select.py && ! grep -rqiE 'knowledge.base.internal|omninode.infra|omnibase.internal' src/omnimarket/nodes/node_context_invariants_select_compute tests/nodes/node_context_invariants_select_compute

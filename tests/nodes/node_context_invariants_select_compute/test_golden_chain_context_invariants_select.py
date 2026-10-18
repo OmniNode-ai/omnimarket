@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -388,3 +389,31 @@ def test_invariants_select_handler_imports_are_pure() -> None:
         "psycopg",
     }
     assert imported_roots.isdisjoint(forbidden), imported_roots & forbidden
+
+
+def test_invariants_select_no_private_names() -> None:
+    # The private names are assembled from parts so this file never matches them.
+    private_names = re.compile(
+        "|".join(
+            ".".join(parts)
+            for parts in (
+                ("knowledge", "base", "internal"),
+                ("omninode", "infra"),
+                ("omnibase", "internal"),
+            )
+        ),
+        re.IGNORECASE,
+    )
+    files = [
+        path
+        for directory in (NODE, Path(__file__).resolve().parent)
+        for path in sorted(directory.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts
+    ]
+    assert files
+    named = [
+        str(path.relative_to(ROOT))
+        for path in files
+        if private_names.search(path.read_text(encoding="utf-8", errors="replace"))
+    ]
+    assert not named, named
