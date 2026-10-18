@@ -47,4 +47,4 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: >-
-      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_swarm_dispatch_orchestrator/handlers/handler_swarm_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "^import json$"'
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_swarm_dispatch_orchestrator/handlers/handler_swarm_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "^import json$"'
