@@ -27,3 +27,10 @@ stable_factors:
 scopes:
   - delegation
 token_budget: 8000
+# Window data (port item AP-B5): the smallest local-tier context_window in
+# model_policy.yaml, so the declared ceiling fits every local backend; the reserved
+# output is the local coder policy's max_tokens. The system share is a first value that
+# TC.12 measures.
+context_window_tokens: 32000
+reserved_output_tokens: 4096
+reserved_system_tokens: 4000

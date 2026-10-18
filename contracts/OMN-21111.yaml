@@ -1,0 +1,88 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21111"
+title: "TA.9 replay evaluation scoring node (omnimarket node slice)"
+summary: "A pure compute node, node_context_replay_eval_compute, scores a compaction replay evaluation from caller-supplied inputs: exact-word presence of each expected ruling in a package, package-versus-native next-action match counts with candidate_id identity across runs, and per-boundary capacity with the review-row sizing of decision D10 (the shortest oldest-first set of carried prompts whose removal fits the budget, or does not fit) and a positive control for a zero fallback share. It consumes onex.cmd.omniintelligence.context-replay-eval-requested.v1 and publishes onex.evt.omnimarket.context-replay-eval-completed.v1, whose result carries ids, counts and verdicts only. The runner that builds each real case's package through node_context_pack_orchestrator in pinned mode and asks the model, and the report over the real sessions, are not in this slice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-replay-eval-scoring-node"
+    statement: "The scoring node of plan task TA.9: ruling presence, answer and identity comparison, capacity and review-row sizing, and its topic pair."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a case passes ruling presence only when every expected statement's exact words (curly quotes folded) are in the package text; a missing or unscorable statement fails the case and is listed -- falsifier: a case passing with a statement missing."
+      - id: "AC2"
+        statement: "AC2: per run the package and native match counts are reported, a run with fewer package matches than native ones fails, and a case whose candidate_id differs between runs or is absent from a run is listed; one run reports determinism unchecked -- falsifier: a differing candidate_id not listed."
+      - id: "AC3"
+        statement: "AC3: per boundary the node reports the OPERATOR_WORDS_UNRECORDED and required-factor token estimates, whether they exceed the budget, and the shortest oldest-first set of carried prompts whose removal fits, or does not fit, and an independent re-sum with exactly those prompts removed reproduces the claim -- falsifier: a fits claim the re-sum does not reproduce, or a named prompt that is not a carried prompt."
+      - id: "AC4"
+        statement: "AC4: the fallback share excludes control boundaries, and a zero fallback share without a control boundary exceeding its reduced budget is reported as a falsifier -- falsifier: a zero share accepted with no positive control."
+      - id: "AC5"
+        statement: "AC5: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its three handlers and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC5 in the node tests and the golden chain."
+    command: "uv run pytest tests/nodes/node_context_replay_eval_compute tests/test_golden_chain_context_replay_eval_compute.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21111-ac1"
+    description: "AC1: exact words present, curly quotes folded, a missing or unscorable statement fails the case and is listed in input order."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_replay_eval_compute/test_context_replay_eval.py -q -p no:randomly --no-cov -k 'exact_words or all_cases_must_pass'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21111-ac2"
+    description: "AC2: match counts per run, unavailable is not a match, a failing run fails next action, differing and absent candidate ids are listed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_replay_eval_compute/test_context_replay_eval.py -q -p no:randomly --no-cov -k 'match_counts or unavailable_is_not or identical_candidates or differing_and_absent or failing_run or duplicate_case_id or duplicate_run_id'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21111-ac3"
+    description: "AC3: under budget, oldest-first prefix, shortest prefix with tie break, does not fit, zero-token prompts and the validators."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_replay_eval_compute/test_context_replay_eval.py -q -p no:randomly --no-cov -k 'under_and_exactly or two_oldest or shortest_prefix or does_not_fit or zero_token or session_rows or invalid_boundary or invalid_prompt'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21111-ac4"
+    description: "AC4: a control boundary is excluded from the shares, and a zero share without an exceeding control is a falsifier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_replay_eval_compute/test_context_replay_eval.py -q -p no:randomly --no-cov -k 'zero_fallback or positive_control or shares_and_sorted'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21111-ac5"
+    description: "AC5: contract topics, handler and model resolution, entry point, and the golden and error chains."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_replay_eval_compute.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21111-deploy-hosted-score"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and sizes one over-budget boundary through the product handler, asserting the two oldest carried prompts are named and the re-sum reproduces, then scores one package that lacks an expected quote and asserts the case fails. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          from omnimarket.nodes.node_context_replay_eval_compute.handlers import HandlerReviewRowSizing as S, HandlerRulingPresence as P
+          from omnimarket.nodes.node_context_replay_eval_compute.models import ModelReviewRowSizingRequest as R, ModelRulingPresenceRequest as Q
+          p = [{"prompt_id": f"p{i}", "captured_at": f"2026-10-15T00:0{i}:00Z", "token_estimate": 30} for i in (3, 1, 2)]
+          r = S().handle(R.model_validate({"budget_tokens": 100, "boundaries": [{"session_id": "s", "boundary_id": "b", "boundary_at": "2026-10-15T01:00:00Z", "other_required_tokens": {"OPERATOR_RULINGS": 50}, "carried_prompts": p}]}))
+          b = r.boundaries[0]
+          assert b.verdict.value == "FITS_AFTER_REVIEW" and b.named_prompt_ids == ("p1", "p2") and b.replay_reproduces and r.fallback_share == 1.0, r
+          q = P().handle(Q.model_validate({"cases": [{"case_id": "c", "package_text": "other words", "expected": [{"statement_id": "s1", "quote": "keep the merge queue"}]}]}))
+          assert not q.all_present and q.falsifiers == ("case c: statement s1 MISSING",), q
+          print(b.named_prompt_ids, q.falsifiers)'
+  - id: "dod-omn21111-deploy-hosted-source"
+    description: "Hosted deploy source probe: GitHub serves the replay scoring handler at the checked-out commit. The content read must contain both scoring handler classes; it fails at the merge base where the handler is absent. This checks source identity, not a running deployment. The preceding behavioral probe exercises the handlers."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_replay_eval_compute/handlers/handler_replay_eval.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class HandlerReviewRowSizing:\") and contains(\"class HandlerRulingPresence:\")' | grep -qx true"
