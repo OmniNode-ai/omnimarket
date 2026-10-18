@@ -9,7 +9,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity_kind import (
+from omnimarket.enums.enum_work_ledger_entity_kind import (
     EnumWorkLedgerEntityKind,
     EnumWorkLedgerRelation,
     EnumWorkLedgerStateOp,

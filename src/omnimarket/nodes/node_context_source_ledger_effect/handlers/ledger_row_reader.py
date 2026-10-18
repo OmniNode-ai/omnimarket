@@ -22,7 +22,7 @@ from typing import Any, Protocol
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
+from omnimarket.handlers.work_ledger_fold import (
     parse_stamp,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
