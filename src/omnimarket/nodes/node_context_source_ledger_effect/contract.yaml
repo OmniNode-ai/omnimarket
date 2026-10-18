@@ -5,8 +5,13 @@ name: context_source_ledger_effect
 node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
-# The main runtime carries OMNINODE_INTERNAL_DB_URL, which binds the projection.
-runtime_profiles: [main]
+runtime_profiles: [effects]
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.context-source-ledger-requested.v1
   terminal_events:

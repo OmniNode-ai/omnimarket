@@ -8863,6 +8863,7 @@
     {
       "accessor_nodes": [
         "node_branch_claim_check_effect",
+        "node_context_source_ledger_effect",
         "node_projection_work_ledger",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect",
@@ -8878,6 +8879,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
+        "src/omnimarket/nodes/node_context_source_ledger_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_seq_gap_effect/contract.yaml"
@@ -8919,6 +8921,7 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_branch_claim_check_effect",
+        "node_context_source_ledger_effect",
         "node_lab_job_check_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",
