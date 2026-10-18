@@ -1,0 +1,103 @@
+---
+name: projection_local_environment
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.models.model_local_environment_status.ModelLocalEnvironmentStatus
+description: >
+  OMN-19988. Stores the latest report of each local service per tenant and mode,
+  with the verdict and open alert the report's time gives it and every sibling it
+  re-judges, and serves those rows to the Overview Environment panel and the API
+  Keys card. The tenant arrives as the install's tenant uuid; any other form is
+  refused to the DLQ.
+runtime_profiles: [tenant-projection]
+
+handler:
+  module: omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment
+  class: HandlerProjectionLocalEnvironment
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: local_environment_projection_writer
+      handler:
+        name: LocalEnvironmentProjectionWriter
+        module: omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer
+      handler_module: omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer
+terminal_event: onex.evt.omnimarket.projection-local-environment-applied.v1
+golden_path:
+  - "Validate a report that names its tenant uuid, its mode and its service"
+  - "Lock the tenant's mode and read its stored rows"
+  - "Plan the report's row and every sibling its time re-judges; a replay or a late report plans nothing"
+  - "Upsert each planned row under (tenant, mode, service)"
+  - "Publish each written row to the bus-backed projection API"
+  - "Emit onex.evt.omnimarket.projection-local-environment-applied.v1"
+dod_evidence:
+  - test: tests/test_omn19988_local_environment_writer.py::test_a_report_whose_tenant_is_not_a_canonical_uuid_is_refused_and_nothing_is_written
+    description: "A slug or non-canonical tenant is refused and nothing is written or published"
+  - test: tests/test_omn19988_local_environment_writer.py::test_a_replayed_report_writes_nothing_and_publishes_nothing
+    description: "A replay writes and publishes nothing"
+  - test: tests/test_omn19988_local_environment_writer.py::test_a_report_after_the_deadline_turns_a_silent_sibling_stale_and_publishes_both
+    description: "A report past the deadline stores and publishes the silent sibling as stale"
+  - test: tests/test_omn19988_local_environment_writer.py::test_the_tenant_setting_lock_and_read_come_before_the_write
+    description: "The tenant setting, the mode lock and the read precede every write"
+  - test: tests/projection/test_omn19988_local_environment_served.py::test_the_dashboards_own_native_row_is_served_with_its_access_fields
+    description: "The dashboard's own native row is served with its access mode, mint time and rotate hint"
+  - test: tests/projection/test_omn19988_local_environment_served.py::test_another_tenants_rows_are_never_served
+    description: "Another tenant's rows are never served"
+db_io:
+  db_tables:
+    - name: local_environment
+      database_ref: application
+      schema: public
+      migration: "0000_create_local_environment.sql"
+      access: read_write
+      role: local_environment
+  dedupe_key: [tenant_id, mode, service]
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.local-environment-status.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-local-environment-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-local-environment-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-local-environment-applied.v1
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.local-environment.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  key_grain: "mutable"
+  table: "local_environment"
+  schema: "omnidash_analytics"
+  columns:
+    - tenant_id
+    - mode
+    - service
+    - observed_state
+    - reason
+    - versions
+    - last_seen
+    - last_change
+    - verdict
+    - verdict_reason
+    - alert_code
+    - alert_severity
+    - alert_since
+    - store_kind
+    - store_location
+    - access_mode
+    - token_minted_at
+    - rotate_hint
+    - report_id
+    - updated_at
+    - projection_cursor
+  json_columns:
+    - versions
+  order_by: "mode ASC, service ASC"
+  cursor_column: projection_cursor
+  freshness_column: updated_at
+  limit: 500
+  bus_backed: true
+  key_columns: [tenant_id, mode, service]
+  tenant_column: tenant_id
+metadata:
+  transport_type: kafka

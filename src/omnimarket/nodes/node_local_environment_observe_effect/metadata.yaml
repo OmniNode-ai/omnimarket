@@ -1,0 +1,27 @@
+name: node_local_environment_observe_effect
+version: "1.0.0"
+description: "Observe the local catalog's compose services over HTTP or TCP."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_local_environment_observe_effect: omnimarket.nodes.node_local_environment_observe_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: network_read
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "omnibase-infra>=0.38.66"
+  - "httpx>=0.27.0"
+  - "pydantic"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: MIT
+tags: [effect, observability, local-environment, compose]
+pack: observability
+display_name: Local Environment Observe Effect
+node_role: effect
