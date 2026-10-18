@@ -1,0 +1,816 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Keyword task-intent classifier ported from omniclaude (OMN-21097).
+
+Port of ``src/omniclaude/lib/task_classifier.py`` at omniclaude origin/dev
+(omnimarket cannot import omniclaude). The keyword tables, the confidence
+arithmetic and the four delegation gates are copied unchanged so the
+admission compute reproduces the hook classifier's delegatable verdicts. The
+only changes are that no delegate model is resolved and no savings are
+estimated: routing and cost after admission belong to the existing delegation
+chain, so ``delegate_to_model`` is always empty, ``estimated_savings_usd`` is
+always 0.0 and nothing is read from disk.
+"""
+
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class TaskIntent(Enum):
+    """Primary task intent categories."""
+
+    DEBUG = "debug"
+    IMPLEMENT = "implement"
+    DATABASE = "database"
+    REFACTOR = "refactor"
+    RESEARCH = "research"
+    TEST = "test"
+    DOCUMENT = "document"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class TaskContext:
+    """Extracted task context from user prompt."""
+
+    primary_intent: TaskIntent
+    keywords: list[str]
+    entities: list[str]  # File names, table names, pattern names mentioned
+    mentioned_services: list[str]  # Kafka, PostgreSQL, Qdrant, etc.
+    mentioned_node_types: list[str]  # Effect, Compute, Reducer, Orchestrator
+    confidence: float
+
+
+@dataclass
+class ModelDelegationScore:
+    """Result of delegation-suitability analysis for a prompt.
+
+    Conservative delegation: only delegates when confidence > 0.9 AND
+    the task type is in the allow-list of text-only, lower-risk tasks.
+    Vision and tool-call tasks are always excluded.
+    """
+
+    delegatable: bool
+    """Whether this task is suitable for delegation to a smaller model."""
+
+    delegate_to_model: str
+    """Name/identifier of the suggested model to delegate to.
+
+    Empty string when ``delegatable`` is False.
+    """
+
+    confidence: float
+    """Confidence score (0.0-1.0) that delegation is appropriate."""
+
+    estimated_savings_usd: float
+    """Estimated cost savings in USD versus routing to the primary model.
+
+    Computed as (primary_cost - delegate_cost) for an average prompt of
+    the detected intent type.  Zero when ``delegatable`` is False.
+    """
+
+    classified_intent: str = "unknown"
+    """The actual classified intent value (e.g. 'implement', 'research', 'test').
+
+    Always populated regardless of whether delegation is approved. Allows
+    callers to emit accurate observability events even when delegation is
+    rejected (OMN-7695).
+    """
+
+    reasons: list[str] = field(default_factory=list)
+    """Human-readable explanations for the delegation decision."""
+
+    agentic_eligible: bool = False
+    """Whether this task is eligible for agentic delegation (tool-calling loop).
+
+    True when the prompt implies codebase interaction (reading files, searching
+    code) AND the intent is delegatable (research/test/document) AND confidence
+    exceeds the agentic threshold (0.5). Added in OMN-5726.
+    """
+
+
+class TaskClassifier:
+    """
+    Classify user task intent using keyword matching.
+
+    Future: Could use LLM for more sophisticated classification.
+    """
+
+    # Keyword patterns for intent classification
+    INTENT_KEYWORDS: dict[TaskIntent, list[str]] = {
+        TaskIntent.DEBUG: [
+            "error",
+            "failing",
+            "broken",
+            "not working",
+            "issue",
+            "bug",
+            "fix",
+            "debug",
+            "troubleshoot",
+            "investigate",
+            "why",
+        ],
+        TaskIntent.IMPLEMENT: [
+            # Explicit action verbs only
+            # Note: Domain-specific terms (system, authentication, etc.) are handled
+            # by the confidence boost logic to avoid overriding other intent signals
+            "create",
+            "implement",
+            "add",
+            "new",
+            "build",
+            "develop",
+            "write",
+            "make",
+            "generate",
+            "design",
+            "setup",
+            "configure",
+        ],
+        TaskIntent.DATABASE: [
+            "database",
+            "sql",
+            "table",
+            "query",
+            "schema",
+            "postgresql",
+            "insert",
+            "update",
+            "select",
+            "delete",
+            "migration",
+        ],
+        TaskIntent.REFACTOR: [
+            "refactor",
+            "improve",
+            "optimize",
+            "clean up",
+            "restructure",
+            "reorganize",
+            "simplify",
+            "enhance",
+            "performance",
+            "slow",
+            "fast",
+        ],
+        TaskIntent.RESEARCH: [
+            "what",
+            "how",
+            "where",
+            "when",
+            "which",
+            "explain",
+            "find",
+            "search",
+            "locate",
+            "show me",
+            "tell me",
+        ],
+        TaskIntent.TEST: [
+            "test",
+            "testing",
+            "unittest",
+            "pytest",
+            "validate",
+            "verify",
+            "check",
+            "assert",
+        ],
+        TaskIntent.DOCUMENT: [
+            "document",
+            "documentation",
+            "readme",
+            "docstring",
+            "comment",
+            "explain",
+            "describe",
+            "update",
+        ],
+    }
+
+    # Service name patterns - used to identify external service mentions.
+    # Note: "onex" also appears in _SHORT_KEYWORDS for word boundary matching.
+    SERVICE_PATTERNS = [
+        "kafka",
+        "redpanda",
+        "postgresql",
+        "postgres",
+        "qdrant",
+        "docker",
+        "vault",
+        "onex",
+    ]
+
+    # ONEX node type patterns - used to identify ONEX architecture mentions.
+    # Note: These terms (effect, compute, reducer, orchestrator) also appear
+    # in DOMAIN_INDICATORS. This is intentional: NODE_TYPE_PATTERNS extracts
+    # them to mentioned_node_types for filtering, while DOMAIN_INDICATORS
+    # uses them for implementation intent classification.
+    NODE_TYPE_PATTERNS = ["effect", "compute", "reducer", "orchestrator"]
+
+    # Domain-specific indicators for implementation intent detection
+    # Used both for confidence boosting and fallback intent classification
+    DOMAIN_INDICATORS: list[str] = [
+        "api",
+        "architecture",
+        "authentication",
+        "authorization",
+        "component",
+        "compute",
+        "contract",
+        "effect",
+        "endpoint",
+        "handler",
+        "integration",
+        "middleware",
+        "mixin",
+        "model",
+        "module",
+        "node",
+        "onex",
+        "orchestrator",
+        "pattern",
+        "pipeline",
+        "reducer",
+        "service",
+        "system",
+        "template",
+        "workflow",
+    ]
+
+    # Keywords that need word boundary matching to avoid substring false positives.
+    # Includes short (<=4 char) keywords as well as longer terms that are common
+    # substrings of unrelated words (e.g., "graph" in "paragraph", "figure" in
+    # "configure", "visual" in "audiovisual", "ocr" in "score").
+    _SHORT_KEYWORDS: frozenset[str] = frozenset(
+        {
+            "new",
+            "add",
+            "fix",
+            "bug",
+            "sql",
+            "how",
+            "api",
+            "llm",
+            "rest",
+            "call",
+            "node",
+            "data",
+            # Tool-call signals that are short enough to cause substring false positives
+            "run",
+            "git",
+            "file",
+            "tool",
+            "pull",
+            "push",
+            "curl",
+            "bash",
+            "browse",  # 6 chars: matches "browser", "browsed", etc.
+            "shell",  # 5 chars: matches "seashell", "eggshell", etc.
+            "commit",  # 6 chars: matches "commitment", "committed", etc.
+            "deploy",  # 6 chars: matches "deployed", "deployment", etc.
+            # Vision signals that are common substrings of unrelated words
+            "ocr",  # 3 chars: matches "score", "discord", etc.
+            "graph",  # 5 chars: matches "paragraph", "biography", etc.
+            "figure",  # 6 chars: matches "configure", "disfigure", etc.
+            "visual",  # 6 chars: matches "audiovisual", etc.
+        }
+    )
+
+    # Domain-specific terms for keyword extraction.  Kept as a class attribute
+    # so the list is not re-created on every classify() call.
+    _DOMAIN_TERMS: list[str] = [
+        # Technology terms
+        "llm",
+        "api",
+        "http",
+        "rest",
+        "graphql",
+        "websocket",
+        "async",
+        "sync",
+        "event",
+        "stream",
+        "batch",
+        # Pattern terms
+        "pattern",
+        "template",
+        "mixin",
+        "contract",
+        "model",
+        "node",
+        "service",
+        "client",
+        "server",
+        "handler",
+        # Data terms
+        "data",
+        "schema",
+        "migration",
+        "index",
+        "cache",
+        # Operation terms
+        "request",
+        "response",
+        "call",
+        "query",
+        "command",
+    ]
+
+    # ---------------------------------------------------------------------------
+    # Delegation configuration
+    # ---------------------------------------------------------------------------
+
+    #: Task intents that are candidates for delegation to a smaller model.
+    #: Tasks with schema-validated output (contracts, tests) are ideal candidates.
+    #: Vision and tool-call tasks must NEVER appear here.
+    DELEGATABLE_INTENTS: frozenset[TaskIntent] = frozenset(
+        {
+            TaskIntent.DOCUMENT,  # documentation generation
+            TaskIntent.TEST,  # test boilerplate generation
+            TaskIntent.RESEARCH,  # simple code review / research
+            TaskIntent.IMPLEMENT,  # contract-driven implementation (validated by schema)
+        }
+    )
+
+    #: Minimum confidence required before delegation is approved.
+    #: The keyword classifier normalises as hits / total_keywords_for_intent,
+    #: so real prompts typically score 0.09-0.375.  A threshold of 0.4 means
+    #: roughly 40 % of an intent's keywords must match — a reasonable bar that
+    #: actually allows delegation to fire for well-matched prompts.
+    DELEGATION_CONFIDENCE_THRESHOLD: float = 0.4
+
+    #: Minimum confidence required for agentic delegation (higher bar than
+    #: single-shot because the agentic loop is more expensive to run).
+    AGENTIC_CONFIDENCE_THRESHOLD: float = 0.5
+
+    #: Keywords indicating the prompt implies codebase interaction suitable
+    #: for the agentic loop (read files, search code, examine structure).
+    _AGENTIC_CODEBASE_SIGNALS: frozenset[str] = frozenset(
+        {
+            "look at",
+            "find",
+            "search",
+            "read",
+            "check",
+            "examine",
+            "analyze",
+            "review",
+            "in this repo",
+            "in this codebase",
+            "in this project",
+            "in the codebase",
+            "in the repo",
+            "in the project",
+            "how does",
+            "how is",
+            "where is",
+            "where does",
+            "what does",
+            "show me",
+        }
+    )
+
+    #: Vision-related keywords that indicate the prompt involves image/vision
+    #: content.  Tasks containing these signals always route to the primary model.
+    #: Note: Ambiguous common words ("see", "show me") are excluded to avoid
+    #: false positives on legitimate text-only prompts.
+    _VISION_SIGNALS: frozenset[str] = frozenset(
+        {
+            "image",
+            "screenshot",
+            "photo",
+            "diagram",
+            "picture",
+            "figure",
+            "chart",
+            "graph",
+            "visual",
+            "vision",
+            "look at",
+            "ocr",
+            "pixel",
+        }
+    )
+
+    #: Tool-call / agentic keywords that indicate the task requires tool use.
+    #: Such tasks always route to the primary model (never delegated).
+    #: Note: "search" is excluded because it is a core RESEARCH keyword and its
+    #: presence here would make the RESEARCH delegation allow-list entry unreachable.
+    _TOOL_CALL_SIGNALS: frozenset[str] = frozenset(
+        {
+            "run",
+            "execute",
+            "bash",
+            "shell",
+            "command",
+            "terminal",
+            "deploy",
+            "docker",
+            "kubectl",
+            "git",
+            "commit",
+            "push",
+            "pull",
+            "curl",
+            "wget",
+            "file",
+            "read file",
+            "write file",
+            "create file",
+            "delete file",
+            "tool",
+            "browse",
+        }
+    )
+
+    def _keyword_in_text(self, keyword: str, text: str) -> bool:
+        """Check if keyword appears in text, using word boundaries for short keywords."""
+        if keyword in self._SHORT_KEYWORDS:
+            # Use word boundary matching for short keywords
+            pattern = rf"\b{re.escape(keyword)}\b"
+            return bool(re.search(pattern, text))
+        return keyword in text
+
+    def classify(self, user_prompt: str) -> TaskContext:
+        """
+        Classify user prompt to extract task intent and context.
+
+        Args:
+            user_prompt: User's request/question
+
+        Returns:
+            TaskContext with intent, keywords, entities
+        """
+        prompt_lower = user_prompt.lower()
+
+        # Compound keyword overrides — checked BEFORE single-keyword matching.
+        # Resolves ambiguity where "write tests" matches both IMPLEMENT ("write")
+        # and TEST ("test"). Compound patterns have priority.
+        compound_overrides: list[tuple[str, TaskIntent]] = [
+            ("write test", TaskIntent.TEST),
+            ("write tests", TaskIntent.TEST),
+            ("write unit test", TaskIntent.TEST),
+            ("create test", TaskIntent.TEST),
+            ("create tests", TaskIntent.TEST),
+            ("generate test", TaskIntent.TEST),
+            ("add test", TaskIntent.TEST),
+            ("write doc", TaskIntent.DOCUMENT),
+            ("write documentation", TaskIntent.DOCUMENT),
+            ("generate doc", TaskIntent.DOCUMENT),
+            ("create doc", TaskIntent.DOCUMENT),
+        ]
+        for compound, override_intent in compound_overrides:
+            if compound in prompt_lower:
+                # Compound match = high confidence, skip single-keyword scoring
+                compound_keywords = [
+                    kw
+                    for kw in self.INTENT_KEYWORDS.get(override_intent, [])
+                    if self._keyword_in_text(kw, prompt_lower)
+                ]
+                return TaskContext(
+                    primary_intent=override_intent,
+                    confidence=0.7,
+                    keywords=compound_keywords,
+                    entities=[],
+                    mentioned_services=[],
+                    mentioned_node_types=[],
+                )
+
+        # Score each intent based on keyword matches
+        intent_scores: dict[TaskIntent, int] = {}
+        for intent, intent_keywords in self.INTENT_KEYWORDS.items():
+            score = sum(
+                1 for kw in intent_keywords if self._keyword_in_text(kw, prompt_lower)
+            )
+            if score > 0:
+                intent_scores[intent] = score
+
+        # Primary intent = highest score
+        if intent_scores:
+            primary_intent = max(intent_scores, key=lambda k: intent_scores.get(k, 0))
+            raw_hits = intent_scores[primary_intent]
+            total_kws = len(self.INTENT_KEYWORDS[primary_intent])
+            confidence = raw_hits / total_kws  # Normalize
+
+            # For delegatable intents (RESEARCH, TEST, DOCUMENT), even 1-2 keyword
+            # matches are strong signal because the keywords are specific action
+            # words, not ambiguous terms.  Use a saturating formula so that 1 hit
+            # produces ~0.5 and 2 hits produce ~0.7, making delegation reachable.
+            if primary_intent in self.DELEGATABLE_INTENTS and raw_hits >= 1:
+                confidence = min(0.4 + (raw_hits * 0.15), 0.95)
+
+            # Boost confidence for IMPLEMENT intent with domain-specific terminology
+            # Domain terms are strong implementation signals even without explicit verbs
+            if primary_intent == TaskIntent.IMPLEMENT:
+                # Use _keyword_in_text for consistent word boundary matching
+                domain_matches = sum(
+                    1
+                    for indicator in self.DOMAIN_INDICATORS
+                    if self._keyword_in_text(indicator, prompt_lower)
+                )
+
+                if domain_matches >= 1 and confidence < 0.5:
+                    # Strong domain terminology -> boost to at least 0.5 confidence
+                    confidence = min(0.5 + (domain_matches * 0.1), 0.9)
+
+        else:
+            # Fallback heuristic: If no explicit keywords matched but prompt contains
+            # domain-specific/technical terms, assume IMPLEMENT intent
+            # This catches prompts like "ONEX authentication system" that describe
+            # WHAT to build without explicit action verbs
+            # Use _keyword_in_text for consistent word boundary matching
+            domain_matches = sum(
+                1
+                for indicator in self.DOMAIN_INDICATORS
+                if self._keyword_in_text(indicator, prompt_lower)
+            )
+
+            if domain_matches >= 1:
+                # Domain-specific terminology detected -> likely implementation request
+                primary_intent = TaskIntent.IMPLEMENT
+                confidence = min(0.5 + (domain_matches * 0.1), 0.9)  # 0.5-0.9 range
+            else:
+                primary_intent = TaskIntent.UNKNOWN
+                confidence = 0.0
+
+        # Extract keywords (intent keywords + domain terms + significant words)
+        keywords: list[str] = []
+
+        # 1. Extract intent keywords (action verbs)
+        for _intent, kws in self.INTENT_KEYWORDS.items():
+            keywords.extend(
+                [kw for kw in kws if self._keyword_in_text(kw, prompt_lower)]
+            )
+
+        # 2. Extract node type keywords (all 6+ chars, low false-positive risk)
+        for nt in self.NODE_TYPE_PATTERNS:
+            if self._keyword_in_text(nt, prompt_lower):
+                keywords.append(nt)
+
+        # 3. Extract service keywords (uses _keyword_in_text for consistent matching;
+        #    short terms like "onex" get word boundary matching via _SHORT_KEYWORDS)
+        for svc in self.SERVICE_PATTERNS:
+            if self._keyword_in_text(svc, prompt_lower):
+                keywords.append(svc)
+
+        # 4. Extract domain-specific terms (technology, patterns)
+        for term in self._DOMAIN_TERMS:
+            if self._keyword_in_text(term, prompt_lower):
+                keywords.append(term)
+
+        # 5. Extract significant nouns (simple heuristic: words 3+ chars, not stopwords)
+        stopwords = {
+            "the",
+            "for",
+            "and",
+            "with",
+            "that",
+            "this",
+            "from",
+            "into",
+            "your",
+        }
+        words = re.findall(r"\w+", prompt_lower)
+        significant_words = [
+            w for w in words if len(w) >= 3 and w not in stopwords and w.isalpha()
+        ]
+        keywords.extend(significant_words[:10])  # Limit to 10 most significant
+
+        # Extract entities (file names, table names)
+        entities = self._extract_entities(user_prompt)
+
+        # Extract mentioned services (sorted for deterministic output)
+        # Uses _keyword_in_text for consistent matching behavior
+        mentioned_services = sorted(
+            svc
+            for svc in self.SERVICE_PATTERNS
+            if self._keyword_in_text(svc, prompt_lower)
+        )
+
+        # Extract mentioned node types (sorted for deterministic output)
+        # Uses _keyword_in_text for consistent matching behavior
+        mentioned_node_types = sorted(
+            nt.upper()
+            for nt in self.NODE_TYPE_PATTERNS
+            if self._keyword_in_text(nt, prompt_lower)
+        )
+
+        return TaskContext(
+            primary_intent=primary_intent,
+            keywords=sorted(set(keywords)),  # Remove duplicates, deterministic order
+            entities=entities,
+            mentioned_services=mentioned_services,
+            mentioned_node_types=mentioned_node_types,
+            confidence=min(confidence, 1.0),
+        )
+
+    def _extract_entities(self, prompt: str) -> list[str]:
+        """
+        Extract entities like file names, table names from prompt.
+
+        Simple heuristic: words with underscores or dots.
+        Matches:
+        - Files with extensions: node_user_reducer.py, config.yaml
+        - Words with underscores: agent_routing_decisions, manifest_injector
+        """
+        # Match file names with extensions OR words with underscores.
+        # Two separate non-backtracking patterns are used instead of one
+        # combined pattern with nested quantifiers to prevent ReDoS
+        # (CWE-1333, CodeQL python/redos).
+        #
+        # Pattern 1: file names — one or more word chars, optional underscore
+        #   segments, then a dot extension (e.g. "node_user_reducer.py").
+        # Pattern 2: underscore identifiers — word chars with at least one
+        #   underscore segment (e.g. "agent_routing_decisions").
+        # Both patterns are anchored with \b and use no nested quantifiers.
+        file_pat = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9_]*\.[A-Za-z0-9]+\b")
+        ident_pat = re.compile(r"\b[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+\b")
+        matches = file_pat.findall(prompt) + ident_pat.findall(prompt)
+
+        return sorted(set(matches))  # Deterministic order
+
+    # ---------------------------------------------------------------------------
+    # Delegation scoring
+    # ---------------------------------------------------------------------------
+
+    def _has_vision_signals(self, prompt_lower: str) -> bool:
+        """Return True if the prompt contains any vision/image signals.
+
+        Uses ``_keyword_in_text()`` so that signals registered in
+        ``_SHORT_KEYWORDS`` (e.g. "ocr", "graph", "figure", "visual") require a
+        word-boundary match, preventing false positives from substring containment
+        (e.g. "score" should not trigger on "ocr", "paragraph" on "graph",
+        "configure" on "figure", "audiovisual" on "visual").
+        """
+        for signal in self._VISION_SIGNALS:
+            if self._keyword_in_text(signal, prompt_lower):
+                return True
+        return False
+
+    def _has_tool_call_signals(self, prompt_lower: str) -> bool:
+        """Return True if the prompt contains any tool-call/agentic signals.
+
+        Uses ``_keyword_in_text()`` so that short signals (e.g. "file", "run",
+        "git") require a word-boundary match, preventing false positives from
+        substring containment (e.g. "profile" should not trigger on "file").
+        """
+        for signal in self._TOOL_CALL_SIGNALS:
+            if self._keyword_in_text(signal, prompt_lower):
+                return True
+        return False
+
+    def _has_agentic_codebase_signals(self, prompt_lower: str) -> bool:
+        """Return True if the prompt implies codebase interaction.
+
+        Checks for phrases that suggest the user wants the model to read files,
+        search code, or examine the repository — tasks suitable for the agentic
+        tool-calling loop rather than single-shot text generation.
+
+        Added in OMN-5726.
+        """
+        return any(signal in prompt_lower for signal in self._AGENTIC_CODEBASE_SIGNALS)
+
+    def is_delegatable(
+        self, prompt: str, intent: TaskIntent | None = None
+    ) -> ModelDelegationScore:
+        """Determine whether a task is suitable for delegation to a smaller model.
+
+        Delegation is approved **only** when ALL of the following conditions hold:
+
+        1. The prompt contains no vision/image signals.
+        2. The prompt contains no tool-call/agentic signals.
+        3. The detected (or caller-supplied) intent is in ``DELEGATABLE_INTENTS``.
+        4. Classification confidence exceeds ``DELEGATION_CONFIDENCE_THRESHOLD``
+           (0.9).
+
+        This is deliberately conservative: false negatives (declining to
+        delegate) are preferred over false positives (delegating tasks that
+        require Claude's full capabilities).
+
+        Args:
+            prompt: The raw user prompt string.
+            intent: Optional pre-computed intent.  When ``None``, the prompt is
+                classified internally.  When supplied, the confidence score is
+                derived from ``classify()``'s independently-detected intent, NOT
+                the supplied intent — it measures overall prompt certainty, not
+                fit between the prompt and the overridden intent.
+
+        Returns:
+            :class:`ModelDelegationScore` describing whether and how to delegate.
+        """
+        prompt_lower = prompt.lower()
+        reasons: list[str] = []
+
+        # --- Classify prompt early so all return paths have the intent --------
+        # Moved before gates so that vision/tool-call rejections still report
+        # the actual classified intent instead of "unknown" (OMN-7695).
+        if intent is None:
+            task_context = self.classify(prompt)
+            resolved_intent = task_context.primary_intent
+            classification_confidence = task_context.confidence
+        else:
+            resolved_intent = intent
+            # Re-classify to get a confidence score.  Note: the confidence here
+            # reflects the classifier's *independent* read of the prompt (i.e., how
+            # strongly the prompt matches whatever intent classify() detects), NOT
+            # the suitability of the caller-supplied intent.  If the caller passes
+            # intent=DOCUMENT on a heavily DEBUG-flavoured prompt, confidence will
+            # be high for DEBUG keywords, not for DOCUMENT.  This is deliberate:
+            # the confidence gate acts as a general "how certain are we about this
+            # prompt?" signal, not as a measure of fit between the prompt and the
+            # overridden intent.  Callers who need confidence tied to a specific
+            # intent should compute it themselves before calling is_delegatable().
+            task_context = self.classify(prompt)
+            classification_confidence = task_context.confidence
+
+        intent_value = resolved_intent.value
+
+        # --- Gate 1: Vision tasks always stay with the primary model ----------
+        if self._has_vision_signals(prompt_lower):
+            return ModelDelegationScore(
+                delegatable=False,
+                delegate_to_model="",
+                confidence=0.0,
+                estimated_savings_usd=0.0,
+                classified_intent=intent_value,
+                reasons=[
+                    "prompt contains vision/image signals; must use primary model"
+                ],
+            )
+
+        # --- Gate 2: Tool-call / agentic tasks stay with primary model --------
+        if self._has_tool_call_signals(prompt_lower):
+            return ModelDelegationScore(
+                delegatable=False,
+                delegate_to_model="",
+                confidence=0.0,
+                estimated_savings_usd=0.0,
+                classified_intent=intent_value,
+                reasons=[
+                    "prompt contains tool-call/agentic signals; must use primary model"
+                ],
+            )
+
+        # --- Agentic eligibility (OMN-5726) -----------------------------------
+        # Computed independently: agentic_eligible requires a delegatable intent,
+        # codebase interaction signals, and confidence > AGENTIC_CONFIDENCE_THRESHOLD.
+        # This is separate from single-shot delegation (Gate 4 below).
+        has_codebase_signals = self._has_agentic_codebase_signals(prompt_lower)
+        is_agentic = (
+            resolved_intent in self.DELEGATABLE_INTENTS
+            and has_codebase_signals
+            and classification_confidence >= self.AGENTIC_CONFIDENCE_THRESHOLD
+        )
+
+        # --- Gate 3: Intent must be in the delegation allow-list --------------
+        if resolved_intent not in self.DELEGATABLE_INTENTS:
+            reasons.append(
+                f"intent '{resolved_intent.value}' is not in the delegation allow-list"
+            )
+            return ModelDelegationScore(
+                delegatable=False,
+                delegate_to_model="",
+                confidence=classification_confidence,
+                estimated_savings_usd=0.0,
+                classified_intent=intent_value,
+                reasons=reasons,
+            )
+
+        reasons.append(
+            f"intent '{resolved_intent.value}' is in the delegation allow-list"
+        )
+
+        # --- Gate 4: Confidence must exceed threshold -------------------------
+        if classification_confidence < self.DELEGATION_CONFIDENCE_THRESHOLD:
+            reasons.append(
+                f"classification confidence {classification_confidence:.3f} does not "
+                f"exceed threshold {self.DELEGATION_CONFIDENCE_THRESHOLD}"
+            )
+            return ModelDelegationScore(
+                delegatable=False,
+                delegate_to_model="",
+                confidence=classification_confidence,
+                estimated_savings_usd=0.0,
+                classified_intent=intent_value,
+                reasons=reasons,
+                agentic_eligible=is_agentic,
+            )
+
+        # --- All gates passed: delegation approved ----------------------------
+        reasons.append(
+            f"confidence {classification_confidence:.3f} exceeds threshold "
+            f"{self.DELEGATION_CONFIDENCE_THRESHOLD}"
+        )
+
+        return ModelDelegationScore(
+            delegatable=True,
+            delegate_to_model="",
+            confidence=classification_confidence,
+            estimated_savings_usd=0.0,
+            classified_intent=intent_value,
+            reasons=reasons,
+            agentic_eligible=is_agentic,
+        )
