@@ -62,7 +62,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute/test_contracts.py -q -p no:randomly --no-cov"
   - id: "dod-omn21132-deploy-container-eval"
-    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, scores one partial-retrieval query and one failed query through the product handler with the contract's own config, and asserts recall@10 of the partial query is 0.5, the failed query stays in the overall count and the overall mean recall@10 is 0.25. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the handler does not import, scores one partial-retrieval query and one failed query through the product handler with the contract's own config, and asserts recall@10 of the partial query is 0.5, the failed query stays in the overall count and the overall mean recall@10 is 0.25. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
@@ -70,7 +70,7 @@ dod_evidence:
           env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
           --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
           ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
-          uv run --frozen --no-dev python -c '
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
           from omnimarket.models.retrieval_eval import ModelRetrievalEvalQuery as Q, ModelRetrievalEvalRequest as R
           from omnimarket.nodes.node_retrieval_eval_compute.handlers.handler_retrieval_eval import HandlerRetrievalEval as H
           r = H().handle(R(eval_id="probe", queries=(Q(query_id="q1", relevant_ids=("a", "b"), retrieved_ids=("a",)), Q(query_id="q2", relevant_ids=("c",), failed=True, failure_reason="retriever timeout"))))
