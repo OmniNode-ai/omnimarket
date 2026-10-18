@@ -644,6 +644,41 @@ def test_hook_fired_at_transport_stamp_is_accepted_but_unknown_keys_are_refused(
         ModelClaudeHookEventWire.model_validate(event)
 
 
+def test_the_producers_item_identity_stamp_is_accepted_and_stored_as_the_same_row() -> (
+    None
+):
+    """The capture hook stamps ``stream`` and ``producer_seq`` on each lineage event.
+
+    Before this was declared every stamped event failed ``extra="forbid"`` and
+    dead-lettered, so ``claude_hook_events`` stopped receiving rows.
+    """
+    event = _pre_tool_use()
+    plain = ModelClaudeHookEventWire.model_validate(event)
+    event["stream"] = "lineage"
+    event["producer_seq"] = 69
+    stamped = ModelClaudeHookEventWire.model_validate(event)
+
+    assert stamped.stream == "lineage"
+    assert stamped.producer_seq == 69
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), event)
+    assert list(tables.events) == [str(plain.event_id)]
+
+
+@pytest.mark.parametrize(
+    ("stream", "producer_seq"),
+    [("content", 1), ("lineage", 0), ("lineage", "7"), ("lineage", True)],
+)
+def test_an_item_identity_stamp_that_is_not_a_lineage_sequence_is_refused(
+    stream: str, producer_seq: object
+) -> None:
+    event = _pre_tool_use()
+    event["stream"] = stream
+    event["producer_seq"] = producer_seq
+    with pytest.raises(ValidationError):
+        ModelClaudeHookEventWire.model_validate(event)
+
+
 def test_a_subagent_flag_that_contradicts_agent_id_is_refused() -> None:
     event = _pre_tool_use()
     event["lineage"]["is_subagent"] = True

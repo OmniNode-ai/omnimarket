@@ -342,7 +342,11 @@ class HandlerDeployPublishMonitor:
             correlation_id=envelope.correlation_id or command.correlation_id or uuid4(),
             handler_id=HANDLER_ID,
             events=(),
-            metrics={"rebuild_published": 1.0, "duplicate_skipped": 0.0},
+            metrics={
+                "rebuild_published": 1.0,
+                "duplicate_skipped": 0.0,
+                "pending_depth": self._pending_depth(command.runtime_lane.value),
+            },
         )
 
     def _observe_rebuild_completed(
@@ -376,7 +380,7 @@ class HandlerDeployPublishMonitor:
                 f"got {type(payload).__name__}"
             )
         completed = ModelDeployRebuildCompleted(**_normalize_completion_payload(raw))
-        rolled_back = self._settle_completion(completed)
+        rolled_back, lane = self._settle_completion(completed)
 
         logger.info(
             "Deploy-agent rebuild completion observed",
@@ -415,12 +419,23 @@ class HandlerDeployPublishMonitor:
                     1.0 if completed.status == EnumRedeployStatus.SUCCESS else 0.0
                 ),
                 "rolled_back": 1.0 if rolled_back is not None else 0.0,
+                **self._pending_depth_metric(lane),
             },
         )
 
+    def _pending_depth(self, runtime_lane: str) -> float:
+        """Published commands for this lane that nothing has answered yet (OMN-18143 AC2)."""
+        return float(self._published.pending_depth(runtime_lane))
+
+    def _pending_depth_metric(self, runtime_lane: str | None) -> dict[str, float]:
+        """The ``pending_depth`` metric, or nothing when the arm cannot name a lane."""
+        if runtime_lane is None:
+            return {}
+        return {"pending_depth": self._pending_depth(runtime_lane)}
+
     def _settle_completion(
         self, completed: ModelDeployRebuildCompleted
-    ) -> ModelRedeployRolledBackEvent | None:
+    ) -> tuple[ModelRedeployRolledBackEvent | None, str | None]:
         """Decide rollback for a completion of a command THIS effect published (OMN-18143).
 
         The command arm returned long before this completion arrived, and the rebuild
@@ -433,6 +448,9 @@ class HandlerDeployPublishMonitor:
         A completion with no entry is observed only. It answers a command this effect
         did not publish, or one published before the record carried a rollback target,
         and a rollback it cannot name a target for is not one to emit.
+
+        Returns the rollback, if any, and the lane the completion settles: the lane the
+        command was sent to, else the one the completion names, else ``None``.
         """
         try:
             correlation_id = _as_uuid(completed.correlation_id)
@@ -441,10 +459,13 @@ class HandlerDeployPublishMonitor:
                 "Deploy-agent completion with a non-UUID correlation; observed only",
                 extra={"correlation_id": completed.correlation_id},
             )
-            return None
+            return None, None
+        lane = self._published.lane_of(correlation_id) or (
+            completed.runtime_lane.value if completed.runtime_lane is not None else None
+        )
         entry = self._published.settle(correlation_id, outcome=completed.status.value)
         if entry is None:
-            return None
+            return None, lane
         rollback_target = entry.get("rollback_target")
         if not isinstance(rollback_target, str) or not rollback_target:
             logger.warning(
@@ -452,16 +473,19 @@ class HandlerDeployPublishMonitor:
                 "rollback target; no rollback is decided for it",
                 extra={"correlation_id": str(correlation_id)},
             )
-            return None
+            return None, lane
         reason = _rollback_reason(completed, bool(entry.get("smoke_test", False)))
         if reason is None:
-            return None
-        return self.rollback(
-            correlation_id=correlation_id,
-            runtime_lane=EnumRuntimeLane(entry["runtime_lane"]),
-            restored_image=rollback_target,
-            failure_reason=reason,
-            failed_phase=EnumRedeployPhase.VERIFY_HEALTH,
+            return None, lane
+        return (
+            self.rollback(
+                correlation_id=correlation_id,
+                runtime_lane=EnumRuntimeLane(entry["runtime_lane"]),
+                restored_image=rollback_target,
+                failure_reason=reason,
+                failed_phase=EnumRedeployPhase.VERIFY_HEALTH,
+            ),
+            lane,
         )
 
     def _observe_rebuild_rejected(
@@ -519,6 +543,19 @@ class HandlerDeployPublishMonitor:
         )
 
         is_superseded = rejected.reason is EnumDeployRejectionReason.SUPERSEDED
+        lane = self._published.lane_of(rejected.correlation_id)
+        if rejected.reason not in (
+            EnumDeployRejectionReason.DUPLICATE,
+            EnumDeployRejectionReason.BUSY,
+        ):
+            # OMN-18143 AC2. The agent will never complete this command, so it stops
+            # counting toward the lane's pending depth. A ``duplicate`` refuses a copy
+            # while the original is still pending, and ``busy`` is released below. A
+            # completion that still arrives for a settled command decides nothing,
+            # which is right: a command that did not run has nothing to roll back.
+            self._published.settle(
+                rejected.correlation_id, outcome=rejected.reason.value
+            )
         if rejected.reason is EnumDeployRejectionReason.BUSY:
             # OMN-19377. The command arm does not wait for an answer (OMN-18143), so this
             # arm is the only place a busy is seen. It sees every rejection once, on its
@@ -550,6 +587,7 @@ class HandlerDeployPublishMonitor:
             metrics={
                 "rebuild_rejected_observed": 1.0,
                 "rebuild_rejected_superseded": 1.0 if is_superseded else 0.0,
+                **self._pending_depth_metric(lane),
             },
         )
 
@@ -585,6 +623,7 @@ class HandlerDeployPublishMonitor:
                 "rebuild_rejected": 0.0,
                 "rebuild_published": 0.0,
                 "duplicate_skipped": 1.0,
+                "pending_depth": self._pending_depth(command.runtime_lane.value),
             },
         )
 

@@ -1,0 +1,76 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21138"
+title: "Ground-truth labels for the compaction replay cases (plan task TE.1)"
+summary: >-
+  Label the T0.2 replay cases with propositions (span, offsets, kind, polarity,
+  ledger coverage per boundary), negative segments, negative controls, the
+  already-done list and transcript sizes per candidate window, with the scoring
+  written before any model runs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-te1-ground-truth-labels"
+    statement: "Plan task TE.1 labels the pinned compaction replay cases before any model output exists."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every labelled quote is found verbatim, after whitespace normalisation, at its offsets in the pinned transcript -- falsifier: one label whose substring differs"
+      - id: "AC2"
+        statement: "AC2: every confirmed lost-ruling incident of T0.2 has its ruling labelled, and every case has negative segments -- falsifier: an incident without a label, or a case without negative segments"
+      - id: "AC3"
+        statement: "AC3: the label set includes at least one of each negative control (a partial quote that drops a negation or condition, a hypothetical, a question, a corrected ruling with its correction) -- falsifier: a control kind with no labelled instance"
+      - id: "AC4"
+        statement: "AC4: labels were authored before any model output was read, shown by the commit order in the PR -- falsifier: a label commit after a recorded-output commit"
+evidence_requirements:
+  - kind: "tests"
+    description: "Label form, controls and the span check for OMN-21138."
+    command: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_te1_labels_omn21138.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21138-ac1-span-check"
+    description: >-
+      The committed tests prove the span check on synthetic chains (a chain
+      holding every quote passes; one changed character and a missing record
+      are reported). The same check over the replay bundle on the lab runtime
+      host is the lab proof in the PR body.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_te1_labels_omn21138.py -q -n 0 -k 'check_labels or well_formed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21138-ac2-incidents-and-negatives"
+    description: "Every case labels its T0.2 incident statement and has negative segments."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_te1_labels_omn21138.py -q -n 0 -k 'incident_and_has_negative_segments'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21138-ac3-control-kinds"
+    description: "Each of the four negative control kinds has a labelled instance; partial quotes sit inside the span they control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_te1_labels_omn21138.py -q -n 0 -k 'control'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21138-ac4-authored-first"
+    description: "The labels declare authorship and scoring before any model output; the PR carries no recorded-output commit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_te1_labels_omn21138.py -q -n 0 -k 'scoring_before_any_model_run'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21138-deploy-probe"
+    description: "Deploy probe: the labels read from GitHub at the checked-out commit declare plan task TE.1."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/tests/fixtures/context_compaction/labels.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c ''plan_task: TE.1'''
+        cwd: "${OMNI_HOME}/omnimarket"

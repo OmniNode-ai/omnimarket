@@ -87,6 +87,26 @@ def _lock_version(package: str) -> str:
     return match.group(1)
 
 
+def _lock_pin(package: str) -> tuple[str, str, str]:
+    """(version, ref, dev tag) the pins step resolves from this repo's uv.lock.
+
+    A registry source is checked out at ``v<version>``; a git source locked to
+    one commit is checked out at that commit, and its ``?tag=dev-...`` (if any)
+    is the dev tag.
+    """
+    version = _lock_version(package)
+    lock = (REPO_ROOT / "uv.lock").read_text()
+    git = re.search(
+        rf'^name = "{re.escape(package)}"\nversion = "[^"]+"\n'
+        r'source = \{ git = "[^"#?]+(?:\?tag=(?P<tag>dev-[^"#]+))?#(?P<sha>[0-9a-f]{40})" \}',
+        lock,
+        re.M,
+    )
+    if git:
+        return version, git["sha"], git["tag"] or ""
+    return version, f"v{version}", ""
+
+
 def sibling_reads(
     steps: list[tuple[str, str, dict[str, Any]]],
 ) -> list[tuple[str, str, str, str]]:
@@ -209,11 +229,14 @@ DEV_TAG_JOBS = {("ci.yml", "sibling-release-compat")}
 
 
 def _pin_lines(
-    wf: str, job: str, infra: tuple[str, str], core: tuple[str, str]
+    wf: str,
+    job: str,
+    infra: tuple[str, str] | tuple[str, str, str],
+    core: tuple[str, str] | tuple[str, str, str],
 ) -> list[str]:
-    """The pins step's output lines for (version, ref) of infra and core."""
+    """The pins step's output lines for (version, ref[, dev tag]) of infra and core."""
     lines = []
-    for name, key, (version, ref) in (
+    for name, key, (version, ref, *tag) in (
         ("omnibase-infra", "infra", infra),
         ("omnibase-core", "core", core),
     ):
@@ -229,8 +252,8 @@ def _pin_lines(
         lines += [
             f"{key}_version={version}",
             f"{key}_ref={ref}",
-            f"{key}_ref_name={ref}",
-            f"{key}_dev_tag=",
+            f"{key}_ref_name={tag[0] if tag and tag[0] else ref}",
+            f"{key}_dev_tag={tag[0] if tag else ''}",
             f"{key}_spec={spec}",
         ]
     return lines
@@ -272,8 +295,8 @@ def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
         assert output.read_text().splitlines() == _pin_lines(
             wf,
             job,
-            (_lock_version("omnibase-infra"), f"v{_lock_version('omnibase-infra')}"),
-            (_lock_version("omnibase-core"), f"v{_lock_version('omnibase-core')}"),
+            _lock_pin("omnibase-infra"),
+            _lock_pin("omnibase-core"),
         ), (wf, job)
 
 
@@ -282,8 +305,10 @@ def test_every_infra_checkout_resolves_a_new_lock_release(
     tmp_path: Path, version: str
 ) -> None:
     lock = re.sub(
-        r'(^name = "omnibase-infra"\nversion = ")[^"]+',
-        lambda match: match[1] + version,
+        r'(^name = "omnibase-infra"\nversion = ")[^"]+("\nsource = )[^\n]+',
+        lambda match: (
+            match[1] + version + match[2] + '{ registry = "https://pypi.org/simple" }'
+        ),
         (REPO_ROOT / "uv.lock").read_text(),
         flags=re.M,
     )

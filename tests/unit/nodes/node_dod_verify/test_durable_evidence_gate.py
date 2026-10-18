@@ -1309,3 +1309,126 @@ class TestParsePrUrl:
         assert parse_pr_url("not-a-url") is None
         assert parse_pr_url("https://github.com/owner/repo/issues/1") is None
         assert parse_pr_url("") is None
+
+
+_OCC = "OmniNode-ai/onex_change_control"
+_CAPTURED_SHA = "6324fe84debbb85e100348195b48357d8ef14f24"
+
+
+def _captured_receipt(
+    *,
+    probe_repo: str = _OCC,
+    probed_sha: str = _CAPTURED_SHA,
+    commit_sha: str = _CAPTURED_SHA,
+    pr_number: int = 13213,
+) -> dict[str, object]:
+    """A receipt in the occ-probe-capture-v1 shape (OMN-16106).
+
+    The writer names the repository only through the GitHub REST path of its
+    commit probe: no ``--repo`` flag and no ``/pull/`` URL anywhere.
+    """
+    return _receipt(pr_number=pr_number, commit_sha=commit_sha) | {
+        "check_type": "test_passes",
+        "check_value": "uv run pytest tests/unit/scripts/test_probe.py -q",
+        "verifier": "occ-probe-capture-v1",
+        "probe_command": (
+            f"gh api repos/{probe_repo}/commits/{probed_sha} --jq .sha || exit 2\n"
+            f'test "$(git rev-parse HEAD)" = {probed_sha} || exit 2\n'
+            "uv run pytest tests/unit/scripts/test_probe.py -q"
+        ),
+        "probe_stdout": f"{probed_sha}\n....  [100%]\n4 passed in 0.23s",
+    }
+
+
+@pytest.mark.unit
+class TestReceiptRepoFromGithubApiPath:
+    """OMN-16106: a receipt that names its repo only by a GitHub REST path.
+
+    Every receipt written by occ-probe-capture-v1 carries ``pr_number`` and
+    ``commit_sha`` and names its repository only as
+    ``gh api repos/<owner>/<repo>/commits/<commit_sha>``. The parser read
+    neither, so the closer reported "No PASS receipt ... binds a GitHub repo"
+    on tickets whose every other check passed.
+    """
+
+    def test_commit_probe_path_names_the_repo(self) -> None:
+        cites = extract_receipt_merge_commits([_captured_receipt()])
+        assert len(cites) == 1
+        assert cites[0].repo == _OCC
+        assert cites[0].pr_number == 13213
+        assert cites[0].cited_sha == _CAPTURED_SHA
+
+    def test_pulls_path_for_the_receipt_pr_names_the_repo(self) -> None:
+        receipt = _captured_receipt() | {
+            "probe_command": f"gh api repos/{_OCC}/pulls/13213 --jq .merged",
+            "probe_stdout": "true",
+        }
+        cites = extract_receipt_merge_commits([receipt])
+        assert [(c.repo, c.pr_number) for c in cites] == [(_OCC, 13213)]
+
+    def test_commit_probe_of_another_sha_names_no_repo(self) -> None:
+        receipt = _captured_receipt(probed_sha="1111111" + "a" * 33)
+        assert extract_receipt_merge_commits([receipt]) == []
+
+    def test_pulls_path_of_another_pr_names_no_repo(self) -> None:
+        receipt = _captured_receipt() | {
+            "probe_command": f"gh api repos/{_OCC}/pulls/132130 --jq .merged",
+            "probe_stdout": "true",
+        }
+        assert extract_receipt_merge_commits([receipt]) == []
+
+    def test_api_path_is_read_only_when_no_receipt_names_a_repo(self) -> None:
+        explicit = _receipt()
+        inferred = _captured_receipt() | {"evidence_item_id": "dod-002"}
+        cites = extract_receipt_merge_commits([explicit, inferred])
+        assert [(c.repo, c.pr_number) for c in cites] == [
+            ("OmniNode-ai/omnibase_core", 949)
+        ]
+
+    def test_gate_passes_the_citation_on_a_merged_pr(self) -> None:
+        contract = _ticket_contract()
+        gate = _make_gate(
+            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
+            pr_view={(_OCC, 13213): ("MERGED", "9" * 40)},
+            pr_commits={(_OCC, 13213): (_CAPTURED_SHA,)},
+            contract_on_main=contract,
+            receipts_on_ref=[_captured_receipt()],
+        )
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        )
+        cite = next(
+            c
+            for c in result.checks
+            if c.check is EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
+        )
+        assert cite.passed, cite.message
+
+    def test_gate_fails_closed_when_the_inferred_pr_is_not_that_repos(self) -> None:
+        """The receipt's PR is an OCC PR but its commit probe names a product repo."""
+        contract = _ticket_contract()
+        core = "OmniNode-ai/omnibase_core"
+        gate = _make_gate(
+            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
+            pr_view={(core, 13213): ("UNKNOWN", None)},
+            contract_on_main=contract,
+            receipts_on_ref=[_captured_receipt(probe_repo=core)],
+        )
+        result = gate.evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            receipt_dir=_RECEIPT_DIR,
+            contract_rel_path=_CONTRACT_PATH,
+            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        )
+        cite = next(
+            c
+            for c in result.checks
+            if c.check is EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
+        )
+        assert not cite.passed
+        assert result.status is not EnumDurableEvidenceStatus.PASS

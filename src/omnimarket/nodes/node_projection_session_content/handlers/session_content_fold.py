@@ -26,6 +26,22 @@ class SessionContentFoldError(ValueError):
     """A record this projection refuses rather than stores under a guess."""
 
 
+#: OMN-21123 (TA.21): the content kind of a barrier record. A barrier rides the
+#: content topic beside the chunks and carries ids, a count and a flag.
+BARRIER_CONTENT_KIND = "barrier"
+
+#: Identity fields the capture producer stamps (TA.21). Each joins the key only
+#: when the record carries it, so a record from before the stamp derives the
+#: key it always had and a replay of it lands on its old row.
+_STAMPED_IDENTITY = (
+    "content_record_id",
+    "stream",
+    "producer_seq",
+    "barrier_id",
+    "high_water",
+)
+
+
 def _load_topic() -> str:
     topics = contract_subscribe_topics(_CONTRACT_PATH)
     if len(topics) != 1:
@@ -69,6 +85,13 @@ def derive_event_id(record: ModelSessionContentRecord, *, source_topic: str) -> 
         "content_sha256": record.content_sha256,
         "emitted_at": record.emitted_at.isoformat(),
     }
+    # One barrier call journals a barrier per stream under one emitted_at, and
+    # two stamped records of one hook call can share every field above; without
+    # the stamp they would collapse onto one row.
+    for name in _STAMPED_IDENTITY:
+        value = getattr(record, name)
+        if value is not None:
+            identity[name] = value
     canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -85,6 +108,12 @@ def fold_session_content(
     """
     if not record.session_id.strip():
         raise SessionContentFoldError("a content record needs a non-empty session_id")
+    if record.content_kind == BARRIER_CONTENT_KIND and (
+        record.stream is None or not record.barrier_id or record.high_water is None
+    ):
+        raise SessionContentFoldError(
+            "a barrier record needs its stream, barrier_id and high_water"
+        )
     command = _pg_safe(record.command)
     return ModelSessionContentRow(
         event_id=derive_event_id(record, source_topic=source_topic),
@@ -110,6 +139,7 @@ def fold_session_content(
 
 
 __all__ = [
+    "BARRIER_CONTENT_KIND",
     "SUBSCRIBE_TOPIC",
     "SessionContentFoldError",
     "derive_event_id",

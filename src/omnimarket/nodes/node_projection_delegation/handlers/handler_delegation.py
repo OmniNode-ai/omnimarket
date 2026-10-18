@@ -2015,6 +2015,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             if reduction.terminal_failure_cause is not None
             else None
         )
+        # OMN-19448: match the sync writer's copy of the declared disposition.
+        # Omitted values must leave a prior terminal's evidence untouched.
+        for column, terminal_disposition in (
+            ("operational_outcome", event.operational_outcome),
+            ("content_verdict", event.content_verdict),
+        ):
+            if terminal_disposition is not None:
+                row[column] = terminal_disposition.value
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]

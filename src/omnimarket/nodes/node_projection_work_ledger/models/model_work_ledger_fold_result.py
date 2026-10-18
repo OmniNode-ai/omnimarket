@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity_kind import (
     EnumWorkLedgerEntityKind,
+    EnumWorkLedgerRelation,
     EnumWorkLedgerStateOp,
 )
 
@@ -56,15 +57,38 @@ class ModelWorkLedgerStateOp(BaseModel):
     detail: str | None = None
 
 
+class ModelWorkLedgerLink(BaseModel):
+    """One relationship cell of one row (OMN-21107, TA.5).
+
+    ``target_ref`` is the cell's value as written; ``target_stamp`` is the bare
+    row timestamp it names, when it names exactly one. A link is a function of
+    its row's text alone, so a reader re-derives every link from
+    ``work_ledger_rows.raw_row`` and the closure over the links is the same
+    under any arrival order.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_row_id: str
+    source_entity_key: str | None = None
+    relation: EnumWorkLedgerRelation
+    target_ref: str
+    target_stamp: datetime | None = None
+    at: datetime
+    operator_span: str | None = None
+
+
 class ModelWorkLedgerFoldResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     row: ModelWorkLedgerRowRecord
     ops: tuple[ModelWorkLedgerStateOp, ...] = ()
+    links: tuple[ModelWorkLedgerLink, ...] = ()
 
 
 __all__: list[str] = [
     "ModelWorkLedgerFoldResult",
+    "ModelWorkLedgerLink",
     "ModelWorkLedgerRowRecord",
     "ModelWorkLedgerStateOp",
 ]

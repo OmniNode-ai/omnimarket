@@ -1446,7 +1446,13 @@ class HandlerDelegateSkill:
                     "task_class_timeout_ceiling_seconds="
                     f"{timeout_ceiling_seconds}"
                 ),
-                terminal_failure_cause=None,
+                # OMN-19448: a refusal before dispatch has no ladder to derive a
+                # cause from, so the terminal names the event itself.
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                # OMN-19004: nothing was attempted, so the count says zero.
+                attempts_count=0,
             )
         execution_timeout_seconds = (
             timeout_ceiling_seconds
