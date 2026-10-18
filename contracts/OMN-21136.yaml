@@ -45,12 +45,12 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21136-ac1-no-caller"
-    description: "AC1: at the merge base, the only references to the node or its topics outside its own package and tests are its entry point, allowlist rows, duration entry and historical records; no node imports it, subscribes to context-bundle-requested or consumes context-bundle-completed."
+    description: "AC1: at the merge base, the only references to the node or its topics outside its own package and tests are its entry point, allowlist rows, duration entry and historical records; no node imports it, subscribes to context-bundle-requested or consumes context-bundle-completed. The check also requires the node package to be absent from the evaluated tree, so it fails at the merge base, where the package still exists."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          bash -o pipefail -c 'base=$(git merge-base HEAD origin/dev); test -z "$(git grep -n -e node_context_bundle_generator_compute -e context-bundle-requested -e context-bundle-completed "$base" -- src tests scripts | grep -v -e "^$base:src/omnimarket/nodes/node_context_bundle_generator_compute/" -e "^$base:tests/integration/node_context_bundle_generator_compute/" -e "^$base:tests/ci/test_imperative_contract_guard_caller_omn21002.py:")"'
+          bash -o pipefail -c 'base=$(git merge-base HEAD origin/dev); test -z "$(git grep -n -e node_context_bundle_generator_compute -e context-bundle-requested -e context-bundle-completed "$base" -- src tests scripts | grep -v -e "^$base:src/omnimarket/nodes/node_context_bundle_generator_compute/" -e "^$base:tests/integration/node_context_bundle_generator_compute/" -e "^$base:tests/ci/test_imperative_contract_guard_caller_omn21002.py:")" && test ! -e src/omnimarket/nodes/node_context_bundle_generator_compute'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21136-ac2-delete-closure"
