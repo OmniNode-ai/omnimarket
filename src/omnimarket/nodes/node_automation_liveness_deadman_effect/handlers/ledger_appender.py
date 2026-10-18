@@ -13,7 +13,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     ModelDeadmanEpisodeKey,
 )
 

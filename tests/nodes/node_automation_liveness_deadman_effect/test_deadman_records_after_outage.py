@@ -14,11 +14,11 @@ from omnimarket.models.liveness.model_automation_liveness import (
     EnumWatchdogSelftest,
     automation_liveness_topics,
 )
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
+    ModelAutomationLivenessDeadmanRequest,
+)
 from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
     HandlerAutomationLivenessDeadman,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
-    ModelAutomationLivenessDeadmanRequest,
 )
 from omnimarket.nodes.node_automation_liveness_deadman_effect.models.model_deadman_record import (
     ModelDeadmanRecordRequest,

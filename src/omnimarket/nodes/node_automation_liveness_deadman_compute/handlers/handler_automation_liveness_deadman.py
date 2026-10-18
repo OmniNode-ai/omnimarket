@@ -33,7 +33,7 @@ from omnimarket.models.liveness.model_automation_liveness import (
     ModelAutomationAlarmCleared,
     ModelAutomationAlarmRaised,
 )
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     CANARY_PROCESS_ID,
     EnumDeadmanDeliveryRoute,
     EnumDeadmanPhase,

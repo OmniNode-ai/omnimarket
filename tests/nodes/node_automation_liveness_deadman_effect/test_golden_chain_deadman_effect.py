@@ -15,12 +15,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
-    HandlerAutomationLivenessDeadman,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     ModelAutomationLivenessDeadmanRequest,
     ModelAutomationLivenessDeadmanResult,
+)
+from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
+    HandlerAutomationLivenessDeadman,
 )
 from omnimarket.nodes.node_automation_liveness_deadman_effect.models.model_deadman_record import (
     ModelDeadmanRecordRequest,

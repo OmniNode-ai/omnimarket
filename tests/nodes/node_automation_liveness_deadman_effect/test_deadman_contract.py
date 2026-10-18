@@ -11,11 +11,11 @@ import pytest
 import yaml
 
 from omnimarket.models.liveness.model_automation_liveness import EnumWatchdogSelftest
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
+    ModelAutomationLivenessDeadmanRequest,
+)
 from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers import (
     handler_automation_liveness_deadman as compute_module,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
-    ModelAutomationLivenessDeadmanRequest,
 )
 from omnimarket.nodes.node_automation_liveness_deadman_effect.handlers.handler_automation_liveness_deadman_effect import (
     HandlerAutomationLivenessDeadmanEffect,

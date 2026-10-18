@@ -13,12 +13,12 @@ from omnimarket.models.liveness.model_automation_liveness import (
     EnumAutomationLivenessReason,
     EnumAutomationLivenessVerdict,
 )
-from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
-    HandlerAutomationLivenessDeadman,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     EnumDeadmanDeliveryRoute,
     ModelAutomationLivenessDeadmanRequest,
+)
+from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
+    HandlerAutomationLivenessDeadman,
 )
 from omnimarket.nodes.node_automation_liveness_watchdog_effect.handlers.handler_automation_liveness_watchdog_effect import (
     HandlerAutomationLivenessWatchdogEffect,

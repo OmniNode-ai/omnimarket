@@ -12,13 +12,13 @@ from omnimarket.models.liveness.model_automation_liveness import (
     EnumAutomationLivenessReason,
     EnumAutomationLivenessVerdict,
 )
-from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
-    HandlerAutomationLivenessDeadman,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     CANARY_INJECTION_HOUR_UTC,
     CANARY_PROCESS_ID,
     ModelAutomationLivenessDeadmanRequest,
+)
+from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
+    HandlerAutomationLivenessDeadman,
 )
 from tests.nodes.node_automation_liveness_deadman_effect.support import (
     canary_name,

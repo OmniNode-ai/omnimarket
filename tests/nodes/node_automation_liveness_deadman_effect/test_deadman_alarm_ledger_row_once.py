@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
-    HandlerAutomationLivenessDeadman,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     EnumDeadmanPhase,
     ModelAutomationLivenessDeadmanRequest,
+)
+from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
+    HandlerAutomationLivenessDeadman,
 )
 from omnimarket.nodes.node_automation_liveness_deadman_effect.handlers.handler_automation_liveness_deadman_effect import (
     HandlerAutomationLivenessDeadmanEffect,

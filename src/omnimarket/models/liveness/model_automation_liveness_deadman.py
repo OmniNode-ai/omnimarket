@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Request and result of one dead-man evaluation (OMN-20807).
+"""Request and result of one dead-man evaluation, shared across nodes (OMN-20807).
 
 The dead-man is the watchdog in a narrow mode (plan 4.8): it watches the
 primary's heartbeat and the broker, turns every opened and closed alarm episode

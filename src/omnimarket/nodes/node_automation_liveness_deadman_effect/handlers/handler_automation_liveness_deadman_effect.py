@@ -28,13 +28,13 @@ from omnimarket.models.liveness.model_automation_liveness import (
     ModelAutomationHeartbeat,
     automation_liveness_topics,
 )
-from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
-    HandlerAutomationLivenessDeadman,
-)
-from omnimarket.nodes.node_automation_liveness_deadman_compute.models.model_automation_liveness_deadman import (
+from omnimarket.models.liveness.model_automation_liveness_deadman import (
     ModelAutomationLivenessDeadmanRequest,
     ModelDeadmanEpisodeKey,
     ModelDeadmanLedgerRow,
+)
+from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
+    HandlerAutomationLivenessDeadman,
 )
 from omnimarket.nodes.node_automation_liveness_deadman_effect.handlers.ledger_appender import (
     LedgerCommandAppender,
