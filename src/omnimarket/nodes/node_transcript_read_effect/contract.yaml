@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeTranscriptReadEffect (OMN-21129, plan task TC.6)
+---
+name: node_transcript_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pinned-mode read of one Claude Code transcript for replay. The root is the
+  ONEX_CONTEXT_REPLAY_ROOT environment variable, which has no default: unset or
+  empty is refused. The request names a path relative to that root; an absolute
+  path or one resolving outside the root (through .. or a symlink) is refused
+  before any file is opened. Returns the UTF-8 text with its byte count and the
+  sha256 of its bytes, for node_transcript_parse_compute. Production reads
+  session_content, not files.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: transcript_read
+      handler:
+        name: HandlerTranscriptRead
+        module: omnimarket.nodes.node_transcript_read_effect.handlers.handler_transcript_read
+
+handler:
+  module: omnimarket.nodes.node_transcript_read_effect.handlers.handler_transcript_read
+  class: HandlerTranscriptRead
+  input_model: omnimarket.models.transcript_parse.ModelTranscriptReadRequest
+  output_model: omnimarket.models.transcript_parse.ModelTranscriptReadResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [effects]
+
+io_operations:
+  - operation_type: "filesystem_read"
+    atomic: false
+    timeout_seconds: 10
+    validation_enabled: true
+
+required_env:
+  - name: ONEX_CONTEXT_REPLAY_ROOT
+    description: Root directory of pinned replay transcripts; no default
+
+inputs:
+  relative_path:
+    type: str
+    required: true
+
+outputs:
+  status:
+    type: str
+    enum: [read, refused_root_unset, refused_outside_root, not_found, decode_failed]
+  relative_path:
+    type: str
+  transcript_text:
+    type: str
+    required: false
+    nullable: true
+  byte_count:
+    type: int
+  sha256:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.transcript-read-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.transcript-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.transcript-read-completed.v1
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-21129
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.transcript-read-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.transcript-read-completed.v1
