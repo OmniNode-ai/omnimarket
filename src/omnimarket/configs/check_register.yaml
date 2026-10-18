@@ -43,6 +43,16 @@ checks:
       - wave exit
     source: plan section 2b; the running sha equals the expected sha, read once
 
+  - check_id: delegation.lab_first_routing
+    check_class: gate
+    blocks:
+      - a routing contract change in a pull request
+    source: >-
+      operator ruling 2026-10-08T23:48:01Z (lab models first for appropriate
+      tasks, with a scoring rubric): a deterministic read of the committed task
+      class contracts and routing tiers, refusing a lab-passing class routed to a
+      cloud model first
+
   - check_id: delegation_regression_nightly.per_run_gates
     check_class: gate
     blocks:
