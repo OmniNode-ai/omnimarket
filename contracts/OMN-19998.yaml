@@ -626,12 +626,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC27"]
   - id: "dod-omn19998-pr-merged-dedupe-deploy-probe"
-    description: "Hosted-runner probe requires the installed omnibase-infra to be a git checkout (the registry release has no migration 0003) and the projection handler's (repo, pr_number) conflict key; the prior registry pin has no VCS commit and fails the probe."
+    description: "Hosted-runner probe requires the installed omnibase-infra to be 0.38.75 or newer, the first registry release carrying migration 0003 (infra#5036; v0.38.74 does not), and the projection handler's (repo, pr_number) conflict key; the 0.38.74 pin fails the probe."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          uv run python -c 'import importlib.metadata as m, json; from omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection import CONFLICT_KEY; d=json.loads(m.distribution("omnibase-infra").read_text("direct_url.json") or "{}"); assert d.get("vcs_info", {}).get("vcs") == "git" and len(d["vcs_info"]["commit_id"]) == 40; assert CONFLICT_KEY == "repo,pr_number"'
+          uv run python -c 'import importlib.metadata as m; from omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection import CONFLICT_KEY; v=tuple(int(p) for p in m.version("omnibase-infra").split(".")[:3]); assert v >= (0, 38, 75), v; assert CONFLICT_KEY == "repo,pr_number"'
   - id: "dod-omn19998-hostile-reviewer-budget-timeout-pin"
     description: "The workflow pins omniintelligence at the merge commit of omniintelligence#1095; the merge base's pin fails the test."
     source: "manual"
