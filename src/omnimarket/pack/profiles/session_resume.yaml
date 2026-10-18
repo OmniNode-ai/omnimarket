@@ -25,3 +25,8 @@ stable_factors: []
 token_budget: 8000
 extraction_task_class: extraction_proposer
 summary_task_class: context_compaction
+# Window data (port item AP-B5): the same consumer as the session_start profile (the
+# claude-code-session main session), so the same first values; TC.12 measures them.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 95771

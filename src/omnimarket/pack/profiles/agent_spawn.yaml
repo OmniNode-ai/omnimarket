@@ -1,0 +1,57 @@
+# Context profile added when Claude Code spawns a subagent (plan task TC.8, section 4.4).
+# Additive SubagentStart binding; lane briefs at dispatch stay the inline path.
+# Values are the plan's first values; a profile changes only through a data PR
+# that cites measured evidence (TC.9, TC.12).
+model_id: claude-code-subagent
+profile_version: 1.0.0
+injection_point: SubagentStart
+binding_kind: additive
+required_factors:
+  - lane_rules
+optional_factors:
+  - invariants
+  - canonical_shapes
+  - exemplar
+# Authority order, section 4.2 rows 1, 2, 4 and 5: every factor is stable.
+factor_precedence:
+  - lane_rules
+  - invariants
+  - canonical_shapes
+  - exemplar
+stable_factors:
+  - lane_rules
+  - invariants
+  - canonical_shapes
+  - exemplar
+scopes:
+  - architecture
+token_budget: 4000
+# Window data (port item AP-B5): the consumer's window minus its reserved output and
+# system shares. reserved_system_tokens is the measured median subagent preamble
+# (plan section 4.4); the window and reserved output are first values, measured by TC.12.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 76738
+latency_budget_ms: 3000
+# Shapes and exemplars load only for a node archetype the caller names.
+task_kind_rules:
+  - rule_id: archetype_compute
+    task_kind: node_compute
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: compute}
+    factors: [canonical_shapes, exemplar]
+  - rule_id: archetype_effect
+    task_kind: node_effect
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: effect}
+    factors: [canonical_shapes, exemplar]
+  - rule_id: archetype_reducer
+    task_kind: node_reducer
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: reducer}
+    factors: [canonical_shapes, exemplar]
+  - rule_id: archetype_orchestrator
+    task_kind: node_orchestrator
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: orchestrator}
+    factors: [canonical_shapes, exemplar]

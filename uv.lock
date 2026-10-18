@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -12,7 +12,7 @@ resolution-markers = [
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.46,<0.48.0" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261016204728-0f7bee98bd8f" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261018092007-4c36425ce840" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
 ]
 
@@ -3067,8 +3067,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.74"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261016204728-0f7bee98bd8f#0f7bee98bd8fc382f4221ee5f4d87fd794a1d7fc" }
+version = "0.38.75"
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261018092007-4c36425ce840#4c36425ce84067057e49bd7e644d224923bd890b" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3139,7 +3139,7 @@ wheels = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.317"
+version = "0.4.318"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
@@ -3217,7 +3217,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.46,<0.48.0" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261016204728-0f7bee98bd8f" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261018092007-4c36425ce840" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
     { name = "omninode-memory", specifier = "==0.18.0" },
     { name = "packaging", specifier = ">=24.0" },
