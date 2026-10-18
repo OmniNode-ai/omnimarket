@@ -281,6 +281,43 @@ jobs:
             echo "gates still run and must still be green."
           } >> "$GITHUB_STEP_SUMMARY"
 
+
+  # OMN-19998: RE-TEST WAIVER MARKER. Operator RULING 2026-10-18T00:50:42Z
+  # (ledger, lane orchestrator-bb1a): tests run once, on the pull request. The
+  # pull request head already ran the heavy tier (test splits, coverage census,
+  # integration, golden and event chains, e2e); a merge_group run, or the push
+  # to dev after the squash merge, does not run it again. Every job carrying
+  # the OMN-19998 waiver clause skips on those two events, and this marker is
+  # what lets `CI Summary` (scripts/ci/ci_summary_gate.py,
+  # RETEST_WAIVER_MARKER_JOB) accept the skip, so every required context still
+  # reports. The light gates (lint, typecheck, runtime sweep, contract and
+  # topic gates, install gates) still run on both events. A dev break is
+  # accepted and fixed forward; the nightly full suite still runs every test.
+  # Pull request runs and main/hotfix pushes are unchanged.
+  #
+  # EXPIRY: short term only, until the merge queue clears and test
+  # deduplication works. Remove this job, the waiver clause on the heavy jobs
+  # and RETEST_WAIVER_MARKER_JOB when the long-term run-once design
+  # (tests-once-merge-queue, inherited from omnibase_core CI) lands here.
+  queue-retest-waiver:
+    if: github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    name: Queue Re-test Waiver (OMN-19998)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record the re-test waiver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          echo "event=${EVENT_NAME} ref=${REF}: the heavy tier ran on the pull request head and is not re-run here (OMN-19998)."
+          {
+            echo "### Re-test waiver (OMN-19998)"
+            echo ""
+            echo "Event \`${EVENT_NAME}\` on \`${REF}\`: tests ran once, on the pull request."
+            echo "The heavy tier is skipped; the light gates still run and must be green."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     needs: repo-evidence-preflight
     if: always()
@@ -600,6 +637,10 @@ jobs:
       # 'omniclaude-release-notice'.
       - name: Omniclaude release notice (OMN-20001)
         run: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
+      # OMN-17427: incomplete watcher observations stay facts-unavailable.
+      # SYNC with pre-commit hook 'ci-red-watcher-facts-only'.
+      - name: CI red watcher facts only (OMN-17427)
+        run: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov
       # OMN-20730: the red CI triage model (formal/ci_red_triage) passes its design
       # config, each property fails on a one-knob mutation, the results match the
       # committed model, configs and outputs, and the verdict approves the model's
@@ -994,7 +1035,8 @@ jobs:
   detect-changes:
     name: Detect Changes
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -1544,7 +1586,8 @@ jobs:
   integration-guard:
     name: Integration Silent-Skip Guard (OMN-14172)
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     # Same Postgres service block as the Tests job (OMN-14167): a real broker so
     # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
@@ -2633,7 +2676,8 @@ jobs:
   e2e-workflow-runner:
     name: E2E Workflow Runner (inmemory bus)
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -2727,7 +2771,8 @@ jobs:
   golden-chains:
     name: Golden Chain Suite (inmemory bus)
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2763,7 +2808,8 @@ jobs:
   event-chain-generation:
     name: Generated Event Chains (walker paths)
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2795,7 +2841,8 @@ jobs:
   sea-e2e-chains:
     name: SEA E2E Acceptance + Error Chains (OMN-12660)
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2841,7 +2888,8 @@ jobs:
   generated-node-golden-chain:
     name: Generated-Node Golden Chain Gate (OMN-13624)
     needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -3175,7 +3223,8 @@ jobs:
   # ============================================================================
   coverage-sweep-gate:
     needs: [repo-evidence-preflight, zone-filter, detect-changes, test]
-    if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft) && needs.zone-filter.outputs.docs_only != 'true'
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft) && needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
