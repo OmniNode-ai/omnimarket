@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Recorded excerpt of omnimarket tag v0.4.316 (git show v0.4.316:pyproject.toml).
+# Lines 5-7 are the [project] header; line 145 is the omnibase-core entry of
+# [project].dependencies, copied verbatim. Nothing else is kept.
+[project]
+name = "omnimarket"
+version = "0.4.316"
+dependencies = [
+    "omnibase-core>=0.47.46,<0.48.0",
+]

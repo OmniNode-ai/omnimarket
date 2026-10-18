@@ -1,0 +1,24 @@
+name: node_context_task_kind_rules_compute
+version: "1.0.0"
+description: "Deterministic evaluation of a context profile's task-kind rules over the caller scope"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_context_task_kind_rules_compute: "omnimarket.nodes.node_context_task_kind_rules_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-pack", "task-kind-rules", "deterministic"]
+pack: "pipeline"
+display_name: "Context Task-Kind Rules Compute"
+node_role: "compute"
+tickets: ["OMN-21131"]

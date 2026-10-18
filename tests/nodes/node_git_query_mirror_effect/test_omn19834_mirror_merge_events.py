@@ -644,7 +644,14 @@ def test_handler_emits_a_pr_merged_event_per_merge_after_the_response(
 
 def test_contract_declares_the_pr_merged_topic_it_publishes() -> None:
     contract = yaml.safe_load(CONTRACT.read_text())
-    assert contract["event_bus"]["publish_topics"] == ["onex.evt.github.pr-merged.v1"]
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.github.pr-merged.v1",
+        "onex.evt.omnimarket.git-query-mirror-completed.v1",
+    ]
+    # The query response is the terminal event, so it never lands on pr-merged.
+    assert contract["terminal_event"] == (
+        "onex.evt.omnimarket.git-query-mirror-completed.v1"
+    )
     assert PR_MERGED_TOPIC_V1 == "onex.evt.github.pr-merged.v1"
     published = {e["topic"] for e in contract["published_events"]}
     assert PR_MERGED_TOPIC_V1 in published
