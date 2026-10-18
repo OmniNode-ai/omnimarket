@@ -838,11 +838,23 @@ class SweepExclusion:
     expires: str
 
 
-# Ships EMPTY: no external pull_request-event check-run in this repository is
-# non-success by design (OMN-17427). An entry needs a reason, an OMN ticket, an
-# added date and an expiry at most SWEEP_EXCLUSION_MAX_DAYS later; a malformed
-# entry fails the gate and an expired one stops excluding.
-EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {}
+# An entry needs a reason, an OMN ticket, an added date and an expiry at most
+# SWEEP_EXCLUSION_MAX_DAYS later; a malformed entry fails the gate and an
+# expired one stops excluding.
+EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
+    # omn20025-ac1-postgres-proof.yml is an advisory pull_request workflow whose
+    # only job runs for one PR number (`if:` pins #3094), so on every other PR
+    # its row concludes `skipped` by design.
+    "AC1 exact revision row on PostgreSQL 16": SweepExclusion(
+        reason=(
+            "Advisory OMN-20025 PostgreSQL 16 proof; its job runs only for "
+            "one pinned PR number and is skipped on every other PR by design."
+        ),
+        ticket="OMN-20025",
+        added="2026-10-18",
+        expires="2027-01-16",
+    ),
+}
 
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1

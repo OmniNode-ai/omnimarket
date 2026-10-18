@@ -2119,10 +2119,22 @@ class TestExternalSweepExclusions:
             "2026-12-17",
         )
 
-    def test_registry_ships_empty_and_entries_are_validated(self) -> None:
+    def test_shipped_registry_is_valid_and_entries_are_validated(self) -> None:
         entry = self.entry()
         red = _check_run("Enable Auto-Merge", conclusion="skipped")
-        assert summary_gate.EXTERNAL_SWEEP_EXCLUSIONS == {}
+        shipped = summary_gate.EXTERNAL_SWEEP_EXCLUSIONS
+        assert set(shipped) == {"AC1 exact revision row on PostgreSQL 16"}
+        assert summary_gate.validate_sweep_exclusions(shipped) == []
+        assert summary_gate.active_sweep_exclusions(shipped, now=self.NOW) == (
+            frozenset(shipped),
+            (),
+        )
+        ac1 = _check_run(
+            "AC1 exact revision row on PostgreSQL 16", conclusion="skipped"
+        )
+        assert (
+            summary_gate.evaluate_external_sweep([ac1], now=self.NOW)[0] == EXIT_SUCCESS
+        )
         assert (
             summary_gate.evaluate_external_sweep([red], now=self.NOW)[0] == EXIT_FAILURE
         )
