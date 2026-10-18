@@ -1,0 +1,88 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21097"
+title: "node_delegation_admission_compute: admission verdict for one Agent call"
+summary: >-
+  A new pure compute node, node_delegation_admission_compute, decides whether one
+  Agent call is admitted to delegation: handle(ModelDelegationAdmissionRequest) ->
+  ModelDelegationAdmissionResult with admitted, task_type and reason. It ports
+  omniclaude's SensitivityGate and TaskClassifier and the agent-model guard's Agent
+  refusals (the guard does not run for an Agent call the binding answers, probe row
+  P4a), refuses background, forked, resumed and non-model-raised calls as
+  unsupported_path and a call with no origin as unknown_call_origin (probe row
+  P11d). The orchestrator wiring and the admission event belong to the next task.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-admission-compute"
+    statement: "Admission reproduces the omniclaude hook classifier and gate verdicts and refuses every Agent call the agent-model guard or the unsupported paths rule out."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a golden table of at least 40 recorded Agent inputs reproduces the
+          omniclaude classifier's delegatable verdicts -- falsifier:
+          tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py::test_classifier_rows_reproduce_omniclaude_verdicts fails
+      - id: "AC2"
+        statement: >-
+          AC2: sensitive inputs are admitted=false, reason=sensitive -- falsifier:
+          tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py::test_sensitive_inputs_are_not_admitted fails
+      - id: "AC3"
+        statement: >-
+          AC3: background, forked and resumed Agent calls are admitted=false,
+          reason=unsupported_path, and calls without an origin are admitted=false,
+          reason=unknown_call_origin -- falsifier: the unsupported_path and
+          unknown_call_origin tests in tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py fail
+      - id: "AC4"
+        statement: >-
+          AC4: every guard fixture the agent-model guard refuses is admitted=false with
+          the guard's reason, except the listed fork rows, and every input it allows
+          keeps the classifier's verdict -- falsifier:
+          tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py::test_guard_rows_keep_parity_with_the_agent_model_guard fails
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4: the admission compute tests and golden table."
+    command: "uv run pytest tests/unit/nodes/node_delegation_admission_compute -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21097-ac1-golden-classifier"
+    description: "Each classifier row of the golden table reproduces the recorded omniclaude verdict and intent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py -q -n 0 -k 'classifier_rows or at_least_40'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21097-ac2-sensitive"
+    description: "One positive fixture per sensitivity pattern is refused as sensitive; the clean base input is admitted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py -q -n 0 -k 'sensitive or positive_control'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21097-ac3-paths"
+    description: "Background, forked, resumed and plugin-raised calls are unsupported_path; a call with no origin is unknown_call_origin."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py -q -n 0 -k 'unsupported_path or unknown_call_origin'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21097-ac4-guard-parity"
+    description: "Each guard fixture row matches the guard's recorded refusal reason, or the classifier verdict when the guard allows it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegation_admission_compute/test_handler_delegation_admission.py -q -n 0 -k 'guard_rows or listed_disagreements'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21097-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines HandlerDelegationAdmission. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_admission_compute/handlers/handler_delegation_admission.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerDelegationAdmission'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -1,0 +1,24 @@
+name: node_codex_hook_registration_effect
+version: "1.0.0"
+description: "Merges missing Codex hook commands from the supplied omniclaude plugin root into the user hooks file while preserving existing hooks"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_codex_hook_registration_effect: "omnimarket.nodes.node_codex_hook_registration_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "hooks", "codex", "install"]
+pack: "core"
+display_name: "Codex Hook Registration"
+node_role: "effect"
+tickets: ["OMN-18759"]

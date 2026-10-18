@@ -12,6 +12,9 @@ from omnimarket.nodes.node_context_selection_policy_compute.models.model_selecti
     ModelContextSelectionResult,
     ModelFactorSelection,
 )
+from omnimarket.nodes.node_context_selection_policy_compute.models.model_selection_rule_ref import (
+    ModelSelectionRuleRef,
+)
 
 __all__ = [
     "EnumSelectionStatus",
@@ -19,4 +22,5 @@ __all__ = [
     "ModelContextSelectionRequest",
     "ModelContextSelectionResult",
     "ModelFactorSelection",
+    "ModelSelectionRuleRef",
 ]
