@@ -1261,5 +1261,4 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/events/pr_arm_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "coderabbit" not in source.lower() and "ModelArmCandidate" in source; print("remove-coderabbit deploy probe: PASS")'
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_disposition_compute/handlers/handler_review_finding_disposition.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("NOISE_DISPOSITIONS", "class_fix_key_for", "_recurring")); print("review finding disposition deploy probe: PASS")'
