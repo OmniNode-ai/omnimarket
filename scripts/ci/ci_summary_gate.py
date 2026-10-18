@@ -425,6 +425,20 @@ DOCS_ONLY_MARKER_JOB = "Docs-Only Marker (OMN-16662)"
 
 DOCS_ONLY_SKIPPABLE_GATE_JOBS: tuple[str, ...] = ("Coverage Sweep Gate",)
 
+# OMN-19998, operator RULING 2026-10-18T00:50:42Z: tests run once, on the pull
+# request. A merge_group run, or a push to dev after the squash merge, skips the
+# heavy tier that already ran on the pull request head, and this marker job
+# (ci.yml `queue-retest-waiver`, gated only on those two events) is what lets
+# the poller accept that skip. It relaxes exactly the docs-only tier above and
+# nothing else; the matrix waiver follows from `Detect Changes` skipping, and
+# every other heavy job is already in SKIPPABLE_GATE_JOBS. Only a marker that
+# ran and concluded success relaxes anything, as with the docs-only marker.
+# EXPIRY: short term only, until the merge queue clears and test deduplication
+# works. Remove this constant, the ci.yml marker job and the waiver clause on
+# the heavy jobs when the long-term run-once design (tests-once-merge-queue,
+# inherited from omnibase_core CI) lands in this repository.
+RETEST_WAIVER_MARKER_JOB = "Queue Re-test Waiver (OMN-19998)"
+
 # Every job the completeness anchor must observe present+good for SUCCESS.
 GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 
@@ -968,6 +982,7 @@ def evaluate(
     allowlist: frozenset[str] = SOFT_ALLOWLIST,
     docs_only_marker: str = DOCS_ONLY_MARKER_JOB,
     docs_only_gates: tuple[str, ...] = DOCS_ONLY_SKIPPABLE_GATE_JOBS,
+    retest_waiver_marker: str = RETEST_WAIVER_MARKER_JOB,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the current job snapshot."""
 
@@ -997,12 +1012,21 @@ def evaluate(
         and marker_state.status == "completed"
         and marker_state.conclusion == "success"
     )
+    # OMN-19998: the re-test waiver marker relaxes the same tier, on the same
+    # fail-closed terms (see RETEST_WAIVER_MARKER_JOB).
+    waiver_state = latest.get(retest_waiver_marker)
+    retest_waived = (
+        waiver_state is not None
+        and waiver_state.status == "completed"
+        and waiver_state.conclusion == "success"
+    )
+    tier_markers = tuple(m for m in (marker_state, waiver_state) if m is not None)
     # Relaxed ⊆ strict_gates: a name that is not strict cannot be "relaxed" into
     # existence, so a tier entry dropped from STRICT_GATE_JOBS degrades to a
     # no-op here instead of silently becoming permanently skippable.
     relaxed = (
         frozenset(docs_only_gates) & frozenset(strict_gates)
-        if docs_only
+        if docs_only or retest_waived
         else frozenset()
     )
     # The tier can skip before the marker finishes on another runner. Only
@@ -1011,8 +1035,7 @@ def evaluate(
     pending_docs_only_skips = frozenset(
         g
         for g in frozenset(docs_only_gates) & frozenset(strict_gates)
-        if marker_state is not None
-        and marker_state.status != "completed"
+        if any(m.status != "completed" for m in tier_markers)
         and (st := latest.get(g)) is not None
         and st.status == "completed"
         and st.conclusion == "skipped"
@@ -1101,6 +1124,7 @@ def evaluate(
             gate_missing_or_pending,
             matrix_state,
             docs_only=docs_only,
+            retest_waived=retest_waived,
             relaxed=relaxed,
             sweep_running=sweep_running,
             provisional_own_cancellations=provisional_own_cancellations,
@@ -1131,6 +1155,7 @@ def _report(
     matrix_state: str,
     *,
     docs_only: bool = False,
+    retest_waived: bool = False,
     relaxed: frozenset[str] = frozenset(),
     sweep_running: list[str] | None = None,
     provisional_own_cancellations: list[str] | None = None,
@@ -1150,9 +1175,19 @@ def _report(
         )
         + f" -> docs_only={str(docs_only).lower()}"
     )
+    waiver_state = latest.get(RETEST_WAIVER_MARKER_JOB)
+    lines.append(
+        "  re-test waiver marker: "
+        + (
+            "<absent>"
+            if waiver_state is None
+            else f"{waiver_state.status}/{waiver_state.conclusion}"
+        )
+        + f" -> retest_waived={str(retest_waived).lower()}"
+    )
     if relaxed:
         lines.append(
-            "  docs-only skip tier ACTIVE (success|skipped accepted for): "
+            "  skip tier ACTIVE (success|skipped accepted for): "
             + ", ".join(sorted(relaxed))
         )
     lines.append("  strict gates (must be completed + success):")

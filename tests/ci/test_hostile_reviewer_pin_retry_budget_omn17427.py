@@ -26,14 +26,8 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# The merge commit of omniintelligence#1072 on its dev branch.
-RETRY_BUDGET_PIN = "3fcbf795087a79081c0ceeb676216bf64c5d49ae"
-# The later pin descends from omniintelligence#1072 (verified with git merge-base --is-ancestor).
-RETRY_BUDGET_PINS = (
-    RETRY_BUDGET_PIN,
-    "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0",
-    "037af72c2a7f49fda953fed6a99edd5ec588dede",
-)
+# OMN-20910: the Claude API voter revision descends from the prior fix.
+RETRY_BUDGET_PIN = "7f686d4bbca251dd3db49c1222ff8d6f738abd6c"
 # The pin before this change, which retries at the same 4096-token cap.
 PRE_RETRY_BUDGET_PIN = "64b950973a5686d33e0b439fb80749d66362d06d"
 _PIN = re.compile(
@@ -49,8 +43,7 @@ def omniintelligence_pins(workflow_text: str) -> list[str]:
 def test_omniintelligence_is_pinned_to_the_retry_budget_revision() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     pins = omniintelligence_pins(text)
-    assert len(pins) == 1
-    assert pins[0] in RETRY_BUDGET_PINS
+    assert pins == [RETRY_BUDGET_PIN]
 
 
 def test_the_pin_before_the_retry_budget_is_caught() -> None:
@@ -58,4 +51,4 @@ def test_the_pin_before_the_retry_budget_is_caught() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     before = text.replace(omniintelligence_pins(text)[0], PRE_RETRY_BUDGET_PIN)
     assert omniintelligence_pins(before) == [PRE_RETRY_BUDGET_PIN]
-    assert omniintelligence_pins(before)[0] not in RETRY_BUDGET_PINS
+    assert omniintelligence_pins(before)[0] != RETRY_BUDGET_PIN
