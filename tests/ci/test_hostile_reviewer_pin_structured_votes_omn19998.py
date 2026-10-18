@@ -29,6 +29,11 @@ WORKFLOW = (
     / "hostile-reviewer.yml"
 )
 STRUCTURED_VOTES_PIN = "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
+# The later pin descends from it (verified with git merge-base --is-ancestor).
+STRUCTURED_VOTES_PINS = (
+    STRUCTURED_VOTES_PIN,
+    "037af72c2a7f49fda953fed6a99edd5ec588dede",
+)
 PRE_STRUCTURED_VOTES_PIN = "3fcbf795087a79081c0ceeb676216bf64c5d49ae"
 _PIN = re.compile(
     r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"
@@ -43,14 +48,14 @@ def omniintelligence_pins(workflow_text: str) -> list[str]:
 def test_omniintelligence_is_pinned_to_the_structured_votes_revision() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     pins = omniintelligence_pins(text)
-    assert pins == [STRUCTURED_VOTES_PIN]
+    assert len(pins) == 1
+    assert pins[0] in STRUCTURED_VOTES_PINS
 
 
 def test_the_pin_before_structured_votes_is_caught() -> None:
     """Positive control: the workflow as it was before this change."""
-    before = WORKFLOW.read_text(encoding="utf-8").replace(
-        STRUCTURED_VOTES_PIN, PRE_STRUCTURED_VOTES_PIN
-    )
+    text = WORKFLOW.read_text(encoding="utf-8")
+    before = text.replace(omniintelligence_pins(text)[0], PRE_STRUCTURED_VOTES_PIN)
     pins = omniintelligence_pins(before)
     assert pins == [PRE_STRUCTURED_VOTES_PIN]
-    assert pins != [STRUCTURED_VOTES_PIN]
+    assert pins[0] not in STRUCTURED_VOTES_PINS

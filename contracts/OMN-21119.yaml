@@ -10,13 +10,13 @@ requirements:
   - id: "req-ta18-profile-data"
     statement: "The two profiles of plan section 4.4 rows session_resume and delegation_payload_local ship as data and resolve by name."
     acceptance:
-      - id: "S1"
+      - id: "DoD1"
         statement: |-
           S1: `session_resume` resolves with required `OPEN_WORK`, `OPERATOR_RULINGS`, `ORCHESTRATION_STATE` and optional `TRANSCRIPT_EXTRACTS`, `TAIL_SUMMARY`, `PLAN_EXCERPTS`, model-written last; `delegation_payload_local` resolves with no required factor, optional `INVARIANTS`, `CANONICAL_SHAPES`, `EXEMPLAR`, `ARCHITECTURE_PATTERNS`, all stable, scope `delegation`, budget 8000 -- falsifier: a resolver failure or a factor set that differs.
   - id: "req-ta18-task-class-field"
     statement: "A task class may name a context profile; no production class does."
     acceptance:
-      - id: "S2"
+      - id: "DoD2"
         statement: |-
           S2: a fixture task class naming `delegation_payload_local` validates and its profile resolves; a name that is not a profile name is refused; no production task class names a profile -- falsifier: test.
 evidence_requirements:
@@ -34,14 +34,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_handler_context_profile_resolver.py -q -p no:randomly --no-cov -n 0 -k 'session_resume or delegation_payload_local or every_shipped_profile'"
-    binds_ac: ["S1"]
+    binds_ac: ["DoD1"]
   - id: "dod-omn21119-s2-task-class-field"
     description: "S2: the fixture task class validates and resolves; bad names are refused; no production class names a profile."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/inference/test_task_class_context_profile_omn21119.py -q -p no:randomly --no-cov -n 0"
-    binds_ac: ["S2"]
+    binds_ac: ["DoD2"]
   - id: "dod-omn21119-deploy-profile-data"
     description: "Deploy probe. Both profile files exist in omnimarket at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe reads them from GitHub at that commit and fails at the merge base, where neither exists."
     source: "manual"

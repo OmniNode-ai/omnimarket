@@ -40,6 +40,8 @@ SUBSTITUTE_PINS = [
     "3fcbf795087a79081c0ceeb676216bf64c5d49ae",
     # OMN-19998: large reviewer votes stay structured.
     "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0",
+    # OMN-19998: an exhausted review budget fails the voter as a timeout.
+    "037af72c2a7f49fda953fed6a99edd5ec588dede",
 ]
 
 
