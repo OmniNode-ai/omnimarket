@@ -578,6 +578,10 @@ jobs:
       - name: Ticket contract authoring refusal controls (OMN-20864)
         run: uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_pipeline_observability_export_closure_omn20864.py -q -n 0 -p no:randomly
 
+      # Paired with tool-result-reduction-safety (pre-commit).
+      - name: Bash tool-result reduction preserves diagnostics (OMN-21120)
+        run: uv run pytest tests/nodes/node_tool_result_reduce_compute/test_tool_result_reduce.py -q --no-cov
+
       # The checkout has full history, so read the actual PR head, not the
       # synthetic merge tree. Paired with ticket-contract-prerequisite (pre-push).
       - name: Ticket contract prerequisite at PR head (OMN-20864)
