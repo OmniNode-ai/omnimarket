@@ -1,0 +1,65 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21142"
+title: "Role B and the decision to adopt (plan task TE.5)"
+summary: >-
+  node_context_role_adoption_verdict_compute turns recorded round-one results
+  (per rung, per case, per repeat) into the TE.5 adoption verdict: every rung
+  named as passed or failed with the failing metric and case, the lowest-cost
+  passing rung or rungs, the Role B tail-summary score of each passing rung,
+  whether the TE.7 cascade round is justified by measured cost, and a promotion
+  that is only ever a routing-contract entry for the role's task class in a
+  separate PR. Pure compute: no I/O, no clock, no model call. The measured
+  verdict over TE.4's results is pending TE.4.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-te5-adoption-verdict"
+    statement: "Plan task TE.5 decides adoption from recorded round-one results by a deterministic, contract-declared compute node."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the verdict names every rung that met the gate and every rung that failed it, with the failing metric and case -- falsifier: a rung unnamed, or a failure without a case"
+      - id: "AC2"
+        statement: "AC2: if no rung meets the gate, the verdict says so and recommends the deterministic package without model events, and TA.6 and TA.8 stay unchanged -- falsifier: a model-extraction path adopted without a rung that passed"
+      - id: "AC3"
+        statement: "AC3: a rung is promoted only by adding a routing-contract entry for the role's task class in a separate PR -- falsifier: a promotion that edits a profile without a routing entry"
+evidence_requirements:
+  - kind: "tests"
+    description: "Gate, verdict, promotion and bus-chain tests for OMN-21142."
+    command: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21142-ac1-every-rung-named"
+    description: "Every rung in the request appears as passed or failed; each failure carries its metric and a case."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute/test_golden_chain_role_adoption_verdict.py -q -n 0 -k 'every_failing_rung or recall_below_baseline or failure_order'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21142-ac2-no-rung-passed"
+    description: "With no passing rung the outcome is no_rung_passed, no promotion is made, and the recommendation is the deterministic package with TA.6 and TA.8 unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute/test_golden_chain_role_adoption_verdict.py -q -n 0 -k 'no_rung_passed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21142-ac3-routing-entry-only"
+    description: "A promotion is typed as a routing-contract entry in a separate PR and the result has no profile field."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute/test_golden_chain_role_adoption_verdict.py -q -n 0 -k 'routing_contract_entry or no_profile_field or refuse_profile_changes'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21142-deploy-probe"
+    description: "Deploy probe: the node contract read from GitHub at the checked-out commit names OMN-21142."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_role_adoption_verdict_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c ''OMN-21142'''
+        cwd: "${OMNI_HOME}/omnimarket"
