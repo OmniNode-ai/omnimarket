@@ -1,0 +1,380 @@
+schema: omnimarket/context_compaction_manifest/1
+ticket: OMN-19998
+plan_task: T0.2
+census_ref: lost-ruling census 2026-10-15, from captured hook and content events
+source:
+  kind: lab_captured_events
+  tables:
+  - hook-event rows
+  - session-content rows
+  access: read-only
+  transcripts_read: false
+replay_root_env: ONEX_CONTEXT_REPLAY_ROOT (required, no default)
+hash_rules:
+  transcript_chain: 'sha256 of the bundle file: one JSON object per line, keys sorted, UTF-8, ordered
+    by instant, event id and chunk index; kinds prompt, operator_prompt, assistant_reply and the hook
+    boundary events of the session, up to and including the last PreCompact of the case'
+  ledger: 'per file, the bytes before the first stamped line whose stamp is not strictly before the boundary''s
+    second: byte length and sha256'
+  operator_prompt_count: exact from the `operator_prompt` kind where it exists; otherwise a heuristic
+    of precision 0.59 and recall 0.93
+profile:
+  name: compaction_orchestrator
+  version: null
+  status: not_built
+cases:
+- case_id: L1-compact-mod-not-hooks
+  finding: L1
+  census_status: CONFIRMED
+  census_ref: lost-ruling census 2026-10-15, from captured hook and content events section 3 L1
+  session_id: 4fb6b47e-ec68-4a15-ab71-0de49ccbcec6
+  lanes:
+  - orchestrator-31d9
+  - orchestrator-bb1a
+  model_id: claude-opus-5-5
+  profile_version: null
+  two_boundaries: true
+  unrecorded_instruction_before_first_boundary: false
+  boundaries:
+  - pre_event_id: 417b388d-91bc-579d-8448-611bdded6c5d
+    pre_at: '2026-10-15T04:00:18.960508Z'
+    post_event_id: d99cb3d6-6f76-5b6b-b4c4-da343e721222
+    post_at: '2026-10-15T04:00:21.053029Z'
+    trigger: manual
+    paired: true
+    window_start: '2026-10-14T21:39:32.803164Z'
+    operator_prompts_in_window: 38
+    operator_prompts_exact: true
+    summary:
+      status: SUMMARY_UNAVAILABLE
+      length: 9623
+      sha256: d989c987813b41047bc4d800fd67406258b42d5669656100dc210c4205ea08cf
+      content_record_id: 3f854deb-764b-5b3a-9b1d-3d8e70d93c2d
+    ledger_cuts:
+    - name: ROLLING_WORK_LEDGER.md
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      prefix_bytes: 46294915
+      prefix_sha256: 6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      prefix_bytes: 7983938
+      prefix_sha256: 069fbcd54ca6166749c4cd57f21db58671eae54117ee2fe2eed629443294066b
+  - pre_event_id: a3731201-8dcc-558b-9468-3c230cd717e3
+    pre_at: '2026-10-15T04:00:35.779652Z'
+    post_event_id: 4fb458ab-5ab1-5168-a763-9a435fc1da24
+    post_at: '2026-10-15T04:01:16.352869Z'
+    trigger: manual
+    paired: true
+    window_start: '2026-10-15T04:00:21.053029Z'
+    operator_prompts_in_window: 0
+    operator_prompts_exact: true
+    summary:
+      status: SUMMARY_UNAVAILABLE
+      length: 10171
+      sha256: bed53ed4ddf5d0c6ca468434baccdcb57cd890e6dd2fb9b27b5160829cfdb7b8
+      content_record_id: b9712b24-2c57-5c37-8471-d91033e39a5a
+    ledger_cuts:
+    - name: ROLLING_WORK_LEDGER.md
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      prefix_bytes: 46294915
+      prefix_sha256: 6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      prefix_bytes: 7984762
+      prefix_sha256: 89ef37d47ef4088a65b8a34a5040df32a8d5e093bacb9ebf856d5202b3422df4
+  transcript_chain:
+    bundle_path: L1-compact-mod-not-hooks/transcript_chain.jsonl
+    records: 2066
+    bytes: 3192938
+    sha256: 2198bf4a5f4effda06a69ce11ea0dfab85ea877094ad63f7cf72ad7a4933ae09
+    last_emitted_at: '2026-10-15T04:00:35.779652Z'
+  ledger:
+    rule: bytes before the first stamped line not before the boundary second
+    files:
+    - name: ROLLING_WORK_LEDGER.md
+      bundle_path: ledger/7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0.prefix
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+      prefix_rows: 0
+      last_stamp: null
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      bundle_path: ledger/6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6.prefix
+      prefix_bytes: 46294915
+      prefix_sha256: 6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6
+      prefix_rows: 67610
+      last_stamp: '2026-10-11T22:37:16Z'
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      bundle_path: ledger/89ef37d47ef4088a65b8a34a5040df32a8d5e093bacb9ebf856d5202b3422df4.prefix
+      prefix_bytes: 7984762
+      prefix_sha256: 89ef37d47ef4088a65b8a34a5040df32a8d5e093bacb9ebf856d5202b3422df4
+      prefix_rows: 17676
+      last_stamp: '2026-10-15T04:00:26Z'
+  checkpoint:
+    status: EXCLUDED
+    factor: ORCHESTRATION_STATE
+    reason: no checkpoint bytes are recoverable from the captured events; the `checkpoint` capture record
+      is not built
+  branch:
+    status: EXCLUDED
+    factor: REPO_STATE
+    reason: the captured hook events carry no cwd or branch; REPO_STATE is unavailable in this form
+  scoring:
+    expected_statements:
+    - statement_id: L1-s1
+      prompt_event_id: ca1574c55dfb5177818452334089c2d9f4109bbcb7a982073040d953c200b3a9
+      prompt_emitted_at: '2026-10-15T03:37:27.691070Z'
+      prompt_sha256: 4fca022b885e66fdb62fc8d08b34180224bfec3d390007e25137b73eb568fa5e
+      ledger_stamp: '2026-10-15T03:37:58Z'
+      not_recorded_at_first_boundary: false
+      quote: 'Why don’t we start working on the compact mod for Claude
+
+        Code?'
+      required_spans: []
+      withheld_reason: null
+    post_boundary_evidence:
+    - event_id: 27e0d82682b8794534662ad1f17b584046a9abc1cc244932a2e2c6d6da76c551
+      emitted_at: '2026-10-15T04:17:46.888766Z'
+      kind: RESTATED
+      required_spans:
+      - Why are you looking at hooks?
+      - Mods like I asked you to.
+      content_sha256: c89752224977dfe85e9081512f9bc3badb1c0e024378f01c70d1ac57f69db20d
+    question: 'What form does the operator want the compaction work to take: a Claude Code mod, or hooks?'
+    expected_answer: A Claude Code mod (the compaction mod), not hooks.
+- case_id: L2-merge-queue-reasked
+  finding: L2
+  census_status: CONFIRMED
+  census_ref: lost-ruling census 2026-10-15, from captured hook and content events section 3 L2
+  session_id: 4fb6b47e-ec68-4a15-ab71-0de49ccbcec6
+  lanes:
+  - orchestrator-31d9
+  model_id: claude-opus-5-5
+  profile_version: null
+  two_boundaries: false
+  unrecorded_instruction_before_first_boundary: false
+  boundaries:
+  - pre_event_id: 56afc4d3-bb8d-55e9-942a-2c4740d75249
+    pre_at: '2026-10-13T23:27:48.378471Z'
+    post_event_id: a050bb18-a6bd-59c8-8722-dae821e03d10
+    post_at: '2026-10-13T23:29:14.912773Z'
+    trigger: manual
+    paired: true
+    window_start: '2026-10-13T19:59:51.023750Z'
+    operator_prompts_in_window: 21
+    operator_prompts_exact: true
+    summary:
+      status: SUMMARY_UNAVAILABLE
+      length: 23742
+      sha256: 6b58992eee31487ce021cd883a9110e9dd86aa76ea11ab75a99425cc78f67126
+      content_record_id: 54b4cc51-51eb-5672-8f48-b2ca14515ba2
+    ledger_cuts:
+    - name: ROLLING_WORK_LEDGER.md
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      prefix_bytes: 46294915
+      prefix_sha256: 6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      prefix_bytes: 4450426
+      prefix_sha256: f1da0f5f9d5f2826c478a6a1178af16cafc64a90a78bd2579f57f5436201a618
+  transcript_chain:
+    bundle_path: L2-merge-queue-reasked/transcript_chain.jsonl
+    records: 944
+    bytes: 1560806
+    sha256: ed4211be608dfbd6e193dc6be732d5d55b19d9663cfb3d78b530c62a347d4c86
+    last_emitted_at: '2026-10-13T23:27:48.378471Z'
+  ledger:
+    rule: bytes before the first stamped line not before the boundary second
+    files:
+    - name: ROLLING_WORK_LEDGER.md
+      bundle_path: ledger/7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0.prefix
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+      prefix_rows: 0
+      last_stamp: null
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      bundle_path: ledger/6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6.prefix
+      prefix_bytes: 46294915
+      prefix_sha256: 6ade46acdc4b8c42424eed5a87dfc290b99be9f8a1c21f809956492977f238a6
+      prefix_rows: 67610
+      last_stamp: '2026-10-11T22:37:16Z'
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      bundle_path: ledger/f1da0f5f9d5f2826c478a6a1178af16cafc64a90a78bd2579f57f5436201a618.prefix
+      prefix_bytes: 4450426
+      prefix_sha256: f1da0f5f9d5f2826c478a6a1178af16cafc64a90a78bd2579f57f5436201a618
+      prefix_rows: 9382
+      last_stamp: '2026-10-13T23:26:31Z'
+  checkpoint:
+    status: EXCLUDED
+    factor: ORCHESTRATION_STATE
+    reason: no checkpoint bytes are recoverable from the captured events; the `checkpoint` capture record
+      is not built
+  branch:
+    status: EXCLUDED
+    factor: REPO_STATE
+    reason: the captured hook events carry no cwd or branch; REPO_STATE is unavailable in this form
+  scoring:
+    expected_statements:
+    - statement_id: L2-s1
+      prompt_event_id: fab939082738d2ed63e89f222d1efcb0a5bade5c48d75cf9e1e18efe44aa9633
+      prompt_emitted_at: '2026-10-13T22:42:19.342238Z'
+      prompt_sha256: 99ab06b2c6b26850e3f40004c1f5c9536d4a0b3b11f2a811a21dc3d1dadf16bc
+      ledger_stamp: '2026-10-13T22:42:38Z'
+      not_recorded_at_first_boundary: false
+      quote: yes, set up a merge queue
+      required_spans: []
+      withheld_reason: null
+    post_boundary_evidence:
+    - event_id: 022ad52d0da3ed5fde68577d6be16d622d5e4cd2cf04ed3099e07eb4f8195f1d
+      emitted_at: '2026-10-13T23:38:33.369570Z'
+      kind: REASKED
+      required_spans:
+      - Still waiting on your answer
+      - add merge queues
+      content_sha256: 397f1419de86abe16d0ae635222a209c07f9e391a8b0862823dbd6474e709625
+    question: Has the operator already answered whether to set up a merge queue, and what was the answer?
+    expected_answer: 'Yes: set up a merge queue (RULING 2026-10-13T22:42:38Z); do not ask again.'
+- case_id: L6-foreground-two-boundaries
+  finding: L6
+  census_status: CONFIRMED
+  census_ref: lost-ruling census 2026-10-15, from captured hook and content events section 3 L6
+  session_id: ae703c28-ae76-508a-947b-078e4114d281
+  lanes:
+  - access-mode-9f8a
+  - c16-reword-2-9f8a
+  - capture-asks-9f8a
+  - capture-backfill-9f8a
+  - config-hold-9f8a
+  - dev-default-9f8a
+  - kb-rename-9f8a
+  - kbi-rename-9f8a
+  - m4-scope-9f8a
+  - no-gh-reads-9f8a
+  - one-model-mac-9f8a
+  - operator-decisions-9f8a
+  - orchestrator-9f8a
+  - park-default-9f8a
+  - qwen38-flash-trial-9f8a
+  - recorder-9f8a
+  - relay-9f8a
+  - review-overlay-9f8a
+  - ruling-idle-lab-9f8a
+  - scm-move-omniclaude-9f8a
+  - scm-node-inventory-9f8a
+  - voter-bakeoff-9f8a
+  model_id: claude-opus-5-5
+  profile_version: null
+  two_boundaries: true
+  unrecorded_instruction_before_first_boundary: true
+  boundaries:
+  - pre_event_id: d826cab1-5369-5ad8-8d57-8ed45b5f6cf9
+    pre_at: '2026-10-10T03:45:28.008440Z'
+    post_event_id: 5ee40f85-ce0e-5fc8-af8d-bacd17df5b15
+    post_at: '2026-10-10T03:46:51.796001Z'
+    trigger: manual
+    paired: true
+    window_start: '2026-10-09T17:57:26.711428Z'
+    operator_prompts_in_window: 35
+    operator_prompts_exact: false
+    summary:
+      status: SUMMARY_UNAVAILABLE
+      length: 23791
+      sha256: cecbdb7fa449d14fc54c3c47e1efae82a44de02e69374d2afaff798767c6f7d6
+      content_record_id: a5ebc550-11c5-544d-bbdb-90b98df075c6
+    ledger_cuts:
+    - name: ROLLING_WORK_LEDGER.md
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      prefix_bytes: 42568629
+      prefix_sha256: 737831d504770b15d9c6333969acf40e3488ba15df0d46000c3eaaf8ac815543
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      prefix_bytes: 1142
+      prefix_sha256: 2b35bac7cfffa6604c5c3dcecec65fd0e800b340e25d475198117c2968ca2b00
+  - pre_event_id: 43bda817-bda8-5153-ad5a-dfe7847fdd70
+    pre_at: '2026-10-10T22:33:07.044746Z'
+    post_event_id: e61bcc54-d4a6-5a14-b452-dd5abebd39e2
+    post_at: '2026-10-10T22:34:44.379222Z'
+    trigger: manual
+    paired: true
+    window_start: '2026-10-10T03:46:51.796001Z'
+    operator_prompts_in_window: 70
+    operator_prompts_exact: false
+    summary:
+      status: SUMMARY_UNAVAILABLE
+      length: 26851
+      sha256: 676ec2a60ba9c6f25d42c767b872ab46b9fbe6297cfcb87f4b8c9a8f4c406d9c
+      content_record_id: 515f542d-50d9-51ad-9288-8066cdbda3e5
+    ledger_cuts:
+    - name: ROLLING_WORK_LEDGER.md
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      prefix_bytes: 44134556
+      prefix_sha256: 198c0f77d04acd1d5cd0617c5024b73243c09b18da4c3c14cb0be91257b63557
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      prefix_bytes: 1142
+      prefix_sha256: 2b35bac7cfffa6604c5c3dcecec65fd0e800b340e25d475198117c2968ca2b00
+  transcript_chain:
+    bundle_path: L6-foreground-two-boundaries/transcript_chain.jsonl
+    records: 860
+    bytes: 1361834
+    sha256: 9cd203d4d1708de41a80aea8ce04b9627bfc76d9278197c6b1db456a5d07b6c9
+    last_emitted_at: '2026-10-10T22:33:07.044746Z'
+  ledger:
+    rule: bytes before the first stamped line not before the boundary second
+    files:
+    - name: ROLLING_WORK_LEDGER.md
+      bundle_path: ledger/7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0.prefix
+      prefix_bytes: 163986
+      prefix_sha256: 7e355671acea3fdaf30f2f20292a6f389980104efd75900c0fc08e1ffda489d0
+      prefix_rows: 0
+      last_stamp: null
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-12-split.md
+      bundle_path: ledger/198c0f77d04acd1d5cd0617c5024b73243c09b18da4c3c14cb0be91257b63557.prefix
+      prefix_bytes: 44134556
+      prefix_sha256: 198c0f77d04acd1d5cd0617c5024b73243c09b18da4c3c14cb0be91257b63557
+      prefix_rows: 63795
+      last_stamp: '2026-10-10T22:32:50Z'
+    - name: archive/ROLLING_WORK_LEDGER_2026-10-17-split.md
+      bundle_path: ledger/2b35bac7cfffa6604c5c3dcecec65fd0e800b340e25d475198117c2968ca2b00.prefix
+      prefix_bytes: 1142
+      prefix_sha256: 2b35bac7cfffa6604c5c3dcecec65fd0e800b340e25d475198117c2968ca2b00
+      prefix_rows: 0
+      last_stamp: null
+  checkpoint:
+    status: EXCLUDED
+    factor: ORCHESTRATION_STATE
+    reason: no checkpoint bytes are recoverable from the captured events; the `checkpoint` capture record
+      is not built
+  branch:
+    status: EXCLUDED
+    factor: REPO_STATE
+    reason: the captured hook events carry no cwd or branch; REPO_STATE is unavailable in this form
+  scoring:
+    expected_statements:
+    - statement_id: L6-s1
+      prompt_event_id: 259db0b4d62c0a2957b6db9cb47dcd69cbb96af0b22ab584389a21834871f881
+      prompt_emitted_at: '2026-10-10T01:15:56.467960Z'
+      prompt_sha256: e4252f0222f559637442af227df4febdcda0e53727dd793e0113b598c3572ac4
+      ledger_stamp: null
+      not_recorded_at_first_boundary: true
+      quote: null
+      required_spans:
+      - bash calls that blocked the
+      - foreground which means you can’t
+      - do not
+      - do that again
+      withheld_reason: 'register: the whole prompt is pinned by prompt_sha256; only spans are quoted'
+    post_boundary_evidence:
+    - event_id: f84f832c66dd0e98b9d7fd154a0d3b37a83d49d2019066ea7fe5711d4a7a448b
+      emitted_at: '2026-10-11T04:41:22.078250Z'
+      kind: RESTATED
+      required_spans:
+      - You cannot keep doing those bash calls that block the foreground.
+      content_sha256: c0532eca8e9ef7e818de57a14107a9f22827b46dbeb473498a34013e959780d2
+    question: May the assistant run a shell call that blocks the foreground?
+    expected_answer: 'No: never block the foreground with a shell call; run long work so the foreground
+      stays free.'

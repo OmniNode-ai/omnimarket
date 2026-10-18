@@ -1,0 +1,82 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21115"
+title: "TA.13 Receipts projection and install confirmation"
+summary: "First slice: node_context_install_confirm_compute, a pure compute node running the plan section 6 boundary algorithm over a session's captured transcript records. It selects the current boundary on the active chain, extracts each boundary's replacement run (excluding preserved messages and the records /compact appends), hashes it the way the compaction orchestrator hashes installed_messages_hash, derives one immutable installation fact per activation, and reports the per-session current context with retirements. The receipts projection fold and its effect-class writer follow in a later slice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-install-confirm-boundary-algorithm"
+    statement: "The boundary algorithm derives installation facts and the current context from captured compact records, order-independently and without revising a fact once derived."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: on P6-recorded sessions, captured: a custom compaction yields `installed` with the boundary uuid; a tampered copy yields `install_mismatch`; custom then native (v6, corrected) keeps `installed` for the custom activation, records it `retired` at the native boundary in the current-context projection, and makes the native boundary current; an activation published before a native boundary and never installed yields `not_installed(native_compaction)`; native then custom yields `installed` for the custom one; a discarded precompute yields `not_installed(not_selected)`; a preserved message containing an older activation line is never selected; a truncated record yields `uncertain`; a resumed and a forked session (per P11c) select the boundary on their own active chain; a later captured turn with no compact record yields `uncertain(capture_gap)` -- falsifier: fixture table."
+      - id: "AC2"
+        statement: "AC2 (install-confirm slice): every permutation of a fixture record and activation set, with duplicates, yields the same installation fact per activation and the same current-context state per session -- falsifier: two permutations with different states. The per-candidate fold of prepared receipts waits on the receipts projection slice."
+      - id: "AC3"
+        statement: "AC3 (v6): no installation fact changes after it is first derived: replaying a session's events with a later boundary appended leaves every earlier activation's installation fact byte-identical -- falsifier: an installation fact that differs between the two replays."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 in the install-confirm fixture table."
+    command: "uv run pytest tests/nodes/node_context_install_confirm_compute -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21115-ac1"
+    description: "AC1: the fixture table: installed, install_mismatch, custom then native with retirement, not_installed(native_compaction), native then custom, not_installed(not_selected), preserved activation line never selected, truncated record uncertain, resumed and forked chains, capture_gap, and a P6-shaped transcript parse."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'installed_at_its_boundary or install_mismatch or retires_it or not_installed_native or installs_the_custom or not_selected or never_selected or uncertain or own_active_chain or capture_gap or p6_shaped or mixed_session_fixture_table'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21115-ac2"
+    description: "AC2: 200 shuffled orderings of a three-boundary session's records and activations, each with duplicates added, give one serialized result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'every_permutation'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21115-ac3"
+    description: "AC3: appending a later native boundary leaves every earlier installation fact byte-identical."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'never_changes_an_earlier_fact'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21115-contract"
+    description: "The node contract names its handler, its input and output models, and a terminal event among its publish topics."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'contract_names'"
+  - id: "dod-omn21115-deploy-container-install-confirm"
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the handler does not import, feeds a P6-shaped custom compaction (boundary, three chained replacement records, the /compact caveat) and its activation through the product handler, and asserts the activation is installed at the boundary uuid and is the current context. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          import uuid
+          from omnimarket.models.context_install_confirm import ModelCapturedTranscriptRecord as R, ModelInstallConfirmRequest as Q, ModelPublishedActivation as A
+          from omnimarket.models.context_pack_render import ModelContextPackRenderMessage as M
+          from omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm import HandlerContextInstallConfirm as H, observed_messages_hash as h
+          a = uuid.uuid4()
+          msgs = [("user", "legend"), ("assistant", "ok"), ("user", "trailer\nactivation_id: %s" % a)]
+          t = "2026-10-17T12:00:10Z"
+          rs = [R(uuid="b1", record_type="system", subtype="compact_boundary", logical_parent_uuid="p0", timestamp=t)]
+          p = "b1"
+          for i, (role, text) in enumerate(msgs):
+              rs.append(R(uuid="r%d" % i, parent_uuid=p, record_type=role, role=role, text=text, timestamp=t)); p = "r%d" % i
+          rs.append(R(uuid="c1", parent_uuid=p, record_type="user", role="user", text="<local-command-caveat>", is_meta=True, timestamp="2026-10-17T12:00:11Z"))
+          act = A(activation_id=a, installed_messages_hash=h(M(role=r, text=x) for r, x in msgs), published_at="2026-10-17T12:00:05Z")
+          out = H().handle(Q(session_id="s", records=tuple(rs), activations=(act,)))
+          [f] = out.facts
+          assert f.fact.value == "installed" and f.boundary_uuid == "b1", out
+          assert out.current.boundary_uuid == "b1" and out.current.activation_id == a, out
+          print(f.fact.value, f.boundary_uuid, f.observed_hash)'
