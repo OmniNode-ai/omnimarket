@@ -345,6 +345,11 @@ requirements:
     acceptance:
       - id: "AC66"
         statement: "AC66: the sixteen removed prose files are absent and README.md has three to five lines including the public knowledge_base link -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q"
+  - id: "req-docs-assets-evidence-removed"
+    statement: "The unreferenced logo set, closed-ticket evidence records and ADR inventory under docs/ live in the knowledge base archive and are removed here; the files a test, script or workflow reads stay."
+    acceptance:
+      - id: "AC76"
+        statement: "AC76: the thirty-three unreferenced docs files are absent, the three files a test or workflow reads are present and docs holds no empty directory -- falsifier: uv run pytest tests/ci/test_docs_assets_evidence_removed_omn17427.py -q"
   - id: "req-linear-triage-local-github"
     statement: "node_linear_triage runs on a host that holds no GitHub token by reading PR state from the PR watcher state and the canonical clones, reports an unreadable state instead of an empty answer, and keeps its implementing-PR gate."
     acceptance:
@@ -1332,6 +1337,14 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC66"]
+  - id: "dod-omn17427-ac76-docs-assets-evidence-removed"
+    description: "The unreferenced docs files are absent and the read ones stay. It fails at the merge base, where the thirty-three files exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_docs_assets_evidence_removed_omn17427.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC76"]
   - id: "dod-omn17427-ac61-linear-triage-local-github"
     description: "The local GitHub PR reads and the handler's local source pass their focused tests."
     source: "manual"
