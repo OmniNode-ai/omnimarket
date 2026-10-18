@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Admission Compute (OMN-21097)
+#
+# Pure def-B compute: handle(request: ModelDelegationAdmissionRequest) ->
+# ModelDelegationAdmissionResult. The delegate-skill orchestrator invokes it
+# in-process after the client-call claim and before any dispatch;
+# runtime_dispatch declares the command and terminal topics the same way the
+# other directly-invoked compute nodes do.
+name: "node_delegation_admission_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Pure computation: decides whether one Agent call is admitted to delegation.
+  Refuses a call whose origin is not supplied (unknown_call_origin), one that
+  is not model-raised, background, forked or resumed (unsupported_path), one
+  the agent-model guard refuses (guard_*), and a sensitive one (sensitive);
+  otherwise admits exactly when the ported task classifier calls it
+  delegatable. Returns admitted, task_type and reason, echoes the effective
+  mode and policy version, and carries no prompt text. Zero I/O at handle
+  time; the policy below equals the handler's DEFAULT_ADMISSION_POLICY, held equal by a test.
+input_model:
+  name: "ModelDelegationAdmissionRequest"
+  module: "omnimarket.nodes.node_delegation_admission_compute.models.model_delegation_admission"
+  description: "One Agent call: its tool input, call origin and effective mode."
+output_model:
+  name: "ModelDelegationAdmissionResult"
+  module: "omnimarket.nodes.node_delegation_admission_compute.models.model_delegation_admission"
+  description: "admitted, task_type, reason, effective_mode, policy_version."
+handler:
+  module: "omnimarket.nodes.node_delegation_admission_compute.handlers.handler_delegation_admission"
+  class: "HandlerDelegationAdmission"
+  input_model: "omnimarket.nodes.node_delegation_admission_compute.models.model_delegation_admission.ModelDelegationAdmissionRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegation_admission_compute.handlers.handler_delegation_admission:HandlerDelegationAdmission"
+  handlers:
+    - operation: "decide_delegation_admission"
+      handler:
+        name: "HandlerDelegationAdmission"
+        module: "omnimarket.nodes.node_delegation_admission_compute.handlers.handler_delegation_admission"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+admission_policy:
+  policy_version: "2026-10-17.1"
+  # The agent-model guard's allowed background models
+  # (omniclaude plugins/onex/hooks/config/agent_model_allowlist.json).
+  allowed_models: ["opus", "sonnet"]
+  # next.origin of a model-raised Agent call (capability probe row P11d).
+  model_raised_origin: {plugin: "engine", tier: "core"}
+  # The guard refuses an Agent call without a valid ROUTE line. Bands and hard
+  # floors are copied from the guard's routing contract
+  # (omniclaude plugins/onex/hooks/config/contract_agent_routing.yaml).
+  route_required: true
+  route_bands:
+    B0: {score_min: null, score_max: null, models: [], efforts: [], destination: "landing controller / deterministic node"}
+    B1: {score_min: 0, score_max: 4, models: [], efforts: [], destination: "onex delegate"}
+    B1c: {score_min: 0, score_max: 4, models: [], efforts: [], destination: "Jev (node_typed_decision_effect)"}
+    B2: {score_min: 5, score_max: 8, models: ["sonnet"], efforts: ["medium", "high"], destination: "Codex drafts, Sonnet lane verifies"}
+    B3: {score_min: 9, score_max: 13, models: ["sonnet"], efforts: ["high"], destination: "Sonnet lane"}
+    B4: {score_min: 14, score_max: 17, models: ["opus"], efforts: ["high"], destination: "Opus lane"}
+    B5: {score_min: 18, score_max: 21, models: ["opus"], efforts: ["xhigh"], destination: "Opus lane plus adversarial verify lane"}
+  route_hard_floors:
+    - {dimension: "R", value: 3, min_band: "B4"}
+    - {dimension: "J", value: 3, min_band: "B4"}
+outputs:
+  admitted:
+    type: bool
+  task_type:
+    type: str
+  reason:
+    type: str
+  effective_mode:
+    type: str
+  policy_version:
+    type: str
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegation-admission-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegation-admission-completed.v1"
+    failure: "onex.evt.omnimarket.delegation-admission-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Delegation Admission Compute (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-10-17"
+  tags:
+    - "compute"
+    - "delegation"
+    - "OMN-21097"
+  related_tickets:
+    - "OMN-21097"

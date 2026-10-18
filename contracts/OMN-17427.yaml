@@ -355,12 +355,35 @@ requirements:
     acceptance:
       - id: "AC68"
         statement: "AC68: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
+  - id: "req-review-finding-dispositions"
+    statement: "A fix worker's result carries a typed disposition (fixed, wrong, intentional, not_applicable) with the finding's id and class for each hostile-reviewer finding it answered, published as events; a pure compute folds them with the review pass signal into per-repo noise share, one-round pass share and rounds-to-pass, and names each finding class that appears on three distinct PRs inside seven days with one stable dedupe key."
+    acceptance:
+      - id: "AC69"
+        statement: "AC69: the fold counts wrong and not_applicable as noise, computes one-round pass share, five-or-more-round share and mean rounds to pass per repo, returns exactly one class-fix request for a class on three distinct PRs inside the window and none for two PRs, many findings on one PR or answers older than the window, and a worker result accepts finding_dispositions -- falsifier: uv run pytest tests/test_golden_chain_node_review_finding_disposition_compute.py -q fails at the merge base"
+  - id: "req-claude-account-token-pool"
+    statement: "Each host keeps a local secret-store entry per Claude account, resolves the first usable token in account order, marks a usage limit on that account and reports token-free pool status."
+    acceptance:
+      - id: "AC71"
+        statement: "AC71: the token-pool CLI and contract handler add accounts from stdin, rotate to the next account after a usage limit, resolve nothing and report ALARM when all accounts are limited, reuse an account after reset and keep token values out of status, metadata and refusal output -- falsifier: the focused token-pool unit or golden-chain test file fails"
+  - id: "req-publisher-fixture-one-copy"
+    statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
+    acceptance:
+      - id: "AC70"
+        statement: "AC70: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
+  - id: "req-hostile-reviewer-delegation-route"
+    statement: "The hostile reviewer can send its model calls through the delegation node's review task class and its completed event carries the merged findings and a verdict."
+    acceptance:
+      - id: "AC71"
+        statement: "AC71: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
   - id: "req-hostile-reviewer-codex-fallback"
     statement: "When a hostile-reviewer run's requested review routes produce no review output, the review runs on the Codex route the node contract declares, the completed event records which engine reviewed and which routes it replaced, and a run where no engine reviewed returns FAILED instead of a clean pass."
     acceptance:
-      - id: "AC69"
-        statement: "AC69: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
+      - id: "AC72"
+        statement: "AC72: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
+    command: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
     command: "uv run pytest tests/ci/test_core_pin_compat_omn17427.py -q"
@@ -490,11 +513,57 @@ evidence_requirements:
   - kind: "tests"
     description: "AC68: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
+  - kind: "tests"
+    description: "AC70: omnimarket's publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser."
+    command: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+  - kind: "tests"
+    description: "AC71: the delegation review route and the completed event's verdict and findings."
+    command: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-claude-token-pool-unit"
+    description: "Account rotation, reset, all-limited alarm, secret-free metadata and CLI refusal paths run against a temporary local secret store. The test file and node are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-claude-token-pool-golden-chain"
+    description: "The CLI walks add, resolve, mark-limited, all-limited and reset through the contract-declared handler with fake tokens. The test file and node are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-claude-token-pool-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's token-pool contract, handler and CLI using git and Python's standard library. The merge base has no node. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          import subprocess
+
+          root = "src/omnimarket/nodes/node_claude_token_pool_effect/"
+          def committed(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + root + path], text=True)
+
+          contract = committed("contract.yaml")
+          assert "class: HandlerClaudeTokenPool" in contract
+          assert "input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolRequest" in contract
+          handler = ast.parse(committed("handlers/handler_claude_token_pool.py"))
+          pool = next(node for node in handler.body if isinstance(node, ast.ClassDef) and node.name == "HandlerClaudeTokenPool")
+          assert {"handle", "_add", "_resolve", "_mark"} <= {node.name for node in pool.body if isinstance(node, ast.FunctionDef)}
+          cli = ast.parse(committed("__main__.py"))
+          assert {"main", "_pasted"} <= {node.name for node in cli.body if isinstance(node, ast.FunctionDef)}
+          print("Claude token pool artifact probe: PASS")
+          PY
   - id: "dod-omn17427-ac65-ci-red-watcher-facts-only"
     description: "The default runtime handler and compatibility reader retain watcher facts and withhold incomplete observations without raw GitHub subprocesses."
     source: "manual"
@@ -1227,14 +1296,59 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "lab_first_policy:" in source; assert "lab_rubric:" in source; print("lab-first routing deploy probe: PASS")'
-  - id: "dod-omn17427-ac67-hostile-reviewer-codex-fallback"
+  - id: "dod-omn17427-ac63-review-finding-dispositions"
+    description: "The review finding disposition golden chain passes: noise share, convergence shares, recurring-class detection and the worker result field."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_finding_disposition_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC69"]
+  - id: "dod-omn17427-review-dispositions-deploy-probe"
+    description: "Deploy probe. GitHub serves the review finding disposition handler at the checked-out HEAD with the noise and recurrence names. It fails at the merge base, which has no such handler, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_disposition_compute/handlers/handler_review_finding_disposition.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("NOISE_DISPOSITIONS", "class_fix_key_for", "_recurring")); print("review finding disposition deploy probe: PASS")'
+  - id: "dod-omn17427-ac70-publisher-fixture-one-copy"
+    description: "The publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser; the fence fails on the previous second copy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC70"]
+  - id: "dod-omn17427-ac70-one-copy-deploy-probe"
+    description: "Deploy probe. GitHub serves the omnimarket publisher fixture at the checked-out HEAD importing the omnibase_infra corpus. It fails at the merge base, where the fixture carries its own index, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/testing/publisher_contract_fixture.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "from omnibase_infra.testing.publisher_contract_fixture import" in source and "parse_contract" not in source; print("publisher fixture one-copy deploy probe: PASS")'
+  - id: "dod-omn17427-ac69-hostile-review-delegation"
+    description: "The hostile reviewer's delegation route sends each model call through the review task class pinned to the route key, a delegation that does not complete fails its route, and the completed event carries the verdict and the merged findings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-hostile-review-delegation-probe"
+    description: "Deploy probe. GitHub serves the delegation review adapter at the checked-out HEAD, calling the delegate skill with the review task type. It fails at the merge base, where the adapter does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("REVIEW_TASK_TYPE", "backend_id=model_key", "HandlerDelegateSkill")); print("hostile reviewer delegation route deploy probe: PASS")'
+  - id: "dod-omn17427-ac72-hostile-reviewer-codex-fallback"
     description: "The hostile-reviewer Codex fallback chain passes: an offline primary is reviewed by Codex and the engine is recorded, a healthy primary never touches the fallback, both engines offline is FAILED, and a silent primary counts as offline."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC69"]
+    binds_ac: ["AC72"]
   - id: "dod-omn17427-codex-fallback-deploy-probe"
     description: "Deploy probe. GitHub serves the hostile-reviewer orchestrator handler at the checked-out HEAD with the fallback route and the fallback fields. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
     source: "manual"

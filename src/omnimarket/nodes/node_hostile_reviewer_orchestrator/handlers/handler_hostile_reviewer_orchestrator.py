@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -39,12 +40,16 @@ from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
     ModelInferenceBridgeConfig,
 )
+from omnimarket.models.model_aggregated_finding import ModelAggregatedFinding
 from omnimarket.models.model_review_finding import (
     EnumReviewVerdict,
     ModelReviewFinding,
 )
 from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
     HandlerGithubDiffEffect,
+)
+from omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_delegation_review_inference import (
+    HandlerDelegationReviewInference,
 )
 from omnimarket.nodes.node_hostile_reviewer_orchestrator.model_config_loader import (
     ModelFallbackRoute,
@@ -125,6 +130,13 @@ def _finding_to_aggregator_dict(finding: ModelReviewFinding) -> dict[str, object
     }
 
 
+# The caller's route field names the adapter; a route absent here is the bridge,
+# which resolves its configs from the contract's route-config env.
+_ROUTE_ADAPTERS: dict[str, Callable[[], ModelInferenceAdapter]] = {
+    "delegation": HandlerDelegationReviewInference,
+}
+
+
 class HandlerHostileReviewerOrchestrator:
     """ORCHESTRATOR — multi-model adversarial code review over the bus.
 
@@ -186,7 +198,7 @@ class HandlerHostileReviewerOrchestrator:
         started_at: datetime,
     ) -> ModelHostileReviewerCompletedEvent:
         diff_content = await self._resolve_diff(command)
-        adapter = self._resolve_adapter(command.models)
+        adapter = self._resolve_adapter(command)
 
         fan_out = await self._fan_out_reviews(
             command=command,
@@ -235,7 +247,7 @@ class HandlerHostileReviewerOrchestrator:
                 models_failed=fan_out.models_failed,
             )
 
-        total_findings = await self._aggregate(
+        total_findings, verdict, findings = await self._aggregate(
             command.correlation_id, per_model_findings
         )
 
@@ -246,6 +258,8 @@ class HandlerHostileReviewerOrchestrator:
             completed_at=datetime.now(tz=UTC),
             pass_count=len(fan_out.models_succeeded),
             total_findings=total_findings,
+            verdict=verdict.value,
+            findings=list(findings),
             error_message=None,
             models_succeeded=fan_out.models_succeeded,
             models_failed=fan_out.models_failed,
@@ -302,7 +316,17 @@ class HandlerHostileReviewerOrchestrator:
         )
 
     async def _resolve_diff(self, command: ModelHostileReviewerStartCommand) -> str:
-        """Dispatch node_github_diff_effect to resolve the review target."""
+        """Resolve the review target: inline content, else node_github_diff_effect."""
+        if command.diff_content is not None:
+            if command.pr_number is not None or command.file_path is not None:
+                raise ValueError(
+                    "supply exactly one review target: diff_content OR "
+                    "(pr_number + repo) OR file_path"
+                )
+            if not command.diff_content.strip():
+                raise ValueError("inline diff_content is empty")
+            return command.diff_content
+
         diff_command = ModelGithubDiffCommand(
             correlation_id=command.correlation_id,
             repo=command.repo,
@@ -318,10 +342,15 @@ class HandlerHostileReviewerOrchestrator:
             )
         return resolved.content
 
-    def _resolve_adapter(self, models: list[str]) -> ModelInferenceAdapter:
+    def _resolve_adapter(
+        self, command: ModelHostileReviewerStartCommand
+    ) -> ModelInferenceAdapter:
         if self._inference_adapter is not None:
             return self._inference_adapter
-        configs = build_model_configs(requested_keys=models)
+        factory = _ROUTE_ADAPTERS.get(command.route)
+        if factory is not None:
+            return factory()
+        configs = build_model_configs(requested_keys=command.models)
         if self._fallback_route is not None:
             configs.setdefault(self._fallback_route.key, self._fallback_route.config)
         return AdapterInferenceBridge(ModelInferenceBridgeConfig(model_configs=configs))
@@ -441,16 +470,14 @@ class HandlerHostileReviewerOrchestrator:
         self,
         correlation_id: UUID,
         per_model_findings: dict[str, list[ModelReviewFinding]],
-    ) -> int:
+    ) -> tuple[int, EnumReviewVerdict, tuple[ModelAggregatedFinding, ...]]:
         """Dispatch node_finding_aggregator_compute for dedup + verdict.
 
-        Returns the total pre-dedup finding count carried by the completed
-        event. The aggregator's verdict is logged for observability; the
-        preserved ModelHostileReviewerCompletedEvent shape carries no verdict
-        field, so it is not surfaced on the event.
+        Returns the total pre-dedup finding count, the verdict and the merged
+        findings, all carried by the completed event for a gate to consume.
         """
         if not per_model_findings:
-            return 0
+            return 0, EnumReviewVerdict.CLEAN, ()
 
         output = await self._aggregator.aggregate(
             correlation_id=correlation_id,
@@ -466,7 +493,11 @@ class HandlerHostileReviewerOrchestrator:
             correlation_id,
             output.total_merged_findings,
         )
-        return sum(len(f) for f in per_model_findings.values())
+        return (
+            sum(len(f) for f in per_model_findings.values()),
+            verdict,
+            output.merged_findings,
+        )
 
 
 def _verdict_from_aggregated(aggregated_value: str) -> EnumReviewVerdict:
