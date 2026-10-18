@@ -352,6 +352,7 @@ node_exemplar_admission_compute = "omnimarket.nodes.node_exemplar_admission_comp
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
+node_context_gate_cascade_compute = "omnimarket.nodes.node_context_gate_cascade_compute"
 node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
 node_rescue_patch_review_compute = "omnimarket.nodes.node_rescue_patch_review_compute"
 node_rescue_patch_review_effect = "omnimarket.nodes.node_rescue_patch_review_effect"
