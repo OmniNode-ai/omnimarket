@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18698"
+title: "A golden chain and an error chain exist for every local-path goal row"
+summary: "Evidence for OMN-18698 in the repository that carries the work (omnimarket#2658, squash c7615cb9b). AC3 binds to the local chain-pair registry absence test. AC1 is not bound: at origin/dev 5457fa2aa rows L1, L2, L7, L8 and L9 still have no chain pair. AC2 and AC4 had no proposed check."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "The local chain-pair registry absence test passes."
+    command: "uv run pytest tests/chains/local/test_local_chain_pair_registry_omn18698.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn-18698-ac3-absent-rows-named"
+    description: "AC3 binding (accepted 2026-10-18T2045Z, proposed by lane=dod-closeout-bind-2026-10-18T2045Z-c3, accepted by lane=dod-closeout-accept-2026-10-18T2045Z-c3). The set of local rows with no chain pair is pinned, and the absence report names every such row as ABSENT with its ticket, so a row with no pair is reported absent rather than counted green. Re-run at origin/dev 5457fa2aa PASSED; the test file is added by c7615cb9b and is absent at its parent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest \"tests/chains/local/test_local_chain_pair_registry_omn18698.py::test_rows_without_a_pair_are_named\" -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+    ac_bindings:
+      - label: "AC3"
+        criterion_hash: "ce6b35dc52f7236b667b6948c0dffb33fed2cb9eff27a7b11190f25cef6285f0"
+        proposed_by: "lane=dod-closeout-bind-2026-10-18T2045Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-10-18T2045Z-c3"
+        accepted_at: "2026-10-18T21:18:56Z"
