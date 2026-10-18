@@ -17,7 +17,7 @@ orchestrator threads state through this hop for real.
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Final, Literal
 
 from omnimarket.codegen.models import (
     ModelCodegenSpec,
@@ -30,6 +30,7 @@ from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 
 _DEFAULT_MODEL_KEY = "codegen"
 _DEFAULT_TIMEOUT_SECONDS = 120.0
@@ -39,10 +40,26 @@ _LAB_BACKEND_ID = "local-coder"
 # path to a base URL itself.
 _CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
 
+# The lab Qwen otherwise spends the bridge's whole completion budget thinking and
+# returns an empty ``content``; the bridge then hands the reasoning text back as
+# the module source. The profile turns the reasoning trace off for node generation.
+_NO_THINK_PROTOCOL_SELECTION: Final[ModelInferenceProtocolSelection] = (
+    ModelInferenceProtocolSelection(
+        profile_id="local-qwen-generation-no-think",
+        task_type="node_generation",
+    )
+)
+
 _SYSTEM_PROMPT = (
     "You are an ONEX node code generator. Given a node spec, emit a single "
     "Python module implementing the node's handler class. Output only the "
-    "Python source (optionally in one fenced code block); no prose."
+    "Python source (optionally in one fenced code block); no prose. The module "
+    "is type-checked on its own, so it must import nothing outside the Python "
+    "standard library (define the spec's base class in the module itself as a "
+    "docstring-only class that declares no methods), and every function must "
+    "annotate its parameters and return type. The handler method must do the "
+    "real work: a body that only raises, passes or returns a constant "
+    "placeholder is rejected as a stub."
 )
 
 # Extract the first fenced Python block when the model wraps its output in one.
@@ -133,6 +150,7 @@ class HandlerLlmCodegen:
             system_prompt=_SYSTEM_PROMPT,
             user_prompt=_build_prompt(spec),
             timeout_seconds=self._timeout_seconds,
+            protocol_selection=_NO_THINK_PROTOCOL_SELECTION,
         )
         source_text = _strip_code_fences(raw)
         return ModelLlmGenerateResult(state=command.state.with_source(source_text))

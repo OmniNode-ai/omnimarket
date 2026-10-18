@@ -39,7 +39,8 @@ import pytest
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
-# Golden updated for the hygiene caller pin in #3778, replay refs in #3756 and core guard in #3789.
+# Golden updated for the hygiene caller pin in #3778, replay refs in #3756, core guard in #3789
+# and the hook push rehearsal caller in #4065.
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )

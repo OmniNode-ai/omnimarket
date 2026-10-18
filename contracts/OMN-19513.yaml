@@ -33,6 +33,11 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "AC4: an event with stream lineage and a producer_seq validates and projects the same row as without them, and a content stream, a zero, a string or a boolean sequence is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k item_identity fails against the pre-change wire model"
+  - id: "req-ledger-terminal-cost-provenance"
+    statement: "The work-ledger serve consumes delegation terminals carrying typed cost provenance, including null fields reported as rejected by the installed serve."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: completed and failed terminals carrying null, measured, estimated or unknown provenance append once after redelivery, preserve the typed fields, and malformed provenance is refused -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -42,6 +47,13 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19513-ac5-ledger-terminal-cost-provenance"
+    description: "Replay the null provenance field shape rejected by the installed serve through WorkLedgerAppendHost and the delegation mirror handler; cover typed non-null values, invalid values and redelivery. The current source already declares the fields; installing it on the ledger host and the one-hour log observation remain pending."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov"
+    binds_ac: ["AC5"]
   - id: "dod-omn19513-ac1-passthrough"
     description: "AC1: hook.event and content.captured resolve to passthrough."
     source: "manual"

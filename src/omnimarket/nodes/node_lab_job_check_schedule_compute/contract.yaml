@@ -25,9 +25,7 @@ description: >
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
-    - routing_key: platform.runtime-tick
-      handler_key: lab_job_check_schedule
-      handler:
+    - handler:
         name: HandlerLabJobCheckSchedule
         module: omnimarket.nodes.node_lab_job_check_schedule_compute.handlers.handler_lab_job_check_schedule
       event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick

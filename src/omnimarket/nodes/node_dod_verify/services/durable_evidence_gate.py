@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from html import escape
 from typing import Protocol
 
@@ -887,8 +888,26 @@ def extract_receipt_merge_commits(
     Receipts that do not carry a complete PASS PR binding are ignored; the gate
     fails when the complete receipt set yields zero citations.
 
+    OMN-16106: when no receipt names its repository by ``--repo`` or a PR URL,
+    the set is read again with the GitHub REST path a receipt's own probe
+    names (``repos/<owner>/<repo>/commits/<commit_sha>`` or
+    ``repos/<owner>/<repo>/pulls/<pr_number>``), the only repository field an
+    occ-probe-capture-v1 receipt carries. It is a fallback, so a set that
+    already yields a citation reads exactly as before, and Check 2 still
+    proves every citation merged in that repository.
+
     Pure function — no I/O.
     """
+    citations = _receipt_merge_commits(receipts, _extract_receipt_repo)
+    if citations:
+        return citations
+    return _receipt_merge_commits(receipts, _extract_receipt_repo_from_api_path)
+
+
+def _receipt_merge_commits(
+    receipts: list[dict[str, object]],
+    resolve_repo: Callable[[dict[str, object], int], str | None],
+) -> list[ModelCitedMergeCommit]:
     citations: list[ModelCitedMergeCommit] = []
     seen: set[tuple[str, int, str]] = set()
     for receipt in receipts:
@@ -908,7 +927,7 @@ def extract_receipt_merge_commits(
             or not _SHA_RE.match(sha)
         ):
             continue
-        repo = _extract_receipt_repo(receipt, pr_number)
+        repo = resolve_repo(receipt, pr_number)
         if repo is None:
             continue
         key = (repo, pr_number, sha)
@@ -941,6 +960,37 @@ def _extract_receipt_repo(receipt: dict[str, object], pr_number: int) -> str | N
         repo = _extract_repo_from_text(value, pr_number)
         if repo is not None:
             return repo
+    return None
+
+
+_GITHUB_API_REPO_PATH_RE = re.compile(
+    r"(?:^|[\s\"'/])repos/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/"
+    r"(?:commits/(?P<sha>[0-9a-fA-F]{7,40})|pulls/(?P<pr>\d+))(?![0-9A-Za-z])"
+)
+
+
+def _extract_receipt_repo_from_api_path(
+    receipt: dict[str, object], pr_number: int
+) -> str | None:
+    """Resolve ``owner/repo`` from a GitHub REST path naming this receipt.
+
+    A path counts only when it names the receipt's own ``commit_sha`` or its
+    own ``pr_number``; a probe of any other commit or PR names nothing.
+    """
+    sha = receipt.get("commit_sha")
+    if not isinstance(sha, str):
+        return None
+    for field in ("probe_command", "check_value"):
+        value = receipt.get(field)
+        if not isinstance(value, str):
+            continue
+        for match in _GITHUB_API_REPO_PATH_RE.finditer(value):
+            probed_sha = match.group("sha")
+            probed_pr = match.group("pr")
+            if probed_sha is not None and _sha_prefix_match(probed_sha, sha):
+                return match.group("repo")
+            if probed_pr is not None and int(probed_pr) == pr_number:
+                return match.group("repo")
     return None
 
 

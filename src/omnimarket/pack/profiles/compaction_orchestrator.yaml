@@ -27,6 +27,12 @@ factor_precedence:
   - tail_summary
 stable_factors: []
 token_budget: 16000
+# Window data (port item AP-B5): the consumer's window minus its reserved output and
+# system shares. reserved_system_tokens is the measured median main-session preamble
+# (plan section 4.4); the window and reserved output are first values, measured by TC.12.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 95771
 conversation_tail_messages: 20
 extraction_task_class: extraction_proposer
 summary_task_class: context_compaction
