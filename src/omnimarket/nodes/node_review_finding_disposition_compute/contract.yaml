@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Finding Disposition Compute (OMN-17427)
+#
+# Pure COMPUTE: folds the typed answers fix workers give to hostile-reviewer
+# findings (fixed / wrong / intentional / not_applicable) and the review pass
+# signal into per-repo noise share, one-round pass share and rounds-to-pass, and
+# names each finding class that recurred on three PRs inside the window so one
+# class-fix item can be filed for it.
+---
+name: node_review_finding_disposition_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE over recorded review-finding dispositions and review passes.
+  Per repo: noise share (wrong + not_applicable over answered findings),
+  one-round pass share, five-or-more-round share and mean rounds to pass. Per
+  finding class: a class-fix request, with a stable dedupe key, when the class
+  appears on at least recurrence_threshold distinct PRs inside the window. No
+  I/O and no clock; the window ends at the request's as_of.
+
+input_model:
+  name: ModelReviewFindingDispositionInput
+  module: omnimarket.nodes.node_review_finding_disposition_compute.models.model_review_finding_disposition
+  description: "Recorded dispositions and passes, the window end and thresholds."
+
+output_model:
+  name: ModelReviewFindingDispositionOutput
+  module: omnimarket.nodes.node_review_finding_disposition_compute.models.model_review_finding_disposition
+  description: "Per-repo review metrics and the class-fix requests due."
+
+handler:
+  module: omnimarket.nodes.node_review_finding_disposition_compute.handlers.handler_review_finding_disposition
+  class: HandlerReviewFindingDispositionCompute
+  input_model: omnimarket.nodes.node_review_finding_disposition_compute.models.model_review_finding_disposition.ModelReviewFindingDispositionInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: review_finding_disposition
+      handler:
+        name: HandlerReviewFindingDispositionCompute
+        module: omnimarket.nodes.node_review_finding_disposition_compute.handlers.handler_review_finding_disposition
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-finding-disposition-fold.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-finding-disposition-folded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-finding-disposition-fold.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-finding-disposition-folded.v1
+
+terminal_event: onex.evt.omnimarket.review-finding-disposition-folded.v1
+
+# The recorded events are the node's input rows: the landing controller publishes
+# the first from a fix worker's result file, the review gate publishes the second.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.review-finding-disposition-recorded.v1
+    producer: "landing controller, from the finding_dispositions a fix worker writes into its result"
+  - topic: onex.evt.omnimarket.review-pass-recorded.v1
+    producer: "landing controller, when the hostile reviewer passes a PR"
+externally_consumed_topics:
+  - onex.evt.omnimarket.review-finding-disposition-folded.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Review finding disposition metrics and recurring-finding detector - pure COMPUTE"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "review"
+    - "disposition"
+    - "noise"
+  related_tickets:
+    - "OMN-17427"
