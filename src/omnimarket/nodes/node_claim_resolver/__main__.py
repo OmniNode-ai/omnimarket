@@ -28,7 +28,7 @@ def main() -> int:
         return 1
 
     try:
-        response = HandlerClaimResolver().verify(request)
+        response = HandlerClaimResolver().handle(request)
     except Exception as exc:
         sys.stderr.write(f"CLAIM_RESOLVER_RUNTIME_ERROR:{exc}\n")
         return 1
