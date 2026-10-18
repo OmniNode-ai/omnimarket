@@ -1070,7 +1070,7 @@ dod_evidence:
         check_value: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC63"]
-  - id: "dod-omn17427-session-capability-digest-deploy-probe"
+  - id: "dod-omn17427-ac63-digest-deploy-probe"
     description: "Deploy probe. GitHub serves the session capability digest handler at the checked-out HEAD with its freshness bound and its STALE line. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
