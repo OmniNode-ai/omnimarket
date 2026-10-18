@@ -169,3 +169,36 @@ async def test_a_nul_character_and_a_long_chunk_are_stored() -> None:
         )
         assert stored.startswith("a�b")
         assert len(stored) == 65003
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_both_streams_barriers_of_one_call_land_as_two_rows() -> None:
+    """OMN-21123 (TA.21): one barrier call writes a barrier per stream under one
+    ``emitted_at``; keyed by their stamp they are two rows, and a replay of each
+    is still two."""
+    from omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity import (
+        build_barrier_payload,
+    )
+
+    barriers = [
+        build_barrier_payload(
+            session_id="pg-session",
+            barrier_id="pg-barrier",
+            stream=stream,
+            high_water_value=high_water,
+            content_capture_enabled=True,
+            emitted_at="2026-10-18T00:00:00+00:00",
+        )
+        for stream, high_water in (("lineage", 6), ("content", 4))
+    ]
+    async with _migrated_writer() as (writer, connection, schema):
+        for barrier in barriers + barriers:
+            await writer._write(TOPIC, dict(barrier))
+        rows = await connection.fetch(
+            f"SELECT content_kind, content FROM {schema}.session_content"
+        )
+        assert [(r["content_kind"], r["content"]) for r in rows] == [
+            ("barrier", ""),
+            ("barrier", ""),
+        ]

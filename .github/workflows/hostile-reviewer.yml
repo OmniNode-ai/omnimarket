@@ -198,7 +198,8 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0
+          # OMN-20910: merged Claude API voter support; existing overlay voters remain supported.
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 7f686d4bbca251dd3db49c1222ff8d6f738abd6c
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core

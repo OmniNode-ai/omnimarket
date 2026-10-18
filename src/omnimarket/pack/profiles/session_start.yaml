@@ -1,0 +1,36 @@
+# Context profile added at Claude Code session start (plan task TC.8, section 4.4).
+# Additive SessionStart binding. Values are the plan's first values; a profile
+# changes only through a data PR that cites measured evidence (TC.9, TC.12).
+model_id: claude-code-session
+profile_version: 1.0.0
+injection_point: SessionStart
+binding_kind: additive
+required_factors:
+  - session_goal
+  - operator_rulings
+  - open_work
+optional_factors:
+  - capability_digest
+  - invariants
+  - plan_excerpts
+# Authority order, section 4.2: invariants, rulings, state, cited plans.
+factor_precedence:
+  - invariants
+  - operator_rulings
+  - open_work
+  - session_goal
+  - capability_digest
+  - plan_excerpts
+stable_factors:
+  - invariants
+scopes:
+  - process
+token_budget: 6000
+# Window data (port item AP-B5): the consumer's window minus its reserved output and
+# system shares. reserved_system_tokens is the measured median main-session preamble
+# (plan section 4.4); the window and reserved output are first values, measured by TC.12.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 95771
+latency_budget_ms: 5000
+selection_task_class: context_selection
