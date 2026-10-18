@@ -355,11 +355,16 @@ requirements:
     acceptance:
       - id: "AC68"
         statement: "AC68: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
+  - id: "req-review-finding-dispositions"
+    statement: "A fix worker's result carries a typed disposition (fixed, wrong, intentional, not_applicable) with the finding's id and class for each hostile-reviewer finding it answered, published as events; a pure compute folds them with the review pass signal into per-repo noise share, one-round pass share and rounds-to-pass, and names each finding class that appears on three distinct PRs inside seven days with one stable dedupe key."
+    acceptance:
+      - id: "AC69"
+        statement: "AC69: the fold counts wrong and not_applicable as noise, computes one-round pass share, five-or-more-round share and mean rounds to pass per repo, returns exactly one class-fix request for a class on three distinct PRs inside the window and none for two PRs, many findings on one PR or answers older than the window, and a worker result accepts finding_dispositions -- falsifier: uv run pytest tests/test_golden_chain_node_review_finding_disposition_compute.py -q fails at the merge base"
   - id: "req-gateway-pr-text-cross-repository"
     statement: "The GitHub gateway's pr_text read reports the head repository and whether the head is cross-repository, so a caller that refuses fork heads reads it from the gateway and needs no gh CLI."
     acceptance:
-      - id: "AC69"
-        statement: "AC69: the gateway pr_text result carries head_repo and is_cross_repository: True for a fork head and for a head repository that is gone, False for a same-repository head compared without regard to letter case."
+      - id: "AC70"
+        statement: "AC70: the gateway pr_text result carries head_repo and is_cross_repository: True for a fork head and for a head repository that is gone, False for a same-repository head compared without regard to letter case."
 evidence_requirements:
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
@@ -491,7 +496,7 @@ evidence_requirements:
     description: "AC68: the lab-first routing check passes the shipped contracts and refuses each cloud-first mutation."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q"
   - kind: "tests"
-    description: "AC69: the gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
+    description: "AC70: the gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
     command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
 emergency_bypass:
   enabled: false
@@ -1230,15 +1235,30 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "lab_first_policy:" in source; assert "lab_rubric:" in source; print("lab-first routing deploy probe: PASS")'
-  - id: "dod-omn17427-ac69-gateway-pr-text-cross-repository"
+  - id: "dod-omn17427-ac63-review-finding-dispositions"
+    description: "The review finding disposition golden chain passes: noise share, convergence shares, recurring-class detection and the worker result field."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_finding_disposition_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC69"]
+  - id: "dod-omn17427-review-dispositions-deploy-probe"
+    description: "Deploy probe. GitHub serves the review finding disposition handler at the checked-out HEAD with the noise and recurrence names. It fails at the merge base, which has no such handler, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_disposition_compute/handlers/handler_review_finding_disposition.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("NOISE_DISPOSITIONS", "class_fix_key_for", "_recurring")); print("review finding disposition deploy probe: PASS")'
+  - id: "dod-omn17427-ac70-gateway-pr-text-cross-repository"
     description: "The gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC69"]
-  - id: "dod-omn17427-gateway-pr-text-cross-repository-deploy-probe"
+    binds_ac: ["AC70"]
+  - id: "dod-omn17427-gateway-fork-deploy-probe"
     description: "Deploy probe. GitHub serves the gateway read operations at the checked-out HEAD reporting is_cross_repository. The probe fails at the merge base, which has no such field, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
