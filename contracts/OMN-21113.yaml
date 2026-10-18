@@ -35,17 +35,18 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_contracts.py -q -p no:randomly --no-cov"
   - id: "dod-omn21113-deploy-container-fallback"
-    description: "Hosted deploy probe. A labelled ephemeral Python 3.12 container with Git mounts the checkout read-only and uses uv run --frozen --no-dev to install it into /tmp without dev dependencies and sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    description: "Hosted deploy probe. A labelled ephemeral Python 3.12 container mounts the checkout read-only and the uv cache the verifier already synced from uv.lock, uses uv run --frozen --no-dev to install it into /tmp without dev dependencies and sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it inside the 30s check budget; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |-
-          env COMPOSE_PROJECT_NAME=landing-l10233-lab docker run --rm \
+          docker run --rm --user "$(id -u):$(id -g)" \
           --label onex.deploy-probe=OMN-21113 \
           --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
           --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
           --env PYTHONDONTWRITEBYTECODE=1 \
-          ghcr.io/astral-sh/uv:python3.12-bookworm \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
           uv run --frozen --no-dev python -c '
           from uuid import UUID
           from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
