@@ -929,6 +929,7 @@ node_facts_first_prompt_compute = "omnimarket.nodes.node_facts_first_prompt_comp
 node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_effect"
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
 node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
+node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
