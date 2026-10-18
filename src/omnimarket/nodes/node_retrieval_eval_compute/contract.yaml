@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeRetrievalEvalCompute (OMN-21132, plan task TC.9, port item AP-E1)
+
+name: node_retrieval_eval_compute
+version: "1.0.0"
+contract_name: node_retrieval_eval_compute
+node_name: node_retrieval_eval_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure deterministic retrieval metrics with per-slice aggregation and fixed-seed bootstrap intervals.
+
+input_model:
+  name: ModelRetrievalEvalRequest
+  module: omnimarket.models.retrieval_eval
+
+output_model:
+  name: ModelRetrievalEvalReport
+  module: omnimarket.models.retrieval_eval
+
+handler:
+  module: omnimarket.nodes.node_retrieval_eval_compute.handlers.handler_retrieval_eval
+  class: HandlerRetrievalEval
+  input_model: omnimarket.models.retrieval_eval.ModelRetrievalEvalRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerRetrievalEval
+        module: omnimarket.nodes.node_retrieval_eval_compute.handlers.handler_retrieval_eval
+      event_model:
+        name: ModelRetrievalEvalRequest
+        module: omnimarket.models.retrieval_eval
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+capabilities:
+  - name: context.eval.retrieval_metrics
+    description: Evaluate ranked retrieval results and per-slice metrics
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.retrieval-eval-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.retrieval-eval-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.retrieval-eval-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.retrieval-eval-completed.v1
+
+terminal_event: onex.evt.omnimarket.retrieval-eval-completed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21132
+  maturity: alpha
+  tags:
+    - context-eval
+    - retrieval-metrics
+
+config:
+  retrieval_eval:
+    k_values: [1, 3, 5, 10]
+    # First value; changed only by a data PR that cites a TC.9 report.
+    target:
+      metric: recall_at_k
+      k: 10
+      min_value: 0.8
+    interval:
+      method: bootstrap_percentile
+      confidence: 0.95
+      resamples: 2000
+      seed: 20261018
