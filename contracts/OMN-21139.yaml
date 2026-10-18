@@ -79,14 +79,14 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov -k 'no_model_client or reads_no_file or never_rulings'"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_contracts.py tests/nodes/node_extraction_verify_compute/test_verify.py tests/nodes/node_transcript_chunk_compute/test_contracts.py tests/nodes/node_extraction_fold_compute/test_contracts.py tests/nodes/node_extraction_fold_compute/test_fold.py -q -p no:randomly --no-cov -k 'no_model_client or reads_no_file or never_rulings'"
     binds_ac: ["AC6"]
   - id: "dod-omn21139-ac7"
     description: "AC7: an admitted event is a TRANSCRIPT_EXTRACTS artifact with verbatim_verified true, its source_ref and both offset pairs; the result holds no ruling and the path has no ledger writer."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute -q -p no:randomly --no-cov -k 'transcript_extracts_artifact or no_model_client'"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py tests/nodes/node_extraction_verify_compute/test_contracts.py -q -p no:randomly --no-cov -k 'transcript_extracts_artifact or no_model_client'"
     binds_ac: ["AC7"]
   - id: "dod-omn21139-ac10"
     description: "AC10: two proposals that widen to the same candidate, with different proposed spans and scope, give one digest; kind and source change it."
@@ -132,3 +132,10 @@ dod_evidence:
           assert a.quote == "Do not deploy without approval." and a.factor.value == "transcript_extracts" and a.verbatim_verified, r
           assert r.rejection_counts["absent"] == 1, r
           print(a.candidate_digest)'
+  - id: "dod-omn21139-deploy-hosted-source"
+    description: "Hosted source identity probe: the published verifier at the checked-out commit contains its handler class. The handler is absent at the merge base. The preceding behavioral probe checks admitted and rejected proposals; this source probe does not claim a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_extraction_verify_compute/handlers/handler_extraction_verify.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq "class HandlerExtractionVerify:"'
