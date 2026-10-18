@@ -243,3 +243,78 @@ def test_cli_exit_codes_for_empty_and_all_limited(rig, monkeypatch, capsys) -> N
     )
     assert cli.main(["resolve"], handler) == cli.EXIT_ALL_LIMITED
     assert "ALARM claude-pool" in capsys.readouterr().err
+
+
+def test_forced_replacement_keeps_account_order_and_clears_its_limit(rig) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    op(handler, "mark_limited", label="acct-a", seconds=3600)
+    replacement = op(
+        handler,
+        "add",
+        label="acct-a",
+        setup_token_output=SecretStr(fake_token("c")),
+        force=True,
+    )
+    assert [entry.label for entry in replacement.tokens] == ["acct-a", "acct-b"]
+    assert replacement.limited == 0
+    resolved = op(handler, "resolve")
+    assert resolved.chosen == "acct-a"
+    assert resolved.token.get_secret_value() == fake_token("c")
+
+
+def test_mark_requires_reset_seconds_and_preserves_the_pool(rig) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="needs the seconds"):
+        op(handler, "mark_limited", label="acct-a")
+    assert op(handler, "status").limited == 0
+    assert op(handler, "resolve").chosen == "acct-a"
+
+
+def test_corrupt_pool_is_refused_without_replacing_it(rig) -> None:
+    handler, _, tmp = rig
+    path = tmp / "store" / "claude_token_pool.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{not-json", encoding="utf-8")
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="is not JSON"):
+        op(handler, "status")
+    assert path.read_text(encoding="utf-8") == "{not-json"
+
+
+def test_cli_refuses_bad_input_without_echoing_it(rig, monkeypatch, capsys) -> None:
+    handler, _, _ = rig
+    pasted = fake_token("a")[:30]
+    monkeypatch.setattr("sys.stdin", _Pipe(pasted))
+    assert cli.main(["add", "--label", "acct-a"], handler) == cli.EXIT_REFUSED
+    output = capsys.readouterr()
+    assert "cut short" in output.err
+    assert pasted not in output.out + output.err
+    assert not op(handler, "status").tokens
+
+
+def test_cli_json_status_excludes_resolved_token(rig, capsys) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    op(handler, "resolve")
+    assert cli.main(["status", "--json"], handler) == 0
+    output = capsys.readouterr()
+    status = json.loads(output.out)
+    assert status["tokens"][0]["label"] == "acct-a"
+    assert "token" not in status
+    assert fake_token("a") not in output.out + output.err
+
+
+def test_terminal_input_uses_a_hidden_prompt(monkeypatch) -> None:
+    monkeypatch.setattr("sys.stdin", _Tty())
+    prompts = []
+
+    def hidden(prompt: str) -> str:
+        prompts.append(prompt)
+        return fake_token("a")
+
+    monkeypatch.setattr(cli, "getpass", hidden)
+    assert cli._pasted() == fake_token("a")
+    assert len(prompts) == 1
+    assert "input hidden" in prompts[0]

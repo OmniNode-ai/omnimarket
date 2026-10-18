@@ -112,3 +112,41 @@ def test_golden_chain_rotates_per_token_through_the_contract_handler(
         assert "sk-ant-" not in path.read_text(encoding="utf-8")
     assert "sk-ant-" not in err
     assert "label=acct-b" in err
+
+
+def test_token_pool_has_its_own_acceptance_bound_evidence() -> None:
+    repo = NODE.parents[3]
+    contract = yaml.safe_load(
+        (repo / "contracts" / "OMN-17427.yaml").read_text(encoding="utf-8")
+    )
+    requirement = next(
+        (
+            item
+            for item in contract["requirements"]
+            if item["id"] == "req-claude-account-token-pool"
+        ),
+        None,
+    )
+    assert requirement is not None, "the token pool needs its own acceptance criterion"
+    acceptance = {item["id"] for item in requirement["acceptance"]}
+    own = [
+        item
+        for item in contract["dod_evidence"]
+        if item["id"].startswith("dod-omn17427-claude-token-pool-")
+    ]
+    bound = [item for item in own if set(item.get("binds_ac", [])) == acceptance]
+    selectors = {
+        check["check_value"].split()[3]
+        for item in bound
+        for check in item["checks"]
+        if check["check_type"] == "test_passes"
+    }
+    assert selectors == {
+        "tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py",
+        "tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py",
+    }
+    assert any(
+        check["check_type"] == "command" and "Deploy probe" in item["description"]
+        for item in own
+        for check in item["checks"]
+    )
