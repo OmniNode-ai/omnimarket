@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from omnimarket.inference.task_class_authority import load_task_class_authority
 from omnimarket.models.delegation.model_lab_rubric import (
     EnumLabVerdict,
+    ModelLabFirstPolicy,
     ModelLabRubric,
 )
 from omnimarket.nodes.node_lab_first_routing_check_compute.handlers.handler_lab_first_routing_check import (
@@ -122,6 +123,19 @@ def test_recorded_code_review_measurement_is_a_fail_below_the_bar() -> None:
     assert rubric.verdict is EnumLabVerdict.FAIL
     assert rubric.measured is not None
     assert (rubric.measured.adequate, rubric.measured.of) == (0, 28)
+
+
+def test_recorded_review_measurement_is_a_fail_below_the_bar() -> None:
+    entry = _classes(_contracts())["review"]
+    rubric = ModelLabRubric.model_validate(entry["lab_rubric"])
+    contracts = _contracts()
+    policy = ModelLabFirstPolicy.model_validate(contracts["lab_first_policy"])
+    assert rubric.verdict is EnumLabVerdict.FAIL
+    assert rubric.measured is not None
+    assert rubric.measured.model == "Qwen3.8-27B"
+    assert (rubric.measured.adequate, rubric.measured.of) == (25, 60)
+    assert rubric.derived_verdict(policy.bar) is EnumLabVerdict.FAIL
+    assert _check(contracts).ok is True
 
 
 def test_a_measured_pass_keeps_the_class_lab_first() -> None:
