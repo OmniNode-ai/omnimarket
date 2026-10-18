@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeExtractionVerifyCompute (OMN-21139, plan task TE.2)
+
+name: node_extraction_verify_compute
+version: "1.0.0"
+contract_name: node_extraction_verify_compute
+node_name: node_extraction_verify_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure verifier for model-proposed transcript extractions. A proposed event is admitted only when its quote, after whitespace normalisation, equals the cited operator-typed prompt's text at the cited offsets; the admitted span is widened to its enclosing sentences by a versioned splitter and carries a candidate_digest over its canonical JSON. Every other proposal is dropped and counted by reason (parse failure, unknown source, synthetic source, wrong offsets, absent). An admitted event is a TRANSCRIPT_EXTRACTS candidate, never a ruling; no model client, no ledger read, no I/O.
+
+input_model:
+  name: ModelExtractionVerifyRequest
+  module: omnimarket.models.transcript_extraction
+
+output_model:
+  name: ModelExtractionVerifyResult
+  module: omnimarket.models.transcript_extraction
+
+handler:
+  module: omnimarket.nodes.node_extraction_verify_compute.handlers.handler_extraction_verify
+  class: HandlerExtractionVerify
+  input_model: omnimarket.models.transcript_extraction.ModelExtractionVerifyRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerExtractionVerify
+        module: omnimarket.nodes.node_extraction_verify_compute.handlers.handler_extraction_verify
+      event_model:
+        name: ModelExtractionVerifyRequest
+        module: omnimarket.models.transcript_extraction
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.extraction.verify
+    description: Admit model-proposed extractions only as verbatim, sentence-widened operator words
+    version: 1.0.0
+
+# The request and the result both carry operator words verbatim (captured prompts,
+# admitted quotes), so both topics are on the restricted onex.cmd.omniintelligence.*
+# family, never onex.evt.* (plan section 2 privacy split).
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.extraction-verify-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.extraction-verified.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.extraction-verify-requested.v1
+  terminal_events:
+    success: onex.cmd.omniintelligence.extraction-verified.v1
+
+terminal_event: onex.cmd.omniintelligence.extraction-verified.v1
+
+# The verified result is read by the extraction fold and, later, the pack orchestrator
+# (plan tasks TE.2 and TE.8); neither subscribes in this repository yet.
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.extraction-verified.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21139
+  maturity: alpha
+  tags:
+    - context-pack
+    - transcript-extraction
+    - verifier
