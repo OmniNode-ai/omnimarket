@@ -83,8 +83,23 @@ dod_evidence:
         check_value: "uv run pytest tests/pack/test_context_profiles_v5.py -q -p no:randomly --no-cov -n 0 -k 'window'"
     binds_ac: ["AC6"]
   - id: "dod-omn21131-deploy-task-kind-rules-node"
-    description: "Deploy probe on the hosted runner. At the checked-out commit the task-kind rules compute resolves the per_prompt profile's tests route and an unmatched request is unknown; at the merge base the node and the per_prompt profile do not exist and the probe fails."
+    description: "Deploy probe on the hosted runner: an ephemeral Python 3.12 container mounts the checkout read-only and installs it with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the nodes under probe do not import. At the checked-out commit the task-kind rules compute resolves the per_prompt profile's tests route and an unmatched request is unknown; at the merge base the node and the per_prompt profile do not exist and the probe fails."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run --frozen --no-dev python -c \"from omnibase_core.models.context.model_context_caller_scope import ModelContextCallerScope as S; from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import HandlerContextProfileResolver as R; from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import ModelContextProfileResolveRequest as Q; from omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules import HandlerContextTaskKindRules as H; from omnimarket.nodes.node_context_task_kind_rules_compute.models import ModelContextTaskKindRulesRequest as T; p = R().handle(Q(profile_name='per_prompt')).profile; hit = H().handle(T(profile_name='per_prompt', profile=p, caller_scope=S(repository='omnimarket', request_paths=('tests/unit/test_x.py',)))); miss = H().handle(T(profile_name='per_prompt', profile=p, caller_scope=S())); assert hit.task_kind == 'test_conventions', hit; assert miss.task_kind == 'unknown' and miss.admitted_factors == (), miss; print(hit.task_kind, miss.task_kind)\""
+        check_value: |-
+          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          from omnibase_core.models.context.model_context_caller_scope import ModelContextCallerScope as S
+          from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import HandlerContextProfileResolver as R
+          from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import ModelContextProfileResolveRequest as Q
+          from omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules import HandlerContextTaskKindRules as H
+          from omnimarket.nodes.node_context_task_kind_rules_compute.models import ModelContextTaskKindRulesRequest as T
+          p = R().handle(Q(profile_name="per_prompt")).profile
+          hit = H().handle(T(profile_name="per_prompt", profile=p, caller_scope=S(repository="omnimarket", request_paths=("tests/unit/test_x.py",))))
+          miss = H().handle(T(profile_name="per_prompt", profile=p, caller_scope=S()))
+          assert hit.task_kind == "test_conventions", hit
+          assert miss.task_kind == "unknown" and miss.admitted_factors == (), miss
+          print(hit.task_kind, miss.task_kind)'
