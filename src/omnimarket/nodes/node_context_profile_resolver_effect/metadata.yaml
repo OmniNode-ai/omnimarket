@@ -1,6 +1,6 @@
 name: node_context_profile_resolver_effect
 version: "1.0.0"
-description: "Resolves a context profile by name from packaged YAML data"
+description: "Resolves a context profile by name and validates model-role routing entries"
 omnibase_core_compat: ">=0.47.44,<0.48.0"
 entry_points:
   onex.nodes:
