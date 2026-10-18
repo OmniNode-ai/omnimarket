@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19961"
+title: "The memory event is projected into a queryable table"
+summary: "Evidence-only contract carrying the acceptance-criterion bindings accepted by lane=dod-closeout-accept-2026-10-18T1445Z-c3 for the lab container memory projection (omnimarket#3051)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 probe. The same lane container memory event folded twice returns identical rows."
+    command: "uv run pytest tests/test_lab_container_memory_projection.py::test_the_fold_is_deterministic -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19961-ac1-accepted"
+    description: "Acceptance record (2026-10-18T1445Z) for AC1, proposed by lane=dod-closeout-bind-2026-10-18T1445Z-c3 and accepted by lane=dod-closeout-accept-2026-10-18T1445Z-c3. The same event folded twice returns identical rows; passes at omnimarket origin/dev 7f4b85325 (1 passed in 4.86s); the test does not exist at 47750011e, the parent of the implementing merge a890920d5 (omnimarket#3051)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_container_memory_projection.py::test_the_fold_is_deterministic -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19961-ac1-record-order-independent"
+    description: "AC1 probe added with this evidence. The fold orders rows by record_key, so an event whose records are listed in the reverse order folds to the same rows as the event listed in the original order; the test is new in this change and does not exist at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_container_memory_projection.py::test_the_fold_is_identical_whatever_order_the_producer_lists_its_records -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
