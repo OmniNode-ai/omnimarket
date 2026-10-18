@@ -29,6 +29,11 @@ requirements:
     statement: 'AC4 — both producers read bindings through one shared reader that fails closed without
       a key, on an unresolvable issue, and on a transport failure. -- falsifier: a failed read yields
       bindings.'
+  - id: AC5
+    statement: 'AC5 (ticket AC2f) — the criterion normalizer is proven over a real documentContentHistory snapshot:
+      an inline-markup-only change stays accepted and moved wording is demoted. -- falsifier: the
+      markup-only edit or the reworded criterion is judged against the committed real payload and the
+      verdict is wrong.'
 evidence_requirements:
 - kind: tests
   description: Born-path transcription tests, including the producer-to-verifier seam cases.
@@ -74,3 +79,12 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC4
+- id: dod-normalizer-real-snapshot-ac2f
+  description: 'AC5 (ticket AC2f): inline markup and moved wording run through the production normalizer over the real snapshot.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/occ/test_omn_18332_creation_revision_transcription.py -q -k "over_the_real_snapshot"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5

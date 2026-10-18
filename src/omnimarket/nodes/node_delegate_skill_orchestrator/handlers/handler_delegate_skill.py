@@ -1451,6 +1451,8 @@ class HandlerDelegateSkill:
                 terminal_failure_cause=(
                     EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
                 ),
+                # OMN-19004: nothing was attempted, so the count says zero.
+                attempts_count=0,
             )
         execution_timeout_seconds = (
             timeout_ceiling_seconds
