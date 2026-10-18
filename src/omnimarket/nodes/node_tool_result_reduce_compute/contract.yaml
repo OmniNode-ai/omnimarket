@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tool_result_reduce_compute
+contract_name: node_tool_result_reduce_compute
+node_name: node_tool_result_reduce_compute
+version: "1.0.0"
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+description: >-
+  Definition-B safety-first reduction of Bash output. Preserve the exit status
+  and every non-empty line without a heuristic diagnostic classifier. Failed
+  output is unchanged after the status header. Only long runs of empty LF lines
+  in successful output shrink. Hash the original UTF-8 bytes. This compute does
+  not store originals, mint record ids, or advertise an unimplemented read skill.
+input_model:
+  name: ModelToolResultReduceRequest
+  module: omnimarket.nodes.node_tool_result_reduce_compute.models.model_tool_result_reduce
+output_model:
+  name: ModelToolResultReduceResult
+  module: omnimarket.nodes.node_tool_result_reduce_compute.models.model_tool_result_reduce
+handler:
+  module: omnimarket.nodes.node_tool_result_reduce_compute.handlers.handler_tool_result_reduce
+  class: HandlerToolResultReduce
+  input_model: omnimarket.nodes.node_tool_result_reduce_compute.models.model_tool_result_reduce.ModelToolResultReduceRequest
+  output_model: omnimarket.nodes.node_tool_result_reduce_compute.models.model_tool_result_reduce.ModelToolResultReduceResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerToolResultReduce
+        module: omnimarket.nodes.node_tool_result_reduce_compute.handlers.handler_tool_result_reduce
+      event_model:
+        name: ModelToolResultReduceRequest
+        module: omnimarket.nodes.node_tool_result_reduce_compute.models.model_tool_result_reduce
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+capabilities:
+  - name: tool.result.reduce
+    description: Preserve Bash exit status and diagnostics while reducing empty-line runs
+    version: 1.0.0
+# Both request and result carry raw tool content, so neither uses an evt topic.
+# The orchestrator's tool-result-reduce-requested topic is reserved for the
+# later store-then-compute workflow; this is the compute's internal bus leg.
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.tool-result-reduce-compute-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.tool-result-reduce-compute-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.tool-result-reduce-compute-requested.v1
+  terminal_events:
+    success: onex.cmd.omniintelligence.tool-result-reduce-compute-completed.v1
+terminal_event: onex.cmd.omniintelligence.tool-result-reduce-compute-completed.v1
+# The invoking runtime's terminal listener consumes this reply outside the
+# node-to-node subscriber graph; the focused runtime-bus test exercises it.
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.tool-result-reduce-compute-completed.v1
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21120
+  maturity: alpha
+  transport_type: kafka
