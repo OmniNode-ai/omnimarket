@@ -136,3 +136,46 @@ def test_removed_output_events_remain_declared_as_publish_topics() -> None:
         assert publish_topics == expected
         for entry in routing["handlers"]:
             assert not (_LEGACY_ROUTE_FIELDS & set(entry))
+
+
+_REMOVED_ENTRY_FIELDS = _LEGACY_ROUTE_FIELDS | {"callable", "lazy_import"}
+
+
+def _legacy_route_offenders(nodes_root: Path) -> list[str]:
+    offenders: list[str] = []
+    for path in sorted(nodes_root.glob("node_*/contract.yaml")):
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        routing = loaded.get("handler_routing") if isinstance(loaded, dict) else None
+        if not isinstance(routing, dict):
+            continue
+        for entry in routing.get("handlers") or []:
+            if isinstance(entry, dict) and _REMOVED_ENTRY_FIELDS & set(entry):
+                offenders.append(
+                    f"{path.parent.name}: {sorted(_REMOVED_ENTRY_FIELDS & set(entry))}"
+                )
+    return offenders
+
+
+@pytest.mark.unit
+def test_no_node_contract_carries_legacy_route_fields() -> None:
+    """No contract relies on the routing entry model ignoring removed fields."""
+    assert _legacy_route_offenders(_NODES_ROOT) == []
+
+
+@pytest.mark.unit
+def test_legacy_route_scan_detects_removed_fields(tmp_path: Path) -> None:
+    """Positive control: the scan reports an entry that still names a removed field."""
+    node_dir = tmp_path / "node_fixture"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "handler_routing:\n"
+        "  routing_strategy: payload_type_match\n"
+        "  handlers:\n"
+        "    - routing_key: a.b\n"
+        "      handler_key: c\n"
+        "      handler: {name: H, module: m}\n",
+        encoding="utf-8",
+    )
+    assert _legacy_route_offenders(tmp_path) == [
+        "node_fixture: ['handler_key', 'routing_key']"
+    ]

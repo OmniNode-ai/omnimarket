@@ -444,6 +444,70 @@ class TestNormalizerControl:
 
         assert not records["AC1"].is_accepted
 
+    def test_inline_markup_over_the_real_snapshot_is_still_accepted(self) -> None:
+        """AC2f's first clause, run over the real payload and not a ``_doc``.
+
+        Emphasis added, a term wrapped in code formatting and the line reflowed,
+        all on criteria that really existed at creation. Same words, so every
+        one of them stays accepted.
+        """
+        payload = json.loads(_FIXTURE.read_text())
+        issue = payload["issue"]
+        description = issue["description"]
+        marked_up = description.replace(
+            "an unfalsified criterion is refused",
+            "an *unfalsified* criterion is `refused`",
+            1,
+        ).replace(
+            "a fully falsified create passes untouched.",
+            "a fully falsified create\n  passes untouched.",
+            1,
+        )
+        assert marked_up != description, "the markup edit must really change the text"
+
+        records = self._real_records(payload, marked_up)
+
+        for label in ("AC1", "AC2", "AC3", "AC4", "AC5"):
+            assert records[label].is_accepted, f"{label} differs only in markup"
+
+    def test_moved_wording_over_the_real_snapshot_is_not_accepted(self) -> None:
+        """AC2f's second clause, run over the real payload.
+
+        One criterion's wording moves; it demotes alone, and the criteria it
+        did not touch stay accepted.
+        """
+        payload = json.loads(_FIXTURE.read_text())
+        description = payload["issue"]["description"]
+        reworded = description.replace(
+            "is admitted with no change in behaviour",
+            "is admitted with a change in behaviour",
+            1,
+        )
+        assert reworded != description, "the wording edit must really change the text"
+
+        records = self._real_records(payload, reworded)
+
+        assert not records["AC2"].is_accepted
+        for label in ("AC1", "AC3", "AC4", "AC5"):
+            assert records[label].is_accepted, f"{label} was not reworded"
+
+    @staticmethod
+    def _real_records(
+        payload: dict[str, Any], live_description: str
+    ) -> dict[str, ModelTranscribedBinding]:
+        issue = payload["issue"]
+        created_at = datetime.fromisoformat(issue["createdAt"].replace("Z", "+00:00"))
+        revision = select_creation_revision(payload["history"], created_at)
+        assert revision is not None
+        return _by_label(
+            transcribe_ac_bindings(
+                live_description=live_description,
+                creation_revision=revision,
+                created_at=created_at,
+                creator_id=issue["creator"]["id"],
+            )
+        )
+
     def test_a_swapped_falsifier_alone_is_not_accepted(self) -> None:
         """The falsifier is inside the hash, so swapping it is a rewrite.
 

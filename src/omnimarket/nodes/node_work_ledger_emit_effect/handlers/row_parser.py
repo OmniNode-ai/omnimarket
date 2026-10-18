@@ -159,6 +159,7 @@ def parse_ledger_row(
         fields.update(
             amends=many("amends"),
             supersedes=many("supersedes"),
+            extends=many("extends"),
             approved_by=one("approved_by"),
             reviewed=one("reviewed"),
             **linked_words(),
@@ -170,6 +171,9 @@ def parse_ledger_row(
             approved_scope=scope[len(_APPROVED_SCOPE) :].strip() if scope else None,
             out_of_scope=out[len(_OUT_OF_SCOPE) :].strip() if out else None,
             approved_by=one("approved_by"),
+            amends=many("amends"),
+            supersedes=many("supersedes"),
+            extends=many("extends"),
             **linked_words(),
         )
     elif row_type is EnumLedgerRowType.FRICTION:

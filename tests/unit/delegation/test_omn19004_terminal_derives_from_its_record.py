@@ -32,13 +32,9 @@ DELIBERATELY NOT HERE, and the reason is the wire, not the argument.
   core vocabulary carried ``quality_gate_refused``: see
   ``test_omn19004_the_deciding_rung_sets_the_cause.py``, which replays the
   measured terminals and refuses the provider cause they were emitted with.
-* A zero ``attempts_count`` for a run that made no attempt at all. Twenty-five
-  recorded receipts on this host report ``attempts_count=1`` beside an empty
-  attempt list, because the field is floored at one and cannot say "none".
-  Fixing that means widening the accepted range on a wire field, which a
-  released consumer pinned to the old range would refuse — the same
-  consumer-first hazard as the enum, and it lands the same way, consumer
-  first.
+* A zero ``attempts_count`` for a run that made no attempt at all. Landed
+  separately: see ``test_omn19004_zero_attempts_refused_before_dispatch.py``.
+  An omitted count with an empty record keeps the legacy floor of one.
 
 This clause is safe to land alone because it only NARROWS what constructs. A
 released consumer already accepts every payload that will still be emitted.
@@ -168,9 +164,8 @@ def test_a_terminal_with_no_recorded_attempts_still_constructs() -> None:
     """Positive control: the 25 measured receipts with an empty attempt list.
 
     ``attempts_count=1`` beside an empty list is the field being unable to say
-    "none", which is the separate consumer-first widening named in the module
-    docstring. It is a count ABOVE the record, so this clause leaves it alone,
-    and it must keep constructing until that widening lands.
+    "none". It is a count ABOVE the record, so this clause leaves it alone;
+    only a request refused before dispatch states zero.
     """
     model = ModelDelegateSkillResponse.model_validate(
         _terminal(status="timeout", attempts_count=1, attempts=[])
@@ -219,12 +214,11 @@ def test_an_explicit_count_stays_authoritative() -> None:
 
 
 def test_an_empty_attempt_list_keeps_the_floor_of_one() -> None:
-    """The zero case is a wire widening, so derivation must not reach for it.
+    """Derivation never reaches for zero.
 
-    A run that made no attempt at all should say zero. The field is bounded at
-    one, and lowering that bound is a change a released consumer pinned to the
-    old range would refuse, so it lands consumer-first and not here. Deriving
-    zero would produce a value this model cannot even hold.
+    An omitted count cannot tell a run that made no attempt from one whose
+    record was lost, so it keeps the legacy floor of one. Zero is stated by the
+    producer that refused before dispatch, and is checked by the model.
     """
     model = ModelDelegateSkillResponse.model_validate(
         _terminal(status="timeout", attempts=[])
