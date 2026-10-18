@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1.0.0
+ticket_id: OMN-21144
+title: TE.7 recorded gate cascade scoring node
+summary: 'Omnimarket node slice only: score complete three-repeat paired recordings, require exact recall
+  parity per case and repeat with positive measured net savings, reject nonpublic Jev request attribution,
+  and accept no gate prose. Model execution, attribution resolution, real winning-rung evidence, fine-tuning,
+  real package sentinel probes and the empirical report remain caller work outside this slice. No gate
+  is promoted by this change.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-gate-cascade-scoring
+  statement: The deterministic scoring and request-admission slice of TE.7, with contract-bound bus dispatch.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a gate is recommended only if the cascade''s hard-gate recall equals the ungated
+      rung''s in every case and repeat, and the report states the cost saved -- falsifier: a recommended
+      gate with any recall loss.'
+  - id: AC2
+    statement: 'AC2: Jev receives only work units attributed to a public repository -- falsifier: a Jev
+      call log entry for a private work unit.'
+  - id: AC3
+    statement: 'AC3: no gate output appears as text in any package -- falsifier: gate output in a rendered
+      package.'
+evidence_requirements:
+- kind: tests
+  description: Synthetic scoring, admission, output-state and lab in-memory bus controls. Empirical model
+    evaluation is pending.
+  command: uv run --python 3.12 --frozen pytest tests/test_golden_chain_context_gate_cascade_compute.py
+    -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21144-ac1
+  description: 'Scoring slice: exact per-case and per-repeat recall parity, complete grids, and costs
+    including the gate. Real evaluation report pending.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --python 3.12 --frozen pytest tests/test_golden_chain_context_gate_cascade_compute.py
+      -q --no-cov -k "golden_cascade or recall_loss or improvement or incomplete or order_independent"
+  binds_ac:
+  - AC1
+- id: dod-omn21144-ac2
+  description: 'Admission slice: Jev private and unknown attribution refused before handler execution,
+    public admission allowed through the lab in-memory bus. Actual call-log audit pending.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --python 3.12 --frozen pytest tests/test_golden_chain_context_gate_cascade_compute.py
+      -q --no-cov -k "jev or all_gate_classes"
+  binds_ac:
+  - AC2
+- id: dod-omn21144-ac3
+  description: 'Schema slice: gate prose is refused, no package text is emitted, and the contract topic
+    carries the structured result. Real rendered-package sentinel probe pending.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --python 3.12 --frozen pytest tests/test_golden_chain_context_gate_cascade_compute.py
+      -q --no-cov -k "gate_prose or contract_topics or lab_runtime"
+  binds_ac:
+  - AC3
+- id: dod-omn21144-deploy-hosted-bus
+  description: 'Hosted behavioral deploy probe: dispatch synthetic public and private/unknown Jev requests
+    through the Codex local runtime adapter, in-memory bus, contract payload model and handler. Check
+    correlated contracted terminals, cost result and pre-handler refusal. Fails at the merge base where
+    the node is absent. This is a source-checkout runtime probe, not a deployed fleet claim.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run --python 3.12 --frozen pytest tests/test_golden_chain_context_gate_cascade_compute.py
+      -q --no-cov -k lab_runtime
