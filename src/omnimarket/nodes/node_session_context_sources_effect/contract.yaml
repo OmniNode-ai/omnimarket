@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Session context sources (OMN-21108, plan task TA.6), pinned mode first.
+# A context source in the TC.1 shape: one read per factor,
+# handle(ModelContextSourceRequest) -> ModelContextSourceResult.
+# The scope names the mode: `case:<case_id>` reads a pinned replay case from the bundle under
+# ONEX_CONTEXT_REPLAY_ROOT (required, no default) and its revision must be the case's
+# transcript-chain sha256; `session:<session_id>` is live mode, whose captured-row reader is not
+# built yet, so every live factor but REPO_STATE is refused with a typed error and REPO_STATE is
+# `unavailable` (never filled from a cwd).
+name: node_session_context_sources_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Reads the session tiers of a context pack. Pinned mode reads one case of a compaction replay
+  bundle: only the pinned transcript chain and ledger prefixes, verified against the manifest's
+  hashes. OPERATOR_WORDS_UNRECORDED carries each operator prompt of the session up to the case's
+  last boundary verbatim and whole, unless a ledger row covers all of it but whitespace or an
+  operator review row names it; compaction summary text is never carried. REPO_STATE is
+  unavailable where the case excludes it. Failures are typed error results, never an empty
+  resolved read.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: session_context_source_read
+      handler:
+        name: HandlerSessionContextSources
+        module: omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources
+
+handler:
+  module: omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources
+  class: HandlerSessionContextSources
+  input_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+  output_model: omnibase_core.models.context.model_context_source_result.ModelContextSourceResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [effects]
+
+inputs:
+  factor:
+    type: str
+    required: true
+  scopes:
+    type: array
+    required: true
+  revision:
+    type: str
+    required: true
+  access:
+    type: object
+    required: true
+
+outputs:
+  status:
+    type: str
+    enum: [resolved, unresolved, ambiguous, stale, denied, unavailable]
+  entries:
+    type: array
+  entry_counts:
+    type: object
+  error_code:
+    type: str
+    required: false
+    nullable: true
+  error_message:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.session-context-sources-read-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.session-context-sources-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.session-context-sources-read-completed.v1
+
+# Read by the context-pack orchestrator (plan task TA.8) through the context-source protocol.
+externally_consumed_topics:
+  - onex.evt.omnimarket.session-context-sources-read-completed.v1
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-21108
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.session-context-sources-read-requested.v1
