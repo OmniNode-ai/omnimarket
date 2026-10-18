@@ -36,6 +36,15 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_swarm_dispatch_chain.py -q -n 0
+    check_value: uv run pytest tests/test_swarm_dispatch_chain.py -q
   binds_ac:
   - AC1
+- id: dod-omn21040-deploy-probe
+  description: 'Deploy source identity probe: GitHub serves the swarm dispatch handler at the checked-out commit
+    with the json import required by its aggregator serialization. The probe fails on a head missing that import.
+    This checks published source identity, not a running deployment. The AC1 chain test checks runtime behavior.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_swarm_dispatch_orchestrator/handlers/handler_swarm_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "^import json$"'

@@ -27,6 +27,7 @@ Multi-topic routing (OMN-12003):
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
