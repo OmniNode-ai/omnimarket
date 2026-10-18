@@ -8,7 +8,6 @@ runs rerun once through node_pr_landing_github_effect's ``rerun_runs``, records
 other class stays record-only.
 """
 
-import json
 import subprocess
 from typing import Any
 
@@ -415,42 +414,38 @@ def test_the_runner_class_is_the_controllers_classify_red(
 # ------------------------------------------------------------- the facts reader
 
 
-def test_gh_reader_reads_each_checks_newest_actions_run(
+def test_compatibility_reader_uses_watcher_conclusions_and_actions_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    calls: list[list[str]] = []
+
     def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        if args[0:3] == ["gh", "api", "graphql"]:
-            return subprocess.CompletedProcess(args, 0, json.dumps({"data": {}}))
-        base = "https://github.com/OmniNode-ai/omnimarket"
-        runs = [
-            {
-                "id": 1,
-                "name": TESTS,
-                "started_at": "2026-10-10T10:00:00Z",
-                "conclusion": "failure",
-                "details_url": f"{base}/actions/runs/500/job/1",
-            },
-            {
-                "id": 2,
-                "name": TESTS,
-                "started_at": "2026-10-10T11:00:00Z",
-                "conclusion": "timed_out",
-                "details_url": f"{base}/actions/runs/{RUN_TESTS}/job/2",
-            },
-            {
-                "id": 3,
-                "name": "external",
-                "started_at": "2026-10-10T11:00:00Z",
-                "conclusion": "timed_out",
-                "details_url": "https://ci.example.invalid/build/3",
-            },
-        ]
-        return subprocess.CompletedProcess(args, 0, json.dumps({"check_runs": runs}))
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, '{"check_runs": [], "data": {}}')
 
     monkeypatch.setattr(subprocess, "run", run)
-    facts = GhCiRedFactsReader().read(event())
-    assert facts.check_conclusions == {TESTS: "timed_out", "external": "timed_out"}
+    red = event().model_copy(
+        update={
+            "failing_runs": (
+                ModelPrCheckFact(
+                    check=TESTS,
+                    conclusion="timed_out",
+                    run_id=RUN_TESTS,
+                    workflow="CI",
+                    completed_at="2026-10-10T11:00:00Z",
+                ),
+            ),
+            "base_read": True,
+            "base_red_checks": (TESTS,),
+        }
+    )
+    facts = GhCiRedFactsReader().read(red)
+    assert facts.check_conclusions == {TESTS: "timed_out"}
     assert facts.check_run_ids == {TESTS: RUN_TESTS}
+    assert facts.base_read is True
+    assert facts.base_red_checks == (TESTS,)
+    assert facts.annotations_read is False
+    assert calls == []
 
 
 # ------------------------------------------------- the runtime path to the effect

@@ -1,0 +1,105 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21131"
+title: "TC.8 The v5 profiles and task-kind rules"
+summary: "The session_start, agent_spawn and per_prompt profiles ship as YAML under pack/profiles with the section 4.4 values; every shipped profile declares its window (declared window minus reserved output and reserved system shares). Task-kind rules become typed conditions (equals, glob) over the core ModelContextCallerScope with all/any logic and a priority, validated against the section 4.4 vocabulary; the path-glob routes of omniclaude file_path_routes.yaml are ported as per_prompt data. The new pure compute node node_context_task_kind_rules_compute evaluates a profile's rules: matched rules ordered by priority then rule id name the task kind, an unmatched request is task_kind unknown with only unconditional factors, and an evaluation that cannot run is a typed error. Tests: tests/pack/test_context_profiles_v5.py and tests/nodes/node_context_task_kind_rules_compute."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-profiles"
+    statement: "The v5 profiles exist as data, validate, resolve by name and name nothing private."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every profile validates under TA.3's constraints and resolves by name -- falsifier: a validation error.
+      - id: "AC3"
+        statement: |-
+          AC3: no profile names a private repository, a host or a model id -- falsifier: a grep of `pack/profiles/` for the overlay's repository names, a lab host, or a model id from `model_policy.yaml` matches.
+      - id: "AC6"
+        statement: |-
+          AC6: a profile's window is its declared window minus its reserved output and reserved system share, from contract data, with no default host -- falsifier: a profile that validates without the reserved shares, or a host default in the data.
+  - id: "req-task-kind-rules"
+    statement: "Task-kind rules are declared, typed selector data evaluated by a pure compute."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a selector outside the section 4.4 vocabulary (a keyword or a conversation domain) fails validation, and an unmatched request yields `task_kind: unknown` with only unconditional factors -- falsifier: a keyword selector that validates, or an unmatched request that loads a conditional factor.
+      - id: "AC4"
+        statement: |-
+          AC4: `task_kind_rules` evaluate over a typed facts model; an unknown `condition_logic` or operator is rejected, `equals` is exact rather than substring, and a failed evaluation is a typed error, not a silent false -- falsifier: an unknown logic accepted, a substring match under `equals`, or an exception swallowed.
+      - id: "AC5"
+        statement: |-
+          AC5: the path-glob routes match the port list's goldens (`services/**/*.py` matches `services/app.py`, `*.py` does not, `a/**/b` matches `a/x/y/b`), and a malformed condition raises -- falsifier: a golden that differs, or a malformed condition dropped.
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC6: the v5 profile tests and the task-kind rules compute tests."
+    command: "uv run pytest tests/pack/test_context_profiles_v5.py tests/nodes/node_context_task_kind_rules_compute -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21131-ac1-profiles-resolve"
+    description: "AC1: every file under pack/profiles validates and resolves by name, and the section 4.4 values of the three additive profiles hold."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_context_profiles_v5.py tests/nodes/node_context_profile_resolver_effect -q -p no:randomly --no-cov -n 0 -k 'resolves or section_4_4 or scopes or task_class or shipped'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21131-ac2-vocabulary-and-unknown"
+    description: "AC2: keyword, conversation-domain and other out-of-vocabulary selectors fail validation; an unmatched request is task_kind unknown and admits only unconditional factors."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_task_kind_rules_compute/test_task_kind_rules.py -q -p no:randomly --no-cov -n 0 -k 'outside_the_vocabulary or unmatched or no_descriptors'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21131-ac3-nothing-private"
+    description: "AC3: no profile file names a private repository, a host or a model id from the routing data, with a positive and a negative control for the scan."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_context_profiles_v5.py -q -p no:randomly --no-cov -n 0 -k 'private or model_id_list or planted'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21131-ac4-typed-evaluation"
+    description: "AC4: unknown condition logic and operators are refused, equals is exact, an absent descriptor never matches, and an evaluation that cannot run returns status error with no factors."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_task_kind_rules_compute/test_task_kind_rules.py -q -p no:randomly --no-cov -n 0 -k 'condition_logic or exact or absent or typed_error or priority or declaration_order'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21131-ac5-glob-goldens"
+    description: "AC5: the AP-S8 glob goldens hold, a malformed glob raises at validation, and the ported file_path_routes order holds in per_prompt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_task_kind_rules_compute/test_task_kind_rules.py -q -p no:randomly --no-cov -n 0 -k 'glob or path_routes'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21131-ac6-window"
+    description: "AC6: the effective window is the declared window minus both reserved shares, a window missing a share fails validation, the window has no default, and every shipped profile's window holds its budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_context_profiles_v5.py -q -p no:randomly --no-cov -n 0 -k 'window'"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21131-deploy-task-kind-rules-node"
+    description: "Deploy probe on the hosted runner: an ephemeral Python 3.12 container mounts the checkout read-only and installs it with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the nodes under probe do not import. At the checked-out commit the task-kind rules compute resolves the per_prompt profile's tests route and an unmatched request is unknown; at the merge base the node and the per_prompt profile do not exist and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          from omnibase_core.models.context.model_context_caller_scope import ModelContextCallerScope as S
+          from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import HandlerContextProfileResolver as R
+          from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import ModelContextProfileResolveRequest as Q
+          from omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules import HandlerContextTaskKindRules as H
+          from omnimarket.nodes.node_context_task_kind_rules_compute.models import ModelContextTaskKindRulesRequest as T
+          p = R().handle(Q(profile_name="per_prompt")).profile
+          hit = H().handle(T(profile_name="per_prompt", profile=p, caller_scope=S(repository="omnimarket", request_paths=("tests/unit/test_x.py",))))
+          miss = H().handle(T(profile_name="per_prompt", profile=p, caller_scope=S()))
+          assert hit.task_kind == "test_conventions", hit
+          assert miss.task_kind == "unknown" and miss.admitted_factors == (), miss
+          print(hit.task_kind, miss.task_kind)'

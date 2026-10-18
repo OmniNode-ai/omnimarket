@@ -96,6 +96,10 @@ class ModelLabFillLaunchRequest(BaseModel):
     launch: ModelLabFillLaunch
     kind: str
     brief: str = Field(min_length=1)
+    dependency_consumer_scope: Literal["internal", "external"] = "internal"
+    dependency_strategy: Literal["unspecified", "git_tag", "git_commit", "release"] = (
+        "unspecified"
+    )
     brief_dir: str
     ledger_path: str
     approved_work_path: str = ""

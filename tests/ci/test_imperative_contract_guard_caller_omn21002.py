@@ -75,7 +75,6 @@ RECORDED_PATHS = [
     "omnimarket/nodes/node_compliance_sweep/handlers/handler_compliance_sweep.py",
     "omnimarket/nodes/node_conflict_hunk_effect/handlers/handler_conflict_hunk.py",
     "omnimarket/nodes/node_content_ingestion_effect/handlers/handler_content_ingestion.py",
-    "omnimarket/nodes/node_context_bundle_generator_compute/handlers/handler_context_bundle.py",
     "omnimarket/nodes/node_context_pack_builder_compute/handlers/handler_context_pack_builder.py",
     "omnimarket/nodes/node_contract_reducer/handlers/handler_contract_reducer.py",
     "omnimarket/nodes/node_contract_registry/handlers/handler_contract_registry.py",
