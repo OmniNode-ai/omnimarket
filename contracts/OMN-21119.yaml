@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21119"
+title: "TA.18 Resume and delegation-payload profiles (profile data and task-class field slice)"
+summary: "The session_resume and delegation_payload_local context profiles ship as YAML under pack/profiles and resolve through node_context_profile_resolver_effect; task-class contract entries gain an optional context_profile field, a profile-name shape check, and resolve_task_class_context_profile. No production task class sets the field; a fixture task class exercises it. Not in this slice: the delegation orchestrator's pack request and budget computation, the session-resume wiring, the empty-hash refusal, the stable-prefix check on recorded requests and the sentinel topic check, which all call node_context_pack_orchestrator (TA.8) and wait for it to merge."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ta18-profile-data"
+    statement: "The two profiles of plan section 4.4 rows session_resume and delegation_payload_local ship as data and resolve by name."
+    acceptance:
+      - id: "DoD1"
+        statement: |-
+          S1: `session_resume` resolves with required `OPEN_WORK`, `OPERATOR_RULINGS`, `ORCHESTRATION_STATE` and optional `TRANSCRIPT_EXTRACTS`, `TAIL_SUMMARY`, `PLAN_EXCERPTS`, model-written last; `delegation_payload_local` resolves with no required factor, optional `INVARIANTS`, `CANONICAL_SHAPES`, `EXEMPLAR`, `ARCHITECTURE_PATTERNS`, all stable, scope `delegation`, budget 8000 -- falsifier: a resolver failure or a factor set that differs.
+  - id: "req-ta18-task-class-field"
+    statement: "A task class may name a context profile; no production class does."
+    acceptance:
+      - id: "DoD2"
+        statement: |-
+          S2: a fixture task class naming `delegation_payload_local` validates and its profile resolves; a name that is not a profile name is refused; no production task class names a profile -- falsifier: test.
+evidence_requirements:
+  - kind: "tests"
+    description: "S1 and S2: the resolver tests and the task-class context_profile tests."
+    command: "uv run pytest tests/nodes/node_context_profile_resolver_effect tests/unit/inference/test_task_class_context_profile_omn21119.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21119-s1-profile-data"
+    description: "S1: both profiles resolve by name with the plan's factor sets."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_handler_context_profile_resolver.py -q -p no:randomly --no-cov -n 0 -k 'session_resume or delegation_payload_local or every_shipped_profile'"
+    binds_ac: ["DoD1"]
+  - id: "dod-omn21119-s2-task-class-field"
+    description: "S2: the fixture task class validates and resolves; bad names are refused; no production class names a profile."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_task_class_context_profile_omn21119.py -q -p no:randomly --no-cov -n 0"
+    binds_ac: ["DoD2"]
+  - id: "dod-omn21119-deploy-profile-data"
+    description: "Deploy probe. Both profile files exist in omnimarket at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe reads them from GitHub at that commit and fails at the merge base, where neither exists."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/session_resume.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq orchestration_state && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/delegation_payload_local.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq architecture_patterns'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_internal_release_path_guard_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Refuse a release strategy or release instructions for an internal dependency consumer.
+  Lane dispatch and landing-controller briefs share this pure check. Outside consumers
+  can explicitly request releases; internal consumers move by tested dev tags or commits.
+input_model: omnimarket.models.model_internal_release_path_guard.ModelInternalReleasePathGuardRequest
+output_model: omnimarket.models.model_internal_release_path_guard.ModelInternalReleasePathGuardResult
+handler:
+  module: omnimarket.handlers.handler_internal_release_path_guard
+  class: HandlerInternalReleasePathGuard
+  input_model: omnimarket.models.model_internal_release_path_guard.ModelInternalReleasePathGuardRequest
+  output_model: omnimarket.models.model_internal_release_path_guard.ModelInternalReleasePathGuardResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.handlers.handler_internal_release_path_guard:HandlerInternalReleasePathGuard
+  handlers:
+    - operation: check_internal_release_path
+      handler:
+        name: HandlerInternalReleasePathGuard
+        module: omnimarket.handlers.handler_internal_release_path_guard
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+terminal_event: onex.evt.omnimarket.internal-release-path-checked.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.internal-release-path-check-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.internal-release-path-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.internal-release-path-checked.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.internal-release-path-checked.v1
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-19998]
