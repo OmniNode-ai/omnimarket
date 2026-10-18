@@ -278,7 +278,7 @@ class TestRequiredDelegationAcceptanceEntries:
             for prefix in (FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)
             for name in REQUIRED_FALSE_PASS_CLASSES
         )
-        assert len(required_check_ids()) == 51
+        assert len(required_check_ids()) == 52
 
     def test_the_committed_register_passes_with_all_required_entries(self) -> None:
         document = yaml.safe_load(
@@ -410,7 +410,7 @@ class TestRequiredDelegationAcceptanceInventory:
             }
         )
         assert gate_checks
-        assert len(gate_checks) == 37
+        assert len(gate_checks) == 38
         assert tuple(sorted(gate_checks)) == REQUIRED_GATE_CHECKS
 
     def test_false_pass_classes_match_the_seven_acceptance_classes(self) -> None:

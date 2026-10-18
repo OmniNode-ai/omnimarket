@@ -407,6 +407,11 @@ requirements:
     acceptance:
       - id: "AC75"
         statement: "AC75: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+  - id: "req-summarization-word-limit"
+    statement: "A summarization answer longer than the word limit its prompt states is refused by the delegation quality gate."
+    acceptance:
+      - id: "AC76"
+        statement: "AC76: the summarization definition of done carries within_word_limit when the prompt states an at-most-N-words limit, an answer over that limit is refused, an answer at the limit and a prompt with no limit pass, and no other task class carries the check -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py -q fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -562,6 +567,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC75: the landing decision mapping writes one row per action, outcome, degraded reason and violation, none for an idle tick, and the host appends a redelivered event once."
     command: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC76: the summarization gate refuses an answer over a stated word limit and waives the rule for a prompt with no limit."
+    command: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py tests/test_omn19320_check_register.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1474,3 +1482,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); topics = c["runtime_dispatch"]["subscribe_topics"]; assert len(topics) == 1 and topics[0].endswith("pr-landing-decision-completed.v1"); print("landing decision ledger mirror deploy probe: PASS")'
+  - id: "dod-omn17427-ac74-summarization-word-limit"
+    description: "The summarization gate refuses an answer over a stated word limit, passes one at the limit, and waives the rule for a prompt with no limit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC76"]
+  - id: "dod-omn17427-summarization-word-limit-probe"
+    description: "Deploy probe. GitHub serves the summarization definition of done at the checked-out HEAD declaring within_word_limit. The probe fails at the merge base, which has no such check, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "- within_word_limit"

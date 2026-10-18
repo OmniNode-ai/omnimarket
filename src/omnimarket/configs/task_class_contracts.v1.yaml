@@ -363,6 +363,16 @@ quality_rules:
       in that prompt's definition of done and moves no score.
     waived_unless_prompt_matches:
       - "\\b(?:at\\s+most|no\\s+more\\s+than)\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+sentences?\\b"
+  # OMN-17427: the prompt's own "at most N words", enforced.
+  within_word_limit:
+    enforcement: blocking
+    rationale: >-
+      A countable instruction the prompt gave. An answer over the limit is a
+      breach of the task, not a weaker answer, and no score makes it usable.
+      Reject-only. A prompt that states no limit waives the rule, so it is not
+      in that prompt's definition of done and moves no score.
+    waived_unless_prompt_matches:
+      - "\\b(?:at\\s+most|no\\s+more\\s+than)\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+words?\\b(?!\\s+(?:per|a|each|every)\\b)"
   semantic_adequacy:
     enforcement: blocking
     rationale: >-
@@ -2119,6 +2129,9 @@ task_classes:
         # sentences"), counted with a list item as one sentence. Reject-only;
         # without a stated limit it passes.
         - within_sentence_limit
+        # OMN-17427: the word limit the prompt states ("in at most 80 words").
+        # Reject-only; without a stated limit it is waived.
+        - within_word_limit
         # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_100 floor.
         # A correct short summary (one complete sentence) passes at tier 1 instead
         # of escalating on a length floor; an empty/truncated stub still fails.

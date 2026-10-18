@@ -1577,6 +1577,50 @@ def _check_within_sentence_limit(
     return None
 
 
+# OMN-17427: the word limit a summarization prompt states ("in at most 80
+# words"). Two delegation experiments on 2026-10-18 found the gate accepting
+# answers over a stated limit: 12 of 29 summaries asked for at most 80 words
+# were longer, and every one was accepted. A per-sentence ceiling ("at most 20
+# words per sentence") is a different rule and is not read as a total.
+_WORD_LIMIT_CHECK = "within_word_limit"
+_WORD_LIMIT_RE = re.compile(
+    r"\b(?:at\s+most|no\s+more\s+than)\s+(\d+|" + "|".join(_SENTENCE_LIMIT_WORDS) + r")"
+    r"\s+words?\b(?!\s+(?:per|a|each|every)\b)",
+    re.IGNORECASE,
+)
+
+
+def _word_limit(prompt: str | None) -> int | None:
+    """The first "at most N words" limit the prompt states, if any."""
+    if prompt is None:
+        return None
+    match = _WORD_LIMIT_RE.search(prompt)
+    if match is None:
+        return None
+    raw = match.group(1).lower()
+    return int(raw) if raw.isdigit() else _SENTENCE_LIMIT_WORDS[raw]
+
+
+def _check_within_word_limit(
+    content: str, grounding_source: str | None = None
+) -> str | None:
+    """Heuristic, reject-only: the answer stays within the prompt's word limit.
+
+    The prompt is the grounding source. With no stated limit, or no prompt, there
+    is nothing to hold the answer to and the check passes.
+    """
+    limit = _word_limit(grounding_source)
+    if limit is None:
+        return None
+    count = len(content.split())
+    if count > limit:
+        return (
+            f"TASK_MISMATCH: response has {count} words, "
+            f"the prompt allows at most {limit}"
+        )
+    return None
+
+
 def _check_max_words_per_sentence(content: str, threshold: int) -> str | None:
     """Deterministic: each sentence must stay below the configured word limit."""
     sentences = _sentences(content)
@@ -1970,6 +2014,7 @@ _GROUNDING_AWARE_HEURISTIC_CHECKS: dict[
     # OMN-20489: summarization's own forms of `accurate` and a sentence ceiling.
     "accurate_summary": _check_accurate_summary,
     _SENTENCE_LIMIT_CHECK: _check_within_sentence_limit,
+    _WORD_LIMIT_CHECK: _check_within_word_limit,
 }
 
 
@@ -2155,6 +2200,7 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "accurate": _check_accurate,
     "accurate_summary": _check_accurate_summary,
     _SENTENCE_LIMIT_CHECK: _check_within_sentence_limit,
+    _WORD_LIMIT_CHECK: _check_within_word_limit,
     "semantic_adequacy": _check_semantic_adequacy,
     # OMN-16932: adequacy authority for a contract-declared constrained
     # response shape. Deliberately NOT in _REJECT_ONLY_HEURISTIC_CHECKS -
@@ -2169,6 +2215,7 @@ _REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(
         "accurate",
         "accurate_summary",
         _SENTENCE_LIMIT_CHECK,
+        _WORD_LIMIT_CHECK,
         "concise",
         "covers_args_returns_raises",
         "cites_specific_lines",
@@ -2415,7 +2462,10 @@ def _evaluate_heuristic_checks(
     claims_check = _claim_grounding_check_name()
 
     for check in dod_heuristic:
-        if check == _SENTENCE_LIMIT_CHECK and grounding_source is None:
+        if (
+            check in (_SENTENCE_LIMIT_CHECK, _WORD_LIMIT_CHECK)
+            and grounding_source is None
+        ):
             # OMN-20489: the limit is stated in the prompt. With no prompt the
             # check is recorded SKIPPED, as the other source-reading checks are,
             # so it neither inflates nor deflates the score.

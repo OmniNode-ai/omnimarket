@@ -487,6 +487,16 @@ checks:
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
 
+  - check_id: delegation.acceptance.gate.within_word_limit
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `within_word_limit` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
   - check_id: delegation.acceptance.false_pass.code_generation
     check_class: range
     range_status: declared
