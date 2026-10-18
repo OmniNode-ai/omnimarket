@@ -7,7 +7,8 @@ Implements the Context Authority Rule (OMN-12843 / M3): each selected context
 factor is stamped with the Authority 5-tuple {factor, source, selection_reason,
 effectiveness_score, experiment_cohort}. Selection ranks candidates by measured
 effectiveness resolved from the M2 capsule store (passed in by the caller — this
-handler does NO I/O), with deterministic tie-breaking by stable source id.
+handler does NO I/O), with deterministic tie-breaking by stable source id and
+the remaining candidate fields.
 
 Policy (mirrors the routing-policy precedent, applied to context):
 
@@ -15,17 +16,27 @@ Policy (mirrors the routing-policy precedent, applied to context):
   experiment cohort is present and matches; they are stamped
   ``EXPERIMENT_ASSIGNMENT`` and carry the cohort id. A forced candidate without
   a matching active cohort is a hard validation error.
-* A required candidate (profile-declared) is admitted and stamped
-  ``POLICY_REQUIRED_FACTOR``. If it has no measured score it falls to the
-  explicit ``FALLBACK_NO_SCORE`` reason — never a silent default.
+* A required candidate (profile-declared) is always kept. With no rule or
+  measured score it receives the explicit ``FALLBACK_NO_SCORE`` reason — never
+  a silent default.
 * A scored candidate is admitted and stamped ``POLICY_EFFECTIVENESS``.
-* A candidate justified ONLY by profile declaration with no effectiveness score
-  AND no experiment cohort is the hidden-authority case and is REJECTED.
+* A profile-declared scope, status or task-kind rule admits a candidate as
+  ``POLICY_SCOPE_RULE``, with its rule reference and a null effectiveness score.
+* An optional candidate with no rule, score or experiment cohort is the
+  hidden-authority case and is REJECTED.
+
+All candidates are classified before selection. Required candidates are always
+kept. A model ranking may order eligible optional source ids for filling the
+optional limit; rankings with unknown, required-only or duplicate ids are
+ignored and counted. Fill by that ranking, then restore deterministic precedence
+order for the output and assign consecutive ranks.
 
 No randomness, no I/O, same input = same output.
 """
 
 from __future__ import annotations
+
+from collections import Counter
 
 from omnibase_core.enums.enum_selection_reason import EnumSelectionReason
 
@@ -76,6 +87,10 @@ def _classify(
             )
         return EnumSelectionReason.EXPERIMENT_ASSIGNMENT, active_cohort
 
+    # Profile-declared rule: admitted without a measured score.
+    if candidate.scope_rule_ref is not None:
+        return EnumSelectionReason.POLICY_SCOPE_RULE, None
+
     # Scored candidate: ranked in by measured effectiveness.
     if candidate.effectiveness_score is not None:
         return EnumSelectionReason.POLICY_EFFECTIVENESS, None
@@ -93,20 +108,29 @@ def _classify(
     )
 
 
-def _rank_key(candidate: ModelContextCandidate) -> tuple[int, float, str]:
+def _rank_key(
+    candidate: ModelContextCandidate,
+) -> tuple[int, float, str, str, bool, str, str, str]:
     """Deterministic ordering key.
 
     Sort primary by effectiveness score (descending), with unscored candidates
     last; ties broken deterministically by stable source id (ascending). The
     leading bucket flag keeps scored candidates ahead of unscored ones
-    regardless of score value.
+    regardless of score value. Remaining ties use every other candidate field
+    so different candidates have a total order independent of input order.
     """
     score = candidate.effectiveness_score
-    if score is None:
-        # Unscored candidates sort into the trailing bucket; score is irrelevant.
-        return (1, 0.0, candidate.source)
-    # bucket 0 keeps scored candidates ahead; negate for descending order.
-    return (0, -score, candidate.source)
+    rule_ref = candidate.scope_rule_ref
+    return (
+        1 if score is None else 0,
+        0.0 if score is None else -score,
+        candidate.source,
+        candidate.factor.value,
+        candidate.is_required,
+        candidate.forced_experiment_cohort or "",
+        rule_ref.profile_id if rule_ref is not None else "",
+        rule_ref.rule_id if rule_ref is not None else "",
+    )
 
 
 class HandlerContextSelectionPolicy:
@@ -115,16 +139,58 @@ class HandlerContextSelectionPolicy:
     def handle(
         self, request: ModelContextSelectionRequest
     ) -> ModelContextSelectionResult:
-        ordered = sorted(request.candidates, key=_rank_key)
+        classified = [
+            (
+                candidate,
+                *_classify(candidate, active_cohort=request.active_experiment_cohort),
+            )
+            for candidate in request.candidates
+        ]
+        ordered = sorted(classified, key=lambda entry: _rank_key(entry[0]))
+
+        kept_indices = {
+            index
+            for index, (candidate, _, _) in enumerate(ordered)
+            if candidate.is_required
+        }
+        optional_indices = [
+            index
+            for index, (candidate, _, _) in enumerate(ordered)
+            if not candidate.is_required
+        ]
+        rejected_ids: tuple[str, ...] = ()
+        if request.model_ranking is not None:
+            eligible_ids = {ordered[index][0].source for index in optional_indices}
+            counts = Counter(request.model_ranking)
+            rejected_ids = tuple(
+                sorted(
+                    source
+                    for source, count in counts.items()
+                    if source not in eligible_ids or count > 1
+                )
+            )
+            if not rejected_ids:
+                positions = {
+                    source: index for index, source in enumerate(request.model_ranking)
+                }
+                optional_indices.sort(
+                    key=lambda index: positions.get(
+                        ordered[index][0].source, len(positions)
+                    )
+                )
+        kept_indices.update(optional_indices[: request.max_optional])
 
         selections: list[ModelFactorSelection] = []
-        for index, candidate in enumerate(ordered):
-            reason, cohort = _classify(
-                candidate, active_cohort=request.active_experiment_cohort
-            )
+        for index, (candidate, reason, cohort) in enumerate(ordered):
+            if index not in kept_indices:
+                continue
             effectiveness_score = (
                 None
-                if reason == EnumSelectionReason.FALLBACK_NO_SCORE
+                if reason
+                in (
+                    EnumSelectionReason.FALLBACK_NO_SCORE,
+                    EnumSelectionReason.POLICY_SCOPE_RULE,
+                )
                 else candidate.effectiveness_score
             )
             selections.append(
@@ -134,7 +200,12 @@ class HandlerContextSelectionPolicy:
                     selection_reason=reason,
                     effectiveness_score=effectiveness_score,
                     experiment_cohort=cohort,
-                    rank=index + 1,
+                    rule_ref=(
+                        candidate.scope_rule_ref
+                        if reason == EnumSelectionReason.POLICY_SCOPE_RULE
+                        else None
+                    ),
+                    rank=len(selections) + 1,
                 )
             )
 
@@ -142,6 +213,8 @@ class HandlerContextSelectionPolicy:
             status=EnumSelectionStatus.OK,
             selections=tuple(selections),
             request_id=request.request_id,
+            selection_rejected=int(bool(rejected_ids)),
+            selection_rejected_ids=rejected_ids,
         )
 
 
