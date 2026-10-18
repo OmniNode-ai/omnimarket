@@ -350,6 +350,11 @@ requirements:
     acceptance:
       - id: "AC67"
         statement: "AC67: with github_source local the triage handler completes without a GITHUB_TOKEN, a merged squash commit in the clone and a merged or closed watcher record answer the merged and closed-unmerged searches, an id never matches a longer id, a merged record with no merge time is dropped, a missing watcher state returns status error, and the default github_source stays api -- falsifier: uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q fails when the local client is removed"
+  - id: "req-publisher-fixture-one-copy"
+    statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
+    acceptance:
+      - id: "AC68"
+        statement: "AC68: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
 evidence_requirements:
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
@@ -477,6 +482,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC67: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
     command: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
+  - kind: "tests"
+    description: "AC68: omnimarket's publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser."
+    command: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1199,3 +1207,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/handlers/handler_linear_triage.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("LocalGitHubPrReads", "github_source")); print("linear-triage local github deploy probe: PASS")'
+  - id: "dod-omn17427-ac68-publisher-fixture-one-copy"
+    description: "The publisher fixture is the omnibase_infra corpus over omnimarket's contracts and agrees with the contract topic graph parser; the fence fails on the previous second copy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC68"]
+  - id: "dod-omn17427-publisher-fixture-one-copy-deploy-probe"
+    description: "Deploy probe. GitHub serves the omnimarket publisher fixture at the checked-out HEAD importing the omnibase_infra corpus. It fails at the merge base, where the fixture carries its own index, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/testing/publisher_contract_fixture.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "from omnibase_infra.testing.publisher_contract_fixture import" in source and "parse_contract" not in source; print("publisher fixture one-copy deploy probe: PASS")'
