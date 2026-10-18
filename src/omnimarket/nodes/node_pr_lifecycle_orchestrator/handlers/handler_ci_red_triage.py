@@ -13,8 +13,6 @@ lane's private overlay sets whether that lane acts.
 from __future__ import annotations
 
 import asyncio
-import json
-import subprocess
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -40,11 +38,8 @@ from omnimarket.events.topics import (
     PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1,
 )
 from omnimarket.handlers.cause_signature import (
-    ANNOTATION_CHUNK,
     UNREAD,
-    annotation_query,
     cause_key,
-    first_failure_annotations,
     normalize_signature,
 )
 from omnimarket.models.ci_red_triage import (
@@ -85,7 +80,6 @@ OWNER_ACTIONS = {
 # The controller's red classes whose rerun the bus path owns; reviewer_pool keeps
 # the controller's reviewer-slot rule.
 RERUN_LANDING_CLASSES = frozenset({"runner_saturation", "cancelled_producer"})
-_ACTIONS_RUN = "/actions/runs/"
 _FLAG_WORDS = {"true": True, "false": False}
 
 
@@ -115,15 +109,6 @@ def ci_red_act_flags(block: object) -> dict[EnumCiRedClass, bool]:
     return flags
 
 
-def _run_id_of(details_url: object) -> int | None:
-    """The Actions workflow run id in a check run's details URL, if it has one."""
-    url = str(details_url or "")
-    if _ACTIONS_RUN not in url:
-        return None
-    tail = url.split(_ACTIONS_RUN, 1)[1].split("/", 1)[0]
-    return int(tail) if tail.isdigit() and int(tail) > 0 else None
-
-
 def _member_cause_keys(
     slug: str, facts: ModelCiRedFacts, checks: Iterable[str]
 ) -> tuple[str, ...]:
@@ -144,114 +129,32 @@ class ProtocolCiRedFactsReader(Protocol):
 
 
 class GhCiRedFactsReader:
-    """Read only: newest check runs via REST GET, failure annotations via one GraphQL query per chunk.
+    """Compatibility reader for watcher facts; never launches a GitHub client.
 
-    A failed check read leaves conclusions and base unread; a failed annotation
-    read leaves annotations unread (check-level clustering).
+    Older watcher events may lack conclusions or the base read. Keep those
+    facts unread so triage records facts-unavailable instead of fetching them
+    using the controller's GitHub identity. Annotations remain unread until
+    supplied by the watcher or an injected gateway-backed facts reader.
     """
 
-    @staticmethod
-    def _checks(slug: str, ref: str) -> dict[str, tuple[str, int | None]]:
-        """Each check's newest copy: its conclusion and its Actions run id."""
-        result = subprocess.run(
-            [
-                "gh",
-                "api",
-                "--method",
-                "GET",
-                f"repos/{slug}/commits/{ref}/check-runs?per_page=100",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=20,
-        )
-        payload = json.loads(result.stdout)
-        runs = payload["check_runs"]
-        if not isinstance(runs, list):
-            raise ValueError("check_runs must be a list")
-        newest: dict[str, tuple[tuple[str, int], tuple[str, int | None]]] = {}
-        for run in runs:
-            key = (str(run.get("started_at") or ""), int(run["id"]))
-            name = str(run["name"])
-            conclusion = str(run.get("conclusion") or "").lower()
-            if name not in newest or key > newest[name][0]:
-                newest[name] = (key, (conclusion, _run_id_of(run.get("details_url"))))
-        return {name: copy for name, (_, copy) in newest.items()}
-
-    @staticmethod
-    def _annotations(
-        event: ModelCiRunFailedEvent,
-    ) -> tuple[dict[str, str] | None, dict[int, dict[str, str]]]:
-        """The first failure annotation per failing check of the PR and its armed peers, each at its own head."""
-        slug = ci_red_repo_slug(event.repo)
-        heads = {event.pr_number: event.head_sha} | {
-            peer.pr_number: peer.head_sha for peer in event.peers if peer.armed
-        }
-        numbers = sorted(heads)
-        read: dict[int, dict[str, str]] = {}
-        for start in range(0, len(numbers), ANNOTATION_CHUNK):
-            chunk = numbers[start : start + ANNOTATION_CHUNK]
-            query = annotation_query([(slug, number) for number in chunk])
-            result = subprocess.run(
-                ["gh", "api", "graphql", "-f", f"query={query}"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=20,
-            )
-            data = json.loads(result.stdout).get("data") or {}
-            for i, number in enumerate(chunk):
-                node = (data.get(f"a{i}") or {}).get("pullRequest")
-                annotations = first_failure_annotations(node, heads[number])
-                if annotations is not None:
-                    read[number] = annotations
-        own = read.pop(event.pr_number, None)
-        return own, read
-
     def read(self, event: ModelCiRunFailedEvent) -> ModelCiRedFacts:
-        checks: dict[str, object] = {}
-        try:
-            slug = ci_red_repo_slug(event.repo)
-            head = self._checks(slug, event.head_sha)
-            base = self._checks(slug, event.base)
-            checks = {
-                "check_conclusions": {name: c for name, (c, _) in head.items()},
-                "check_run_ids": {
-                    name: run for name, (_, run) in head.items() if run is not None
-                },
-                "base_red_checks": tuple(
-                    sorted(
-                        name
-                        for name, (conclusion, _) in base.items()
-                        if conclusion in {"failure", "timed_out"}
-                    )
-                ),
-                "base_read": True,
-            }
-        except Exception:
-            checks = {}
-        annotations: dict[str, object] = {}
-        try:
-            own, peers = self._annotations(event)
-            if own is not None:
-                annotations = {
-                    "annotations": own,
-                    "peer_annotations": peers,
-                    "annotations_read": True,
-                }
-        except Exception:
-            annotations = {}
-        return ModelCiRedFacts.model_validate({"event": event, **checks, **annotations})
+        return ModelCiRedFacts(
+            event=event,
+            check_conclusions={run.check: run.conclusion for run in event.failing_runs},
+            check_run_ids={
+                run.check: run.run_id for run in event.failing_runs if run.run_id
+            },
+            base_red_checks=event.base_red_checks,
+            base_read=event.base_read,
+        )
 
 
 class EventCiRedFactsReader:
-    """Take the facts from the event; read GitHub only for an event that does not carry them.
+    """Use watcher event facts, or an explicitly injected facts reader.
 
-    A red-CI event derived from a PR-state observation of schema version 2, or from a webhook check
-    run, states every failing check's conclusion and the base branch's red checks, so the runner and
-    dev-head classes are decided without a GitHub read. An event that lacks any of that keeps the
-    read, which retires when every watcher publishes version 2 with the base branch read.
+    The compatibility default preserves partial event facts without network
+    access. A caller may supply a gateway-backed reader; no raw CLI fallback
+    exists when watcher facts are missing.
     """
 
     def __init__(self, fallback: ProtocolCiRedFactsReader | None = None) -> None:
@@ -427,7 +330,12 @@ class HandlerCiRedTriage:
             except CiRedClaimsUnreadError:
                 unread.append("owner claim")
                 claims_read = False
-        if not event.armed:
+        if not facts.base_read or any(
+            not facts.check_conclusions.get(check) for check in event.failing_checks
+        ):
+            action = EnumCiRedAction.RECORD_ONLY
+            start_evidence = " start=withheld:facts-unavailable"
+        elif not event.armed:
             action = EnumCiRedAction.RECORD_ONLY
         elif owner_run is not None:
             action = EnumCiRedAction.JOINED_OWNER
