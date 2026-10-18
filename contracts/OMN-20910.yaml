@@ -24,6 +24,11 @@ requirements:
         statement: "AC4: the ratchet refuses a vars.<anything>MODEL reference, a model id literal and a MODEL env key bound to a literal, finds all five lines of a known-bad model fixture, and the new cases fail on the merge base -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 --no-cov -k voter_model_from_overlay"
       - id: "AC5"
         statement: "AC5: the ratchet's test file runs as a step of the lint job that the required lint context covers and as a check-only pre-commit hook -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 --no-cov -k voter_model_from_overlay_ratchet_is_wired"
+  - id: "req-register-key-declared-lane"
+    statement: "onex secret register-tenant-key publishes its credential-registered event on the bound host's declared ledger_bus_lane from the lab host table when the environment names no broker, so a Claude review key registers on a lab host without KAFKA_BOOTSTRAP_SERVERS."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: with KAFKA_BOOTSTRAP_SERVERS unset, a key bound to a host whose row names ledger_bus_lane is published on that lane through the lab-run lane resolver; a broker in the environment keeps the publisher path, and an unopenable lane is refused by name -- falsifier: uv run pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -81,3 +86,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20910-ac6-register-key-declared-lane"
+    description: "register-tenant-key resolves the bound host's declared bus lane when KAFKA_BOOTSTRAP_SERVERS is unset."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20910-deploy-register-key-container-smoke"
+    description: "Run the checked-out register-tenant-key CLI in a disposable container. With no environment broker, its declared host lane must be opened and receive the credential event; an environment broker and a missing or unopenable lane must retain their expected behavior. The hosted runner needs Docker and the checkout, without access to a lab broker or lane containers."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
+        cwd: "${OMNI_HOME}/omnimarket"
