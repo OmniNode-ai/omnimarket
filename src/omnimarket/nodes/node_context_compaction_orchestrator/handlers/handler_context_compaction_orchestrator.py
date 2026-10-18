@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Answer one compaction command with a package or a native fallback (OMN-21113, TA.11).
 
+When a barrier wait is wired, the build runs only after the session barrier the
+command carries is met: a barrier not met at the deadline (or not yet projected)
+falls back ``source_not_caught_up``, a session with content capture off
+``source_disabled``, and a command carrying no barrier ``source_incomplete``.
 A built package is published as ``prepared``, then a fresh ``activation_id`` is
 appended to the identity trailer (the last message), ``installed_messages_hash``
 is taken over the whole list, and ``activated`` and the ``install`` reply carry
@@ -33,6 +37,9 @@ from omnimarket.models.context_compaction import (
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
+)
+from omnimarket.protocols.protocol_context_compaction_barrier_wait import (
+    ProtocolContextCompactionBarrierWait,
 )
 from omnimarket.protocols.protocol_context_compaction_pack_build import (
     ProtocolContextCompactionPackBuild,
@@ -81,14 +88,19 @@ class HandlerContextCompactionOrchestrator:
         self,
         pack_build: ProtocolContextCompactionPackBuild | None = None,
         activation_ids: Callable[[], UUID] = uuid4,
+        barrier_wait: ProtocolContextCompactionBarrierWait | None = None,
     ) -> None:
         self._pack_build = pack_build if pack_build is not None else _UnwiredPackBuild()
+        self._barrier_wait = barrier_wait
         self._activation_ids = activation_ids
 
     def handle(
         self, request: ModelContextCompactionRequested
     ) -> ModelContextCompactionResult:
         try:
+            barrier_failure = self._barrier_failure(request)
+            if barrier_failure is not None:
+                return self._native(request, barrier_failure)
             outcome = self._pack_build.build(request)
         except Exception:
             return self._native(request, EnumContextCompactionFailureClass.BUILD_ERROR)
@@ -114,6 +126,21 @@ class HandlerContextCompactionOrchestrator:
             handler_id="node_context_compaction_orchestrator.compaction",
             events=self.handle(request).emissions(),
         )
+
+    def _barrier_failure(
+        self, request: ModelContextCompactionRequested
+    ) -> EnumContextCompactionFailureClass | None:
+        """The failure class when the session barrier is not met; None to build."""
+        if self._barrier_wait is None:
+            return None
+        if request.barrier_id is None:
+            return EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
+        verdict = self._barrier_wait.wait(request)
+        if verdict.outcome == "met":
+            return None
+        if verdict.outcome == "disabled":
+            return EnumContextCompactionFailureClass.SOURCE_DISABLED
+        return EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
 
     def _native(
         self,

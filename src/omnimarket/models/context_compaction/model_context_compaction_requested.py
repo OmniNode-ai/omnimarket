@@ -28,6 +28,9 @@ class ModelContextCompactionRequested(BaseModel):
     input_messages_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     newest_turn: str | None = None
     compact_model: str | None = Field(default=None, min_length=1)
+    #: The session barrier the adapter journalled before publishing; the
+    #: orchestrator waits on it before it reads any source.
+    barrier_id: str | None = Field(default=None, min_length=1)
 
 
 __all__ = ["ModelContextCompactionRequested"]
