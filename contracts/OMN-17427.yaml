@@ -414,6 +414,11 @@ requirements:
     acceptance:
       - id: "AC75"
         statement: "AC75: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+  - id: "req-review-lab-rubric-measured"
+    statement: "The review task class records the lab model's measured adequacy against the lab-first bar."
+    acceptance:
+      - id: "AC78"
+        statement: "AC78: the review class declares lab_rubric verdict fail with its 25 of 60 measurement for Qwen3.8-27B, the recorded verdict is the one that measurement earns against the policy bar, and the shipped contracts still pass the lab-first routing check -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov -k review_measurement fails while the class reads unmeasured"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -569,6 +574,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC75: the landing decision mapping writes one row per action, outcome, degraded reason and violation, none for an idle tick, and the host appends a redelivered event once."
     command: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC78: the review class records its measured lab verdict, earned against the policy bar, and the shipped contracts still pass the lab-first check."
+    command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1504,3 +1512,25 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); topics = c["runtime_dispatch"]["subscribe_topics"]; assert len(topics) == 1 and topics[0].endswith("pr-landing-decision-completed.v1"); print("landing decision ledger mirror deploy probe: PASS")'
+  - id: "dod-omn17427-review-lab-rubric-measured"
+    description: "The review class records verdict fail with its 25 of 60 measurement, and the verdict is the one that measurement earns against the policy bar. The recorded-measurement test fails at the merge base, where the class reads unmeasured."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov -k review_measurement"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC78"]
+  - id: "dod-omn17427-review-lab-rubric-deploy-probe"
+    description: "Deploy probe. The checked-out routing contract records the review class as a measured fail. The merge base reads unmeasured and fails the assertion. The hosted runner needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          text = open("src/omnimarket/configs/task_class_contracts.v1.yaml", encoding="utf-8").read()
+          block = text.split("\n  review:\n", 1)[1].split("\n  code_review:", 1)[0]
+          assert "verdict: fail" in block, "review class is not a recorded fail"
+          assert "adequate: 25" in block and "of: 60" in block, "review measurement missing"
+          print("review lab rubric deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
