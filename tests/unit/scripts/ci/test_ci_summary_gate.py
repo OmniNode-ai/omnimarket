@@ -30,6 +30,7 @@ from scripts.ci.ci_summary_gate import (
     EXIT_SUCCESS,
     EXPECTED_EXTERNAL_CONTEXTS,
     EXTERNAL_GOOD_CONCLUSIONS,
+    RETEST_WAIVER_MARKER_JOB,
     SELF_JOB_NAME,
     SKIPPABLE_GATE_JOBS,
     SOFT_ALLOWLIST,
@@ -1010,6 +1011,10 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # would be wrong: it legitimately reports `skipped` on every non-docs
         # PR, which is exactly the state the gates are built to reject.
         "docs-only-marker",
+        # OMN-19998: the re-test waiver marker is a signal job on the same
+        # terms (RETEST_WAIVER_MARKER_JOB); it reports `skipped` on every pull
+        # request. EXPIRY: removed with the marker.
+        "queue-retest-waiver",
     }
 )
 
@@ -1676,3 +1681,125 @@ def test_rows_without_a_head_sha_still_supersede() -> None:
         _check_run("x", conclusion="skipped", started_at=_SKIP_T0_PLUS_64),
     ]
     assert [r["conclusion"] for r in drop_superseded_skips(rows)] == ["success"]
+
+
+# --------------------------------------------------------------------------- #
+# OMN-19998: tests run once, on the pull request (operator RULING
+# 2026-10-18T00:50:42Z). merge_group and push-to-dev runs skip the heavy tier
+# behind the re-test waiver marker. EXPIRY: removed with the marker when the
+# long-term run-once design lands.
+# --------------------------------------------------------------------------- #
+
+# The waiver clause every heavy ci.yml job carries, verbatim.
+_RETEST_WAIVER_CLAUSE = (
+    "!(github.event_name == 'merge_group' || "
+    "(github.event_name == 'push' && github.ref == 'refs/heads/dev'))"
+)
+
+# The heavy ci.yml jobs (by key) that already ran on the pull request head.
+_RETEST_WAIVED_JOB_KEYS = (
+    "detect-changes",
+    "integration-guard",
+    "e2e-workflow-runner",
+    "golden-chains",
+    "event-chain-generation",
+    "sea-e2e-chains",
+    "generated-node-golden-chain",
+    "coverage-sweep-gate",
+)
+
+
+def _retest_waived_jobs() -> list[dict[str, object]]:
+    """A merge_group / dev-push snapshot: the heavy tier skipped, no splits."""
+
+    jobs: list[dict[str, object]] = []
+    for name in STRICT_GATE_JOBS:
+        skipped = name in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        jobs.append(_job(name, conclusion="skipped" if skipped else "success"))
+    for name in SKIPPABLE_GATE_JOBS:
+        skipped = name != "typecheck"
+        jobs.append(_job(name, conclusion="skipped" if skipped else "success"))
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, conclusion="skipped"))
+    jobs.append(_job(SELF_JOB_NAME, status="in_progress", conclusion=None))
+    return jobs
+
+
+def test_retest_waiver_marker_success_admits_heavy_tier_skip() -> None:
+    jobs = _retest_waived_jobs()
+    jobs.append(_job(RETEST_WAIVER_MARKER_JOB, conclusion="success"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_SUCCESS, report
+    assert "retest_waived=true" in report, report
+
+
+@pytest.mark.parametrize("conclusion", ["skipped", "failure", "cancelled"])
+def test_retest_waiver_marker_not_success_keeps_tier_strict(conclusion: str) -> None:
+    """On a pull request the marker's `if:` is false: nothing is relaxed."""
+
+    jobs = _retest_waived_jobs()
+    jobs.append(_job(RETEST_WAIVER_MARKER_JOB, conclusion=conclusion))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_retest_waiver_marker_absent_keeps_tier_strict() -> None:
+    code, report = evaluate(_retest_waived_jobs())
+    assert code == EXIT_FAILURE, report
+
+
+def test_retest_waiver_marker_in_flight_keeps_tier_pending() -> None:
+    jobs = _retest_waived_jobs()
+    jobs.append(_job(RETEST_WAIVER_MARKER_JOB, status="in_progress", conclusion=None))
+    code, report = evaluate(jobs)
+    assert code == EXIT_PENDING, report
+
+
+def test_retest_waiver_marker_does_not_relax_light_strict_gates() -> None:
+    """lint, typecheck and the other fast gates still run and must pass."""
+
+    jobs = _retest_waived_jobs()
+    jobs = [
+        _job("lint", conclusion="skipped") if j["name"] == "lint" else j for j in jobs
+    ]
+    jobs.append(_job(RETEST_WAIVER_MARKER_JOB, conclusion="success"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_retest_waiver_marker_job_runs_only_on_merge_group_and_dev_push() -> None:
+    jobs = _ci_jobs()
+    assert "queue-retest-waiver" in jobs, sorted(jobs)
+    marker = jobs["queue-retest-waiver"]
+    assert str(marker.get("name")) == RETEST_WAIVER_MARKER_JOB
+    assert "needs" not in marker
+    if_expr = " ".join(str(marker.get("if", "")).split())
+    assert if_expr == (
+        "github.event_name == 'merge_group' || "
+        "(github.event_name == 'push' && github.ref == 'refs/heads/dev')"
+    ), if_expr
+    assert "pull_request" not in if_expr
+
+
+def test_heavy_jobs_carry_the_retest_waiver_clause() -> None:
+    jobs = _ci_jobs()
+    for key in _RETEST_WAIVED_JOB_KEYS:
+        assert key in jobs, f"{key} not found in ci.yml"
+        if_expr = " ".join(str(jobs[key].get("if", "")).split())
+        assert _RETEST_WAIVER_CLAUSE in if_expr, f"{key}: {if_expr!r}"
+        display = str(jobs[key].get("name", key))
+        assert display in SKIPPABLE_GATE_JOBS or display in (
+            DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        ), f"{key} ({display}) skips but the poller would refuse the skip"
+
+
+def test_retest_waiver_never_touches_pull_request_or_main() -> None:
+    """The clause is false for every pull_request event and for main pushes."""
+
+    jobs = _ci_jobs()
+    for key, defn in jobs.items():
+        if not isinstance(defn, dict) or key == "queue-retest-waiver":
+            continue
+        if_expr = " ".join(str(defn.get("if", "")).split())
+        if "merge_group" in if_expr and "refs/heads/dev" in if_expr:
+            assert key in _RETEST_WAIVED_JOB_KEYS, key
+            assert "refs/heads/main" not in if_expr, key

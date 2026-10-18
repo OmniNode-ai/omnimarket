@@ -145,6 +145,27 @@ requirements:
     acceptance:
       - id: "AC27"
         statement: "AC27: HandlerPrMergedProjection upserts on (repo, pr_number), so replaying one merged event, or the same merge under a new event_id, yields one row while the same pr_number in two repositories yields two, and migration 0003 deletes all but the lowest projection_cursor row per (repo, pr_number) before adding UNIQUE (repo, pr_number) -- falsifier: at the merge base the new-event_id replay leaves two rows and the 0003 migration file does not exist"
+  - id: "req-hostile-reviewer-budget-timeout-pin"
+    statement: "The Hostile Reviewer clones omniintelligence at the revision where a voter that exhausts its review budget fails as a timeout, so the lost voter is eligible for substitute receipts instead of leaving the gate with no verdict."
+    acceptance:
+      - id: "AC28"
+        statement: "AC28: hostile-reviewer.yml clones omniintelligence at 037af72c2a7f49fda953fed6a99edd5ec588dede, the merge commit of omniintelligence#1095 and a descendant of the previous pin 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q fails over the merge base's workflow, which pins 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
+  - id: "req-tests-run-once-on-the-pull-request"
+    statement: "Operator RULING 2026-10-18T00:50:42Z, short term until the merge queue clears and test deduplication works: a merge_group run or a push to dev skips the heavy ci.yml tier (test splits, coverage census, integration, golden and event chains, e2e) that already ran on the pull request head, a Queue Re-test Waiver (OMN-19998) marker job runs only on those two events, and CI Summary accepts the skip only when that marker succeeded, while pull request runs and main pushes are unchanged."
+    acceptance:
+      - id: "AC29"
+        statement: "AC29: the marker's if names only merge_group and a push to refs/heads/dev, every heavy job's if carries the waiver clause, CI Summary passes a waived snapshot with the marker succeeded and fails it with the marker absent, skipped, failed or cancelled, and a skipped light gate still fails it -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest fails at the merge base"
+  - id: "req-internal-release-path-guard"
+    statement: "Internal consumer remediation uses tested git tags or immutable commits instead of a release cut or release wait."
+    acceptance:
+      - id: "AC30"
+        statement: "AC30: the canonical internal release-path check refuses an internal release strategy or instruction, accepts a git pin, blocks lab-fill dispatch before file writes and controller worker/cause briefs before construction, and runs through its contract-declared bus topics -- falsifier: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q fails at the merge base"
+
+  - id: "req-git-mirror-sync-on-runtime-tick"
+    statement: "Plan step 5.0 (mirror path): node_git_mirror_sync_schedule_compute turns the runtime tick into a detecting sync request for one watched repository per window on onex.cmd.omnimarket.git-query-mirror-requested.v1, node_git_query_mirror_effect subscribes to that topic so the runtime wires it instead of skipping it, and the mirror's query response is its terminal event on onex.evt.omnimarket.git-query-mirror-completed.v1, never the pr-merged topic."
+    acceptance:
+      - id: "AC29"
+        statement: "AC29: the schedule uses canonical typed handler routing without legacy routing_key or handler_key fields, wire_from_manifest wires node_git_query_mirror_effect with no skip, a window tick through the runtime publishes one sync request that ModelGitQueryRequest accepts as a detecting sync of OmniNode-ai/omnimarket, an off-window tick publishes nothing, watched repositories take turns, and the mirror's terminal_event is the completed topic -- falsifier: uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q fails with the legacy schedule routing fields or the mirror contract at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -162,6 +183,7 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+
 dod_evidence:
   - id: "dod-omn19998-mirror-durable-outbox"
     description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
@@ -605,3 +627,68 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'import importlib.metadata as m, json; from omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection import CONFLICT_KEY; d=json.loads(m.distribution("omnibase-infra").read_text("direct_url.json") or "{}"); assert d.get("vcs_info", {}).get("vcs") == "git" and len(d["vcs_info"]["commit_id"]) == 40; assert CONFLICT_KEY == "repo,pr_number"'
+  - id: "dod-omn19998-hostile-reviewer-budget-timeout-pin"
+    description: "The workflow pins omniintelligence at the merge commit of omniintelligence#1095; the merge base's pin fails the test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC28"]
+  - id: "dod-omn19998-tests-run-once-on-the-pull-request"
+    description: "The re-test waiver tests pass at the head; at the merge base ci.yml has no queue-retest-waiver job and ci_summary_gate.py has no RETEST_WAIVER_MARKER_JOB, so they fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
+  - id: "dod-omn19998-tests-run-once-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this head: the queue-retest-waiver job runs only on merge_group and a dev push, and detect-changes and coverage-sweep-gate carry the waiver clause; the merge base has no such job and fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import yaml; j=yaml.safe_load(open(".github/workflows/ci.yml"))["jobs"]; c="!(github.event_name == \x27merge_group\x27 || (github.event_name == \x27push\x27 && github.ref == \x27refs/heads/dev\x27))"; w=j["queue-retest-waiver"]["if"]; assert "merge_group" in w and "refs/heads/dev" in w and "pull_request" not in w; assert all(c in " ".join(j[k]["if"].split()) for k in ("detect-changes", "coverage-sweep-gate"))'
+  - id: "dod-omn19998-internal-release-path-guard"
+    description: "Refusal, passing-pin, lane dispatch, controller brief, CLI and bus controls for the shared policy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn19998-internal-release-path-deploy-probe"
+    description: "Hosted runner resolves the packaged node from its contract and exercises a refused release instruction and a passing git pin; the base has no node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+  - id: "dod-omn19998-git-mirror-sync-schedule"
+    description: "The schedule uses canonical typed handler routing and its runtime golden chain passes; the dispatch head carries legacy routing_key and handler_key fields and fails the routing migration test. At the merge base the mirror contract declares no subscribe topic and no terminal event, so the wiring, topic and terminal-event tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py -q -k test_no_node_contract_carries_legacy_route_fields"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py::test_effectful_command_consumers_declare_effects_runtime_profile -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
+  - id: "dod-omn19998-git-mirror-effects-deploy-probe"
+    description: "Hosted-runner source probe requires descriptor-level effects ownership and the detecting-sync command subscription. The dispatch head lacks descriptor.runtime_profiles and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_git_query_mirror_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]; s=yaml.safe_load(Path("src/omnimarket/nodes/node_git_mirror_sync_schedule_compute/contract.yaml").read_text()); assert s["terminal_event"] in c["event_bus"]["subscribe_topics"]'
+  - id: "dod-omn19998-git-mirror-routing-deploy-probe"
+    description: "Hosted-runner source probe requires the schedule's canonical typed runtime-tick route without removed routing fields; the dispatch head fails this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_git_mirror_sync_schedule_compute/contract.yaml").read_text()); r=c["handler_routing"]; assert r["routing_strategy"] == "payload_type_match"; h, = r["handlers"]; assert not {"routing_key", "handler_key", "priority", "output_events", "callable", "lazy_import"}.intersection(h); assert h["event_model"] == "omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick"; assert h["handler"]["name"] == "HandlerGitMirrorSyncSchedule"; assert h["event_type"] == "platform.runtime-tick"'
