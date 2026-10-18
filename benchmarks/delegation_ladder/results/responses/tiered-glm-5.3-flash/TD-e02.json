@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e02",
+  "path": "pinned",
+  "sha256": "00c485ce49bcae969c5dd5585f9aa5ce8ee2763ff5a51eb73a316ffde39d6a96",
+  "response": "**#3373 (OMN-19980):** Adds a CI guard (`tests/test_single_savings_definition.py`, wired into ci.yml as a blocking step) that fails on any second definition of savings in SQL — string literals feeding `baseline_model`, the last savings-view migration carrying a hard-coded baseline, `claude-opus-4.1` outside the five frozen history migrations, or token-times-price arithmetic outside `node_metering_summary_compute` — with `contracts/OMN-19980.yaml` binding AC1 to the guard. This is because nothing previously stopped migrations from reintroducing an alternate savings definition, so the guard proves the live views are clean rather than assuming it."
+}

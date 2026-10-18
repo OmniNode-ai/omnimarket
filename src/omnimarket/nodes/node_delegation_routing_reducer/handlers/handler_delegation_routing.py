@@ -43,6 +43,7 @@ Related:
 from __future__ import annotations
 
 import importlib
+import importlib.resources
 import logging
 import os
 import re
@@ -96,6 +97,9 @@ from omnimarket.models.delegation.model_entry_tier_share import (
     entry_share_draw,
     entry_share_from_contract_entry,
     validate_entry_share,
+)
+from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
+    ModelGroundingBudgetByTaskClass,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -187,10 +191,13 @@ _SYSTEM_PROMPTS: dict[str, str] = {
     # OMN-18349: this prompt asked for code-line citations after OMN-13354
     # replaced `cites_specific_lines` with `cites_sources` on the research
     # class, so it asked for the one citation form the gate no longer grades.
+    # OMN-21088: it then asked every research prompt to "be thorough and
+    # attribute your claims", and "what is 2+2" came back as about 990 bytes of
+    # sourced reasoning. Sources are asked for by the `cites_sources` directive,
+    # and only when the prompt asks for them.
     "research": (
-        "You are a code research assistant. Analyze the provided code and answer "
-        "questions about its behavior, architecture, and design decisions. "
-        "Be thorough and attribute your claims to their sources."
+        "You are a research assistant. Answer the question directly, at the "
+        "length the question needs."
     ),
     "code_generation": (
         "You are a code generation assistant. Implement the requested functionality "
@@ -204,9 +211,10 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are a refactoring assistant. Improve the structure, readability, and "
         "maintainability of the provided code without changing its behavior."
     ),
+    # OMN-21088: the answer, not the working. Numbered steps are asked for by
+    # the `step_by_step_explanation` directive, and only when the prompt asks.
     "reasoning": (
-        "You are a reasoning assistant. Think through the problem step by step "
-        "and provide a well-structured analysis."
+        "You are a reasoning assistant. Work the problem out and give the conclusion."
     ),
     "planning": (
         "You are a planning assistant. Break down the requested work into clear, "
@@ -1471,7 +1479,8 @@ def _prompt_waived_rules(
 ) -> tuple[str, ...]:
     """Heuristic rules whose own declaration says this prompt's layout waives them.
 
-    OMN-19432. A rule declares ``waived_when_prompt_matches`` under
+    OMN-19432. A rule declares ``waived_when_prompt_matches`` (and, OMN-20844,
+    ``waived_unless_prompt_matches``: the input it needs) under
     ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
     what the model is told and what the gate enforces stay one list. Returns the
     waived names in band order. A rule the contract does not declare, or a
@@ -1489,12 +1498,24 @@ def _prompt_waived_rules(
         if not isinstance(rule, dict):
             continue
         patterns = rule.get("waived_when_prompt_matches")
-        if not isinstance(patterns, list):
+        if isinstance(patterns, list) and any(
+            isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE)
+            for pattern in patterns
+        ):
+            waived.append(name)
             continue
-        for pattern in patterns:
-            if isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE):
-                waived.append(name)
-                break
+        # OMN-20844: the input the rule judges. A rule that declares what its
+        # input looks like applies only to a prompt carrying some; a malformed
+        # declaration (no readable pattern) leaves the rule in force.
+        needed = rule.get("waived_unless_prompt_matches")
+        if not isinstance(needed, list):
+            continue
+        input_patterns = [pattern for pattern in needed if isinstance(pattern, str)]
+        if input_patterns and not any(
+            re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE)
+            for pattern in input_patterns
+        ):
+            waived.append(name)
     return tuple(waived)
 
 
@@ -1962,6 +1983,20 @@ def tier_for_backend(backend_id: str) -> str | None:
     return None
 
 
+def tiers_declaring_backend(backend_ref: str) -> tuple[str, ...]:
+    """Return the NAMES of every routing tier that declares ``backend_ref``.
+
+    More than one name means two tier labels share one concrete backend, so the
+    later label is not an independent rung for a caller that already failed on
+    the first (OMN-18831).
+    """
+    names: list[str] = []
+    for tier in _get_config().tiers:
+        if any(model.backend_ref == backend_ref for model in tier.models):
+            names.append(tier.name)
+    return tuple(names)
+
+
 # OMN-18297: the divisor of the character-based input measurement. It is the
 # repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
 # _compute) and it UNDER-counts: the recorded 57,120-character prompt of
@@ -1979,10 +2014,15 @@ def measure_grounding_input_tokens(text: str) -> int:
     return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
 
 
-def resolve_backend_grounding_budget(backend_id: str) -> int | None:
+def resolve_backend_grounding_budget(
+    backend_id: str, task_type: str | None = None
+) -> int | None:
     """Return the contract-declared input budget for ``backend_id``.
 
-    OMN-18297. ``None`` means the backend declares no budget -- NOT DECLARED,
+    OMN-18297. OMN-20486: a ``task_type`` named for the backend in
+    ``configs/grounding_budget_by_task_class.yaml`` gets that class's value; any
+    other class, and a call with no ``task_type``, gets the backend default.
+    ``None`` means the backend declares no budget -- NOT DECLARED,
     never "unlimited by policy". Reading it here keeps the bifrost contract the
     single authority for per-backend limits, the same way
     :func:`backend_id_for_tier` keeps tier->backend mapping here rather than in
@@ -2002,8 +2042,24 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
     )
     for backend in config.backends:
         if backend.backend_id == backend_id:
+            if task_type is not None:
+                class_budget = _load_grounding_budget_by_task_class().budget_for(
+                    backend_id, task_type
+                )
+                if class_budget is not None:
+                    return class_budget
             return backend.max_grounded_input_tokens
     return None
+
+
+@lru_cache(maxsize=1)
+def _load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
+    """Load the packaged per-task-class grounded input budgets (OMN-20486)."""
+    resource = importlib.resources.files("omnimarket").joinpath(
+        "configs/grounding_budget_by_task_class.yaml"
+    )
+    data = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+    return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
 def backend_id_for_tier(
@@ -2203,6 +2259,19 @@ def sibling_backend_available_in_tier(
     if selected is None:
         return None
     return selected.backend_ref
+
+
+def resolve_task_class_tier_order(task_type: str) -> tuple[str, ...]:
+    """The tier names ``task_type`` may be routed to, in escalation order.
+
+    Public routing-authority surface: the SAME order ``next_eligible_tier`` walks
+    (the task class's closed ``escalation_policy.tier_order``, or the config
+    declaration order when it declares none). Read-only: a caller may show it,
+    and must not route from it.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    return tuple(tier.name for tier in _tier_order_from_contract(_get_config(), entry))
 
 
 def resolve_task_class_max_escalations(task_type: str) -> int | None:
@@ -2667,13 +2736,13 @@ def delta(
     exhausted provider route (OMN-15503); it remains a no-op for tiers that do not
     declare an excluded backend.
 
-    When the request carries a non-None ``backend_id`` (OMN-15539), the initial
-    route selects that exact configured ``backend_ref`` before task capability,
+    When the request carries a non-None ``backend_id`` (OMN-15539), the route
+    selects that exact configured ``backend_ref`` before task capability,
     tier-order, contract-policy, or ROI preference.  A pin that cannot be
     resolved fails loudly instead of silently falling back to another backend.
-    The pin applies only when ``min_tier_name`` is None: retry/escalation calls
-    resume the normal contract-driven ladder so the immutable request cannot
-    keep returning to a backend that already failed.
+    OMN-20844: the pin holds on retry calls too (``min_tier_name`` set), so a
+    same-tier retry re-selects the pin, and a pin that is excluded or sits in a
+    tier before ``min_tier_name`` raises rather than resolving another backend.
 
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
@@ -2919,16 +2988,13 @@ def delta(
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
     raw_backend_id = getattr(request, "backend_id", None)
-    requested_backend_ref = (
-        raw_backend_id
-        if min_tier_name is None and isinstance(raw_backend_id, str)
-        else None
-    )
-    # An explicit backend pin is stronger than task-class tier policy on the
-    # initial attempt.  Search the routing config's declaration order so a
-    # backend outside this task's closed tier_order remains directly reachable.
-    # Escalation deliberately ignores the immutable request pin and restores the
-    # closed, contract-declared order below (OMN-15539).
+    requested_backend_ref = raw_backend_id if isinstance(raw_backend_id, str) else None
+    # An explicit backend pin is stronger than task-class tier policy.  Search
+    # the routing config's declaration order so a backend outside this task's
+    # closed tier_order remains directly reachable.  OMN-20844: the pin holds on
+    # every re-route as well, so a same-tier retry stays on the pin, and a
+    # re-route past the pin's tier or with the pin excluded refuses below
+    # instead of resolving another backend under the pin's name.
     tiers = (
         config.tiers
         if requested_backend_ref is not None
@@ -3244,6 +3310,7 @@ __all__: list[str] = [
     "resolve_task_class_dod_resolution",
     "resolve_task_class_max_escalations",
     "resolve_task_class_response_contract",
+    "resolve_task_class_tier_order",
     "shipped_house_credential_refs",
     "sibling_backend_available_in_tier",
     "tier_for_backend",

@@ -62,6 +62,7 @@ from pathlib import Path
 from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
+    resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
@@ -324,6 +325,83 @@ def substitute_any_registered_byok_route(
     return backend
 
 
+def next_chosen_model_byok_route(
+    failed: ModelResolvedDelegationBackend,
+    *,
+    tried_models: frozenset[tuple[str, str]],
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend | None:
+    """The next model the customer chose for the key behind ``failed``, or ``None`` (OMN-21059).
+
+    ``onex models`` keeps an ordered list of models per key. The route a key
+    resolves to carries the first; when that model fails, the run stays on the
+    same key and moves to the next entry of the list that this dispatch has not
+    tried, in the order the customer set. ``tried_models`` holds the
+    ``(backend_id, model_id)`` pairs already attempted, and ``failed`` itself
+    counts as tried, so the walk ends with the list.
+
+    ``None`` when ``failed`` is not a customer key route, when the key stores no
+    list, or when every listed model was tried. The caller then moves on to the
+    customer's next key exactly as before. Never a house key: the route is
+    rebuilt from the customer's own registration.
+    """
+    row = resolve_byok_backend_by_id(failed.backend_id)
+    if row is None:
+        return None
+    attempted = tried_models | {(failed.backend_id, failed.model_id)}
+    for model_id in resolve_local_byok_credential_models(row.provider, db_path=db_path):
+        if (row.backend_id, model_id) in attempted:
+            continue
+        route = _registered_byok_route(
+            row, replaced=None, tier=failed.tier, db_path=db_path
+        )
+        if route is None:
+            return None
+        return route.model_copy(
+            update={
+                "model_id": model_id,
+                "max_tokens": failed.max_tokens,
+                "timeout_ms": failed.timeout_ms,
+                "extra_headers": dict(failed.extra_headers),
+                "substituted_from_backend_id": failed.substituted_from_backend_id,
+            }
+        )
+    return None
+
+
+def next_registered_byok_route(
+    failed: ModelResolvedDelegationBackend,
+    *,
+    tried_backend_ids: frozenset[str],
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend | None:
+    """The customer's next registered key after ``failed``, or ``None`` (OMN-20844).
+
+    A customer's responders are their own keys. When the ladder has no new
+    responder left after ``failed`` (the platform rungs that carry another of
+    their providers can be ``explicit_pin_only``, so neither a sibling nor the
+    next tier offers it), the next key they registered answers instead, in the
+    catalogue order :func:`substitute_any_registered_byok_route` already uses.
+    Never a house key: only a provider the customer holds a key for is named,
+    and every key already tried in this dispatch is skipped, so the walk ends.
+    """
+    registered = set(registered_local_byok_providers(db_path=db_path))
+    for provider in customer_provider_catalogue():
+        if provider not in registered:
+            continue
+        plan = resolve_local_byok_credential_plan(provider, db_path=db_path)
+        byok = resolve_byok_provider_backend(provider, plan=plan)
+        if byok is None or byok.backend_id in tried_backend_ids:
+            continue
+        route = _registered_byok_route(
+            byok, replaced=failed, tier=failed.tier, db_path=db_path
+        )
+        if route is not None:
+            # The failed route's headers belong to its own provider.
+            return route.model_copy(update={"extra_headers": {}})
+    return None
+
+
 #: The ladder tier a pinned BYOK route reports. A customer's provider model is
 #: a metered cloud model, which is what the ``cheap_cloud`` tier prices.
 _BYOK_TIER = "cheap_cloud"
@@ -343,6 +421,8 @@ __all__: list[str] = [
     "ByokKeyNotRegisteredError",
     "ByokPinNotPermittedError",
     "house_provider_slug",
+    "next_chosen_model_byok_route",
+    "next_registered_byok_route",
     "resolve_pinned_byok_route",
     "substitute_any_registered_byok_route",
     "substitute_local_byok_route",

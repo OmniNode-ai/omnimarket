@@ -1,0 +1,163 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Inventory of every routing selection source in omnimarket (OMN-20601).
+#
+# Ruling 2026-10-10T17:54:30Z: routing decisions come from overlays, never from
+# omnimarket code. A routing selection source is anything that picks which backend,
+# model, tier or provider serves a request: a packaged default file, an environment
+# pin, a node overlay, a bus or store overlay.
+#
+# tests/test_routing_sources_omn20601.py holds this file to the tree in both
+# directions:
+#   * every call that resolves a path-config key or a node overlay under
+#     src/omnimarket (the helpers in handlers/node_overlay_reader.py are the
+#     mechanism and are not scanned) is listed here, either under a source's
+#     `resolution_sites` or under `not_routing_resolution_sites` with its reason;
+#   * every packaged config under src/omnimarket/configs, plus model_policy.yaml and
+#     data/model_registry, is listed either as a source's `packaged_defaults` or
+#     under `not_routing_configs` with its reason;
+#   * every source names the resolver that decides precedence and either a probe
+#     in the test module or an existing test that proves the overlay wins.
+#
+# A new resolution site or a new packaged config that is in neither list fails the
+# test, so a new routing source cannot arrive unclassified. A resolution site is
+# written `<path>:<helper>(<first argument as written>)`.
+#
+# Not covered, by design: a mapping or branch in code that picks a route is not a
+# configuration source. `routing_in_code_refused` in the same test module covers
+# those, against routing_in_code_baseline.txt.
+schema: routing_source_inventory.v1
+scan_scope:
+  configs: src/omnimarket/configs
+  extra_files:
+    - src/omnimarket/model_policy.yaml
+  extra_dirs:
+    - src/omnimarket/data/model_registry
+sources:
+  - id: routing_tiers_ladder
+    selects: the tier ladder, which backend serves each tier and each task class's use_for
+    resolver: omnimarket.routing.routing_tiers_path:resolve_routing_tiers_path
+    packaged_defaults:
+      - src/omnimarket/configs/routing_tiers.yaml
+    overlay: DELEGATION_ROUTING_TIERS_PATH pin, then the node_delegation_routing_reducer node overlay
+    resolution_sites:
+      - "src/omnimarket/routing/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
+      - "src/omnimarket/routing/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
+    precedence:
+      probe: routing_tiers_ladder
+  - id: harness_routing_overlay
+    selects: harness backends, harness tiers and per-class escalation chains
+    resolver: omnimarket.routing.routing_tiers_path:load_delegation_routing_overlay
+    packaged_defaults: []
+    overlay: DELEGATION_ROUTING_OVERLAY_PATH; unbound resolves to the empty overlay, with no packaged file
+    resolution_sites:
+      - "src/omnimarket/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
+    precedence:
+      probe: harness_routing_overlay
+  - id: bifrost_backend_contract
+    selects: backends, endpoints, model names and routing rules per task class
+    resolver: omnimarket.routing.delegation_backend_resolution:_resolve_effective_bifrost_paths
+    packaged_defaults:
+      - src/omnimarket/configs/bifrost_delegation.yaml
+      - src/omnimarket/configs/provider_surfaces.v1.yaml
+    overlay: BIFROST_CONTRACT_PATH and BIFROST_OVERLAY_PATH, the overlay deep-merged over the contract
+    resolution_sites:
+      - "src/omnimarket/inference/delegation_config_provenance.py:resolve_optional_path_config(BIFROST_CONTRACT_CONFIG_KEY)"
+      - "src/omnimarket/inference/delegation_config_provenance.py:resolve_optional_path_config(BIFROST_OVERLAY_CONFIG_KEY)"
+    precedence:
+      probe: bifrost_backend_contract
+  - id: task_class_contract
+    selects: per-task-class model refs, tier order and the quality bar
+    resolver: omnimarket.inference.delegation_config_provenance:resolve_path_config
+    packaged_defaults:
+      - src/omnimarket/configs/task_class_contracts.v1.yaml
+    overlay: TASK_CLASS_CONTRACT_PATH pin of a complete file; there is no node overlay for this file
+    resolution_sites:
+      - "src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:resolve_path_config(TASK_CLASS_CONTRACT_PATH_ENV_KEY)"
+      - "src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:resolve_path_config('TASK_CLASS_CONTRACT_PATH')"
+    precedence:
+      probe: task_class_contract
+  - id: tenant_routing_overlay
+    selects: a tenant's own backend per task type, chosen from the platform default and the BYOK catalogue
+    resolver: omnimarket.routing.tenant_overlay_resolver:resolve_tenant_overlay
+    packaged_defaults:
+      - src/omnimarket/configs/byok_provider_backends.v1.yaml
+    overlay: a delegation_routing_tenant_overlay row per tenant and task type
+    resolution_sites: []
+    precedence:
+      probe: tenant_routing_overlay
+  - id: roi_outcome_overlay
+    selects: which tiers are skipped, from captured outcomes of the context-ROI and definition-of-done projections
+    resolver: omnimarket.routing.roi_overlay:resolve_roi_overlay
+    packaged_defaults: []
+    overlay: the ModelRoutingRoiOverlay the caller threads into the reducer
+    resolution_sites: []
+    precedence:
+      existing_test: tests/unit/delegation/test_roi_overlay_routing_omn14001.py::test_first_eligible_tier_roi_suppression_flips_to_cheap_frontier
+  - id: build_loop_model_policy
+    selects: the endpoint and served model of each build-loop policy
+    resolver: omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader:ModelPolicyLoader.resolve
+    packaged_defaults:
+      - src/omnimarket/model_policy.yaml
+    overlay: the environment variable each policy names; the file holds no endpoint or model id
+    resolution_sites: []
+    precedence:
+      probe: build_loop_model_policy
+  - id: inference_bridge_endpoints
+    selects: the LLM endpoint and model id behind each local model key
+    resolver: omnimarket.inference.bridge_config_loader:_build_static_model_configs
+    packaged_defaults:
+      - src/omnimarket/data/model_registry/model_registry_v1.yaml
+    overlay: the LLM_*_URL and *_MODEL_NAME variables; a key with no URL is not registered
+    resolution_sites: []
+    precedence:
+      probe: inference_bridge_endpoints
+not_routing_resolution_sites:
+  - site: "src/omnimarket/delegation/content_grounding.py:resolve_path_config(_CONTRACT_PATH_CONFIG_KEY)"
+    reason: reads the quality-gate section of the task-class contract; it judges an answer and selects no route
+  - site: "src/omnimarket/delegation/identifier_grounding.py:resolve_path_config(_CONTRACT_PATH_CONFIG_KEY)"
+    reason: reads the identifier-grounding policy of the task-class contract; it judges an answer and selects no route
+  - site: "src/omnimarket/inference/protocol_config.py:resolve_path_config(_CONFIG_PATH_ENV)"
+    reason: provider protocol directives such as the no-think flag change how a request is shaped, not where it goes
+  - site: "src/omnimarket/nodes/node_data_flow_sweep/lane_target.py:resolve_setting(_NODE_NAME)"
+    reason: the runtime host a sweep probes; a probe target, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_database_sweep/handlers/handler_database_sweep.py:resolve_setting(_NODE_NAME)"
+    reason: the runtime host a sweep probes; a probe target, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:resolve_setting(DEFAULT_MODEL_NODE)"
+    reason: the model onboarding offers to register on a customer's own key; it is checked against the key's list and stored as the customer's choice, and the stored model, not this value, selects the delegation route
+  - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:load_node_overlay(DEFAULT_MODEL_NODE)"
+    reason: checks only that the same overlay is not broken before onboarding falls back to the contract's packaged default model; it reads no value and selects no route
+  - site: "src/omnimarket/nodes/node_integration_sweep_orchestrator/handlers/handler_integration_sweep_orchestrator.py:load_node_overlay(_NODE_NAME)"
+    reason: hosts and URLs a sweep probes; probe targets, not routes for delegated work
+not_routing_configs:
+  - path: src/omnimarket/configs/adk_invoke.yaml
+    reason: one fixed provider invocation with no choice among routes
+  - path: src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml
+    reason: canary manifest of documents to discover
+  - path: src/omnimarket/configs/adr_canary_rejected_manifest.v1.yaml
+    reason: canary manifest of rejected documents
+  - path: src/omnimarket/configs/adr_canary_sanitization_gate.v1.yaml
+    reason: sanitization gate patterns
+  - path: src/omnimarket/configs/check_register.yaml
+    reason: register of checks
+  - path: src/omnimarket/configs/delegation_acceptance_judge_rubric.v1.yaml
+    reason: judge rubric text
+  - path: src/omnimarket/configs/delegation_class_rubrics.v1.yaml
+    reason: per-class rubric text
+  - path: src/omnimarket/configs/delegation_judge_rubrics.v1.yaml
+    reason: judge rubric text
+  - path: src/omnimarket/configs/delegation_response_contract_conformance.v1.json
+    reason: response shape conformance schema
+  - path: src/omnimarket/configs/delegation_rung_eval.v1.yaml
+    reason: evaluation rung list in which every endpoint and model is an environment variable name
+  - path: src/omnimarket/configs/grounding_budget_by_task_class.yaml
+    reason: input token budget per backend and task class; it refuses an oversized prompt and selects no backend, tier or route
+  - path: src/omnimarket/configs/inference_protocols.v1.yaml
+    reason: provider protocol directives keyed by model pattern; they shape a request and select no route
+  - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
+    reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
+  - path: src/omnimarket/configs/seams.v1.yaml
+    reason: seam declarations
+  - path: src/omnimarket/configs/service_endpoints.yaml
+    reason: public API URLs of third-party services, not delegation routes

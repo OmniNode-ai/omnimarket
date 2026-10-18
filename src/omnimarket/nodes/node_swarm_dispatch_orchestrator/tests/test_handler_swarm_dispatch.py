@@ -50,7 +50,7 @@ def request_fixture() -> ModelSwarmDispatchRequest:
         task="Implement OAuth2 login flow",
         endpoint_ids=("ep-1", "ep-2"),
         run_id="run-999",
-        correlation_id="corr-999",
+        correlation_id="00000000-0000-4000-8000-000000000999",
     )
 
 
@@ -114,7 +114,9 @@ _AGGREGATE_EVENT = {"aggregated_output": "## Subtask: st-A\nauth done"}
 
 
 def _received_state(
-    run_id: str = "run-999", correlation_id: str = "corr-999", task: str = "test task"
+    run_id: str = "run-999",
+    correlation_id: str = "00000000-0000-4000-8000-000000000999",
+    task: str = "test task",
 ) -> ModelOrchestratorState:
     return ModelOrchestratorState(
         fsm_state=EnumSwarmOrchestratorState.RECEIVED,
@@ -195,7 +197,7 @@ class TestCommandPayloads:
         state = ModelOrchestratorState(
             fsm_state=EnumSwarmOrchestratorState.HEALTH_CHECKED,
             run_id="run-999",
-            correlation_id="corr-999",
+            correlation_id="00000000-0000-4000-8000-000000000999",
             original_task="test task",
             endpoint_health={
                 "ep-1": ModelEndpointHealth(
@@ -217,7 +219,7 @@ class TestCommandPayloads:
         state = ModelOrchestratorState(
             fsm_state=EnumSwarmOrchestratorState.DECOMPOSED,
             run_id="run-999",
-            correlation_id="corr-999",
+            correlation_id="00000000-0000-4000-8000-000000000999",
             original_task="test task",
             subtasks=(ModelSubtask(subtask_id="st-A", description="Auth routes"),),
             endpoint_health={
@@ -239,7 +241,7 @@ class TestCommandPayloads:
         state = ModelOrchestratorState(
             fsm_state=EnumSwarmOrchestratorState.ENDPOINTS_SELECTED,
             run_id="run-999",
-            correlation_id="corr-999",
+            correlation_id="00000000-0000-4000-8000-000000000999",
             original_task="test task",
             subtasks=(ModelSubtask(subtask_id="st-A", description="Auth routes"),),
             assignments={"st-A": "ep-1"},
@@ -615,3 +617,84 @@ class TestCostFieldsInCompletedPayload:
         _, publishes = handler.transition_completed(agg_state)
         _, payload = publishes[0]
         assert payload["dispatch_wall_latency_ms"] == 8000
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_runtime_resolved_handler_publishes_initial_health_command() -> None:
+    """Use the runtime resolver, which injects required constructor parameters."""
+    import json
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+
+    from omnibase_core.models.resolver.model_handler_resolver_context import (
+        ModelHandlerResolverContext,
+    )
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+    from omnibase_core.services.service_handler_resolver import ServiceHandlerResolver
+
+    bus = MagicMock(spec=ProtocolEventBusPublisher)
+    bus.publish = AsyncMock(spec=ProtocolEventBusPublisher.publish)
+    resolution = ServiceHandlerResolver().resolve(
+        ModelHandlerResolverContext(
+            handler_cls=HandlerSwarmDispatchOrchestrator,
+            handler_module=HandlerSwarmDispatchOrchestrator.__module__,
+            handler_name=HandlerSwarmDispatchOrchestrator.__name__,
+            contract_name="node_swarm_dispatch_orchestrator",
+            node_name="node_swarm_dispatch_orchestrator",
+            event_bus=bus,
+        )
+    )
+    handler = resolution.handler_instance
+    assert isinstance(handler, HandlerSwarmDispatchOrchestrator)
+    run_id, correlation = str(uuid4()), str(uuid4())
+    await handler.handle_async(
+        ModelSwarmDispatchRequest(
+            task="Report swarm endpoint availability",
+            run_id=run_id,
+            correlation_id=correlation,
+        )
+    )
+    bus.publish.assert_awaited_once()
+    publication = bus.publish.call_args.kwargs
+    assert publication["topic"] == "onex.cmd.omnimarket.swarm-check-endpoint-health.v1"
+    envelope = json.loads(publication["value"])
+    assert envelope["payload"]["run_id"] == run_id
+    assert envelope["correlation_id"] == correlation
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+    ModelEventEnvelope.model_validate(envelope)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_flush_accepts_non_uuid_correlation_id() -> None:
+    """A free-form request correlation id must not break envelope publication."""
+    import json
+    import uuid
+    from unittest.mock import AsyncMock
+
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+    bus = MagicMock(spec=ProtocolEventBusPublisher)
+    bus.publish = AsyncMock(spec=ProtocolEventBusPublisher.publish)
+    handler = HandlerSwarmDispatchOrchestrator(event_bus=bus)
+    await handler.handle_async(
+        ModelSwarmDispatchRequest(
+            task="Report swarm endpoint availability",
+            run_id="run-non-uuid",
+            correlation_id="corr-free-form",
+        )
+    )
+    bus.publish.assert_awaited_once()
+    envelope = json.loads(bus.publish.call_args.kwargs["value"])
+    assert envelope["payload"]["correlation_id"] == "corr-free-form"
+    assert envelope["correlation_id"] == str(
+        uuid.uuid5(uuid.NAMESPACE_URL, "corr-free-form")
+    )
+    ModelEventEnvelope.model_validate(envelope)

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m03",
+  "path": "pinned",
+  "sha256": "1223b09e1f66d67c88d708b29019ac58d05f8eb6dae76914a27b6717e58dc3d4",
+  "response": "The altered line is **[69]** (`severity=\"CRITICAx\",`). It contradicts test line 120 which asserts `non_durable[0].severity == \"CRITICAL\"`."
+}

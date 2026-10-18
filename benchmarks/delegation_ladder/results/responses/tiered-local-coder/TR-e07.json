@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e07",
+  "path": "pinned",
+  "sha256": "e88afa3ebea29385591df06cba2a38f890a2b702731c6114af5dbaac252de83b",
+  "response": "[8] contradicts test line 77 because the code uses `duplicates['with_single_commanx']` (typo with trailing 'x') while the test expects the headline to show `duplicate terminals (single command): 1` which requires the correct key `with_single_command`."
+}

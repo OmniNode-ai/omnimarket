@@ -1,0 +1,349 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 33 and seed 3821789319484189308 with 4 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CiRedTriage.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module CiRedTriage
+Starting... (2026-10-13 12:48:53)
+Implied-temporal checking--satisfiability problem has 2 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-13 12:48:54.
+Progress(29) at 2026-10-13 12:48:57: 285,031 states generated, 82,311 distinct states found, 0 states left on queue.
+Checking 2 branches of temporal properties for the complete state space with 164622 total distinct states at (2026-10-13 12:48:57)
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 0
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 2: <Crash line 258, col 5 to line 262, col 75 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "down"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 3: <GoRed line 183, col 5 to line 185, col 84 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "down"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 4: <Restart line 267, col 5 to line 271, col 65 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 5: <Supersede line 189, col 5 to line 191, col 83 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 6: <GoRed line 183, col 5 to line 185, col 84 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 0]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 0
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 7: <FirstEmit line 208, col 17 to line 208, col 55 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 1]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<>>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 1
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 8: <ReEmit line 209, col 14 to line 209, col 39 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 2]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 0
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 1
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 9: <Read line 216, col 5 to line 220, col 79 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 2]
+/\ cst = "read"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 0
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 1
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 10: <WriteFail line 239, col 5 to line 244, col 68 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 2]
+/\ cst = "idle"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 1
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 1
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 1
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 11: <Read line 216, col 5 to line 220, col 79 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 2]
+/\ cst = "read"
+/\ off = 0
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 1
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 1
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 1
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {}
+/\ mem = {}
+
+State 12: <DeadLetter line 248, col 5 to line 255, col 65 of module CiRedTriage>
+/\ emits = [a1 |-> 0, a2 |-> 2]
+/\ cst = "idle"
+/\ off = 1
+/\ cur = 1
+/\ snap = {}
+/\ log = <<"a2">>
+/\ fails = 1
+/\ pollDup = FALSE
+/\ keys = {}
+/\ gone = {"a1"}
+/\ drops = 1
+/\ applied = {}
+/\ red = {"a1", "a2"}
+/\ retries = 0
+/\ inflight = "none"
+/\ rewrote = FALSE
+/\ st = [a1 |-> "none", a2 |-> "none"]
+/\ pst = "idle"
+/\ triaged = {}
+/\ crashes = 1
+/\ nwrites = [a1 |-> 0, a2 |-> 0]
+/\ srcOf = [a1 |-> "none", a2 |-> "none"]
+/\ started = [a1 |-> 0, a2 |-> 0]
+/\ dlq = {1}
+/\ mem = {}
+
+State 13: Stuttering
+Finished checking temporal properties in 00s at 2026-10-13 12:48:57
+285031 states generated, 82311 distinct states found, 0 states left on queue.
+Finished in 04s at (2026-10-13 12:48:57)
+exit=13

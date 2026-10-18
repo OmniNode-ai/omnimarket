@@ -1,0 +1,55 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20705"
+title: "onex dashboard serves 404 at every path: no published client fetches the omnidash bundle"
+summary: >-
+  AC1 was met by the omnimarket 0.4.303 release (re-walked 2026-10-08 in a fresh container: HTTP 200 at the printed root in 6 seconds). This PR changes src/omnimarket/cli/cli_local.py so `onex dashboard` fetches and verifies the pinned bundle before printing its address: an unreachable asset or a checksum mismatch now exits 1 with `Error: the dashboard pages are unavailable, so nothing was served: <reason>` on stderr and no address, where before it printed a serving address and then crashed with a 98-line traceback. The CLI hands the verified pages to the serve handler.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criteria these changes serve, as declared on the OMN-20705 ticket body, read on 2026-10-16. The ticket body is the source and this block is the copy.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: In a fresh container with only quickstart step 1 installed, `onex dashboard` serves HTTP 200 on the printed root within 120 seconds -- falsifier: the scripted container run reads a status other than 200 from the printed address
+      - id: "AC2"
+        statement: |-
+          AC2: When the bundle cannot be fetched or fails its checksum, the command exits non-zero and names the failure on stderr rather than serving 404s -- falsifier: the same run with the asset made unreachable records exit 0 or an empty stderr
+evidence_requirements:
+  - kind: "tests"
+    description: "The real onex dashboard command and the real ensure_bundle, with only the network faked: an unreachable asset and a checksum mismatch each exit 1 named on stderr with no address printed and nothing served; a good bundle is verified before the address is printed and the printed root answers 200 with the pages. The OMN-19916 start-line test is kept green with the pages now resolved by the command. The container walk for AC1 is the 2026-10-08 re-walk recorded on the ticket."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py tests/projection/test_local_serving_auth.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20705-ac1-printed-root-serves-pages"
+    description: "The real command with only the download faked fetches and verifies the bundle before it prints its address, and the printed root, opened with its token, answers 200 with the pages. At the merge base the address is printed before the download, so it fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py::test_the_printed_root_serves_the_verified_pages -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC1"
+  - id: "dod-omn20705-ac2-unreachable-exits-non-zero"
+    description: "An unreachable asset exits 1, names \"could not download the dashboard bundle\" and \"nothing was served\" on stderr, prints no address, never serves, no traceback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py::test_an_unreachable_bundle_exits_non_zero_and_names_the_failure_on_stderr -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC2"
+  - id: "dod-omn20705-ac2-checksum-exits-non-zero"
+    description: "A bundle whose digest does not match the pin exits 1, names \"does not match the pin\" on stderr, discards the archive, prints no address, never serves."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py::test_a_bundle_failing_its_checksum_exits_non_zero_and_names_the_failure_on_stderr -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC2"

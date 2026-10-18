@@ -10,7 +10,7 @@
       "task_id": "R2-04",
       "rung": "R2",
       "path": "cloud",
-      "delegation_id": "61623f27-2450-42af-80ab-ef9ba9ef405a",
+      "delegation_id": "<uuid>",
       "tier": null,
       "backend_id": null,
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -38,7 +38,7 @@
           "coverage_at_least_0.4": true
         }
       },
-      "response_sha256": "372c90099283dc088974d0a9268ab2f6869938f4d3b3824e10cbf2aaa471308e",
+      "response_sha256": "7bf25302b3adfa024dca64b32cef0fb338c4638cf1c4da3bbefdfb14d3214c1e",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {

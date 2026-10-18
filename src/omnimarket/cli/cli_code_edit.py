@@ -17,6 +17,10 @@
     # Offline: each turn's delegate orchestrator runs in this process.
     onex code-edit run ... --bus inmemory --delegate-in-process
 
+    # Pin every turn to one backend (and so one lab host); a turn answered
+    # elsewhere ends the loop, and pre_run.json names the host before turn 1.
+    onex code-edit run ... --backend-id <backend_id>
+
 ``run`` prints ONE line on stdout, the loop's compact result, and exits 0 when
 the loop ends ``accepted`` (every declared check passed), 3 on any other loop
 status, and 1 when the loop could not run at all. The loop receipt, with every
@@ -44,7 +48,9 @@ import click
 from omnimarket.delegated_code_edit.loop_ports import (
     IN_PROCESS_DELEGATE_FLAGS,
     DelegatedCodeEditPorts,
+    DelegatePinUnresolvedError,
     deployed_lane_delegate_flags,
+    resolve_delegate_pin,
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     EnumCodeEditStatus,
@@ -52,6 +58,7 @@ from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     LoopReceiptExistsError,
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
+    ModelDelegatePin,
     ResumeRefusedError,
 )
 
@@ -220,6 +227,14 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
     help="Run each turn's delegate orchestrator in this process on the in-memory bus.",
 )
 @click.option(
+    "--backend-id",
+    default=None,
+    help="Pin every model turn to this routing backend (the contract's backend_id, "
+    "for example the one serving one lab host). The backend and its host are "
+    "resolved and printed before the first turn and written to the loop's "
+    "pre_run.json; a turn answered by any other backend or host ends the loop.",
+)
+@click.option(
     "--max-tokens",
     type=click.IntRange(min=1),
     default=None,
@@ -244,6 +259,7 @@ def run_command(
     onex_path: Path | None,
     delegate_lane: str,
     delegate_in_process: bool,
+    backend_id: str | None,
     max_tokens: int | None,
 ) -> None:
     """Run one delegated code edit loop and print its compact result."""
@@ -302,6 +318,17 @@ def run_command(
             )
         except ValueError as exc:
             raise click.ClickException(f"invalid request: {exc}") from exc
+    pin: ModelDelegatePin | None = None
+    if backend_id is not None:
+        try:
+            pin = resolve_delegate_pin(backend_id)
+        except DelegatePinUnresolvedError as exc:
+            raise click.ClickException(f"cannot pin turns: {exc}") from exc
+        click.echo(
+            f"delegate pin: backend_id={pin.backend_id} host={pin.host} "
+            f"endpoint={pin.endpoint_url} model={pin.model_name or '?'}",
+            err=True,
+        )
     ports = DelegatedCodeEditPorts(
         onex=_resolve_onex(onex_path, omnibase_path),
         state_root=state_root.resolve(),
@@ -312,6 +339,7 @@ def run_command(
         ),
         run_delegate=delegate_runner(),
         max_tokens=max_tokens,
+        pin=pin,
     )
     try:
         result = HandlerDelegatedCodeEditOrchestrator(ports).run(

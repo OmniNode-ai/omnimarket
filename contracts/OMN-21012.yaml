@@ -1,0 +1,93 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21012"
+title: "A tenant key is bound to the lab host whose Claude account owns it: registration records the host on the credential, its event and the catalog row"
+summary: "Operator rulings 2026-10-11T17:57:01Z and 17:58:45Z: the operator's own Claude API keys go into the company pool under the house tenant, and each key is bound to the machine whose Claude Code account owns it, so work sent from that machine is the only work that spends it. register-tenant-key gains --host (a row of the lab host table, a deployment fact named by ONEX_LAB_RUN_HOSTS); with no --host the registering machine's own row is used (the declared lane host, else the short hostname matched to a row), and off the lab the key stays unbound. bound_host rides the registration request, the response, the credential-registered event and the catalog row (migration 0007, nullable, COALESCE on re-delivery). The router filter on this column is OMN-20992 AC4."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "public_api"
+requirements:
+  - id: "req-omn21012-host-recorded"
+    statement: |-
+      A key registered with a lab host records that host on the response, the event and the catalog row.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: register-tenant-key --host h201 records bound_host h201 on the registration response, the credential-registered event and the projected catalog row -- falsifier: uv run pytest tests/unit/cli -k register_tenant_key_host
+  - id: "req-omn21012-host-default"
+    statement: |-
+      The host defaults to the registering machine's lab row, is unset off the lab, and an unknown host stores nothing.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: with no --host on a lab host, bound_host defaults to that host's lab_run_hosts.yaml row name; off the lab it stays unset, and a host name that is not a registry row is refused before anything is stored -- falsifier: uv run pytest tests/unit/cli -k register_tenant_key_host_default
+  - id: "req-omn21012-catalog"
+    statement: |-
+      The catalog projection writes the host and a key without one projects as null.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the catalog projection writes bound_host and a row registered without it projects with the column null -- falsifier: uv run pytest tests/integration -k tenant_credentials_bound_host
+evidence_requirements:
+  - kind: "tests"
+    description: "The host tests pass at the head and fail on the base, where register-tenant-key has no --host option and migration 0007 does not exist."
+    command: "uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py tests/test_omn16316_tenant_credentials_projection.py -k 'register_tenant_key_host or bound_host' -q"
+  - kind: "tests"
+    description: "Real-Postgres: migration 0007 creates the column, the projection stores the host, a re-delivery keeps it, and an unbound key is null (skipped where no database is reachable)."
+    command: "uv run pytest tests/integration/test_omn21012_tenant_credentials_bound_host.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21012-ac1-host-recorded"
+    description: "--host h201 is printed, published on the event and stored with the key; a host shape the request or event model refuses never validates."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py -k 'records_the_named_host or shape_is_refused' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21012-ac2-host-default"
+    description: "The declared lane host, then the hostname matched to a row, is the default; off the lab and on an unlisted machine the key is unbound; a host not in the table, a named host off the lab and an undeclared lane host are refused and nothing is stored or published."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21012-ac3-catalog"
+    description: "The Postgres projection writes bound_host with COALESCE, the SQLite store writes and keeps it, an unbound key projects null, migration 0007 is one nullable column, and the exposure lists it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k bound_host -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/test_omn21012_tenant_credentials_bound_host.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21012-deploy-probe-migration"
+    description: "Deploy probe: the migration GitHub serves at the checked-out commit adds the bound_host column; the file does not exist at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k bound_host_migration -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/migrations/0007_tenant_credentials_bound_host.sql?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"ADD COLUMN IF NOT EXISTS bound_host TEXT\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21012-deploy-probe-cli"
+    description: "Deploy probe: the CLI GitHub serves at the checked-out commit defines _resolve_bound_host, the resolution behind --host; the symbol is absent at the merge base, so the content read answers false there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/cli/cli_secret.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def _resolve_bound_host(\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

@@ -9,22 +9,20 @@ any non-empty answer, so it contributed a false "passed" to the deterministic
 fraction while verifying nothing about test execution (a tautology-class
 truth-integrity defect).
 
-This suite pins the honest behavior:
+This suite pins honest test evidence under OMN-17427:
 
-  * SKIPPED-when-unevaluated: with no wired acceptance-command executor the check
-    is recorded as SKIPPED, confers no acceptance authority, and is EXCLUDED from
-    the deterministic passed/total fraction — it never reports "passed".
-  * The deterministic fraction (``actual_score``) reflects ONLY evaluated checks,
-    so a skipped check cannot inflate the score.
-  * The empty/refusal deterministic HARD FLOOR (MUST-NOT-change) still hard-blocks
-    an empty answer on the verifiable path, independently of the (now skipped)
-    ``passes_existing_tests`` check.
-  * A real evaluated deterministic check still produces a real pass and a real
-    fail alongside the skipped check.
+  * A request naming no tests records UNTESTED, skipped and never passed.
+  * Named tests without a run are refused as INSUFFICIENT, with a failed
+    ``passes_existing_tests`` evaluation rather than a skipped check.
+  * The deterministic fraction (``actual_score``) includes a named-test
+    missing-run failure; UNTESTED checks are excluded from the fraction.
+  * The empty/refusal deterministic HARD FLOOR still hard-blocks an empty answer,
+    independently of the missing execution evidence.
+  * A real deterministic check still produces a real pass and a real fail
+    alongside a named-test missing-run failure.
 
-Execution of the acceptance command (real test-suite run) is an EFFECT boundary
-and is a scoped follow-up (see the OMN-13850 PR body); this reducer stays pure,
-so ``passes_existing_tests`` is SKIPPED here rather than executed.
+Execution of named tests is an EFFECT boundary; this reducer stays pure and
+reads the execution evidence supplied by its caller.
 """
 
 from __future__ import annotations
@@ -35,6 +33,10 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta,
 )
@@ -74,47 +76,54 @@ def _gate(
 
 
 @pytest.mark.unit
-def test_passes_existing_tests_is_recorded_as_skipped() -> None:
-    """The unevaluated check surfaces in ``skipped_checks``, not as a pass/fail."""
+def test_passes_existing_tests_with_no_named_tests_is_recorded_untested() -> None:
+    """No tests named: accept the contract and record no test pass."""
     result = delta(
         _gate(
             _GOOD_CODE,
             deterministic=("compiles_without_errors", "passes_existing_tests"),
         )
     )
-    assert "passes_existing_tests" in result.skipped_checks
-    # It is neither a failure reason nor a failure case.
-    assert not any("passes_existing_tests" in r for r in result.failure_reasons)
-    assert not any("passes_existing_tests" in c for c in result.failure_cases)
+    assert result.passed is True
+    assert result.fail_category == "pass"
+    assert result.skipped_checks == ("passes_existing_tests",)
+    assert result.failure_reasons == ()
+    assert result.failure_cases == ()
+    assert result.no_rung_can_satisfy is False
+    assert result.actual_score == 1.0  # Only the compilation check was scored.
+    assert result.score_verified is False
+    evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
 
 
 @pytest.mark.unit
-def test_skipped_check_never_reports_passed_alone() -> None:
-    """OMN-13850 core: a lone SKIPPED check cannot promote a clean answer to pass.
+def test_missing_run_check_never_reports_passed_alone() -> None:
+    """A lone named-test check without a run cannot accept a clean answer.
 
-    ``passes_existing_tests`` is the only declared deterministic check. It runs
-    nothing, so it confers no acceptance authority — the clean answer is NOT
+    Tests were named and ``passes_existing_tests`` is the only declared check.
+    It runs nothing, so it confers no acceptance authority — the clean answer is NOT
     accepted (the old phantom returned ``passed=True`` here).
     """
-    result = delta(_gate(_GOOD_CODE, deterministic=("passes_existing_tests",)))
+    result = delta(
+        _gate(_GOOD_CODE, deterministic=("passes_existing_tests",)),
+        named_tests_requested=True,
+    )
     assert result.passed is False
-    assert result.fail_category == "fail_heuristic"
-    # No deterministic-acceptance evidence is produced — nothing was evaluated.
-    assert result.actual_score is None
-    assert result.score_source == ""
+    # OMN-21077: missing execution is a scored deterministic failure.
+    assert result.fail_category == "fail_deterministic"
+    assert result.actual_score == 0.0
+    assert result.score_source == "deterministic_acceptance"
+    assert result.failure_reasons == (NO_NAMED_TEST_RUN_REASON,)
+    assert result.no_rung_can_satisfy is True
 
 
 @pytest.mark.unit
-def test_deterministic_fraction_excludes_the_skipped_check() -> None:
-    """``actual_score`` counts only EVALUATED checks, never the skipped one.
-
-    With two evaluated checks passing (``compiles_without_errors``,
-    ``final_artifact_only``) plus one skipped (``passes_existing_tests``), the
-    deterministic fraction is 2/2 = 1.0 — the skipped check is NOT in the
-    denominator. A phantom always-pass would have counted 3/3 the same way, but a
-    phantom FAILURE-masking check would have hidden a real miss; excluding it keeps
-    the denominator honest.
-    """
+def test_deterministic_fraction_includes_the_missing_run_failure() -> None:
+    """Two passing checks and one missing-run failure score 2/3, not 2/2."""
     result = delta(
         _gate(
             _GOOD_CODE,
@@ -123,22 +132,20 @@ def test_deterministic_fraction_excludes_the_skipped_check() -> None:
                 "final_artifact_only",
                 "passes_existing_tests",
             ),
-        )
+        ),
+        named_tests_requested=True,
     )
-    assert result.passed is True
-    assert result.actual_score == pytest.approx(1.0)
-    assert result.skipped_checks == ("passes_existing_tests",)
+    # OMN-21077: the required missing run contributes a failure to the fraction.
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert result.actual_score == pytest.approx(0.667)
+    assert result.skipped_checks == ()
+    assert result.failure_reasons == (NO_NAMED_TEST_RUN_REASON,)
 
 
 @pytest.mark.unit
-def test_real_evaluated_fail_scores_alongside_skipped_check() -> None:
-    """A real evaluated deterministic failure is scored on the EVALUATED total.
-
-    ``compiles_without_errors`` fails (broken syntax); ``final_artifact_only``
-    passes; ``passes_existing_tests`` is skipped. Evaluated total = 2, one failed,
-    so the deterministic fraction is 1/2 = 0.5 — NOT diluted to 2/3 by counting the
-    skipped check as a denominator term.
-    """
+def test_real_evaluated_fail_scores_alongside_missing_run_failure() -> None:
+    """Broken syntax and missing execution fail two of the three checks."""
     result = delta(
         _gate(
             _BROKEN_CODE,
@@ -147,22 +154,25 @@ def test_real_evaluated_fail_scores_alongside_skipped_check() -> None:
                 "final_artifact_only",
                 "passes_existing_tests",
             ),
-        )
+        ),
+        named_tests_requested=True,
     )
     assert result.passed is False
     assert result.fail_category == "fail_deterministic"
-    assert result.actual_score == pytest.approx(0.5)
-    assert result.skipped_checks == ("passes_existing_tests",)
+    # OMN-21077: both the syntax failure and the missing run count against code.
+    assert result.actual_score == pytest.approx(0.333)
+    assert result.skipped_checks == ()
     assert any("compile" in r for r in result.failure_reasons)
+    assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
 
 
 @pytest.mark.unit
-def test_empty_hard_floor_survives_skipping_passes_existing_tests() -> None:
+def test_empty_hard_floor_survives_missing_passes_existing_tests() -> None:
     """MUST-NOT-change: the empty/refusal deterministic hard floor still blocks.
 
     Before OMN-13850 the ONLY thing rejecting an EMPTY code_generation answer on
     the deterministic path was ``passes_existing_tests`` aliased to
-    ``_check_response_non_empty``. Now that the check is SKIPPED, an always-applied
+    ``_check_response_non_empty``. With that alias removed, an always-applied
     empty floor keeps the empty answer hard-blocking — because it is EMPTY, not
     because a phantom test check "failed".
     """
@@ -203,11 +213,21 @@ def test_empty_floor_not_double_counted_with_declared_response_non_empty() -> No
     )
     empty_reasons = [r for r in result.failure_reasons if "empty response" in r]
     assert len(empty_reasons) == 1
+    # The empty floor blocks independently of the skipped UNTESTED check.
     assert "passes_existing_tests" in result.skipped_checks
+    assert NO_NAMED_TEST_RUN_REASON not in result.failure_reasons
+    evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
 
 
 @pytest.mark.unit
-def test_judge_combine_cannot_mask_empty_after_skip() -> None:
+def test_judge_combine_cannot_mask_empty_without_test_run() -> None:
     """A maximal judge score cannot lift an empty answer over the bar.
 
     The empty floor is a deterministic hard block that fires BEFORE any judge

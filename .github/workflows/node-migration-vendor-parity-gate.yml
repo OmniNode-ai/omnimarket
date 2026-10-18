@@ -78,7 +78,7 @@ jobs:
       ${{
         (github.event.pull_request.head.repo.full_name != github.repository)
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
     timeout-minutes: 10
     steps:
@@ -87,11 +87,52 @@ jobs:
         with:
           fetch-depth: 0
 
+      - id: pins
+        name: Read the sibling release pins from this head's uv.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          import tomllib
+
+          with open("uv.lock", "rb") as lock_file:
+              packages = tomllib.load(lock_file).get("package", [])
+          pins = {}
+          failed = False
+          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+              entries = [package for package in packages if package.get("name") == name]
+              sources = [package.get("source") for package in entries]
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
+                  failed = True
+                  continue
+              pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
+          if failed:
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
+              for key, version in pins.items():
+                  line = f"{key}={version}"
+                  print(line)
+                  print(line, file=output_file)
+          PY
       - name: Checkout omnibase_infra at the pinned release tag (sibling — vendored destination)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v0.38.70
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: omnibase_infra-dest
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           sparse-checkout: |
@@ -125,13 +166,13 @@ jobs:
             dest_file="omnibase_infra-dest/docker/migrations/forward/nodes/${node_name}/${filename}"
 
             if [ ! -f "${dest_file}" ]; then
-              echo "::warning::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in the pinned omnibase_infra v0.38.70. This repo is ahead of its pin; omnibase_infra vendors it through its own consumer PR (scripts/sync-node-migrations.sh) and this repo bumps the pin after integration testing." >&2
+              echo "::warning::${src_file} has no vendored counterpart at docker/migrations/forward/nodes/${node_name}/${filename} in the pinned omnibase_infra v${{ steps.pins.outputs.infra_version }}. This repo is ahead of its pin; omnibase_infra vendors it through its own consumer PR (scripts/sync-node-migrations.sh) and this repo bumps the pin after integration testing." >&2
               ahead=1
               continue
             fi
 
             if ! cmp -s "${src_file}" "${dest_file}"; then
-              echo "::warning::${src_file} differs from the vendored copy in the pinned omnibase_infra v0.38.70 (${dest_file}). This repo is ahead of its pin; omnibase_infra re-runs scripts/sync-node-migrations.sh through its own consumer PR." >&2
+              echo "::warning::${src_file} differs from the vendored copy in the pinned omnibase_infra v${{ steps.pins.outputs.infra_version }} (${dest_file}). This repo is ahead of its pin; omnibase_infra re-runs scripts/sync-node-migrations.sh through its own consumer PR." >&2
               ahead=1
             fi
           done
@@ -141,4 +182,4 @@ jobs:
             exit 0
           fi
 
-          echo "::notice::All changed node migrations are already vendored in the pinned omnibase_infra v0.38.70."
+          echo "::notice::All changed node migrations are already vendored in the pinned omnibase_infra v${{ steps.pins.outputs.infra_version }}."

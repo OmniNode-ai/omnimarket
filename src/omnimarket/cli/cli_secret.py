@@ -34,20 +34,42 @@ import asyncio
 import fcntl
 import json
 import os
+import socket
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import click
+import yaml
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+    resolve_local_byok_credential_plan,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
+    CapturedSecretReaderNotConfiguredError,
+    HandlerCapturedSecretResolve,
+    reader_for_this_machine,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_request import (
+    ModelCapturedSecretResolveRequest,
+)
+from omnimarket.nodes.node_captured_secret_resolve_effect.models.model_captured_secret_resolve_result import (
+    EnumCapturedSecretResolveOutcome,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
+    HandlerCapturedSecretStore,
+)
+from omnimarket.nodes.node_captured_secret_store_effect.models.model_captured_secret_store_request import (
+    ModelCapturedSecretStoreRequest,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -61,8 +83,10 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
     ModelLocalSecretResult,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    LOCAL_URL_PROVIDER,
     PROVIDERS,
     HandlerModelSetup,
+    ModelSetupRefusedError,
     key_looks_like,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
@@ -76,7 +100,17 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     apply_credential_registered,
     apply_credential_revoked,
 )
+from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
+    HandlerSecretStore,
+)
+from omnimarket.nodes.node_secret_store_effect.models import (
+    EnumSecretStoreOperation,
+    EnumSecretStoreOutcome,
+    ModelSecretStoreRequest,
+    ModelSecretStoreResult,
+)
 from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelCredentialRegisteredEvent,
@@ -316,6 +350,27 @@ def _resolve_model(
     return discovery.model
 
 
+def _model_chosen_by(
+    provider: str | None,
+    plan: str | None,
+    model: str | None,
+    model_option: str | None,
+) -> Literal["customer", "catalogue"] | None:
+    """OMN-21078: record the chooser, including a prompted customer choice."""
+    if model is None:
+        return None
+    backend = (
+        resolve_byok_provider_backend(provider, plan=plan)
+        if provider is not None
+        else None
+    )
+    if model_option is not None or (
+        backend is not None and backend.customer_chooses_model
+    ):
+        return "customer"
+    return "catalogue"
+
+
 def _stdin_is_tty() -> bool:
     return sys.stdin is not None and sys.stdin.isatty()
 
@@ -368,6 +423,77 @@ def _tenant_key_store() -> LocalByokCredentialStore:
     return LocalByokCredentialStore()
 
 
+#: OMN-20994. The secret store node's contract maps this reference namespace to
+#: the tenant folder, so this command holds a reference and never a folder.
+_TENANT_REFERENCE_PREFIX = "secret://onex/tenant/"
+
+
+class CentralStoreRefusedError(Exception):
+    """The secret store node did not create the key. Carries no value."""
+
+    def __init__(self, result: ModelSecretStoreResult) -> None:
+        detail = f" ({result.detail})" if result.detail else ""
+        super().__init__(
+            f"the central secret store answered {result.outcome.value}{detail}"
+        )
+        self.outcome = result.outcome
+
+
+def _central_secret_handler() -> HandlerSecretStore:
+    """The secret store node's handler, store and identity from this machine's overlay."""
+    return HandlerSecretStore()
+
+
+class _CentralTenantKeyStore:
+    """``ProtocolSecretStore`` over the secret store node's handler (OMN-20994).
+
+    A tenant key is written in process, create-only, under the minted
+    reference in the tenant namespace. Anything but ``created`` raises
+    :class:`CentralStoreRefusedError`, so a refusal stops the registration
+    before any event is published.
+    """
+
+    def __init__(self, handler: HandlerSecretStore) -> None:
+        self._handler = handler
+
+    async def get_secret(self, key: str) -> str | None:
+        result = await self._handler.handle(
+            ModelSecretStoreRequest(
+                operation=EnumSecretStoreOperation.RESOLVE,
+                reference=f"{_TENANT_REFERENCE_PREFIX}{key}",
+            )
+        )
+        if result.outcome is EnumSecretStoreOutcome.NOT_FOUND:
+            return None
+        if result.value is None:
+            raise CentralStoreRefusedError(result)
+        return result.value.get_secret_value()
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        result = await self._handler.handle(
+            ModelSecretStoreRequest(
+                operation=EnumSecretStoreOperation.CREATE,
+                reference=f"{_TENANT_REFERENCE_PREFIX}{key}",
+                value=SecretStr(value),
+            )
+        )
+        if result.outcome is not EnumSecretStoreOutcome.CREATED:
+            raise CentralStoreRefusedError(result)
+        return True
+
+    async def delete_secret(self, key: str) -> bool:
+        raise PermissionError("the central secret store is written create-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        raise PermissionError("the central tenant store is not listed from here")
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        return None
+
+
 def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     """Let the publisher construct and own this runtime's Settings-backed bus.
 
@@ -375,6 +501,83 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     producer lifecycle follow the same path as hosted credential intake.
     """
     return None
+
+
+#: OMN-21012. The lab host table is a deployment fact kept outside this
+#: repository, named by ONEX_LAB_RUN_HOSTS (the variable ``onex delegate`` and
+#: the lab placement read). Without it this machine is off the lab and a key
+#: is registered with no host binding.
+_LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
+#: A remote lane declares its host because its namespace may not carry the
+#: host's own name (the same two variables ``onex delegate`` reads).
+_LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
+
+
+def _lab_host_table() -> Path | None:
+    """The lab host table this machine reads, or ``None`` off the lab."""
+    configured = os.environ.get(_LAB_HOSTS_ENV, "").strip()
+    return Path(configured) if configured else None
+
+
+def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
+    """Each row's ``(name, target)``, or a refusal naming the table."""
+    try:
+        document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise click.ClickException(
+            f"the lab host table {table} could not be read ({exc}); nothing was stored."
+        ) from exc
+    rows = document.get("hosts") if isinstance(document, dict) else None
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and row.get("name") for row in rows
+    ):
+        raise click.ClickException(
+            f"the lab host table {table} has no hosts with a name; nothing was stored."
+        )
+    return [(str(row["name"]), str(row.get("target") or "")) for row in rows]
+
+
+def _resolve_bound_host(declared: str | None) -> str | None:
+    """The lab host a registered key is bound to (OMN-21012), or ``None``.
+
+    Operator ruling 2026-10-11T17:58:45Z: each Claude account's key is bound to
+    the machine the account lives on. ``--host`` names that machine and must be
+    a row of the lab host table. Without it, the registering machine's own row
+    is used: the declared lane host first, else the short hostname matched to a
+    row's name or target. Off the lab (no table), or on a machine no row names,
+    the key is unbound and usable from any host, as before.
+    """
+    table = _lab_host_table()
+    if declared is not None:
+        host = declared.strip()
+        if table is None:
+            raise click.ClickException(
+                f"--host {declared!r} cannot be checked: there is no lab host table "
+                f"on this machine (set {_LAB_HOSTS_ENV}); nothing was stored."
+            )
+        names = [name for name, _target in _lab_host_rows(table)]
+        if host not in names:
+            raise click.ClickException(
+                f"--host {declared!r} is not a host in the lab host table "
+                f"({', '.join(names)}); nothing was stored."
+            )
+        return host
+    if table is None:
+        return None
+    rows = _lab_host_rows(table)
+    row_names = {name for name, _target in rows}
+    for env in _LANE_HOST_ENVS:
+        lane_host = os.environ.get(env, "").strip()
+        if lane_host:
+            if lane_host not in row_names:
+                raise click.ClickException(
+                    f"{env}={lane_host!r} is not a host in the lab host table; "
+                    "pass --host or fix the declaration. Nothing was stored."
+                )
+            return lane_host
+    hostname = socket.gethostname().split(".")[0]
+    matches = [name for name, target in rows if hostname in (name, target)]
+    return matches[0] if len(matches) == 1 else None
 
 
 @secret_group.command("register-tenant-key")
@@ -388,16 +591,53 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     default=None,
     help="The model this key runs, checked against the provider's list for it.",
 )
+@click.option(
+    "--expires",
+    default=None,
+    metavar="YYYY-MM-DD",
+    help=(
+        "The date the key expires, as set where it was created (UTC). Company "
+        "keys all expire on January 1; any other date is stored with a warning."
+    ),
+)
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "The lab host whose Claude account owns this key (a lab host table row, "
+        "e.g. h201). Work sent from that host is the only work that spends it. "
+        "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
+        "the lab the key is unbound."
+    ),
+)
+@click.option(
+    "--store",
+    "store_choice",
+    type=click.Choice(["local", "central"]),
+    default="local",
+    show_default=True,
+    help=(
+        "Where the value is held. local: this machine's store. central: the "
+        "shared tenant folder, written through the secret store node, so every "
+        "lab host resolves it; this machine's store is left untouched."
+    ),
+)
 def register_tenant_key(
     provider: str,
     tenant: str,
     name: str | None,
     plan: str | None,
     model_option: str | None,
+    expires: str | None,
+    host: str | None,
+    store_choice: str,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
     if not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
+    expires_at = _parse_expires(expires)
+    bound_host = _resolve_bound_host(host)
+    central = store_choice == "central"
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
@@ -408,12 +648,18 @@ def register_tenant_key(
             key_value=SecretStr(value),
             plan=plan,
             model=model_option,
+            expires_at=expires_at,
+            bound_host=bound_host,
         )
         response = asyncio.run(
             register_inference_credential(
                 request,
                 tenant_id=tenant,
-                secret_store=_tenant_key_store(),
+                secret_store=(
+                    _CentralTenantKeyStore(_central_secret_handler())
+                    if central
+                    else _tenant_key_store()
+                ),
                 event_bus=_tenant_key_event_bus(),
             )
         )
@@ -427,9 +673,16 @@ def register_tenant_key(
     except (
         CredentialStoreError,
         CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
         ByokPlanNotPermittedError,
     ) as exc:
         raise click.ClickException(str(exc)) from exc
+    except CentralStoreRefusedError as exc:
+        raise click.ClickException(
+            f"{exc}. Nothing was stored and nothing was published."
+        ) from exc
     shown: dict[str, str | None] = {
         "api_key_ref": response.api_key_ref,
         "provider": response.provider,
@@ -438,7 +691,66 @@ def register_tenant_key(
     }
     if response.model is not None:
         shown["model"] = response.model
+    if response.expires_at is not None:
+        shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    if response.expiry_warning is not None:
+        shown["expiry_warning"] = response.expiry_warning.value
+    if response.bound_host is not None:
+        shown["bound_host"] = response.bound_host
+    if not central:
+        _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
+
+
+def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
+    """Catalogue the key on this machine too (OMN-21014).
+
+    The value is in this machine's store; the credential-registered event goes
+    to the bus for the central catalog. The host's own review gateway reads its
+    keys from this machine's catalog, so the same row is folded into the local
+    store the value lives beside, the way ``onex secret set`` folds its events.
+    The fold is an idempotent upsert by reference; no value is written.
+    """
+    store = _tenant_key_store()
+    payload: dict[str, object] = {
+        "tenant_id": tenant,
+        "provider": response.provider,
+        "name": response.name,
+        "api_key_ref": response.api_key_ref,
+        "metadata": {},
+        "expires_at": None
+        if response.expires_at is None
+        else response.expires_at.astimezone(UTC).isoformat(),
+        "bound_host": response.bound_host,
+    }
+    try:
+        apply_credential_registered(payload, SqliteDatabaseAdapter(store.db_path))
+    except sqlite3.Error as error:
+        raise click.ClickException(
+            f"the key was stored as {response.api_key_ref}, but this machine's "
+            f"catalog could not record it ({type(error).__name__}); the review "
+            "gateway on this host will not see it until it is registered again."
+        ) from None
+
+
+def _parse_expires(expires: str | None) -> datetime | None:
+    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
+
+    Read before the key, so a typo costs nothing: the value is never read from
+    stdin and nothing is stored.
+    """
+    if expires is None:
+        return None
+    try:
+        day = date.fromisoformat(expires.strip())
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
+            "nothing was stored."
+        ) from exc
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 #: Credential events a failed fold could not apply, kept beside the store until
@@ -716,6 +1028,7 @@ def store_secret_value(
         if provider is not None
         else None
     )
+    model_chosen_by = _model_chosen_by(provider, plan, model, model_option)
     # OMN-19985: the local secret store effect stores the key and, for a provider
     # key, registers it under a freshly minted route ref (replacing any earlier
     # one for this provider, one key each) and returns the credential events.
@@ -728,6 +1041,7 @@ def store_secret_value(
                 force=force,
                 plan=plan,
                 model=model,
+                model_chosen_by=model_chosen_by,
             )
         )
     except LocalSecretStoreRefusedError as refusal:
@@ -790,6 +1104,72 @@ def delete_secret_value(secret_ref: str) -> None:
     _fold_credential_events(result, store.db_path)
 
 
+@secret_group.command("store-captured")
+@click.option(
+    "--session",
+    default="onex-secret-store-captured",
+    show_default=True,
+    help="Recorded as the stored secret's capturing session.",
+)
+def store_captured(session: str) -> None:
+    """Store one value in the captured-secret namespace and print its reference.
+
+    OMN-20926. The same write the content-capture producer makes for a secret
+    its scrub detects, as the writer identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``). The value
+    is read from stdin, or a hidden prompt on a terminal, never from argv.
+    Prints the outcome and the reference, never the value.
+    """
+    value = _read_value("the value to store")
+    if not value:
+        raise click.ClickException("no value was given; nothing was stored.")
+    result = HandlerCapturedSecretStore(onex_home=Path.home() / ".onex").handle(
+        ModelCapturedSecretStoreRequest(
+            value=SecretStr(value), session_id=session, captured_at=datetime.now(UTC)
+        )
+    )
+    click.echo(
+        f"{result.outcome.value}: {result.reference or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.reference is None:
+        raise SystemExit(1)
+
+
+@secret_group.command("check-captured")
+@click.argument("reference")
+@click.option(
+    "--accessor",
+    default="onex-secret-check-captured",
+    show_default=True,
+    help="Who is asking, for the access log. Not an authorization claim.",
+)
+def check_captured(reference: str, accessor: str) -> None:
+    """Check that a captured secret REFERENCE resolves through the store.
+
+    OMN-20926. Resolves as the reader identity this machine's
+    ``~/.onex/config.yaml`` names (block ``captured_secret_store``), logged by
+    the store and by the resolver. Prints the outcome and the store key, NEVER
+    the value; exits non-zero unless the reference resolved.
+    """
+    try:
+        request = ModelCapturedSecretResolveRequest(
+            reference=reference, accessor=accessor
+        )
+        reader = reader_for_this_machine(Path.home() / ".onex")
+    except (CapturedSecretReaderNotConfiguredError, ValidationError) as exc:
+        raise click.ClickException(str(exc)) from None
+    except ModelOnexError as exc:  # a credentials.json refusal: names keys only
+        raise click.ClickException(exc.message) from None
+    result = HandlerCapturedSecretResolve(store=reader).handle(request)
+    click.echo(
+        f"{result.outcome.value}: {result.store_key or '-'}"
+        + (f" ({result.detail})" if result.detail else "")
+    )
+    if result.outcome is not EnumCapturedSecretResolveOutcome.RESOLVED:
+        raise SystemExit(1)
+
+
 # ---------------------------------------------------------------------------
 # ``onex models`` (OMN-20817): set up the models delegation can use. A shim like
 # ``onex secret`` above: the key is stored by store_secret_value, and status and
@@ -802,6 +1182,7 @@ _MODEL_LABELS: dict[str, str] = {
     "openai": "OpenAI",
     "anthropic": "Anthropic",
     "ollama": "Ollama",
+    "local": "Local URL",
 }
 _KEY_PAGES: dict[str, str] = {
     "gemini": "aistudio.google.com/apikey",
@@ -813,10 +1194,30 @@ _OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
     "Mac: run onboarding again with --provider ollama."
 )
+_LOCAL_HOW = (
+    "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "
+    "vLLM, MLX) with: onex models add local --url <base url> --model <name>"
+)
+
+
+def _write_model_list(provider: str, models: tuple[str, ...]) -> tuple[str, ...]:
+    """Store a key's whole ordered model list through the local secret store node."""
+    try:
+        written = HandlerLocalSecretStore().handle(
+            ModelLocalSecretRequest(
+                operation="set_models",
+                secret_ref=f"llm.{provider}.api_key",
+                models=models,
+                model_chosen_by="customer",
+            )
+        )
+    except LocalSecretStoreRefusedError as refusal:
+        raise ModelSetupRefusedError(str(refusal)) from None
+    return written.models
 
 
 def _model_handler() -> HandlerModelSetup:
-    return HandlerModelSetup()
+    return HandlerModelSetup(write_model_list=_write_model_list)
 
 
 def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
@@ -828,10 +1229,12 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
         click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
     elif result.status == "failed":
         click.echo(f"{label} ✗ {result.reason}")
-        if result.provider != "ollama":
+        if result.provider != "ollama" and result.provider != LOCAL_URL_PROVIDER:
             click.echo(f"  Fix it, then run: onex models test {result.provider}")
     elif result.provider == "ollama":
         click.echo(f"{label} not set up. {_OLLAMA_HOW}")
+    elif result.provider == LOCAL_URL_PROVIDER:
+        click.echo(f"{label} not set up. {_LOCAL_HOW}")
     else:
         click.echo(
             f"{label} not set up. Add it with: onex models add {result.provider}"
@@ -868,8 +1271,8 @@ models_group = click.Group(
     "models",
     help=(
         "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
-        "Anthropic, Ollama.\n\nSet up any combination; delegation chooses among "
-        "them for each task."
+        "Anthropic, Ollama, or a local model server by URL.\n\nSet up any "
+        "combination; delegation chooses among them for each task."
     ),
 )
 
@@ -878,38 +1281,92 @@ models_group = click.Group(
 @click.argument("provider", type=_model_choice)
 @click.option(
     "--model",
-    "model_option",
+    "model_options",
+    multiple=True,
+    help=(
+        "A model your key runs, checked against the provider's list for it; "
+        "repeat it to choose several, first is tried first. For OpenRouter you "
+        "choose it: without --model a terminal is asked and a script is refused. "
+        "For local, the one model the server runs."
+    ),
+)
+@click.option(
+    "--url",
     default=None,
     help=(
-        "The model your key runs, checked against the provider's list for it. "
-        "For OpenRouter you choose it: without --model a terminal is asked and "
-        "a script is refused."
+        "local only: the base URL of a model server that speaks the "
+        "OpenAI-compatible API and needs no key, such as http://<host>:<port>."
     ),
 )
 @_model_json
-def add_model(provider: str, model_option: str | None, as_json: bool) -> None:
+def add_model(
+    provider: str, model_options: tuple[str, ...], url: str | None, as_json: bool
+) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
     The key is read from stdin when piped, or asked for at a hidden prompt.
-    A key already stored for PROVIDER is replaced. The test passes only when it
-    answers on the model stored for the key.
+    A key already stored for PROVIDER is replaced, with the models named here
+    as its ordered list. The test passes only when it answers on the first
+    model stored for the key. Add models to a stored key later with
+    ``onex models add-model``.
+
+    ``local`` asks for no key: ``--url`` names a model server that speaks the
+    OpenAI-compatible API and ``--model`` the model it runs. The URL must answer
+    before it is declared in the local routes, beside any routes already there.
     """
     name = provider.lower()
     handler = _model_handler()
+    if url is not None and name != "local":
+        raise click.ClickException(
+            "--url is for a local model server: onex models add local --url "
+            "<base url> --model <name>"
+        )
+    if name == "local":
+        if url is None or len(model_options) != 1:
+            raise click.ClickException(_LOCAL_HOW)
+        try:
+            added = handler.handle(
+                ModelModelSetupRequest(
+                    operation="add_local", url=url, models=model_options
+                )
+            )
+        except ModelSetupRefusedError as refusal:
+            raise click.ClickException(str(refusal)) from None
+        # The add ran its one pinned test delegation already.
+        (result,) = added.tests
+        _show_model_test(result, as_json)
+        if result.status != "passed":
+            sys.exit(1)
+        return
     if name == "ollama":
         if not handler.is_set_up("ollama"):
             raise click.ClickException(_OLLAMA_HOW)
-        if model_option is not None:
+        if model_options:
             raise click.ClickException(
                 f"--model does not apply to Ollama. {_OLLAMA_HOW}"
             )
     else:
+        if len(set(model_options)) != len(model_options):
+            raise click.ClickException("a model is named twice. Nothing was stored.")
+        key = _read_model_key(name)
+        plan = resolve_local_byok_credential_plan(name)
+        for extra in model_options[1:]:
+            _check_chosen_model(name, plan, key, extra)
         store_secret_value(
             f"llm.{name}.api_key",
-            _read_model_key(name),
+            key,
             force=True,
-            model_option=model_option,
+            model_option=model_options[0] if model_options else None,
         )
+        if len(model_options) > 1:
+            _edit_model_list(
+                handler,
+                ModelModelSetupRequest(
+                    operation="add_models",
+                    provider=cast(ModelProvider, name),
+                    models=tuple(model_options[1:]),
+                ),
+            )
     request = ModelModelSetupRequest(operation="test", provider=name)
     (result,) = handler.handle(request).tests
     _show_model_test(result, as_json)
@@ -948,32 +1405,302 @@ def list_models(as_json: bool) -> None:
             continue
         label = f"{_MODEL_LABELS[row.provider]:<11}"
         last = row.last_test
+        models = f" [models: {', '.join(row.models)}]" if row.models else ""
         if not row.set_up:
             click.echo(f"{label} not set up")
         elif last is None:
-            click.echo(f"{label} set up, not tested yet")
+            click.echo(f"{label} set up, not tested yet{models}")
         elif last.status == "passed":
             click.echo(
-                f"{label} set up, last test passed {last.tested_at} ({last.model})"
+                f"{label} set up, last test passed {last.tested_at} "
+                f"({last.model}){models}"
             )
         else:
             click.echo(
-                f"{label} set up, last test FAILED {last.tested_at}: {last.reason}"
+                f"{label} set up, last test FAILED {last.tested_at}: "
+                f"{last.reason}{models}"
             )
+
+
+@models_group.command("default-model")
+@click.argument("provider", type=_model_choice)
+def default_model(provider: str) -> None:
+    """Print the model onboarding registers for PROVIDER, from the deployment overlay.
+
+    Onboarding reads it here instead of naming a model itself. Nothing is stored
+    and no key is read. To use another model afterwards, one command:
+
+        onex models add openrouter --model MODEL_ID
+    """
+    request = ModelModelSetupRequest(
+        operation="default_model", provider=cast(ModelProvider, provider.lower())
+    )
+    try:
+        result = _model_handler().handle(request)
+    except ModelSetupRefusedError as refusal:
+        raise click.ClickException(str(refusal)) from None
+    click.echo(result.models[0])
+
+
+def _edit_model_list(
+    handler: HandlerModelSetup, request: ModelModelSetupRequest
+) -> None:
+    """Run one list edit and say the resulting order, or the refusal."""
+    try:
+        result = handler.handle(request)
+    except ModelSetupRefusedError as refusal:
+        raise click.ClickException(f"{refusal}. Nothing was changed.") from None
+    label = _MODEL_LABELS[cast(str, request.provider)]
+    click.echo(f"Your {label} models, first tried first: {', '.join(result.models)}")
+
+
+@models_group.command("add-model")
+@click.argument("provider", type=_model_choice)
+@click.option(
+    "--model",
+    "model_options",
+    multiple=True,
+    required=True,
+    help="A model to add after the ones already chosen; repeat it for several.",
+)
+def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
+    """Add models to PROVIDER's stored key, after the ones already chosen.
+
+    Each model is checked against the provider's list for your key. The key is
+    not asked for again.
+    """
+    name = provider.lower()
+    if name == "ollama":
+        raise click.ClickException(f"Ollama has no key to add models to. {_OLLAMA_HOW}")
+    if name == "local":
+        raise click.ClickException(
+            f"a local URL runs one model; to change it, add it again. {_LOCAL_HOW}"
+        )
+    store = LocalByokCredentialStore()
+    key = asyncio.run(store.get_secret(f"llm.{name}.api_key"))
+    if key is None:
+        raise click.ClickException(
+            f"no {_MODEL_LABELS[name]} key is stored; add one with: "
+            f"onex models add {name}"
+        )
+    plan = resolve_local_byok_credential_plan(name)
+    for chosen in model_options:
+        _check_chosen_model(name, plan, key, chosen)
+    _edit_model_list(
+        _model_handler(),
+        ModelModelSetupRequest(
+            operation="add_models",
+            provider=cast(ModelProvider, name),
+            models=tuple(model_options),
+        ),
+    )
+
+
+@models_group.command("reorder")
+@click.argument("provider", type=_model_choice)
+@click.argument("models", nargs=-1, required=True)
+def reorder_models(provider: str, models: tuple[str, ...]) -> None:
+    """Put PROVIDER's chosen MODELS in this order, first tried first.
+
+    Name exactly the models the key holds, each once. Nothing changes otherwise.
+    """
+    _edit_model_list(
+        _model_handler(),
+        ModelModelSetupRequest(
+            operation="reorder",
+            provider=cast(ModelProvider, provider.lower()),
+            models=models,
+        ),
+    )
 
 
 @models_group.command("remove")
 @click.argument("provider", type=_model_choice)
-def remove_model(provider: str) -> None:
-    """Delete PROVIDER's stored key so delegation no longer uses it."""
+@click.option(
+    "--model",
+    "model_options",
+    multiple=True,
+    help="Remove only this model from the key's list; the key stays.",
+)
+def remove_model(provider: str, model_options: tuple[str, ...]) -> None:
+    """Delete PROVIDER's stored key, or with --model just those models from its list."""
     name = provider.lower()
     handler = _model_handler()
+    if model_options:
+        _edit_model_list(
+            handler,
+            ModelModelSetupRequest(
+                operation="remove_model",
+                provider=cast(ModelProvider, name),
+                models=model_options,
+            ),
+        )
+        return
     if name == "ollama":
         raise click.ClickException(
             f"Ollama's routes are in {handler.overrides_path()}; delete that file "
             "to stop using Ollama, and quit the Ollama app."
         )
+    if name == "local":
+        try:
+            handler.handle(ModelModelSetupRequest(operation="remove_local"))
+        except ModelSetupRefusedError as refusal:
+            raise click.ClickException(str(refusal)) from None
+        click.echo(f"Removed the local model URL from {handler.overrides_path()}")
+        return
     if not handler.is_set_up(cast(ModelProvider, name)):
         raise click.ClickException(f"no {_MODEL_LABELS[name]} key is stored.")
     delete_secret_value(f"llm.{name}.api_key")
     handler.handle(ModelModelSetupRequest(operation="forget", provider=name))
+
+
+#: OMN-21014: the review a dry run plans. It carries no sampling fields: the
+#: plan shows the gateway's own temperature and default max_tokens.
+_REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
+    "messages": [
+        {"role": "system", "content": "You are a hostile code reviewer."},
+        {"role": "user", "content": "Dry run: no diff is sent."},
+    ],
+}
+
+
+@models_group.command("review-gateway")
+@click.option(
+    "--tenant",
+    required=True,
+    help="The tenant whose catalogued keys the gateway spends.",
+)
+@click.option(
+    "--model",
+    "model_option",
+    required=True,
+    help="The Claude model every review runs on, e.g. claude-sonnet-5-5.",
+)
+@click.option(
+    "--host",
+    default=None,
+    help=(
+        "This machine's lab host table row (ONEX_LAB_RUN_HOSTS); only keys bound "
+        "to it are spent. Defaults to this machine's row."
+    ),
+)
+@click.option(
+    "--bind",
+    default="127.0.0.1:8140",
+    show_default=True,
+    help="host:port the voter endpoint listens on.",
+)
+@click.option(
+    "--privacy-overlay",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="ONEX_REVIEW_GATEWAY_PRIVACY_OVERLAY",
+    required=True,
+    help=(
+        "A YAML file supplied by whoever runs the gateway, whose "
+        "cloud_review_refused_repositories list names the repositories whose "
+        "diffs never go to a cloud model. The gateway refuses to start without "
+        "a non-empty list."
+    ),
+)
+@click.option(
+    "--repository",
+    default=None,
+    help="The review's metadata.repository, used only by --dry-run.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Plan one review (the key it would use, the body it would send) and exit.",
+)
+def review_gateway(
+    tenant: str,
+    model_option: str,
+    host: str | None,
+    bind: str,
+    privacy_overlay: Path,
+    repository: str | None,
+    dry_run: bool,
+) -> None:
+    """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+        run_dry,
+    )
+    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+        ModelClaudeReviewGatewayRequest,
+    )
+
+    try:
+        overlay = yaml.safe_load(privacy_overlay.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        raise click.ClickException(
+            "the privacy overlay must be a readable YAML mapping."
+        ) from None
+    refused = (
+        overlay.get("cloud_review_refused_repositories")
+        if isinstance(overlay, Mapping)
+        else None
+    )
+    if (
+        not isinstance(refused, list)
+        or not refused
+        or any(not isinstance(name, str) or not name.strip() for name in refused)
+    ):
+        raise click.ClickException(
+            "the privacy overlay must be a YAML mapping with a non-empty "
+            "cloud_review_refused_repositories list of non-empty strings."
+        )
+    cloud_refused_repositories = tuple(name.strip() for name in refused)
+
+    bound_host = _resolve_bound_host(host)
+    if bound_host is None:
+        raise click.ClickException(
+            "the review gateway needs this machine's lab host: pass --host or set "
+            "ONEX_LAB_RUN_HOSTS to the lab host table."
+        )
+    bind_host, _, bind_port = bind.rpartition(":")
+    backend = resolve_byok_provider_backend("anthropic")
+    if backend is None:
+        raise click.ClickException(
+            "the provider catalogue offers no anthropic backend."
+        )
+    try:
+        request = ModelClaudeReviewGatewayRequest(
+            host=bound_host,
+            tenant_id=tenant,
+            model=model_option,
+            cloud_refused_repositories=cloud_refused_repositories,
+            bind_host=bind_host or "127.0.0.1",
+            bind_port=int(bind_port),
+            dry_run=dry_run,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise click.ClickException(
+            f"review-gateway refused its options: {exc}"
+        ) from None
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+        HandlerLlmDelegationCall,
+    )
+
+    store = _tenant_key_store()
+    handler = HandlerClaudeReviewGateway(
+        catalog=SqliteDatabaseAdapter(store.db_path),
+        key_values=store,
+        # The one sanctioned model caller (OMN-20295); it resolves the key's
+        # value through the secret store at its own boundary.
+        call=HandlerLlmDelegationCall(),
+        endpoint_url=backend.endpoint_url,
+    )
+    if dry_run:
+        payload = _REVIEW_GATEWAY_DRY_RUN_PAYLOAD.copy()
+        if repository is not None:
+            payload["metadata"] = {"repository": repository}
+        plan = run_dry(handler, request, payload)
+        click.echo(json.dumps(plan.model_dump(mode="json"), sort_keys=True))
+        return
+    click.echo(
+        f"onex models review-gateway: http://{request.bind_host}:{request.bind_port}"
+        f"/v1/chat/completions (host {bound_host}, model {model_option}, "
+        f"{len(cloud_refused_repositories)} repositories refused cloud review)"
+    )
+    asyncio.run(handler.handle(request))

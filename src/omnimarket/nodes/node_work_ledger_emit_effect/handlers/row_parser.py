@@ -33,6 +33,7 @@ _ROW_RE = re.compile(
     rf"^(?P<stamp>{_STAMP}) \| (?P<type>[^|]*?)\s*(?:\|(?P<rest>.*))?$", re.DOTALL
 )
 _CELL_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*)=(?P<value>.*)$", re.DOTALL)
+_LINK_KEYS = ("prompt_id", "covers", "prompt_match", "confirms", "confirmed_by")
 _APPROVED_SCOPE = "APPROVED SCOPE:"
 _OUT_OF_SCOPE = "OUT OF SCOPE:"
 
@@ -97,6 +98,9 @@ def parse_ledger_row(
     def many(key: str) -> tuple[str, ...]:
         return tuple(cell.value for cell in cells if cell.key == key)
 
+    def linked_words() -> dict[str, str | None]:
+        return {key: one(key) for key in _LINK_KEYS}
+
     tickets = _split_list(",".join((*many("ticket"), *many("tickets"))))
     fields: dict[str, object] = {
         "ledger_id": ledger_id,
@@ -155,7 +159,10 @@ def parse_ledger_row(
         fields.update(
             amends=many("amends"),
             supersedes=many("supersedes"),
+            extends=many("extends"),
             approved_by=one("approved_by"),
+            reviewed=one("reviewed"),
+            **linked_words(),
         )
     elif row_type is EnumLedgerRowType.OPERATOR_CONSENT:
         scope = next((c for c in free if c.startswith(_APPROVED_SCOPE)), None)
@@ -164,12 +171,17 @@ def parse_ledger_row(
             approved_scope=scope[len(_APPROVED_SCOPE) :].strip() if scope else None,
             out_of_scope=out[len(_OUT_OF_SCOPE) :].strip() if out else None,
             approved_by=one("approved_by"),
+            amends=many("amends"),
+            supersedes=many("supersedes"),
+            extends=many("extends"),
+            **linked_words(),
         )
     elif row_type is EnumLedgerRowType.FRICTION:
         fields.update(cost=one("cost"), friction_class=one("class"))
     elif row_type is EnumLedgerRowType.CORRECTION:
         fields.update(
-            corrects=(*many("corrects"), *many("amends"), *many("supersedes"))
+            corrects=(*many("corrects"), *many("amends"), *many("supersedes")),
+            operator_span=one("operator_span"),
         )
 
     return EVENT_MODEL_BY_TYPE[row_type](**fields)

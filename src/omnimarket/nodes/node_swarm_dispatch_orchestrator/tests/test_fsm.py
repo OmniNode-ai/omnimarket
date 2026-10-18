@@ -48,7 +48,7 @@ def request_fixture() -> ModelSwarmDispatchRequest:
         task="Build a REST API",
         endpoint_ids=("ep-1", "ep-2"),
         run_id="run-001",
-        correlation_id="corr-001",
+        correlation_id="00000000-0000-4000-8000-000000000001",
     )
 
 
@@ -251,11 +251,11 @@ class TestFSMHappyPath:
         request_fixture: ModelSwarmDispatchRequest,
     ) -> None:
         # Sync path: no event_bus injected → handle() returns ModelSwarmDispatchResult
-        sync_handler = HandlerSwarmDispatchOrchestrator()
+        sync_handler = HandlerSwarmDispatchOrchestrator(event_bus=None)
         result = sync_handler.handle(request_fixture)
         assert result is not None
         assert result.run_id == "run-001"
-        assert result.correlation_id == "corr-001"
+        assert result.correlation_id == "00000000-0000-4000-8000-000000000001"
 
 
 class TestFSMFailurePaths:

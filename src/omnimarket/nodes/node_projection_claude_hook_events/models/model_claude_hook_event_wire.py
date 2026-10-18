@@ -47,6 +47,8 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "agent_transcript_ref",
         "agent_type",
         "background_task_count",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
         "command_args_ref",
         "command_name",
         "command_source",
@@ -69,8 +71,10 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "final",
         "glob_count",
         "goal_id",
+        "guard",
         "hook_event_name",
         "index",
+        "input_tokens",
         "interrupted",
         "is_interrupt",
         "last_assistant_message_ref",
@@ -78,6 +82,7 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "mcp_server",
         "mcp_server_name",
         "memory_type",
+        "message_count",
         "message_id",
         "message_ref",
         "mode",
@@ -87,11 +92,15 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "notification_type",
         "parent_goal_id",
         "old_cwd_ref",
+        "output_tokens",
+        "partial_window",
         "prompt_cache_likely_expired",
         "prompt_length",
         "prompt_ref",
         "reason",
+        "reason_class",
         "reason_ref",
+        "refused_hook_event_name",
         "requested_schema_keys",
         "seconds_since_last_response",
         "session_cron_count",
@@ -114,11 +123,21 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
         "tool_use_ids",
         "trigger",
         "turn_id",
+        "usage_source_hook",
         "worktree_path_ref",
     }
 )
 
 _REF_SUFFIX = "_ref"
+
+#: The counts an ``AssistantUsage`` payload must state (OMN-18946).
+_USAGE_COUNT_KEYS = (
+    "message_count",
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
 
 #: Top-level keys emit seams stamp onto every record, which the capture
 #: contract's event does not declare. The appender adds ``lane`` (kept: see
@@ -174,12 +193,16 @@ def _goal_uuid(value: JsonValue) -> UUID | None:
 
 
 class ModelClaudeHookContentRefWire(BaseModel):
-    """A pointer to one restricted content record: never the content itself."""
+    """One content field exactly as the harness sent it (OMN-19513).
+
+    ``value`` is raw: the producer neither scrubs nor hashes it (operator
+    RULING 2026-10-15T04:24:42Z on the rolling work ledger).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     field: str = Field(min_length=1)
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    value: str
     length: int = Field(ge=0)
     content_record_id: UUID
 
@@ -233,6 +256,13 @@ class ModelClaudeHookEventWire(BaseModel):
     #: OMN-17427: the appender's lane stamp. Empty means the emitter asked and
     #: resolved no lane; the fold stores that as NULL.
     lane: str | None = None
+    #: OMN-18531: the capture hook's item-identity stamp on a lineage event. This
+    #: topic carries the lineage stream only (the content stream travels on the
+    #: restricted content family), so any other stream value is refused. The
+    #: sequence is per session and per stream, starting at 1. Neither is stored:
+    #: the fold keys rows on ``event_id``.
+    stream: Literal["lineage"] | None = None
+    producer_seq: int | None = Field(default=None, ge=1, strict=True)
     lineage: ModelClaudeHookLineageWire
     payload: dict[str, JsonValue]
     content_refs: tuple[ModelClaudeHookContentRefWire, ...]
@@ -282,6 +312,7 @@ class ModelClaudeHookEventWire(BaseModel):
             isinstance(exit_code, bool) or not isinstance(exit_code, int)
         ):
             raise ValueError("payload.exit_code must be an integer or null")
+        self._validate_derived_payload()
 
         payload_refs: list[ModelClaudeHookContentRefWire] = []
         for key, value in self.payload.items():
@@ -296,6 +327,66 @@ class ModelClaudeHookEventWire(BaseModel):
                 "content_refs must list exactly the content references the payload uses"
             )
         return self
+
+    def _validate_derived_payload(self) -> None:
+        """OMN-18946: the two derived events state their facts or are refused."""
+        if self.hook_event_name is EnumClaudeHookEventName.GUARD_REFUSAL:
+            for key in ("guard", "reason_class"):
+                value = self.payload.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"GuardRefusal needs a non-blank payload.{key}")
+        elif self.hook_event_name is EnumClaudeHookEventName.ASSISTANT_USAGE:
+            model = self.payload.get("model")
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError("AssistantUsage needs a non-blank payload.model")
+            for key in _USAGE_COUNT_KEYS:
+                value = self.payload.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    raise ValueError(
+                        f"AssistantUsage payload.{key} must be a non-negative integer"
+                    )
+
+    def _derived_text(self, event: EnumClaudeHookEventName, key: str) -> str | None:
+        if self.hook_event_name is not event:
+            return None
+        value = self.payload.get(key)
+        return value if isinstance(value, str) else None
+
+    def _usage_count(self, key: str) -> int | None:
+        if self.hook_event_name is not EnumClaudeHookEventName.ASSISTANT_USAGE:
+            return None
+        value = self.payload.get(key)
+        return value if isinstance(value, int) else None
+
+    @property
+    def guard(self) -> str | None:
+        """The guard that refused the call (``GuardRefusal`` only)."""
+        return self._derived_text(EnumClaudeHookEventName.GUARD_REFUSAL, "guard")
+
+    @property
+    def refusal_reason(self) -> str | None:
+        """The guard's normalised reason class (``GuardRefusal`` only)."""
+        return self._derived_text(EnumClaudeHookEventName.GUARD_REFUSAL, "reason_class")
+
+    @property
+    def input_tokens(self) -> int | None:
+        return self._usage_count("input_tokens")
+
+    @property
+    def output_tokens(self) -> int | None:
+        return self._usage_count("output_tokens")
+
+    @property
+    def cache_creation_input_tokens(self) -> int | None:
+        return self._usage_count("cache_creation_input_tokens")
+
+    @property
+    def cache_read_input_tokens(self) -> int | None:
+        return self._usage_count("cache_read_input_tokens")
+
+    @property
+    def assistant_message_count(self) -> int | None:
+        return self._usage_count("message_count")
 
     @property
     def goal_id(self) -> UUID | None:
@@ -317,7 +408,12 @@ class ModelClaudeHookEventWire(BaseModel):
         A subagent's model rides ``lineage.agent_model`` (the harness sidecar);
         the main thread's is stated only by ``SessionStart``'s ``model``.
         """
-        if self.lineage.agent_model:
+        if (
+            self.hook_event_name is not EnumClaudeHookEventName.ASSISTANT_USAGE
+            and self.lineage.agent_model
+        ):
+            # An AssistantUsage event states the API's model id itself, which is
+            # more exact than the sidecar's alias (``sonnet``).
             return self.lineage.agent_model
         value = self.payload.get("model")
         return value if isinstance(value, str) and value else None

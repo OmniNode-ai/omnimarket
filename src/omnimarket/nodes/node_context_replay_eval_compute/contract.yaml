@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction replay evaluation (OMN-21111), plan task TA.9.
+# The runner that builds each case's package through node_context_pack_orchestrator
+# in pinned mode and asks the model is the caller; this node only scores.
+# Requests carry package text on the restricted omniintelligence command family.
+# Results carry ids, counts and verdicts only, no text.
+name: context_replay_eval_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Score expected ruling presence, compare package and native answers and candidate
+  identities, and size review rows and capacity from caller-supplied replay inputs.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: score_ruling_presence
+      handler:
+        name: HandlerRulingPresence
+        module: omnimarket.nodes.node_context_replay_eval_compute.handlers.handler_replay_eval
+      input_model: omnimarket.nodes.node_context_replay_eval_compute.models.model_replay_eval.ModelRulingPresenceRequest
+      output_model: omnimarket.nodes.node_context_replay_eval_compute.models.model_replay_eval.ModelRulingPresenceResult
+    - operation: compare_answers
+      handler:
+        name: HandlerAnswerComparison
+        module: omnimarket.nodes.node_context_replay_eval_compute.handlers.handler_replay_eval
+      input_model: omnimarket.nodes.node_context_replay_eval_compute.models.model_replay_eval.ModelAnswerComparisonRequest
+      output_model: omnimarket.nodes.node_context_replay_eval_compute.models.model_replay_eval.ModelAnswerComparisonResult
+    - operation: size_review_rows
+      handler:
+        name: HandlerReviewRowSizing
+        module: omnimarket.nodes.node_context_replay_eval_compute.handlers.handler_replay_eval
+      input_model: omnimarket.nodes.node_context_replay_eval_compute.models.model_replay_eval.ModelReviewRowSizingRequest
+      output_model: omnimarket.nodes.node_context_replay_eval_compute.models.model_replay_eval.ModelReviewRowSizingResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.context-replay-eval-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.context-replay-eval-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-replay-eval-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.context-replay-eval-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-replay-eval-completed.v1
+
+metadata:
+  ticket: OMN-21111
+  transport_type: kafka

@@ -39,7 +39,8 @@ import pytest
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
-# Golden updated for the hygiene caller pin in #3778, replay refs in #3756 and core guard in #3789.
+# Golden updated for the hygiene caller pin in #3778, replay refs in #3756, core guard in #3789
+# and the hook push rehearsal caller in #4065.
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )
@@ -96,11 +97,14 @@ def _resolved_refs(workflow_dir: Path) -> list[list[object]]:
 def _ref_diff(
     expected: list[list[object]], actual: list[list[object]]
 ) -> tuple[list[list[object]], list[list[object]]]:
-    """Return (missing, extra) rows, comparing file, action and resolved commit.
+    """Return missing uses and unrecognized pins, ignoring added uses of known pins.
 
     The line number is carried in each row for the message but is not compared: a
     step added above a ``uses:`` line moves it without changing what it runs, and a
     line-keyed golden failed every pull request once ``ci.yml`` gained a step.
+    Additional uses of an existing pin in the same workflow are also accepted:
+    adding a job does not change the action's resolved commit. The minimum
+    golden counts still apply, and an unfamiliar action or commit is refused.
     """
 
     def key(row: list[object]) -> tuple[object, object, object]:
@@ -109,7 +113,7 @@ def _ref_diff(
     expected_count = Counter(key(row) for row in expected)
     actual_count = Counter(key(row) for row in actual)
     missing_keys = expected_count - actual_count
-    extra_keys = actual_count - expected_count
+    extra_keys = actual_count.keys() - expected_count.keys()
     missing = [row for row in expected if key(row) in missing_keys]
     extra = [row for row in actual if key(row) in extra_keys]
     return missing, extra
@@ -138,6 +142,27 @@ def test_action_ref_diff_ignores_line_shift_and_catches_a_moved_pin() -> None:
     assert extra == moved
     dropped: list[list[object]] = []
     assert _ref_diff(golden, dropped) == (golden, [])
+
+
+@pytest.mark.unit
+def test_action_ref_diff_accepts_added_jobs_using_existing_pins() -> None:
+    golden = [["ci.yml", 10, "actions/checkout", "a" * 40]]
+    added = ["ci.yml", 20, "actions/checkout", "a" * 40]
+    assert _ref_diff(golden, [*golden, added]) == ([], [])
+    # An added job must not hide a changed pin behind the original invocation.
+    moved = ["ci.yml", 20, "actions/checkout", "b" * 40]
+    assert _ref_diff(golden, [*golden, moved]) == ([], [moved])
+    unknown = ["ci.yml", 20, "actions/unknown", "a" * 40]
+    assert _ref_diff(golden, [*golden, unknown]) == ([], [unknown])
+    other_workflow = ["new.yml", 20, "actions/checkout", "a" * 40]
+    assert _ref_diff(golden, [*golden, other_workflow]) == ([], [other_workflow])
+    # Removing one of several original invocations remains a mismatch.
+    assert _ref_diff([*golden, added], golden) == ([*golden, added], [])
+    # Multiplicity still detects a changed use when the pin is used twice.
+    assert _ref_diff([*golden, added], [*golden, moved]) == (
+        [*golden, added],
+        [moved],
+    )
 
 
 @pytest.mark.unit

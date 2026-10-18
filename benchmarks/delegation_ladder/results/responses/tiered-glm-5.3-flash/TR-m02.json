@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m02",
+  "path": "pinned",
+  "sha256": "a12ec25dbd2f63e253333d646f23bab0ba04da8bbe4a215e73ec9faf47280052",
+  "response": "[12] — the typo'd status check `(\"added\", \"modifiex\")` skips files with status `\"modified\"`, contradicting test line [233] (`status=\"modified\"`), where a modified contract-pin file is expected to reach the pin-grammar handling rather than be silently filtered out."
+}

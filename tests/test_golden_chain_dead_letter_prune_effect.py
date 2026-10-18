@@ -481,7 +481,7 @@ def test_contract_declares_the_daily_runtime_tick_schedule() -> None:
     assert cfg.schedule.run_interval_seconds == 86400
 
 
-def test_the_first_tick_runs_and_an_immediate_second_tick_is_skipped() -> None:
+def test_interval_gate_runs_the_first_tick_and_skips_an_immediate_second_tick() -> None:
     store = seed()
     h = HandlerDeadLetterPrune(
         store=store,
@@ -503,7 +503,7 @@ def test_the_first_tick_runs_and_an_immediate_second_tick_is_skipped() -> None:
     assert len(store.read_days) == reads_after_first  # untouched: nothing read again
 
 
-def test_a_tick_after_the_interval_elapsed_runs_again() -> None:
+def test_interval_gate_runs_again_after_the_interval_elapsed() -> None:
     store = seed()
     h = HandlerDeadLetterPrune(
         store=store,

@@ -1,0 +1,25 @@
+{
+  "task_id": "R2-05",
+  "title": "what landed, from 9 merged changes",
+  "task_type": "document",
+  "provenance": "9 consecutive real merges to omnimemory, from e5d8d29b11cb to 874b3bd8e281, subject lines and the first line of each description.",
+  "prompt": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n874b3bd omnimemory#371: feat(OMN-13298): wire url-authority gate (pre-commit + CI)\n    Wires the existing check-url-authority remote hook from omnibase_core\nbdc89ed omnimemory#370: feat(OMN-13297): wire runtime-profiles gate into omnimemory\n    W3 from the validator standardization remediation plan (GAP-7).\n94b665f omnimemory#369: feat(OMN-13296): add reject-deploy-gate-skip-token pre-commit hook\n    Adds skip-token rejection gate (OMN-10414 parity) to local pre-commit:\n5dce4d4 omnimemory#368: chore(OMN-13187): refresh omnimemory dependencies\n    * build(deps): update structlog requirement\naf5e7e8 omnimemory#367: docs(OMN-13181): refresh omnimemory documentation\n    - README: node count 17→15; removed decommissioned persona_lifecycle_orchestrator\n67a20e7 omnimemory#362: build(deps): bump omnibase-core from 0.43.0 to 0.44.0\n    Bumps [omnibase-core](https://github.com/OmniNode-ai/omnibase_core) from 0.43.0 to 0.44.0.\na7c2b6b omnimemory#361: build(OMN-12929): update memory redis dependency\n    * build(OMN-12929): update memory redis dependency\n82c00a5 omnimemory#360: chore(OMN-12673): refresh omnimemory dependency lock\n    * chore(OMN-12673): refresh omnimemory dependency lock\ne5d8d29 omnimemory#354: build(deps): update aiohttp requirement\n    ---\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_coverage",
+  "scorer_config": {
+    "source_text": "Summarise what these merged changes did. One bullet per distinct piece of work, at most eight bullets. Cite the ticket identifier for every bullet. Use only identifiers that appear in the list below; if you are unsure of an identifier, leave it out rather than guessing at one.\n\nMERGED CHANGES:\n874b3bd omnimemory#371: feat(OMN-13298): wire url-authority gate (pre-commit + CI)\n    Wires the existing check-url-authority remote hook from omnibase_core\nbdc89ed omnimemory#370: feat(OMN-13297): wire runtime-profiles gate into omnimemory\n    W3 from the validator standardization remediation plan (GAP-7).\n94b665f omnimemory#369: feat(OMN-13296): add reject-deploy-gate-skip-token pre-commit hook\n    Adds skip-token rejection gate (OMN-10414 parity) to local pre-commit:\n5dce4d4 omnimemory#368: chore(OMN-13187): refresh omnimemory dependencies\n    * build(deps): update structlog requirement\naf5e7e8 omnimemory#367: docs(OMN-13181): refresh omnimemory documentation\n    - README: node count 17→15; removed decommissioned persona_lifecycle_orchestrator\n67a20e7 omnimemory#362: build(deps): bump omnibase-core from 0.43.0 to 0.44.0\n    Bumps [omnibase-core](https://github.com/OmniNode-ai/omnibase_core) from 0.43.0 to 0.44.0.\na7c2b6b omnimemory#361: build(OMN-12929): update memory redis dependency\n    * build(OMN-12929): update memory redis dependency\n82c00a5 omnimemory#360: chore(OMN-12673): refresh omnimemory dependency lock\n    * chore(OMN-12673): refresh omnimemory dependency lock\ne5d8d29 omnimemory#354: build(deps): update aiohttp requirement\n    ---\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+    "required_ids": [
+      "OMN-10414",
+      "OMN-12673",
+      "OMN-12929",
+      "OMN-13181",
+      "OMN-13187",
+      "OMN-13296",
+      "OMN-13297",
+      "OMN-13298"
+    ],
+    "coverage_threshold": 0.5
+  },
+  "fixture_files": {},
+  "rung": "R2",
+  "dependent_reasoning_steps": 2
+}

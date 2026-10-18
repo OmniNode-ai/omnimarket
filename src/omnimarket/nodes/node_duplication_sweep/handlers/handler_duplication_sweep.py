@@ -5,7 +5,7 @@
 Implements four deterministic checks:
 - D1: Drizzle table name duplication across omnidash schema files
 - D2: Kafka topic registration conflicts between omniclaude TopicBase and kafka_boundaries.yaml
-- D3: Migration prefix collisions via check-migration-conflicts CLI
+- D3: Migration table collisions via omnibase_core's migration-conflict handler
 - D4: Cross-repo Pydantic model name collisions in production code
 
 ONEX node type: COMPUTE — deterministic file scan, no LLM calls.
@@ -15,11 +15,23 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
-import subprocess
 from collections import defaultdict
 from pathlib import Path
 
+import yaml
+from omnibase_core.enums.enum_migration_conflict_type import EnumMigrationConflictType
+from omnibase_core.handlers.handler_migration_conflicts import (
+    HandlerMigrationConflicts,
+    find_migration_files,
+    iter_inventory_files,
+    load_inventory_yaml,
+)
+from omnibase_core.models.nodes.migration_conflicts.model_migration_conflict_input import (
+    ModelMigrationConflictInput,
+)
+from omnibase_core.models.nodes.migration_conflicts.model_repo_source_file import (
+    ModelRepoSourceFile,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
@@ -34,13 +46,6 @@ _KAFKA_BOUNDARIES_YAML = (
 )
 _KAFKA_BOUNDARIES_LABEL = "omnimarket/src/omnimarket/nodes/node_duplication_sweep/contracts/kafka_boundaries.yaml"
 _EXCLUDED_MIGRATION_REPO_DIRS = {"omni_worktrees"}
-
-# Wall-clock budget for the D3 ``check-migration-conflicts`` subprocess. The real
-# cross-repo scan takes ~110s; the prior 60s cap reliably tripped TimeoutExpired,
-# which the handler degraded to a quiet WARN(0) — making the OMN-13516
-# migration-dup check dead inside the node. Raise the budget AND treat a genuine
-# timeout as a FAIL (an indeterminate gate must never be a silent pass — Rule 5).
-_D3_SUBPROCESS_TIMEOUT_S = 240
 
 
 class ModelDuplicationFinding(BaseModel):
@@ -88,49 +93,8 @@ class DuplicationSweepResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _migration_conflict_command(omni_home: str) -> tuple[list[str], Path] | None:
-    """Resolve check-migration-conflicts from OCC before falling back to PATH.
-
-    OMN-11013: when ``onex_change_control/migration_conflict_suppressions.yaml``
-    exists, append ``--suppressions-file <path>`` so the official D3 invocation
-    matches the suppressions-aware substitute and distinguishes true
-    unsuppressed conflicts from known historical ones.
-    """
-    occ_root = Path(omni_home) / "onex_change_control"
-    repos = _migration_conflict_repos(omni_home)
-    repo_args = ["--repos", *repos] if repos else []
-    suppressions_path = occ_root / "migration_conflict_suppressions.yaml"
-    suppression_args = (
-        ["--suppressions-file", str(suppressions_path)]
-        if suppressions_path.is_file()
-        else []
-    )
-    common_args = ["--repos-root", omni_home, *repo_args, *suppression_args]
-    direct_executable = occ_root / ".venv" / "bin" / "check-migration-conflicts"
-    if direct_executable.is_file() and os.access(direct_executable, os.X_OK):
-        return ([str(direct_executable), *common_args], occ_root)
-
-    path_executable = shutil.which("check-migration-conflicts")
-    if path_executable:
-        return ([path_executable, *common_args], occ_root)
-
-    uv_executable = shutil.which("uv")
-    if uv_executable:
-        return (
-            [
-                uv_executable,
-                "run",
-                "check-migration-conflicts",
-                *common_args,
-            ],
-            occ_root,
-        )
-
-    return None
-
-
 def _migration_conflict_repos(omni_home: str) -> list[str]:
-    """List canonical repo dirs so OCC does not recurse generated worktrees."""
+    """List canonical repo dirs so D3 does not recurse generated worktrees."""
     root = Path(omni_home)
     if not root.is_dir():
         return []
@@ -291,70 +255,76 @@ def _check_d2_kafka_topics(omni_home: str) -> ModelDuplicationCheckResult:
     )
 
 
-def _check_d3_migration_prefixes(omni_home: str) -> ModelDuplicationCheckResult:
-    """D3: Detect migration prefix collisions via check-migration-conflicts."""
-    resolved = _migration_conflict_command(omni_home)
-    if resolved is None:
+def _check_d3_migration_prefixes(repos_root: str) -> ModelDuplicationCheckResult:
+    """D3: Detect migration table collisions with omnibase_core's handler.
+
+    Each canonical repo's migration files are read here and decided by
+    ``HandlerMigrationConflicts`` against the migration inventory omnibase_core
+    ships. Like that handler, D3 suppresses no conflict (OMN-17427).
+    """
+    root = Path(repos_root)
+    if not root.is_dir():
         return ModelDuplicationCheckResult(
             check_id="D3",
             status="WARN",
-            detail="check-migration-conflicts not available",
+            detail=f"repos root not found at {root}",
         )
-
-    command, cwd = resolved
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            cwd=str(cwd),
-            timeout=_D3_SUBPROCESS_TIMEOUT_S,
-            check=False,
+    inventory = yaml.safe_load(load_inventory_yaml()) or {}
+    boundaries = {
+        str((root / source_repo / directory / filename).resolve()): db_name
+        for db_name, source_repo, directory, filename in iter_inventory_files(inventory)
+    }
+    sql_files: list[ModelRepoSourceFile] = []
+    for path in find_migration_files(
+        root, _migration_conflict_repos(repos_root) or None
+    ):
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        sql_files.append(
+            ModelRepoSourceFile(
+                repo_name=path.relative_to(root).parts[0],
+                path=str(path),
+                resolved_path=str(path.resolve()),
+                source=source,
+            )
         )
-        output = result.stdout + result.stderr
-    except subprocess.TimeoutExpired:
-        # A real timeout is an indeterminate result, not a benign warning. The
-        # migration-conflict scan could not complete, so we cannot certify the
-        # absence of conflicts — FAIL the check rather than quietly WARN(0)
-        # (OMN-13538, Rule 5: a gate that silently passes is worse than no gate).
-        return ModelDuplicationCheckResult(
-            check_id="D3",
-            status="FAIL",
-            detail=(
-                "check-migration-conflicts timed out after "
-                f"{_D3_SUBPROCESS_TIMEOUT_S}s — migration-conflict scan could "
-                "not complete; absence of conflicts cannot be certified"
-            ),
+    report = HandlerMigrationConflicts().handle(
+        ModelMigrationConflictInput(
+            sql_files=sql_files, inventory_boundaries=boundaries
         )
-    except (OSError, FileNotFoundError) as exc:
-        return ModelDuplicationCheckResult(
-            check_id="D3",
-            status="WARN",
-            detail=f"check-migration-conflicts not available: {exc}",
-        )
-
-    conflict_lines = [
-        line
-        for line in output.splitlines()
-        if "EXACT_DUPLICATE" in line or "NAME_CONFLICT" in line
-    ]
-
-    if not conflict_lines:
+    )
+    conflicts = report.conflicts
+    if not conflicts:
         return ModelDuplicationCheckResult(
             check_id="D3",
             status="PASS",
             detail="No migration prefix conflicts",
         )
 
-    findings = [
-        ModelDuplicationFinding(name=line.strip(), detail=line.strip())
-        for line in conflict_lines
-    ]
+    findings = []
+    for conflict in conflicts:
+        label = (
+            "NAME_CONFLICT"
+            if conflict.conflict_type == EnumMigrationConflictType.NAME_CONFLICT
+            else "EXACT_DUPLICATE"
+        )
+        locations = [
+            Path(d.file_path).relative_to(root).as_posix() for d in conflict.definitions
+        ]
+        findings.append(
+            ModelDuplicationFinding(
+                name=f"{label}: table `{conflict.table_name}`",
+                locations=locations,
+                detail=", ".join(locations),
+            )
+        )
     return ModelDuplicationCheckResult(
         check_id="D3",
         status="FAIL",
-        finding_count=len(conflict_lines),
-        detail=f"{len(conflict_lines)} migration conflict(s)",
+        finding_count=len(findings),
+        detail=f"{len(findings)} migration conflict(s)",
         findings=findings,
     )
 

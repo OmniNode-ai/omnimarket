@@ -37,6 +37,19 @@ _VOTER_ENDPOINT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"--model[\s=]"),
     re.compile(r"\bREVIEW_MODEL_KEYS\b"),
 )
+# OMN-20910: the voter's model is a field of the overlay, so a workflow names no
+# model at all. A ``vars.<anything>MODEL`` reference and a model id literal are
+# refused here; ``_env_model_literal_findings`` refuses a MODEL env key bound to
+# a literal no pattern knows.
+_VOTER_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bvars\.[A-Za-z0-9_]*MODEL", re.IGNORECASE),
+    re.compile(
+        r"\b(?:claude-(?:opus|sonnet|haiku|fable|instant|\d)|gpt-?\d|o[1-9]-(?:mini|preview)"
+        r"|gemini-?\d|qwen-?\d|qwen-|glm-?\d|deepseek-|llama-?\d|mistral-|mixtral-"
+        r"|codestral|gemma-?\d|grok-?\d|kimi-)",
+        re.IGNORECASE,
+    ),
+)
 # Positive control: the lines this repository's workflow carried before the
 # overlay. The ratchet must find every one of them.
 _KNOWN_BAD = """\
@@ -48,15 +61,48 @@ _KNOWN_BAD = """\
 """
 
 
-def voter_endpoint_findings(text: str) -> list[str]:
-    """Every line of ``text`` that names a voter endpoint, port or model flag."""
+def _env_model_literal_findings(text: str) -> list[str]:
+    """Every job or step ``env:``/``with:`` key naming a MODEL bound to a literal.
+
+    A literal is any non-empty value that is not a ``${{ ... }}`` expression, so
+    a bare id that no pattern knows (``REVIEW_MODEL: my-voter``) is refused too.
+    A readback such as ``steps.review.outputs.models_succeeded`` is an expression.
+    """
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return []
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("jobs"), dict):
+        return []
     findings: list[str] = []
+
+    def scan(where: str, mapping: object) -> None:
+        if not isinstance(mapping, dict):
+            return
+        for key, value in mapping.items():
+            literal = str(value)
+            if "MODEL" in str(key).upper() and literal and "${{" not in literal:
+                findings.append(f"{where}: {key}={literal}")
+
+    for job_id, job in parsed["jobs"].items():
+        scan(f"{job_id}.env", job.get("env"))
+        for step in job.get("steps") or []:
+            name = str(step.get("name", ""))
+            scan(f"{job_id}/{name}.env", step.get("env"))
+            scan(f"{job_id}/{name}.with", step.get("with"))
+    return findings
+
+
+def voter_endpoint_findings(text: str) -> list[str]:
+    """Every line of ``text`` that names a voter endpoint, port, model or model flag."""
+    findings: list[str] = []
+    patterns = (*_VOTER_ENDPOINT_PATTERNS, *_VOTER_MODEL_PATTERNS)
     for number, line in enumerate(text.splitlines(), start=1):
         if line.lstrip().startswith("#"):
             continue
-        if any(p.search(line) for p in _VOTER_ENDPOINT_PATTERNS):
+        if any(p.search(line) for p in patterns):
             findings.append(f"{number}: {line.strip()}")
-    return findings
+    return findings + _env_model_literal_findings(text)
 
 
 def _reviewer_workflows() -> list[Path]:
@@ -228,3 +274,109 @@ def test_our_ci_resolves_the_named_overlay_repository(tmp_path: Path) -> None:
     assert "name=deploy-config" in out
     rc, _, _ = _run_resolve("owner/repo", tmp_path)
     assert rc == 1
+
+
+# --- OMN-20910 widening: the voter's MODEL is a field of the overlay ----------
+# These cases drive the same ``voter_endpoint_findings`` entry point as the
+# ratchet above, so a pattern missing from it fails them.
+_KNOWN_BAD_MODEL = """\
+      REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}
+          VOTER_B_MODEL_NAME: ${{ vars.VOTER_B_MODEL_NAME }}
+      REVIEW_VOTER_MODEL: claude-opus-5-5
+          MODEL: qwen3-coder-30b
+            run: ./vote --engine gpt-4o
+"""
+_KNOWN_BAD_ENV_WORKFLOW = """\
+jobs:
+  hostile-review:
+    env:
+      REVIEW_VOTER_MODEL: my-voter-model
+    steps:
+      - name: Run adversarial review
+        env:
+          MODEL: voter-b
+          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded }}
+"""
+
+
+def test_voter_model_from_overlay_ratchet_finds_every_known_bad_line() -> None:
+    """Positive control: a zero on the real workflows is only evidence if this finds five."""
+    assert len(voter_endpoint_findings(_KNOWN_BAD_MODEL)) == 5
+    # One control per pattern: a count alone survives a broken pattern whenever
+    # another pattern matches the same line.
+    lines = _KNOWN_BAD_MODEL.splitlines()
+    assert _VOTER_MODEL_PATTERNS
+    for pattern in _VOTER_MODEL_PATTERNS:
+        assert any(pattern.search(line) for line in lines), pattern.pattern
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "          REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}",
+        "          X: ${{ vars.VOTER_B_MODEL_NAME }}",
+        "          X: ${{ vars.model }}",
+        "          X: ${{ vars.LLM_MODEL_ID }}",
+        "          VOTER: claude-sonnet-5-5",
+        "          VOTER: Qwen3.8-27B",
+        "          VOTER: glm-5.3",
+        "          VOTER: gpt-4o",
+    ],
+)
+def test_voter_model_from_overlay_ratchet_refuses_each_shape(line: str) -> None:
+    assert voter_endpoint_findings(line + "\n"), line
+
+
+def test_voter_model_from_overlay_ratchet_ignores_comments_and_overlay_reads() -> None:
+    clean = (
+        "      # a voter's model lives in the overlay, e.g. vars.X_MODEL is retired\n"
+        '          --voters-overlay "$REVIEW_VOTERS_OVERLAY" \\\n'
+        "          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded }}\n"
+    )
+    assert voter_endpoint_findings(clean) == []
+
+
+def test_voter_model_from_overlay_env_literal_has_a_positive_control() -> None:
+    """A bare id no pattern knows is refused by its ``env:`` key; an expression is not."""
+    findings = voter_endpoint_findings(_KNOWN_BAD_ENV_WORKFLOW)
+    assert len(findings) == 2, findings
+    assert any("REVIEW_VOTER_MODEL=my-voter-model" in f for f in findings)
+    assert any("MODEL=voter-b" in f for f in findings)
+    assert not any("REVIEW_MODELS" in f for f in findings)
+
+
+@pytest.mark.parametrize("path", _reviewer_workflows(), ids=lambda p: p.name)
+def test_voter_model_from_overlay_no_reviewer_workflow_names_a_model(
+    path: Path,
+) -> None:
+    findings = voter_endpoint_findings(path.read_text(encoding="utf-8"))
+    assert findings == [], (
+        f"{path.name} names a review voter model, endpoint or port; a voter's "
+        f"model is declared only in the overlay (OMN-20910): {findings}"
+    )
+
+
+_REPO = Path(__file__).resolve().parents[2]
+_THIS_TEST = "tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py"
+
+
+def test_voter_model_from_overlay_ratchet_is_wired_as_ci_step_and_hook() -> None:
+    """The ratchet runs in a job the required ``lint`` context covers, and in pre-commit."""
+    ci = yaml.safe_load((_WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+    lint_steps = ci["jobs"]["lint"]["steps"]
+    assert any(_THIS_TEST in str(step.get("run", "")) for step in lint_steps)
+    required = yaml.safe_load(
+        (_REPO / ".github" / "required-checks.yaml").read_text(encoding="utf-8")
+    )
+    assert any(
+        gate["name"] == "lint" and gate["mode"] == "REQUIRED"
+        for gate in required["gates"]
+    )
+    hooks = [
+        hook
+        for repo in yaml.safe_load(
+            (_REPO / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+        )["repos"]
+        for hook in repo["hooks"]
+    ]
+    assert any(_THIS_TEST in str(hook.get("entry", "")) for hook in hooks)

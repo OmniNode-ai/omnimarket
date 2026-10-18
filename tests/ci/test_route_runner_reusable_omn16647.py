@@ -25,6 +25,7 @@ why they are tests rather than review items:
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any, cast
@@ -194,23 +195,81 @@ def test_the_shim_declares_no_threshold() -> None:
         assert forbidden not in body, f"{forbidden} is the node's to declare"
 
 
-def test_the_shim_carries_no_runner_label_but_the_fork_and_floor_fallbacks() -> None:
-    """The only literals allowed are the two fail-safe fallbacks.
+def _assert_runner_fallbacks(placement: str) -> None:
+    matches = re.findall(
+        r"fromJSON\(vars\.(OMNI_\w+_RUNS_ON_JSON)\s*\|\|\s*'([^']+)'\)",
+        placement,
+    )
+    assert len(matches) == 2, "both placement branches must resolve through a seam"
+    fallbacks = {name: json.loads(labels) for name, labels in matches}
+    assert set(fallbacks) == {
+        "OMNI_PUBLIC_PR_RUNS_ON_JSON",
+        "OMNI_TRUSTED_CI_RUNS_ON_JSON",
+    }
+    assert fallbacks["OMNI_PUBLIC_PR_RUNS_ON_JSON"] == ["ubuntu-latest"]
+    assert fallbacks["OMNI_TRUSTED_CI_RUNS_ON_JSON"] in (
+        ["ubuntu-latest"],
+        ["self-hosted", "omnibase-ci"],
+    )
+    # No third literal label set may bypass either configured seam.
+    assert placement.count("fromJSON(") == 2
+    remaining = re.sub(
+        r"fromJSON\(vars\.OMNI_\w+_RUNS_ON_JSON\s*\|\|\s*'[^']+'\)",
+        "",
+        placement,
+    )
+    assert re.findall(r"'([^']*)'", remaining) == ["pull_request"]
+    assert '"' not in remaining
 
-    ``ubuntu-latest`` appears in the fork branch (untrusted code never reaches
-    self-hosted compute) and in the fail-closed floor (a crashed router must
-    still hand the run a schedulable label). Any OTHER label literal here is a
-    placement decision that belongs to the node.
+
+def test_the_shim_carries_no_runner_label_but_the_fork_and_floor_fallbacks() -> None:
+    """Seams may default to hosted compute; fork isolation stays mandatory.
+
+    The public branch always falls back to hosted compute. The trusted seam
+    supports both the original fleet fallback and the hosted fallback used by
+    public repositories. Labels outside those fallbacks belong to the node.
     """
     text = WORKFLOW.read_text(encoding="utf-8")
     placement = str(_route_job()["runs-on"])
-    assert "self-hosted" in placement, "the seam fallback must name the fleet"
-    # The fleet literal may appear ONLY inside the seam fallback expression,
-    # never as a bare placement or inside the decision step.
+    _assert_runner_fallbacks(placement)
     assert "self-hosted" not in _step("decide")["run"]
-    assert text.count("omnibase-ci") == 1, (
+    assert text.count("omnibase-ci") == placement.count("omnibase-ci"), (
         "the fleet label belongs in the seam fallback and nowhere else"
     )
+
+
+@pytest.mark.parametrize(
+    "trusted", ['["ubuntu-latest"]', '["self-hosted","omnibase-ci"]']
+)
+def test_runner_fallback_guard_accepts_hosted_and_fleet_seams(trusted: str) -> None:
+    placement = (
+        "${{ (github.event_name == 'pull_request' && "
+        "github.event.pull_request.head.repo.full_name != github.repository) "
+        "&& fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '[\"ubuntu-latest\"]') "
+        f"|| fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '{trusted}') }}}}"
+    )
+    _assert_runner_fallbacks(placement)
+
+
+@pytest.mark.parametrize(
+    ("public", "trusted"),
+    [
+        ('["self-hosted","omnibase-ci"]', '["ubuntu-latest"]'),
+        ('["ubuntu-latest"]', '["unrecognized-runner"]'),
+        ('["ubuntu-latest"]', '["self-hosted"]'),
+        ('["ubuntu-latest"]', "[]"),
+    ],
+)
+def test_runner_fallback_guard_refuses_unsafe_or_unknown_labels(
+    public: str, trusted: str
+) -> None:
+    placement = (
+        "${{ github.event_name == 'pull_request' "
+        f"&& fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '{public}') "
+        f"|| fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '{trusted}') }}}}"
+    )
+    with pytest.raises(AssertionError):
+        _assert_runner_fallbacks(placement)
 
 
 def test_the_shim_runs_the_node_rather_than_reimplementing_it() -> None:

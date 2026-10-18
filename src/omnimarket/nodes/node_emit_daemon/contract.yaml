@@ -162,6 +162,8 @@ event_bus:
     - onex.evt.omniclaude.team-evidence-written.v1
     # Delegation command (renamed from delegation.request)
     - onex.cmd.omniclaude.delegate-task.v1
+    # Legacy task.delegated fan-out (registries/topics.yaml); no in-graph subscriber
+    - onex.evt.omniclaude.task-delegated.v1
     # Agent action telemetry
     - onex.evt.omniclaude.agent-actions.v1
     # LLM cost telemetry
@@ -189,6 +191,11 @@ event_bus:
     - onex.evt.omniclaude.work-obligation-abandoned.v1
 
 externally_consumed_topics:
+  # Pipeline observability exports owned by omniclaude's shared pipeline event
+  # models, alongside epic-run-updated and gate-decision below. These channels
+  # leave this node graph; there is no internal subscriber for either signal.
+  - onex.evt.omniclaude.budget-cap-hit.v1
+  - onex.evt.omniclaude.circuit-breaker-tripped.v1
   - onex.cmd.omniintelligence.tool-content.v1
   - onex.cmd.omniintelligence.claude-hook-event.v1
   - onex.cmd.omniintelligence.compliance-evaluate.v1
@@ -258,6 +265,8 @@ externally_consumed_topics:
   - onex.evt.omniclaude.team-evidence-written.v1
   # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
   - onex.evt.omniclaude.team-task-assigned.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.task-delegated.v1
   # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
   - onex.evt.omniclaude.team-task-completed.v1
   # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py

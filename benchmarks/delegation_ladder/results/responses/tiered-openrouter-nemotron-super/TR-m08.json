@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m08",
+  "path": "pinned",
+  "sha256": "7e0c36b457ff74ec91acad91f2b002333bc25d203a8e2de38bbf92c131e503ed",
+  "response": "Line 197 (`parser.add_argument(\"--checx\", action=\"store_true\")`) defines the CLI flag as `--checx`, but the test at line 321 invokes the script with `--check`, causing the `--check` argument to be unrecognized and `args.check` to be missing."
+}

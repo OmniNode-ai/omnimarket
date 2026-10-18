@@ -76,9 +76,7 @@ WORKFLOW_TRAILER = "Onex-Workflow:"
 RUN_TRAILER = "Onex-Run:"
 
 # (workflow file, job id) pairs whose pushes must carry the App identity.
-IN_SCOPE: tuple[tuple[str, str], ...] = (
-    ("occ-behavior-proof-backfill.yml", "backfill"),
-)
+IN_SCOPE: tuple[tuple[str, str], ...] = (("omniclaude-pin-bump.yml", "bump"),)
 
 # (workflow file, job id) pairs that push a TAG rather than a branch. A tag is a
 # ref, not a commit, so the committer-identity and trailer properties below
@@ -104,6 +102,16 @@ EXEMPT: dict[str, str] = {
         "to reach the push via `actions/checkout`'s `token:` input (the only "
         "shape that survives checkout v7's persisted extraheader) rather than "
         "via a URL-embedded credential."
+    ),
+    "dev-merge-tag.yml": (
+        "Pushes a lightweight dev-<UTC>-<sha12> tag on every push to dev "
+        "(OMN-19998). It uses the workflow token on purpose: a tag pushed with "
+        "that token starts no workflow, and nothing should start from a dev-* "
+        "tag. The lab finds the tags by polling `git ls-remote`, and "
+        "`release.yml` only listens for v* tags, so the App token would add "
+        "nothing but the chance of a dev merge fanning out extra runs. "
+        "tests/ci/test_dev_merge_tag_workflow_omn19998.py pins its trigger, "
+        "name and idempotency."
     ),
 }
 
@@ -427,7 +435,7 @@ def test_positive_control_the_push_scan_finds_the_known_pushers() -> None:
         "known to push; an empty result means the scan broke, not that the "
         "pushers went away."
     )
-    for known in ("occ-behavior-proof-backfill.yml", "release-cut.yml"):
+    for known in ("omniclaude-pin-bump.yml", "release-cut.yml"):
         assert known in observed, f"{known} pushes but the scan missed it"
 
 

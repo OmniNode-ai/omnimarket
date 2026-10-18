@@ -21,6 +21,7 @@ no resolvable secret also raises, matching the sibling convention in
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,6 +32,8 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketRequest,
     ModelTicketGuardDecision,
 )
+
+pytestmark = pytest.mark.usefixtures("lane_create_context")
 
 
 class _AdmitGuard:
@@ -58,6 +61,7 @@ class _EmptyIdLinearClient:
         team: str,
         parent: str | None,
         assignee_id: str | None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         del title, description, team, parent, assignee_id
         return "", ""
@@ -83,6 +87,7 @@ class _SuccessLinearClient:
         team: str,
         parent: str | None,
         assignee_id: str | None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         self.calls.append(
             {
@@ -143,7 +148,11 @@ def test_successful_create_yields_non_empty_ticket_id() -> None:
     assert client.calls[0]["team"] == "Omninode"
     assert client.calls[0]["parent"] == "OMN-1000"
     # OMN-20595: the caller's description reaches Linear unchanged
-    assert client.calls[0]["description"] == "Protect the public endpoints."
+    # OMN-17942: the first line names the lane; the caller's text follows unchanged
+    assert (
+        client.calls[0]["description"]
+        == "stamped-by: lane-under-test\n\nProtect the public endpoints."
+    )
 
 
 def test_successful_create_with_no_parent_passes_none() -> None:

@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import ast
+import atexit
 import contextlib
 import fcntl
 import functools
@@ -74,10 +75,19 @@ from omnimarket.enums.enum_dod_verify_execution_audience import (
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
+    SCM_CACHE_DIR_ENV,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
     HandlerDurableEvidenceGateEffect,
     pypi_release_files,
+)
+from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+    ModelCriteriaCheck,
+)
+from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
+    ModelCriteriaPins,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
@@ -111,6 +121,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelRepoEvidenceVerdict,
     ModelTicketMergedPr,
 )
+from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
+    ModelTicketCriteriaRead,
+)
 from omnimarket.nodes.node_dod_verify.services.ac_binding_retirements import (
     resolve_retirements,
 )
@@ -128,14 +141,27 @@ from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_check,
     classify_item_checks,
 )
+from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
+    contract_structure_failure,
+    missing_contract_message,
+)
 from omnimarket.nodes.node_dod_verify.services.contract_subject import (
     inline_goal_subject,
     resolve_contract_subject,
+)
+from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
+    ProtocolDodTicketCriteriaReader,
+    evaluate_criteria,
+    extract_criteria_pins,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
     default_contract_path,
     resolve_repo_contracts,
+)
+from omnimarket.nodes.node_dod_verify.services.local_gh_reads import (
+    REAL_GH_ENV,
+    install_gh_shim,
 )
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
@@ -149,10 +175,10 @@ from omnimarket.occ_evidence_probative_class import (
 
 logger = logging.getLogger(__name__)
 
-# Default contract search roots (first match wins)
+# Default contract search roots (first match wins). The change-control clone is
+# located only by ONEX_CC_REPO_PATH, never under $OMNI_HOME (OMN-17427).
 _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${ONEX_CC_REPO_PATH}/contracts",
-    "${OMNI_HOME}/onex_change_control/contracts",
 ]
 
 # OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
@@ -531,6 +557,14 @@ _REF_LOCK_ERROR_MARKER = "cannot lock ref"
 # pretending the tree was current.
 _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
 
+# OMN-20858: set by the OCC replay (``handler_occ_replay``) on the verifier it
+# runs against an already-merged head. The live ticket's criteria today are not
+# the criteria that head merged against, and the replay compares a head verdict
+# with a control verdict that would read the same ticket, so the criteria-drift
+# check is not measured on that run (``criteria_check`` stays None) rather than
+# refusing every replayed contract that records criteria. Named and logged.
+_HISTORICAL_REPLAY_ENV = "DOD_VERIFY_HISTORICAL_REPLAY"
+
 # OMN-18117: path to the pin file whoever materialised this run's product
 # clones wrote — see ``ModelProductClonePinSet``. Unset (the local operator
 # path, and any caller that materialises nothing) leaves the OMN-16846
@@ -754,6 +788,12 @@ _HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
 # silently move its working directory and re-root every relative path in it.
 _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
+)
+
+# OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
+# local ``gh`` shim first on its PATH (see ``local_gh_reads``).
+_GH_READ_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?<![\w./-])['"]?gh['"]?[\s,]+['"]?(?:pr|api)['"]?(?![\w-])"""
 )
 
 # OMN-18756. The Python sibling of the two routings above, and the narrowest
@@ -2314,12 +2354,27 @@ class EvidenceCollector:
     """
 
     def __init__(
-        self, *, must_fail_runner: ProtocolMustFailTreeRunner | None = None
+        self,
+        *,
+        must_fail_runner: ProtocolMustFailTreeRunner | None = None,
+        ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
     ) -> None:
         # OMN-20032 (GC.9): runs one changed test file against the code before
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
         self._must_fail_runner = must_fail_runner
+        # OMN-20768: the directory of the local ``gh`` shim, made on first use.
+        self._gh_shim_dir: Path | None = None
+        # OMN-20858: reads the live ticket whose criteria the contract is pinned
+        # to. None means the Linear effect, built on first use.
+        self._ticket_reader = ticket_reader
+        self._criteria_pins: ModelCriteriaPins | None = None
+        self._criteria_read_before: ModelTicketCriteriaRead | None = None
+        # OMN-20858: what the criteria-drift check established for the last
+        # ticket-contract collect(). None when the contract records no criteria
+        # (nothing to drift from) or no contract was loaded, so "not measured"
+        # is never "no drift". Read by ``handler_dod_verify``.
+        self.criteria_check: ModelCriteriaCheck | None = None
         # OMN-17795: the per-check ceiling is resolved per call from
         # ``_check_timeout_s()``, not captured here. It used to be a
         # constructor default that no caller ever passed and no operator could
@@ -2935,15 +2990,10 @@ class EvidenceCollector:
         return self._make_durable_gate_effect().handle(self._durable_gate_inputs)
 
     def _resolve_occ_root(self) -> Path | None:
-        """Return the OCC repo root from the environment, or None."""
+        """Return the OCC repo root from ``ONEX_CC_REPO_PATH``, or None."""
         cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
         if cc_repo_path and Path(cc_repo_path).is_dir():
             return Path(cc_repo_path)
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        if omni_home:
-            occ = Path(omni_home) / "onex_change_control"
-            if occ.is_dir():
-                return occ
         return None
 
     def _materialize_occ_dev_worktree(
@@ -3535,6 +3585,9 @@ class EvidenceCollector:
         self.acceptance_summary = None
         self.contract_subject = None
         self.contract_load_error = None
+        self.criteria_check = None
+        self._criteria_pins = None
+        self._criteria_read_before = None
         self._last_contract = None
         raw: dict[str, Any] | None
         if loaded_contract is not None:
@@ -3556,7 +3609,7 @@ class EvidenceCollector:
                         evidence_id="contract",
                         description=f"Contract file not found: {contract_path}",
                         status=EnumEvidenceCheckStatus.FAILED,
-                        message=f"File does not exist: {contract_path}",
+                        message=missing_contract_message(ticket_id),
                     )
                 ]
             self.contract_subject = resolve_contract_subject(path)
@@ -3592,42 +3645,14 @@ class EvidenceCollector:
                 )
             ]
 
-        # Validate contract belongs to the requested ticket
-        contract_ticket_id = raw.get("ticket_id")
-        if contract_ticket_id != ticket_id:
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"Contract ticket mismatch: {path}",
-                    status=EnumEvidenceCheckStatus.FAILED,
-                    message=(
-                        f"Expected ticket_id {ticket_id!r}, "
-                        f"found {contract_ticket_id!r}."
-                    ),
-                )
-            ]
-
-        if inline_items is None:
+        # Keep the loaded contract for durable-gate diagnostics even when its
+        # evidence is empty or malformed, as before the shared prerequisite.
+        if inline_items is None and raw.get("ticket_id") == ticket_id:
             self._last_contract = raw
-        dod_items = raw.get("dod_evidence", [])
-        if not isinstance(dod_items, list):
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"Invalid dod_evidence structure in contract: {path}",
-                    status=EnumEvidenceCheckStatus.FAILED,
-                    message="dod_evidence must be a list of mappings.",
-                )
-            ]
-        if not dod_items:
-            return [
-                ModelEvidenceCheckResult(
-                    evidence_id="contract",
-                    description=f"No dod_evidence entries in contract: {path}",
-                    status=EnumEvidenceCheckStatus.SKIPPED,
-                    message="Contract has empty or missing dod_evidence[] section.",
-                )
-            ]
+        failure = contract_structure_failure(ticket_id, raw, path)
+        if failure is not None:
+            return [failure]
+        dod_items = raw["dod_evidence"]
 
         # OMN-20153: the author's own accepted falsifiers become evidence items
         # here, before audiences are validated and before anything executes, so
@@ -3640,6 +3665,7 @@ class EvidenceCollector:
         # in it, so no marker may retire one, whatever ids coincide.
         declared_count = len(dod_items)
         if inline_items is None:
+            self._begin_criteria_check(ticket_id, raw, dod_items)
             derived_items, self.acceptance_summary = derive_falsifier_items(
                 raw,
                 dod_items,
@@ -4770,6 +4796,53 @@ class EvidenceCollector:
 
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
 
+    def _begin_criteria_check(
+        self, ticket_id: str, contract: dict[str, Any], dod_items: list[Any]
+    ) -> None:
+        """OMN-20858: read the live ticket before any check runs, when the contract
+        records criteria to compare it with."""
+        pins = extract_criteria_pins(contract, dod_items)
+        if pins is None:
+            return
+        if os.environ.get(_HISTORICAL_REPLAY_ENV, "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            logger.warning(
+                "%s set: %s is a replay of a merged head, so its live ticket "
+                "criteria are not read or compared",
+                _HISTORICAL_REPLAY_ENV,
+                ticket_id,
+            )
+            return
+        self._criteria_pins = pins
+        self._criteria_read_before = self._criteria_reader().read(ticket_id)
+
+    def finish_criteria_check(self) -> ModelCriteriaCheck | None:
+        """OMN-20858: read the ticket again after the checks and compare.
+
+        A second read, not the first reused, because an edit made while the
+        checks ran is exactly what the verdict must refuse. Returns None, and
+        reads nothing, when the contract recorded no criteria.
+        """
+        pins = self._criteria_pins
+        before = self._criteria_read_before
+        if pins is None or before is None:
+            return None
+        after = self._criteria_reader().read(before.ticket_id)
+        self.criteria_check = evaluate_criteria(pins, before.ticket_id, before, after)
+        return self.criteria_check
+
+    def _criteria_reader(self) -> ProtocolDodTicketCriteriaReader:
+        if self._ticket_reader is None:
+            from omnimarket.nodes.node_dod_verify.handlers.handler_dod_ticket_criteria_linear_effect import (
+                HandlerDodTicketCriteriaLinearEffect,
+            )
+
+            self._ticket_reader = HandlerDodTicketCriteriaLinearEffect()
+        return self._ticket_reader
+
     def _contract_repo_dirs(self, dod_items: list[Any]) -> tuple[str, ...]:
         """Repository directory names the contract's own PR-bound items name.
 
@@ -4895,15 +4968,6 @@ class EvidenceCollector:
             if candidate.exists():
                 logger.info("Found contract at %s", candidate)
                 return candidate
-
-        # Fallback: resolve via OMNI_HOME env var
-        omni_home = os.environ.get("OMNI_HOME", "")
-        candidate = (
-            Path(omni_home) / "onex_change_control" / "contracts" / f"{ticket_id}.yaml"
-        )
-        if candidate.exists():
-            logger.info("Found contract at %s", candidate)
-            return candidate
 
         return None
 
@@ -5604,8 +5668,9 @@ class EvidenceCollector:
         """Return the onex_change_control repo path when contract is from OCC.
 
         Detects OCC contracts by checking whether the contract path contains
-        ``onex_change_control`` as a path component. Returns None for all
-        other contracts (cwd stays inherited).
+        ``onex_change_control`` as a path component, and returns the root of
+        that same tree, so greps run against the revision the contract was
+        read from. Returns None for all other contracts (cwd stays inherited).
         """
         # OMN-13888 (scope 6): during a dev-resolved collect, greps must run
         # inside the origin/dev worktree so dev-only receipt files are visible.
@@ -5615,12 +5680,10 @@ class EvidenceCollector:
             return None
         if "onex_change_control" not in contract_path.parts:
             return None
-        omni_home = os.environ.get("OMNI_HOME")
-        if not omni_home:
-            return None
-        occ_path = Path(omni_home) / "onex_change_control"
-        if occ_path.is_dir():
-            return str(occ_path)
+        parts = contract_path.parts
+        occ_root = Path(*parts[: parts.index("onex_change_control") + 1])
+        if occ_root.is_dir():
+            return str(occ_root)
         return None
 
     def _resolve_contract_repo_dir(self, contract_path: Path | None) -> str | None:
@@ -5641,7 +5704,9 @@ class EvidenceCollector:
            OCC root is derived from the contract path itself — correct even when
            ``OMNI_HOME`` is unset or points elsewhere.
         3. Otherwise ``$ONEX_CC_REPO_PATH`` when set.
-        4. Otherwise ``$OMNI_HOME/onex_change_control`` when that directory exists.
+
+        ``$OMNI_HOME`` is not consulted (OMN-17427): the change-control clone is
+        located only by ``ONEX_CC_REPO_PATH`` or by the contract's own path.
 
         Returns the absolute OCC root, or ``None`` when it cannot be resolved
         (the check then runs with the token unset — the fail-closed pre-fix
@@ -5667,12 +5732,6 @@ class EvidenceCollector:
         cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
         if cc_repo_path:
             return cc_repo_path
-
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        if omni_home:
-            occ_path = Path(omni_home) / "onex_change_control"
-            if occ_path.is_dir():
-                return str(occ_path)
 
         return None
 
@@ -7334,6 +7393,11 @@ class EvidenceCollector:
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
 
+        # OMN-20768: a command that reads PR facts through ``gh`` runs against a
+        # shim that answers the clone-held shapes locally (see local_gh_reads).
+        if _GH_READ_INVOCATION_RE.search(cmd_str) is not None:
+            run_env = self._with_local_gh_shim(run_env)
+
         logger.info(
             "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s, "
             "node stage=%s): %s",
@@ -7403,6 +7467,26 @@ class EvidenceCollector:
             )
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _with_local_gh_shim(self, env: dict[str, str] | None) -> dict[str, str]:
+        """``env`` with the local ``gh`` shim first on PATH (OMN-20768).
+
+        The shim directory is made once per collector and removed at exit. The
+        real ``gh``, found on the PATH the check would have used, rides in
+        ``REAL_GH_ENV`` for every invocation the shim does not answer.
+        """
+        out = dict(env if env is not None else os.environ)
+        if self._gh_shim_dir is None:
+            shim_dir = Path(tempfile.mkdtemp(prefix="dod-verify-gh-"))
+            install_gh_shim(shim_dir)
+            atexit.register(shutil.rmtree, shim_dir, True)
+            self._gh_shim_dir = shim_dir
+        real_gh = shutil.which("gh", path=out.get("PATH"))
+        if real_gh:
+            out[REAL_GH_ENV] = real_gh
+        out[SCM_CACHE_DIR_ENV] = str(self._gh_shim_dir)
+        out["PATH"] = os.pathsep.join([str(self._gh_shim_dir), out.get("PATH", "")])
+        return out
 
     def _run_released_check(self, check: dict[str, Any]) -> tuple[bool, str]:
         """Assert every cited merge is released (OMN-18010 deliverable 2).

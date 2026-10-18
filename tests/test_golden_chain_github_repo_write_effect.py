@@ -15,7 +15,7 @@ nothing (completed), and a pr_close with no claim (failed).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -210,7 +210,10 @@ async def test_a_dry_run_sends_nothing_and_completes() -> None:
 async def test_a_close_without_a_claim_is_published_as_failed(tmp_path: Path) -> None:
     fake = _Recorded([])
     handler = HandlerGithubRepoWriteEffect(
-        fake, claim_lookup=HandlerPrClaimLookup(), clock=_CLOCK.timestamp
+        fake,
+        claim_lookup=HandlerPrClaimLookup(),
+        runtime_claims_dir="",
+        clock=_CLOCK.timestamp,
     )
     broker, _ = await _run(
         handler,
@@ -228,3 +231,96 @@ async def test_a_close_without_a_claim_is_published_as_failed(tmp_path: Path) ->
     failed = ModelRepoWriteFailed.model_validate(envelope.payload)
     assert failed.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
     assert failed.terminal_failure_cause is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+
+
+async def test_a_close_carrying_the_callers_claim_crosses_the_bus_and_completes() -> (
+    None
+):
+    # OMN-21067 AC1: the claim is not in any registry the runtime reads; it
+    # travels on the command envelope and the runtime accepts it.
+    fake = _Recorded([])
+    handler = HandlerGithubRepoWriteEffect(
+        fake,
+        claim_lookup=HandlerPrClaimLookup(),
+        runtime_claims_dir="",
+        clock=_CLOCK.timestamp,
+    )
+    taken = (_CLOCK - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    broker, _ = await _run(
+        handler,
+        _command(
+            EnumRepoWriteOperation.PR_CLOSE,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            requested_by_run="run-golden",
+            dry_run=True,
+            claim={
+                "pr_key": "omninode-ai/omnimarket#4000",
+                "lane_id": "scm-ops-5d21",
+                "claimed_by_run": "run-golden",
+                "action": "close",
+                "claimed_at": taken,
+            },
+        ),
+    )
+    assert fake.sent == []
+    assert _on(broker, _FAILED) == []
+    (envelope,) = _on(broker, _COMPLETED)
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.PR_CLOSE
+    assert completed.mode is EnumRepoWriteMode.DRY_RUN
+
+
+async def test_check_run_create_is_published_as_completed() -> None:
+    output = {"title": "Lab job", "summary": "Recorded lab check."}
+    post = ModelGithubHttpRequest(
+        method="POST",
+        path=f"/repos/{_REPO}/check-runs",
+        body={
+            "name": "lab/pr-merged-publisher",
+            "head_sha": _HEAD,
+            "status": "completed",
+            "conclusion": "success",
+            "output": output,
+        },
+    )
+    fake = _Recorded(
+        [
+            (
+                post,
+                ModelGithubHttpResponse(
+                    status=201,
+                    headers=_HEADERS,
+                    body={
+                        "id": 4,
+                        "head_sha": _HEAD,
+                        "html_url": f"https://github.com/{_REPO}/runs/4",
+                    },
+                ),
+            )
+        ]
+    )
+    handler = HandlerGithubRepoWriteEffect(fake, clock=_CLOCK.timestamp)
+    broker, correlation_id = await _run(
+        handler,
+        _command(
+            EnumRepoWriteOperation.CHECK_RUN_CREATE,
+            name="lab/pr-merged-publisher",
+            head_sha=_HEAD,
+            status="completed",
+            conclusion="success",
+            output=output,
+        ),
+    )
+    (envelope,) = _on(broker, _COMPLETED)
+    assert envelope.correlation_id == correlation_id
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.CHECK_RUN_CREATE
+    assert completed.check_run_id == 4
+    assert completed.head_sha == _HEAD
+    assert completed.html_url == f"https://github.com/{_REPO}/runs/4"
+    assert completed.http_statuses == (201,)
+    assert completed.mode is EnumRepoWriteMode.ENFORCE
+    assert fake.sent == [post]
+    assert fake.exchanges == []
+    assert _on(broker, _FAILED) == []

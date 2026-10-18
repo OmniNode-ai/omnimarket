@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m01",
+  "path": "pinned",
+  "sha256": "296c51c82e72f745eec103c375bc5f74f7185be38eb3ed6e561a731b1bb83e92",
+  "response": "- #3026: Scheduled heals clear release-window and vendor-parity reds once their cause is gone (OMN-19888).  \n- #1169: Documented 47 BLE001 suppressions and fixed 2 invalid noqa directives across 26 files; suppression count 508 → 506 (OMN-6665).  \n- #3875: Customer-chosen OpenRouter free models are called once and never re-aimed (OMN-21078).  \n- #1374: onex run-node fails fast with actionable SkillRoutingError for unset KAFKA_BOOTSTRAP_SERVERS or unreachable brokers (OMN-13857).  \n- #3666: Must-fail runner reads source objects when source is shallow, fixing infra_error on shallow clones (OMN-19972)."
+}

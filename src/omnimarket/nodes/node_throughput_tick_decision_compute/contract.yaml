@@ -79,7 +79,7 @@ inputs:
   policy_load_error: {type: str, required: false}
   policy_error: {type: str, required: false}
   land_like_operator: {type: list, required: false}
-  lab_headroom: {type: object, required: false, description: "Pool hosts, marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
+  lab_headroom: {type: object, required: false, description: "Pool hosts (each with codex_allowed from the lab host table), marks, runner receipts and live placement markers; omitted skips the lab-headroom finding."}
   pr_land: {type: object, required: false, description: "Open PRs with their landing facts and hold source (OMN-20864); the lab-headroom FIX then names pr-land lanes for idle slots on parked, escalated or unowned-red PRs."}
   park_max_hours: {type: float, required: false, description: "A park over a floor-stalled repository with zero merges covers it only while it ends within this many hours (default 2)."}
   dispatch_window_hours: {type: float, required: false, description: "Runner receipts started this many hours back that ended without running are findings; omitted skips the dispatches finding."}
@@ -90,15 +90,20 @@ inputs:
   unplaced_lane_alarm_minutes: {type: int, required: false, description: "A dispatched lane with no placement receipt for longer than this is an ALARM (default 10)."}
   venv_divergences: {type: list, required: false, description: "Cross-host dispatch-venv divergences with the stamp each was first read; omitted skips the venv-divergence finding."}
   venv_divergence_alarm_minutes: {type: int, required: false, description: "A divergence older than this is an ALARM, a younger one a NOTE (default 30)."}
+  deploy_drifts: {type: list, required: false, description: "Lab daemon drift rows node_lab_daemon_sync_effect wrote per host (OMN-19998); omitted skips the deploy-drift finding."}
+  deploy_drift_max_hours: {type: float, required: false, description: "A daemon lagging its source tip longer than this is MISSING deploy-drift:<daemon>@<host>, a younger lag a NOTE (default 2)."}
+  repo_status: {type: object, required: false, description: "OMN-19998: window_minutes and the open status-check units; every repository with open non-draft PRs and no merge in the window gets one typed verdict; omitted skips the check."}
 outputs:
   lines: {type: list}
   status_line: {type: str}
   missing: {type: list}
   unknown: {type: list}
   checked: {type: list}
+  codex_headroom: {type: list, description: "Codex headroom per Codex-capable pool host with a fresh reading, apart from Claude's; a Claude-limited host with free Codex slots is a MISSING lab-headroom line (absent when empty)."}
   alarms: {type: list, description: "Typed ALARM verdict records (unplaced lanes, lasting venv divergence) for the caller to print, write to its evidence file and exit non-zero on."}
   exit_code: {type: int}
   open_count: {type: int, description: The open PR count of a fresh watcher state, for the caller to record.}
+  repo_status: {type: list, description: "OMN-19998: one status-check verdict per repository with open PRs and no merge in the window (merging_normally, waiting_on_ci, base_branch_red, merge_queue_ejecting, shared_red_unowned, parked_or_escalated) and whether its event is due; absent when empty."}
 config:
   throughput_tick_decision:
     # OMN-20867: the tick's cadence, the launchd agent's (every 600 s).
@@ -126,4 +131,4 @@ metadata:
   description: Merge-throughput tick decisions
   author: OmniNode Team
   created: "2026-10-09"
-  related_tickets: [OMN-20686, OMN-20840, OMN-20851]
+  related_tickets: [OMN-20686, OMN-20840, OMN-20851, OMN-19998]

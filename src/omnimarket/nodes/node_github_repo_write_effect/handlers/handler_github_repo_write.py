@@ -9,8 +9,9 @@ uses; no ``gh`` subprocess.
 
 Rules this handler enforces:
 
-- **Mode from the contract.** ``write_config`` names the mode per repository;
-  a repository not named takes the default (dry_run). dry_run returns the
+- **Mode from the contract.** ``write_config`` names the mode per repository
+  and per owner; a repository row wins over its owner's row, and a repository
+  named by neither takes the default (dry_run). dry_run returns the
   requests the write would send and sends nothing. A request may force
   dry_run; it can never force enforce.
 - **Quota floor.** The landing effect's rule, read from this contract's
@@ -27,7 +28,8 @@ Rules this handler enforces:
   itself is the record: pr_create finds an open PR for the head, pr_comment
   finds a comment carrying the key, pr_ready and pr_close find the PR already
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
-  the in-process record guards a retry.
+  the in-process record guards a retry. check_run_create likewise only has
+  the in-process record; a restart can create another check run.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -35,12 +37,17 @@ Rules this handler enforces:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
+import os
+import re
 import time
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaHeadersMissingError,
@@ -72,8 +79,15 @@ from omnimarket.github_landing.model_github_http_exchange import (
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.models.model_github_quota_floor import ModelGithubQuotaFloor
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
+    M4_REPOSITORIES,
+    cited_tickets,
+    contract_prerequisite,
+)
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
     HandlerPrClaimLookup,
+    carried_claim_refusal,
+    registry_claim_refusal,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models import (
     EnumRepoWriteMode,
@@ -92,6 +106,7 @@ from omnimarket.nodes.node_github_repo_write_effect.protocols import (
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _SECRET_NAME = "GITHUB_TOKEN"
+_CLAIMS_DIR_ENV = "ONEX_PR_CLAIMS_DIR"
 # How many completed writes the in-process idempotency record keeps.
 _IDEMPOTENCY_RECORD_SIZE = 4096
 # Comment pages scanned for an idempotency marker (300 comments).
@@ -186,6 +201,7 @@ class _Run:
         html_url: str | None = None,
         head_sha: str | None = None,
         comment_id: int | None = None,
+        check_run_id: int | None = None,
     ) -> ModelRepoWriteCompleted:
         c = self.command
         return ModelRepoWriteCompleted(
@@ -203,9 +219,12 @@ class _Run:
             html_url=html_url,
             head_sha=head_sha,
             comment_id=comment_id,
+            check_run_id=check_run_id,
         )
 
-    async def send(self, request: ModelGithubHttpRequest) -> ModelGithubHttpResponse:
+    async def send(
+        self, request: ModelGithubHttpRequest, *, allow_not_found: bool = False
+    ) -> ModelGithubHttpResponse:
         """Send one request; raise :class:`_RefusedError` with the typed failure."""
         resource = _resource_of(request)
         floor_reading = self._handler.floor_refusal(resource)
@@ -234,6 +253,8 @@ class _Run:
             self.quota = reading
             self._handler.record_reading(reading)
         errors = (response.body or {}).get("errors")
+        if allow_not_found and response.status == 404:
+            return response
         if 200 <= response.status < 300 and not errors:
             return response
         reason = (
@@ -292,12 +313,20 @@ class HandlerGithubRepoWriteEffect:
         transport: ProtocolGithubRepoWriteTransport | None = None,
         *,
         claim_lookup: ProtocolPrClaimLookup | None = None,
+        runtime_claims_dir: str | None = None,
         quota_floor: ModelGithubQuotaFloor | None = None,
         config: ModelRepoWriteConfig | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._transport = transport
         self._claims = claim_lookup or HandlerPrClaimLookup()
+        # The registry this runtime keeps, which the effect can read. The empty
+        # string reads none; None takes $ONEX_PR_CLAIMS_DIR, as the CLI names it.
+        self._runtime_claims_dir = (
+            runtime_claims_dir
+            if runtime_claims_dir is not None
+            else os.environ.get(_CLAIMS_DIR_ENV)
+        )
         self._floor = quota_floor or ModelGithubQuotaFloor.from_contract(_CONTRACT_PATH)
         self._config = config or ModelRepoWriteConfig.from_contract(_CONTRACT_PATH)
         self._clock = clock
@@ -374,24 +403,11 @@ class HandlerGithubRepoWriteEffect:
     ) -> ModelRepoWriteFailed | None:
         if request.operation is not EnumRepoWriteOperation.PR_CLOSE:
             return None
-        claims_dir = request.claims_dir or ""
         now = datetime.fromtimestamp(self._clock(), tz=UTC).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        claim = self._claims.active_claim(
-            claims_dir=claims_dir, pr_key=request.pr_key, now=now
-        )
-        if claim is None:
-            detail = f"no live claim on {request.pr_key}; pr_close needs one"
-        elif claim.claimed_by_run != request.requested_by_run or (
-            claim.lane_id and claim.lane_id != request.requested_by_lane
-        ):
-            detail = (
-                f"{request.pr_key} is claimed by run {claim.claimed_by_run} lane "
-                f"{claim.lane_id}, not run {request.requested_by_run} lane "
-                f"{request.requested_by_lane}"
-            )
-        else:
+        detail = self._claim_detail(request, now)
+        if detail is None:
             return None
         return ModelRepoWriteFailed(
             correlation_id=request.correlation_id,
@@ -406,6 +422,27 @@ class HandlerGithubRepoWriteEffect:
             reason=EnumRepoWriteRefusal.CLAIM_NOT_HELD,
             detail=detail,
         )
+
+    def _claim_detail(self, request: ModelRepoWriteRequest, now: str) -> str | None:
+        """Why the requester does not hold the PR; None when it does.
+
+        A live claim in the registry the effect reads decides: it is the
+        requester's or a peer's. With none there, the claim the caller carried
+        is checked; with neither, the close is refused.
+        """
+        claims_dir = request.claims_dir or self._runtime_claims_dir
+        held = (
+            self._claims.active_claim(
+                claims_dir=claims_dir, pr_key=request.pr_key, now=now
+            )
+            if claims_dir
+            else None
+        )
+        if held is not None:
+            return registry_claim_refusal(held, request)
+        if request.claim is None:
+            return f"no live claim on {request.pr_key}; pr_close needs one"
+        return carried_claim_refusal(request.claim, request, now)
 
     async def _live_transport(self) -> UrllibGithubLandingTransport:
         ref = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
@@ -430,6 +467,8 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_close(run)
         if op is EnumRepoWriteOperation.PR_COMMENT:
             return await _pr_comment(run)
+        if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
+            return await _check_run_create(run)
         return await _workflow_dispatch(run)
 
 
@@ -450,6 +489,8 @@ async def _pr_create(run: _Run) -> ModelRepoWriteCompleted:
             html_url=_str_at(pr, "html_url"),
             head_sha=_str_at(pr, "head", "sha"),
         )
+    if c.repo.rsplit("/", 1)[-1].lower() in M4_REPOSITORIES:
+        await _pr_create_contract_precondition(run)
     created = (
         await run.send(
             create_pull_request_request(
@@ -467,6 +508,67 @@ async def _pr_create(run: _Run) -> ModelRepoWriteCompleted:
         html_url=_str_at(created, "html_url"),
         head_sha=_str_at(created, "head", "sha"),
     )
+
+
+async def _pr_create_contract_precondition(run: _Run) -> None:
+    """Read each cited contract at one immutable head before sending POST."""
+    c = run.command
+    tickets = cited_tickets(c.title or "")
+    if not tickets:
+        raise run.refused(
+            EnumRepoWriteRefusal.CONTRACT_REQUIRED,
+            "pull request title must cite at least one OMN-[0-9]+ ticket",
+        )
+    head = c.head or ""
+    ref = (await run.send(git_ref_request(c.repo, head))).body or {}
+    sha = _str_at(ref, "object", "sha")
+    if (
+        sha is None
+        or re.fullmatch(r"[0-9a-fA-F]{40}", sha) is None
+        or (c.expected_head_sha and sha != c.expected_head_sha)
+    ):
+        raise run.refused(
+            EnumRepoWriteRefusal.HEAD_MOVED, "PR head is unreadable or moved"
+        )
+    for ticket in tickets:
+        response = await run.send(
+            ModelGithubHttpRequest(
+                method="GET",
+                path=f"/repos/{c.repo}/contents/contracts/{ticket}.yaml?ref={quote(sha, safe='')}",
+            ),
+            allow_not_found=True,
+        )
+        text = None
+        if response.status != 404:
+            body = response.body or {}
+            content = _str_at(body, "content")
+            if (
+                body.get("type") != "file"
+                or body.get("encoding") != "base64"
+                or content is None
+            ):
+                raise run.refused(
+                    EnumRepoWriteRefusal.CONTRACT_REQUIRED,
+                    f"contracts/{ticket}.yaml: contract content is unreadable",
+                )
+            try:
+                text = base64.b64decode("".join(content.split()), validate=True).decode(
+                    "utf-8"
+                )
+            except (binascii.Error, UnicodeDecodeError, ValueError):
+                raise run.refused(
+                    EnumRepoWriteRefusal.CONTRACT_REQUIRED,
+                    f"contracts/{ticket}.yaml: contract content is unreadable",
+                ) from None
+        failure = contract_prerequisite(ticket, text)
+        if failure:
+            raise run.refused(EnumRepoWriteRefusal.CONTRACT_REQUIRED, failure)
+    # A branch can move while the content reads run. Refuse before creation.
+    latest = (await run.send(git_ref_request(c.repo, head))).body or {}
+    if _str_at(latest, "object", "sha") != sha:
+        raise run.refused(
+            EnumRepoWriteRefusal.HEAD_MOVED, "PR head moved during contract preflight"
+        )
 
 
 async def _pr_edit(run: _Run) -> ModelRepoWriteCompleted:
@@ -561,6 +663,30 @@ async def _pr_comment(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
+    body: dict[str, object] = {
+        "name": c.name,
+        "head_sha": c.head_sha,
+        "status": c.status,
+    }
+    if c.conclusion is not None:
+        body["conclusion"] = c.conclusion
+    if c.output is not None:
+        body["output"] = c.output.model_dump(mode="json")
+    return ModelGithubHttpRequest(
+        method="POST", path=f"/repos/{c.repo}/check-runs", body=body
+    )
+
+
+async def _check_run_create(run: _Run) -> ModelRepoWriteCompleted:
+    created = (await run.send(_check_run_create_request(run.command))).body
+    return run.completed(
+        check_run_id=_int_at(created, "id"),
+        html_url=_str_at(created, "html_url"),
+        head_sha=_str_at(created, "head_sha"),
+    )
+
+
 async def _workflow_dispatch(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     ref = c.ref or ""
@@ -606,6 +732,8 @@ def planned_requests(
                 draft=bool(c.draft),
             ),
         )
+    if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
+        return (_check_run_create_request(c),)
     if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
         return (
             *tip,

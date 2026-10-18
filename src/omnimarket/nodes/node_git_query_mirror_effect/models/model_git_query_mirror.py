@@ -15,6 +15,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.events.topics import PR_MERGED_TOPIC_V1
+
 DEFAULT_MAX_AGE_S = 300
 MAX_DIFF_CHARS = 2_000_000
 
@@ -95,6 +97,14 @@ class ModelGitQueryRequest(BaseModel):
         default=True,
         description="Fall back to the GitHub API when the targeted git fetch fails.",
     )
+    detect_merges: bool = Field(
+        default=True,
+        description=(
+            "sync only: scan the default branch for squash merges since the last "
+            "detecting sync. The caller must publish what it returns; a caller "
+            "that cannot (the CLI) sets this False so the scan watermark stays put."
+        ),
+    )
     correlation_id: UUID = Field(default_factory=uuid4)
 
     @model_validator(mode="after")
@@ -113,6 +123,35 @@ class ModelGitCommit(BaseModel):
     subject: str
     author: str
     authored_at: str
+
+
+class ModelMirrorPrMerged(BaseModel):
+    """One squash merge the mirror found on the default branch (OMN-19834).
+
+    Published on ``onex.evt.github.pr-merged.v1`` in the shape
+    ``omnimarket.events.github.ModelPrMergedEvent`` reads, with ``source``
+    ``mirror`` so a consumer can tell it from the Actions and webhook
+    producers. ``event_id`` is the shared UUIDv5 of (repo, pr_number, merge
+    sha), so a webhook delivery of the same merge folds into the same
+    projection row. ``branch_resolved`` is False when the mirror never saw the
+    PR's branch; ``branch`` then names the PR ref instead.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    topic: str = PR_MERGED_TOPIC_V1
+    event_id: UUID
+    repo: str = Field(..., min_length=3)
+    branch: str = Field(..., min_length=1)
+    branch_resolved: bool = True
+    base_ref: str = Field(..., min_length=1)
+    pr_number: int = Field(..., ge=1)
+    ticket: str = ""
+    merge_sha: str = Field(..., min_length=7)
+    head_sha: str | None = None
+    merged_at: str = Field(..., min_length=1, description="ISO 8601 commit time.")
+    published_at: str = Field(..., min_length=1)
+    source: str = "mirror"
 
 
 class ModelGitQueryResult(BaseModel):
@@ -143,6 +182,10 @@ class ModelGitQueryResult(BaseModel):
     commits: list[ModelGitCommit] | None = None
     pull_refs: int | None = None
     head_refs: int | None = None
+    merged_prs: list[ModelMirrorPrMerged] | None = Field(
+        default=None,
+        description="sync only: pending squash merges, including unacknowledged payloads from earlier syncs.",
+    )
     error: str | None = None
 
 
@@ -166,4 +209,5 @@ __all__ = [
     "ModelGitQueryRequest",
     "ModelGitQueryResponse",
     "ModelGitQueryResult",
+    "ModelMirrorPrMerged",
 ]

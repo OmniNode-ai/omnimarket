@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21079"
+title: "The OpenRouter free rung is named for the model it serves, and receipts written under its earlier id resolve to it through one mapping"
+summary: "The rung serving nvidia/nemotron-3-ultra-550b-a55b:free is keyed openrouter-nemotron-ultra in the delegation contract and the model registry. The registry now declares the one earlier id that named a different model under formerly_model_ids, and ModelLlmModelRegistry resolves it (canonical_model_id, get_model) so a reader holding an old receipt's backend id lands on the current profile. The earlier id is spelled in that one place under src and nowhere else; a test enforces it. The web app's model picker stub catalog, which still offered the earlier id, is repointed by that repository's own pull request."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-one-legacy-mapping"
+    statement: "The earlier backend id appears under src only as the registry's formerly_model_ids entry, and that entry resolves an old receipt's id to the current profile."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a grep for the earlier backend id across omnimarket src shows only the registry's legacy mapping -- falsifier: a second file under src carrying the id, or a registry without the entry"
+  - id: "req-routing-and-receipt"
+    statement: "The current id routes to the served model, proven by a routing test and by one lab receipt pinned to the rung."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a routing test resolves openrouter-nemotron-ultra to nvidia/nemotron-3-ultra-550b-a55b:free, and one lab onex delegate run pinned to the rung leaves a receipt carrying the current id -- falsifier: a contract whose rung serves another model, or a receipt whose backend_id differs from the pin"
+  - id: "req-no-other-reader"
+    statement: "No other repository reads the earlier id as a live backend id."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: omnimarket carries no reader of the earlier id other than the registry mapping (the cross-repository half is the web app repository's pull request and the lane report) -- falsifier: a source file other than the registry yaml naming the id"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1, AC2 and AC3 (omnimarket half): the routing resolution, the legacy resolution of an old receipt's id, the single-mapping rule and the single-spelling scan of src. The lab receipt is recorded in the pull request body."
+    command: "uv run pytest tests/test_openrouter_free_rung_legacy_id_omn21079.py tests/test_backend_id_model_family_omn19455.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21079-ac1-single-spelling"
+    description: "AC1: the earlier id is spelled under src only in the registry's formerly_model_ids entry, and that entry resolves it to the current id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_openrouter_free_rung_legacy_id_omn21079.py -q -p no:randomly --no-cov -n 0 -k 'legacy_id_is_spelled_only or exactly_one_legacy_mapping or receipt_written_under_the_legacy_id'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21079-ac2-routing-resolves-served-model"
+    description: "AC2 (test half): the packaged delegation contract and the registry both resolve openrouter-nemotron-ultra to nvidia/nemotron-3-ultra-550b-a55b:free. The lab receipt half is the dev-lane run recorded in the pull request body."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_openrouter_free_rung_legacy_id_omn21079.py -q -p no:randomly --no-cov -n 0 -k 'routing_resolves_the_current_id or registry_resolves_the_current_id'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21079-ac3-no-other-reader-in-omnimarket"
+    description: "AC3 (omnimarket half): no source file other than the registry yaml names the earlier id, and the renamed-ids check of the delegation contract still holds."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_openrouter_free_rung_legacy_id_omn21079.py tests/test_backend_id_model_family_omn19455.py -q -p no:randomly --no-cov -n 0"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21079-deploy-probe"
+    description: "Deploy probe. The registry entry carrying the legacy mapping exists in omnimarket at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe reads the registry from GitHub at that commit and exits nonzero on a tree without formerly_model_ids, so it fails at the merge base. The dev-lane readout is the pinned run recorded in the pull request body."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/data/model_registry/model_registry_v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq formerly_model_ids'"
+        cwd: "${OMNI_HOME}/omnimarket"

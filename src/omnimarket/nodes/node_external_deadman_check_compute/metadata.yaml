@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_external_deadman_check_compute
+version: 1.0.0
+description: Judges the two watchdog legs' mirror variables, the open issues and the clock, and
+  says whether to raise, which issue to refresh and whether to post the alarm.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: External Dead-man Check Compute
+entry_points:
+  onex.nodes:
+    node_external_deadman_check_compute: omnimarket.nodes.node_external_deadman_check_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- watchdog
+- alarm

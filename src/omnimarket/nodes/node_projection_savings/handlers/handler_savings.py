@@ -18,6 +18,10 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelTaskDelegatedSavingsSource,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import (
+    HandlerCompactionSavings,
+    compaction_source_from_post_compact,
+)
 from omnimarket.nodes.node_projection_savings.handlers.handler_savings_run_identity_fold import (
     HandlerSavingsRunIdentityFold,
     ModelSavingsRunIdentity,
@@ -193,6 +197,12 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         )
         self._topic_delegation_failed: str = next(
             (t for t in _topics if "delegation-failed" in t), ""
+        )
+        # OMN-18531: the Claude Code hook-event stream, read for PostCompact
+        # only. A compaction the mod answered or shortened is a saving beside
+        # delegation's; every other hook event is passed over before any read.
+        self._topic_hook_event: str = next(
+            (t for t in _topics if t.endswith(".hook-event.v1")), ""
         )
         self._delegate_skill_baseline_model = str(
             self._contract.get("metadata", {}).get(
@@ -446,6 +456,8 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         would mint a record per malformed message on a compacted topic.
         """
         self._dlq_routed = False
+        if topic and topic == self._topic_hook_event:
+            return await self._project_compaction_savings(data, meta)
         # OMN-15583: resolve the row's tenant ONCE, here, before any branch --
         # so no source path can reach ``_upsert_savings_estimate`` without one,
         # and before ``_normalize_savings_estimate_payload`` rewrites ``data``
@@ -672,6 +684,53 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             source.correlation_id,
             projection.savings_usd,
         )
+        return True
+
+    async def _project_compaction_savings(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Materialize a savings_estimates row from a PostCompact hook event.
+
+        OMN-18531. The measure is ``HandlerCompactionSavings``. Any hook event
+        that is not PostCompact, and any compaction that saved nothing (every
+        native compaction), returns True with no read, no write and no
+        aggregate republish: nothing on the savings surfaces changed. The row's
+        tenant is resolved only when there is a row, through the same registry
+        seam as delegation's (OMN-19438), and the aggregates are republished
+        under it.
+        """
+        try:
+            source = compaction_source_from_post_compact(data)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return await self._route_malformed_to_dlq(
+                data, f"PostCompact event failed compaction savings source: {exc}", meta
+            )
+        if source is None:
+            return True
+        result = HandlerCompactionSavings().handle(source)
+        if result.row is None:
+            logger.debug(
+                "Compaction %s wrote no savings row (%s, tokens_saved=%s)",
+                result.compaction_id,
+                result.skipped,
+                result.tokens_saved,
+            )
+            return True
+        write_tenant = await self._resolve_row_tenant(data)
+        await self._upsert_savings_estimate(
+            write_tenant=write_tenant,
+            meta=meta,
+            source_event_id=result.compaction_id,
+            **result.row,
+        )
+        logger.info(
+            "Projected compaction savings for %s (%s, tokens_saved=%s, savings=$%s)",
+            result.compaction_id,
+            result.outcome,
+            result.tokens_saved,
+            result.row["savings_usd"],
+        )
+        await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
         return True
 
     async def _project_delegate_skill_savings(

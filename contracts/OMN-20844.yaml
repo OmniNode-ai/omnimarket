@@ -20,17 +20,148 @@ requirements:
           AC2: ModelDelegateSkillRequest declares an optional model field, omitted from the wire when unset; the delegate handler passes it to the dispatch port only when set; the in-process port runs the customer's own route on it and refuses it for any other route; the runtime port refuses it.
       - id: "AC3"
         statement: |-
-          AC3: with no model named for OpenRouter, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN; a credential with no model is refused at call time; a model the customer named is never re-aimed at a catalogue pick.
+          AC3: onboarding selects the default OpenRouter model declared in the onboarding overlay, with no model id in code, and the customer can change it with one documented command (`onex models add openrouter --model <id>`) -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly; with no model named and none declared, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN, and a model the customer named is never re-aimed at a catalogue pick.
       - id: "AC4"
         statement: |-
           AC4: the delegation result names the chosen model, and onex models add fails its test when the answer names another model than the chosen one.
       - id: "AC5"
         statement: |-
           AC5: the OpenRouter catalogue row declares customer_chooses_model and its billing is pay_as_you_go, not free_tier.
+  - id: "req-ci-check-prerequisite"
+    statement: "The separate check-only prerequisite for OmniNode-ai/omnimarket#3838 accepts unrelated CI additions while retaining the characterized pin and release-staleness requirements."
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: workflow action comparisons accept added uses of characterized action/commit pairs in the same workflow while refusing missing uses, moved pins, unknown actions and unknown workflows; release-staleness checks require unconditional jobs and steps, one strict CI Summary registration and no skippable registration, ordered after Canonical File Shape and before CI Summary, regardless of unrelated jobs added around it, with positive and negative controls.
+  - id: "req-review-gate-input-without-lines"
+    statement: "The review gate does not refuse a correct answer to a review task whose input carries no line numbers, and still refuses an answer that cites nothing on input that does."
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: the cause is named with two quoted refused answers from the omn20844-bnch stored responses and the cites_specific_lines rule line that refused each: the R3b prompts carry no line numbers -- falsifier: a refused answer whose prompt carries line numbers, or a refusing rule other than cites_specific_lines.
+      - id: "AC8"
+        statement: |-
+          AC8: re-scoring the benchmark's stored review answers with the fixed gate shows no R3b answer refused by cites_specific_lines on any rung, and a cites-nothing answer on numbered input still refused -- falsifier: an R3b answer refused by the rule after the fix, or a numbered-input prompt whose cites-nothing answer passes.
+  - id: "req-tiered-ladder-benchmark"
+    statement: "The delegation ladder's own runner measures each rung over a tiered public task set and prints a per-class table with 95% intervals, so the rungs can be separated or shown not to be."
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: run_ladder.py runs one pinned rung or the unpinned ladder over the tiered set, writes each finished cell durably and resumes, and summarise_results.py prints per class and rung the accepted share with a Wilson 95% interval, the median latency and the cost where receipts carry it, and names the rungs whose interval is disjoint from every other -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py -q -p no:randomly, plus the one-cell rerun command in the run_ladder.py docstring.
+      - id: "AC10"
+        statement: |-
+          AC10: the tiered set holds at least 25 tasks per class for document, review and reasoning, at least 8 per tier, each mined from merged public history and scored mechanically with a held answer that is re-derived, and every scorer fails its negative control -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly.
+  - id: "req-rescore-28-task-benchmark"
+    statement: "The earlier 28-task benchmark is rescored with the scorers that write no bytecode, and the verdicts that changed are listed."
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: every saved cell of the 28-task benchmark (28 local and 28 cloud responses) is rescored with the fixed scorers -- falsifier: the count of rescored cells differs from the count of saved cells.
+      - id: "AC12"
+        statement: |-
+          AC12: the committed flip list is the diff of the recorded and the rescored verdicts of those cells -- falsifier: a cell whose recorded and rescored verdicts differ and is not listed, or a listed cell whose verdicts agree.
+  - id: "req-ladder-stop-reason"
+    statement: "A quality-refused local delegation ladder reaches the next eligible free tier past a paid tier it cannot use, and ends with a typed stop reason on its terminal, never an empty one."
+    acceptance:
+      - id: "AC13"
+        statement: |-
+          AC13: on a hard-tier fixture (free local tier, paid tier, free cloud tier) with every answer refused by the gate, the local port attempts the local and free cloud tiers and not the paid tier, and its failed terminal carries terminal_failure_reason and failure_reason starting with the no-higher-tier token and naming the free cloud tier as the current tier -- falsifier: a paid-tier attempt, a missing free cloud attempt, or a terminal with no terminal_failure_reason.
+      - id: "AC14"
+        statement: |-
+          AC14: a spent escalation budget ends with terminal_failure_reason max_escalation_attempts_reached, and a next rung that resolves to an already-tried route ends with a reason naming the next tier and the already-tried backend -- falsifier: either terminal carrying no reason, or the budget case calling the no-higher-tier description.
+  - id: "req-rung-benchmark-driver-and-tiers"
+    statement: "The delegation ladder's own runner carries the rung benchmark, with a tested per-rung, per-class result table, difficulty tiers for the test and code_generation classes, and the unpinned-ladder trace of the hard tier."
+    acceptance:
+      - id: "AC16"
+        statement: |-
+          AC16: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
+      - id: "AC17"
+        statement: |-
+          AC17: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
+  - id: "req-structural-hard-corpus"
+    statement: "A hard tier for code_generation and review that is hard by structure (files touched, a cause in another file than the one the test imports, input size near the local rung's context limit), run on every pinned rung and the unpinned ladder, with failure and escalation reported per structural feature."
+    acceptance:
+      - id: "AC18"
+        statement: |-
+          AC18: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
+      - id: "AC19"
+        statement: |-
+          AC19: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
+  - id: "req-unpinned-credential-chain-control"
+    statement: "The L6 credential chains distinguish terminal credential refusals from retryable provider outages on an unpinned run."
+    acceptance:
+      - id: "AC15"
+        statement: |-
+          AC15: all four L6 credential chains start on the declared house tier without a backend pin; rejected and absent credentials retain their typed refusals and leave every successor untouched, while the outage first fails on the customer BYOK backend with MODEL_UNAVAILABLE and reaches a declared successor with escalation_count >= 1.
+  - id: "req-pinned-run-stays-on-its-backend"
+    statement: "A delegation pinned to one backend runs on that backend or fails with a typed reason; it is never answered by another backend under the pin's name."
+    acceptance:
+      - id: "AC20"
+        statement: |-
+          AC20: on the bus path a pinned run whose call fails in transport, or whose answer the gate refuses, takes no same-tier sibling hop and no escalation and terminates with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still moves -- falsifier: a routing intent emitted for the pinned run, or the unpinned control not moving.
+      - id: "AC21"
+        statement: |-
+          AC21: the routing reducer never resolves a backend other than the pin for a pinned request: a same-tier re-route re-selects the pin, and a re-route past the pin's tier or with the pin excluded refuses -- falsifier: a routing decision for a pinned request naming another backend.
+      - id: "AC22"
+        statement: |-
+          AC22: on the in-process path (LocalDelegationDispatchPort) a pinned run whose call fails in transport, or whose answer the gate refuses, calls no backend but the pin and returns status failed with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still reaches the sibling -- falsifier: a call to another backend for the pinned run, or the unpinned control not reaching the sibling.
+  - id: "req-declared-literal-answer-not-content-free"
+    statement: "The quality gate does not refuse a correct short answer that matches the shape its prompt declared, as content-free."
+    acceptance:
+      - id: "AC30"
+        statement: |-
+          AC30: a prompt whose last lines say "Reply with only the Python literal it evaluates to" resolves to a declared shape, and under that shape a non-string Python literal answer ((None, None), None, False, 42, [], a fenced literal) is not refused as an ultra-short content-free response, while an empty answer, a filler word, a quoted filler word, a refusal and the same literal under a prompt that declares no shape are still refused -- falsifier: a listed literal refused under the declared shape, or a listed filler answer accepted, or the literal accepted under an undeclared prompt.
+  - id: "req-test-gate-unbound-pytest"
+    statement: "The test-class gate refuses a whole test module that reads pytest and never imports it, and still accepts every stored answer the scorer passed that carries the unit mark."
+    acceptance:
+      - id: "AC16"
+        statement: |-
+          AC16: the three stored local-qwen3.8-27b test answers R4-08, R4-10 and R4-11 that the gate accepted on the deterministic floor and the scorer failed with NameError for pytest are refused by uses_pytest_mark_unit -- falsifier: one of the three accepted by the rule.
+      - id: "AC17"
+        statement: |-
+          AC17: no stored test answer that the scorer passed and that the rule accepted before the change is refused after it, and a fragment with no import of its own is not judged on the binding -- falsifier: a scorer-passed stored answer refused, or a no-import fragment refused.
+  - id: "req-omn20844-packaged-openrouter-default"
+    statement: |-
+      A developer who cannot read a private overlay still gets a default OpenRouter model on a first run.
+    acceptance:
+      - id: "AC31"
+        statement: |-
+          AC31: with no ONEX_OPENROUTER_DEFAULT_MODEL and no node_model_setup_effect overlay, onex models default-model openrouter returns the model_name of the model registry entry the node's contract names under config.openrouter_default_model.registry_model; the model id is declared only in model_registry_v1.yaml, not in contract.yaml or handler code; the environment variable and an overlay still win, an overlay that is present but broken is still refused, and the read stores nothing -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly -k "none_declared_the_contract_default or declared_in_the_registry_not_in_code" fails against the merge base.
+  - id: "req-omn20844-next-customer-key"
+    statement: |-
+      A customer with two registered provider keys reaches the second when the first fails and the ladder offers no new responder.
+    acceptance:
+      - id: "AC32"
+        statement: |-
+          AC32: on the local path with a Gemini and an OpenRouter key registered and no house credential, an unpinned document delegation whose OpenRouter route fails retryably (after its own retry budget) or fails the quality gate is answered next on the customer's Gemini route; an auth failure never moves to another key, and a run with both keys healthy is answered by OpenRouter alone -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly fails, or its fall-through tests pass against the merge base.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
     command: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC7 and AC8: the real R3b prompts and two stored refused answers pass the fixed gate; numbered listing, cat -n listing, diff hunk, line N and path:N inputs keep the rule and an answer citing nothing is refused; an empty stored answer stays refused."
+    command: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py tests/unit/delegation/test_omn19432_rule_waived_by_prompt_layout.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC9 and AC10: the class table, driver plumbing, tiered corpus and scorer controls."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC11 and AC12: the committed rescore covers every saved cell and its flip list equals the diff of recorded and rescored verdicts, with a negative control."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC13 and AC14: the local port's quality-refused terminal names its stop reason on the hard-tier fixture, the budget case and the already-tried-route case."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_ladder_stop_reason_omn20844.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC16: the tier thresholds, tier table, first-failing-tier rule and unpinned-ladder trace, each with a negative control, and the existing per-class table tests."
+    command: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC20 to AC22: workflow, escalation COMPUTE, routing reducer and in-process port tests for a pinned run, with the unpinned controls."
+    command: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_pin_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC30: the declared-literal shape, the literals the gate accepts under it, and the empty, filler, refusal and undeclared-prompt controls that stay refused."
+    command: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC16 and AC17: the three stored answers that read pytest without importing it are refused; four scorer-passed stored answers to the same tasks and a no-import fragment are accepted."
+    command: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py tests/unit/delegation/test_pytest_attribute_resolves_omn12717.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -44,3 +175,242 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5"]
+  - id: "dod-omn20844-onboarding-default-model-overlay"
+    description: "The OpenRouter default model onboarding registers is read from the node_model_setup_effect overlay (or ONEX_OPENROUTER_DEFAULT_MODEL), refused naming the overlay when none declares it, stored nowhere by the read, and replaced by the one documented command. Every model id in the tests is a fixture the test declares."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20844-guard-tests-are-wired"
+    description: "The customer-chooses-model tests run in a check-only pre-commit hook and in a named ci.yml job registered as a strict gate of CI Summary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20844_byok_model_choice_wiring.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: dod-omn20844-ci-characterization-l6999
+    description: OpenRouter model-choice acceptance tests run with this PR's characterization regression controls for added workflow uses and release gates, retaining refusal of moved pins, removed uses, unknown actions and conditional release gates.
+    source: manual
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py tests/ci/test_omn20558_ratchet_burndown_characterization.py tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - AC1
+      - AC2
+      - AC3
+      - AC4
+      - AC5
+  - id: "dod-omn20844-action-ref-prerequisite"
+    description: "Workflow action comparisons accept added uses of characterized pins and refuse missing uses, moved pins, unknown actions and unknown workflows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20844-release-staleness-prerequisite"
+    description: "Release-staleness checks retain unconditional jobs and steps, one strict CI Summary registration and no skippable registration, ordered after Canonical File Shape and before CI Summary, regardless of unrelated jobs added around it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20844-ac7-line-rule-cause"
+    description: "AC7: the R3b prompts carry no line numbers, so the rule that refused the stored answers had nothing to cite; the test fails on the unfixed resolver and passes on the fixed one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py -q -p no:randomly -k 'workflow_selection_prompt or correct_answer_the_gate_refused or waiver_is_recorded'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20844-ac8-answers-pass-negative-control"
+    description: "AC8: the stored answers pass; numbered input keeps the rule and a cites-nothing answer there is still refused, as is an empty stored answer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py -q -p no:randomly -k 'InputThatCarriesLines or empty_answer or no_prompt_resolves or markdown_list'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20844-review-gate-deploy-probe"
+    description: "Deploy probe. The rule's waived_unless_prompt_matches declaration exists in the packaged task-class contract at the checked-out commit, which the deploy agent rolls onto the dev lane; the probe reads the contract from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq waived_unless_prompt_matches'"
+  - id: "dod-omn20844-tiered-ladder-benchmark"
+    description: "AC9 and AC10: the driver, the per-class table with intervals, the tiered public corpus and the scorer negative controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9", "AC10"]
+  - id: "dod-omn20844-ac11-ac12-rescore-28-task"
+    description: "AC11 and AC12: all 56 saved cells of the 28-task benchmark are rescored and the flip list equals the diff of recorded and rescored verdicts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rescored_28_task.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11", "AC12"]
+  - id: "dod-omn20844-ladder-stop-reason"
+    description: "AC13 and AC14: the hard-tier fixture reaches the free cloud tier past the paid tier and ends with a typed stop reason; the budget and already-tried-route cases name theirs. The tests fail on the parent commit, whose terminal carries no terminal_failure_reason."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_ladder_stop_reason_omn20844.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13", "AC14"]
+  - id: "dod-omn20844-ladder-stop-reason-deploy-probe"
+    description: "Deploy probe. The packaged local port at the checked-out commit carries the terminal_failure_reason on its quality-refused terminal; the probe reads the module from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq ladder_stop_reason'"
+  - id: "dod-omn20844-ac15-driver-tested"
+    description: "AC16: the tier thresholds fill every tier of the test and code_generation classes with at least eight committed tasks, the tier table and the first-failing-tier rule have negative controls, and the unpinned-ladder command carries no backend pin."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_difficulty_tiers.py benchmarks/delegation_ladder/tests/test_rung_table.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac15-rerun-reproduces-a-cell"
+    description: "AC16: the committed results rescore to the verdicts they were recorded with, from the saved responses and without a model call; the same driver with --rung and --only reruns one cell against the model. The check rescores one committed task's cells on every rung; the full rescore runs in the test suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_table.py::test_rescoring_a_saved_response_reproduces_the_recorded_cell -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14 --only R4-01"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac16-tier-table-and-minimum"
+    description: "AC17: the committed tier table is the table the committed records give, and each tier of the test and code_generation classes holds at least eight tasks for every rung. The full-rescore test is left to the test suite, past the per-check budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov -k 'not every_saved_response_rescores'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
+  - id: "dod-omn20844-ac17-hard-corpus-scored-mechanically"
+    description: "AC18: every hard task records its structural features; the merged change passes a hard code_generation task and a no-op edit fails it; an edit to a file not shown is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k 'search_replace or structural_features or not_shown'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -n 0 -p no:randomly --no-cov -k merged_change_passes"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC18"]
+  - id: "dod-omn20844-ac18-feature-table-from-records"
+    description: "AC19: the committed hard-tier feature table is the one the committed records render, and the cells of the two review tasks the findings rest on (H3-08, H3-10) rescore to their recorded verdicts from the saved responses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py -q -n 0 -p no:randomly --no-cov -k hard"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "uv run python -m benchmarks.delegation_ladder.run_ladder --rescore benchmarks/delegation_ladder/results/rungs/2026-10-14-hard --only H3-08 H3-10"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC19"]
+  - id: "dod-omn20844-unpinned-credential-chain-control"
+    description: "AC15: the L6 golden chain and two credential refusals retain their assertions; the outage positive control names its first failed BYOK attempt and the successor it reaches on an unpinned run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/local/test_chain_l6_typed_credential_refusals_omn18698.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]
+  - id: "dod-omn20844-ac20-pinned-run-fails-typed"
+    description: "AC20: a pinned run's transport failure and gate refusal end in pinned_backend_failed with no routing intent; the unpinned control still moves to the sibling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov -k 'transport_failure or gate_failure or compute'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC20"]
+  - id: "dod-omn20844-ac21-reducer-keeps-the-pin"
+    description: "AC21: the routing reducer re-selects the pin on a same-tier re-route and refuses a re-route past the pin's tier or with the pin excluded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py tests/unit/delegation/test_exact_backend_pin_routing_omn15539.py -q -n 0 -p no:randomly --no-cov -k 'reroute or escalation_after_pinned or initial'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
+  - id: "dod-omn20844-ac22-in-process-pin"
+    description: "AC22: the in-process port calls only the pin for a pinned run and returns pinned_backend_failed on a transport failure and on a gate refusal; the unpinned control reaches the sibling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_pin_never_moves_omn20844.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
+  - id: "dod-omn20844-ac30-declared-literal"
+    description: "AC30: the TN-h05 shape of prompt declares an exact literal, a non-string Python literal passes the gate under it, and empty, filler, refusal and undeclared-prompt answers are still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_literal_answer_not_content_free_omn20844.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn20844-ac16-unbound-pytest-refused"
+    description: "AC16: the three stored answers that read pytest without importing it are refused by uses_pytest_mark_unit; the test fails on the unfixed check and passes on the fixed one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py -q -p no:randomly -k 'without_import'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac17-passed-answers-kept"
+    description: "AC17: scorer-passed stored answers that carry the unit mark, any import binding pytest, and a no-import fragment are accepted while the stored unbound-pytest answers are refused; the paired refusal controls fail on the unfixed handler."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
+  - id: "dod-omn20844-unbound-pytest-deploy-probe"
+    description: "Deploy probe. Read the packaged quality-gate handler at the checked-out commit through the GitHub contents API and require its unbound-pytest check call; the same source assertion fails on origin/dev, which lacks the call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn20844_unit_mark_needs_bound_pytest.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"if _reads_unbound_pytest(tree):\" >/dev/null'"
+    binds_ac: ["AC16", "AC17"]
+  - id: "dod-omn20844-ac16-preloaded-rescore-workers"
+    description: "AC16: rescore_dir scores the unit_test_execution and patch_apply_and_test cells in preloaded forked workers; probes share no subject imports or bytecode, keep the timeout, keep the mutation control and the first verdict, and refuse changed saved bytes; committed cells of one task of each executing scorer rescore to their recorded verdicts on every rung."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_table.py -q -n 0 -p no:randomly --no-cov -k 'preloaded or parallel_rescore or execution_reuse'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py::test_an_executing_task_of_each_scorer_rescores_on_every_rung -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac31-packaged-openrouter-default"
+    description: "AC31: with no variable and no overlay, the OpenRouter default is the model registry entry the node contract names, declared only in the registry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly --no-cov -k 'none_declared_the_contract_default or declared_in_the_registry_not_in_code'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
+  - id: "dod-omn20844-ac32-next-customer-key"
+    description: "AC32: a retryable failure or a quality-gate FAIL on the customer's first key falls through to their second registered key; an auth failure does not, and a healthy first key answers alone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]

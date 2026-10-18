@@ -10,6 +10,7 @@ from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
@@ -92,6 +93,38 @@ class ModelLabReadingParse(BaseModel):
     admission_refusal: str | None = None
 
 
+class ModelLabAdmission(BaseModel):
+    """What the remote-lane runner's live pool read says one host admits right now (OMN-20864).
+
+    The caller reads `landing_placement.read_pool` once per tick and reports the admitted slots per engine and
+    the rule that refused an engine; the node decides the finding from them. `slots` is the host's one lane
+    slot budget, which a Claude lane and a Codex lane both draw from: the engine slot counts are never added.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    placed: int = Field(
+        ge=0, description="Placed units (lanes and landing workers) on the host."
+    )
+    lanes: int = Field(ge=0, description="Lane placements among the placed units.")
+    cap: int = Field(ge=0, description="The host's lane cap.")
+    slots: int = Field(
+        ge=0, description="Further lanes the host admits, before any engine mark."
+    )
+    probe_error: str | None = Field(
+        default=None,
+        description="Why the live probe could not read the host; the host's capacity is then unread.",
+    )
+    claude_slots: int = Field(
+        ge=0, description="`slots` when a Claude lane is admitted, else 0."
+    )
+    claude_refusal: str | None = None
+    codex_slots: int = Field(
+        ge=0, description="`slots` when a Codex lane is admitted, else 0."
+    )
+    codex_refusal: str | None = None
+
+
 class ModelLabHost(BaseModel):
     """A pool host the caller read, with the marks, parse and admission facts for it."""
 
@@ -100,6 +133,18 @@ class ModelLabHost(BaseModel):
     name: str
     local: bool = False
     cap: int | None = None
+    codex_allowed: bool = Field(
+        default=False,
+        description=(
+            "Whether the shared lab host table (or ONEX_CODEX_HOSTS) lets this host run a Codex lane, as "
+            "the remote-lane runner's codex_placement.codex_hosts reads it; False reports no Codex "
+            "headroom for the host."
+        ),
+    )
+    admission: ModelLabAdmission | None = Field(
+        default=None,
+        description="The live admission read (OMN-20864); used when the facts set `live_admission`.",
+    )
     limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     auth_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     parses: dict[str, ModelLabReadingParse] = Field(
@@ -111,11 +156,43 @@ class ModelLabHost(BaseModel):
     )
 
 
+class ModelCodexHeadroom(BaseModel):
+    """One host's Codex headroom, read from the same cached placement reading as its Claude headroom.
+
+    The reading carries `codex=login/<sandbox>` and `CODEX-LIMITED-UNTIL=`; the `.limited-<host>` and
+    auth-expired marks are Claude's and never enter it. The sandbox word is not judged: the
+    `.codex-sandbox-<host>` marks gate landing workers only, and a lane's own run script probes its
+    sandbox before Codex starts.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    free: int = Field(ge=0, description="Further Codex lanes the host can take now.")
+    cap: int | None = None
+    running: int | None = None
+    refusal: str | None = Field(
+        default=None,
+        description="Why `free` is zero, when the host cannot take a Codex lane.",
+    )
+    claude_blocked: str | None = Field(
+        default=None,
+        description="The Claude mark that keeps Claude lanes off the host (limited or auth expired), if any.",
+    )
+
+
 class ModelLabHeadroomFacts(BaseModel):
     """The remote-lane runner's pool, marks and receipts as the caller read them."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    live_admission: bool = Field(
+        default=False,
+        description=(
+            "The caller read the runner's live pool admission (OMN-20864): each host's `admission` decides its "
+            "free slots per engine, and the receipts, marks and parses below decide nothing."
+        ),
+    )
     module_unavailable: bool = False
     unavailable_hosts: list[str] = Field(
         default_factory=list,
@@ -193,6 +270,81 @@ class ModelTickAlarmVerdict(BaseModel):
     age_minutes: float = Field(ge=0)
     why: str
     fix: str
+
+
+RepoStatusVerdict = Literal[
+    "merging_normally",
+    "waiting_on_ci",
+    "base_branch_red",
+    "merge_queue_ejecting",
+    "shared_red_unowned",
+    "parked_or_escalated",
+]
+
+
+class ModelRepoStatusUnit(BaseModel):
+    """A repository status check the caller holds open from an earlier tick (OMN-19998)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str
+    opened_at: str = Field(pattern=_TS)
+    verdict: RepoStatusVerdict
+
+
+class ModelRepoStatusFacts(BaseModel):
+    """What the caller passes for the per-repository status check (OMN-19998).
+
+    Operator RULING 2026-10-15T00:42:51Z lane=orchestrator-bb1a: a repository with open PRs and nothing
+    merged in the window gets its status checked every tick. The check reads only the watcher state,
+    state.json and tick lines already in the request; `open_units` dedupes the verdict events.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    window_minutes: int = Field(
+        default=60,
+        gt=0,
+        description="A repository with no merge in this many minutes is checked.",
+    )
+    open_units: list[ModelRepoStatusUnit] = Field(
+        default_factory=list,
+        description="The verdicts the previous tick returned; a repository with one open emits no new event "
+        "unless its verdict changed.",
+    )
+
+
+class ModelRepoStatusVerdict(BaseModel):
+    """One repository's status-check verdict (OMN-19998), deterministic over the facts the caller read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str
+    verdict: RepoStatusVerdict
+    open_prs: int = Field(
+        ge=0, description="Open non-draft PRs the watcher holds for the repository."
+    )
+    merges_in_window: int = Field(ge=0)
+    window_minutes: int = Field(gt=0)
+    check: str | None = Field(
+        default=None,
+        description="The check the verdict names: the shared red, the base red or the ejecting base red.",
+    )
+    reason: str = ""
+    queue_wait_minutes: float | None = Field(
+        default=None,
+        description="Minutes the oldest pending check has waited, for waiting_on_ci.",
+    )
+    prs: list[str] = Field(
+        default_factory=list, description="The PRs (`repo#n`) the verdict names."
+    )
+    opened_at: str = Field(
+        pattern=_TS, description="When the repository's unit opened."
+    )
+    event: bool = Field(
+        description="True when the caller emits this verdict as an event: no unit was open for the "
+        "repository, or the open unit's verdict differs."
+    )
 
 
 class ModelThroughputTickRequest(BaseModel):
@@ -316,6 +468,25 @@ class ModelThroughputTickRequest(BaseModel):
         ge=0,
         description="A divergence older than this is an ALARM; a younger one is a NOTE.",
     )
+    deploy_drifts: list[ModelLabDaemonDrift] | None = Field(
+        default=None,
+        description=(
+            "Drift rows node_lab_daemon_sync_effect wrote on each lab host; None skips the "
+            "deploy-drift finding (and its `checked` entry) (OMN-19998)."
+        ),
+    )
+    deploy_drift_max_hours: float = Field(
+        default=2.0,
+        gt=0,
+        description="A daemon lagging its source tip for longer than this is MISSING; a younger lag is a NOTE.",
+    )
+    repo_status: ModelRepoStatusFacts | None = Field(
+        default=None,
+        description=(
+            "Facts for the per-repository status check (OMN-19998); None skips the check (and its "
+            "`checked` entry)."
+        ),
+    )
 
 
 class ModelThroughputTickResult(BaseModel):
@@ -340,6 +511,15 @@ class ModelThroughputTickResult(BaseModel):
         default=None,
         description="The open PR count read from a fresh watcher state, for the caller to record; None when unread.",
     )
+    codex_headroom: list[ModelCodexHeadroom] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
+        description=(
+            "Codex headroom of every Codex-capable pool host with a fresh placement reading, separate "
+            "from the Claude headroom the lab-headroom lines report; a host Claude cannot use that has "
+            "free Codex slots is also a MISSING lab-headroom line. Absent from the dump when empty."
+        ),
+    )
     pr_land: ModelLabFillPrLandPlan | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -347,5 +527,13 @@ class ModelThroughputTickResult(BaseModel):
             "The idle-slot pr-land fallback the lab-headroom FIX names (OMN-20864); None without PR-land "
             "facts or with the lab's capacity unread, and then absent from the dump, so a caller that "
             "sends no PR-land facts reads the result it read before."
+        ),
+    )
+    repo_status: list[ModelRepoStatusVerdict] = Field(
+        default_factory=list,
+        exclude_if=lambda value: not value,
+        description=(
+            "One status-check verdict per repository with open PRs and no merge in the window (OMN-19998); "
+            "absent from the dump when empty."
         ),
     )

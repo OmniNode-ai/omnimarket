@@ -121,6 +121,13 @@ class HandlerProjectionClaudeHookEvents:
             model=event.model,
             host=event.host,
             exit_code=event.exit_code,
+            guard=event.guard,
+            refusal_reason=event.refusal_reason,
+            input_tokens=event.input_tokens,
+            output_tokens=event.output_tokens,
+            cache_creation_input_tokens=event.cache_creation_input_tokens,
+            cache_read_input_tokens=event.cache_read_input_tokens,
+            assistant_message_count=event.assistant_message_count,
         )
 
         span_update: ModelClaudeAgentSpanUpdate | None = None

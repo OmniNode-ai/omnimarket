@@ -54,9 +54,11 @@ class ProtocolLabFillLedgerReader(Protocol):
 
 
 class ProtocolLabFillApprovedWork(Protocol):
-    """The declared approved-work list: its depth, and one row by id."""
+    """The declared approved-work list: its depth, every row, and one row by id."""
 
     def depth(self, path: str) -> int | None: ...
+
+    def list_rows(self, path: str) -> Sequence[Mapping[str, object]]: ...
 
     def row(self, path: str, row_id: str) -> Mapping[str, object]: ...
 

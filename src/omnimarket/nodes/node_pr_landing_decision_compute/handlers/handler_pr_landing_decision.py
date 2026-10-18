@@ -1565,7 +1565,12 @@ def _dispatch_causes(t: _Tick) -> None:
 
 # ----------------------------------------------------------------------- PRs
 def _mergeable(p: ModelLandingPrFacts) -> bool:
-    return p.ci is EnumLandingCi.GREEN and p.merge_state is EnumLandingMergeState.CLEAN
+    """Green and clean; on a merge-queue base a behind head counts as clean (OMN-19998)."""
+    if p.ci is not EnumLandingCi.GREEN:
+        return False
+    if p.merge_state is EnumLandingMergeState.CLEAN:
+        return True
+    return p.merge_queue and p.merge_state is EnumLandingMergeState.BEHIND
 
 
 def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
@@ -1649,7 +1654,7 @@ def _brief_class(p: ModelLandingPrFacts, ladder: int) -> EnumLandingBriefClass |
         if p.red_class is EnumLandingRedClass.CASCADE:
             return EnumLandingBriefClass.CASCADE_RED
         return EnumLandingBriefClass.REAL_RED
-    if p.merge_state is EnumLandingMergeState.BEHIND:
+    if p.merge_state is EnumLandingMergeState.BEHIND and not p.merge_queue:
         return EnumLandingBriefClass.BEHIND
     return None
 
@@ -1661,6 +1666,11 @@ def _update_behind(t: _Tick, p: ModelLandingPrFacts, rec: ModelLandingPrRecord) 
     spend a worker. Unknown refusals retain the existing behind-worker path.
     """
     if p.merge_state is not EnumLandingMergeState.BEHIND:
+        return False
+    # OMN-19998: the merge queue rebuilds every entry on the latest base, so an
+    # update there buys a push and a fresh CI run for nothing; only a red head,
+    # which may be red for its base, is still updated.
+    if p.merge_queue and p.ci is not EnumLandingCi.RED:
         return False
     retry_at = None
     if p.head_sha in rec.update_heads:

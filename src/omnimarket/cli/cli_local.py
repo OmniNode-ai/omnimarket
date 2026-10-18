@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import urllib.parse
 from pathlib import Path
 from uuid import UUID
 
@@ -50,7 +51,12 @@ from omnimarket.models.model_local_runtime_lane import (
     ModelLocalRuntimeLane,
     declare_local_runtime_lane,
 )
+from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
+    DashboardBundleError,
+    ensure_bundle,
+)
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
+    DASHBOARD_TOKEN_PARAM,
     HandlerLocalDashboardServe,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
@@ -226,14 +232,26 @@ def dashboard_command(overlay_path: Path | None) -> None:
         raise click.ClickException(str(exc)) from exc
     if port == 0:
         port = _free_port(host)
+    # OMN-20705: the pages are fetched and verified before the address is
+    # announced. A bundle that cannot be fetched or fails its checksum ends the
+    # command here, non-zero and named on stderr, rather than after it has
+    # printed an address that serves nothing.
+    try:
+        pages = ensure_bundle()
+    except DashboardBundleError as exc:
+        raise click.ClickException(
+            f"the dashboard pages are unavailable, so nothing was served: {exc}"
+        ) from exc
     identity = read_local_tenant_identity()
     tenant = None if identity is None else str(identity.tenant_uuid)
+    # OMN-19916: the request mints this start's token. The start URL is the one
+    # place it is handed out; every request without it is refused.
+    request = ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
+    start_url = f"http://{host}:{port}/?" + urllib.parse.urlencode(
+        {DASHBOARD_TOKEN_PARAM: request.access_token.get_secret_value()}
+    )
     click.echo(
-        f"onex dashboard: http://{host}:{port} "
+        f"onex dashboard: {start_url} "
         f"(tenant {tenant or 'not configured: run `onex local init`'})"
     )
-    asyncio.run(
-        HandlerLocalDashboardServe().handle(
-            ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
-        )
-    )
+    asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))

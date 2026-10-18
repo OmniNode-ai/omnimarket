@@ -33,16 +33,22 @@ join is 1-in -> 1-out per call (no multi-event fan-out), so it needs neither the
 multi-event publish adapter nor the reducer projection adapter.
 
 STATE DURABILITY CAVEAT (honest, load-bearing): the correlation store lives in
-this instance's memory. That is replay-proven over a single in-process bus (one
-instance subscribed to all four topics, as the golden-chain test drives it), but
-it does NOT survive the real runtime, which instantiates one handler per routing
-entry — the seed and the verdicts would land in separate instances. Durable
-cross-event state (OMN-14208 state_io / the reducer projection adapter,
-OMN-14598) is the follow-on that upgrades this from replay-proven to
-live-readback. This node deliberately does NOT build that here.
+this process's memory. The runtime builds one handler instance per routing entry,
+so the seed (llm-generated) and each verdict are handled by different instances of
+this class; the store is therefore shared by every instance in the process
+(``_retained_by_correlation``), bounded to the most recent runs. That is correct
+for one runtime process hosting the node. It does NOT survive a restart or a
+second runtime process consuming the same topics. Durable cross-event state
+(OMN-14208 state_io / the reducer projection adapter, OMN-14598) is the follow-on
+that removes the single-process assumption. This node deliberately does NOT build
+that here.
 """
 
 from __future__ import annotations
+
+import threading
+from collections import OrderedDict
+from typing import ClassVar
 
 from omnimarket.codegen.models import (
     ModelCodegenPipelineState,
@@ -53,7 +59,7 @@ from omnimarket.codegen.models import (
     ModelLlmGenerateResult,
     ModelMypyCheckResult,
 )
-from omnimarket.contract_assembly.models import ModelContractDocument
+from omnimarket.contract_assembly.models import EnumLintStatus, ModelContractDocument
 
 # The four real producer wire models this reducer consumes (contract.yaml
 # handler_routing event_model per topic) and the three outcomes it emits.
@@ -100,10 +106,24 @@ class HandlerCodegenOutcomeReducer:
     itself. See the module docstring's STATE DURABILITY CAVEAT.
     """
 
-    def __init__(self) -> None:
-        # correlation_id -> the run's retained pipeline state (seeded from the
-        # llm-generated event, updated when serialize records the contract).
-        self._store: dict[str, ModelCodegenPipelineState] = {}
+    # correlation_id -> the run's retained pipeline state (seeded from the
+    # llm-generated event, updated when serialize records the contract). Class
+    # level on purpose: the runtime builds one instance per routing entry, so an
+    # instance-level dict would hold the seed in one instance and look for it in
+    # another. Ordered so the oldest run is evicted past the bound.
+    _retained_by_correlation: ClassVar[OrderedDict[str, ModelCodegenPipelineState]] = (
+        OrderedDict()
+    )
+    _retained_lock: ClassVar[threading.Lock] = threading.Lock()
+    _MAX_RETAINED_RUNS: ClassVar[int] = 256
+
+    @classmethod
+    def _retain(cls, correlation_id: str, state: ModelCodegenPipelineState) -> None:
+        with cls._retained_lock:
+            cls._retained_by_correlation[correlation_id] = state
+            cls._retained_by_correlation.move_to_end(correlation_id)
+            while len(cls._retained_by_correlation) > cls._MAX_RETAINED_RUNS:
+                cls._retained_by_correlation.popitem(last=False)
 
     def handle(self, request: ReducerInput) -> ReducerOutput | None:
         """Route one verdict by its concrete type; None for the seed (no output)."""
@@ -111,7 +131,7 @@ class HandlerCodegenOutcomeReducer:
             # Seed only — the orchestrator drives the validate command off the
             # same llm-generated event, so this leg publishes nothing.
             correlation_id = self._require_correlation_id(request.state.correlation_id)
-            self._store[correlation_id] = request.state
+            self._retain(correlation_id, request.state)
             return None
 
         if isinstance(request, ModelGeneratedCodeValidation):
@@ -136,8 +156,15 @@ class HandlerCodegenOutcomeReducer:
             )
             # The serialize verdict advances the state (contract_yaml now set);
             # retain it so a later observer of the same run sees the latest.
-            self._store[request.correlation_id] = state
-            return ModelCodegenSerializeOutcome(state=state)
+            self._retain(request.correlation_id, state)
+            # OMN-21151: the lint verdict rides the outcome (never dropped on
+            # the join floor) so the orchestrator can stop a failed lint before
+            # the file writer runs.
+            return ModelCodegenSerializeOutcome(
+                state=state,
+                lint_passed=request.lint_status is EnumLintStatus.PASS,
+                lint_messages=request.lint_messages,
+            )
 
         raise TypeError(  # pragma: no cover - guarded by contract event_model wiring
             "HandlerCodegenOutcomeReducer.handle() received unrecognized payload "
@@ -153,7 +180,8 @@ class HandlerCodegenOutcomeReducer:
         degradable condition — fail rather than fabricate empty state.
         """
         correlation_id = self._require_correlation_id(correlation_id)
-        state = self._store.get(correlation_id)
+        with self._retained_lock:
+            state = self._retained_by_correlation.get(correlation_id)
         if state is None:
             raise ValueError(
                 "HandlerCodegenOutcomeReducer: no retained pipeline state for "

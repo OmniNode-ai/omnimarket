@@ -42,12 +42,14 @@ import hashlib
 import json
 import random
 import re
+import shlex
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
@@ -1694,3 +1696,53 @@ def test_park_operator_only_needs_other_blockers_never_ask() -> None:
             world.step()
         assert _asks_operator(world) == 0, kind
         assert world.cause(key).operator_need is None, kind
+
+
+def _assert_park_ladder_command(command: str) -> None:
+    """The wiring must run the whole causes file, including the retry tests."""
+    root = Path(__file__).resolve().parents[4]
+    test_path = Path(__file__).resolve().relative_to(root).as_posix()
+    tokens = shlex.split(command)
+    assert tokens[:3] == ["uv", "run", "pytest"]
+    assert tokens[3] == test_path
+    assert tokens[4:] == ["-q", "-n", "0", "-p", "no:randomly"]
+
+
+@pytest.mark.unit
+def test_park_ladder_wiring_precommit_runs_the_full_causes_file() -> None:
+    root = Path(__file__).resolve().parents[4]
+    config = yaml.safe_load((root / ".pre-commit-config.yaml").read_text())
+    hooks = [
+        hook
+        for repo in config["repos"]
+        for hook in repo["hooks"]
+        if hook["id"] == "landing-decision-park-ladder"
+    ]
+    assert len(hooks) == 1
+    hook = hooks[0]
+    _assert_park_ladder_command(hook["entry"])
+    assert hook["language"] == "system"
+    assert hook["stages"] == ["pre-commit"]
+    assert hook["pass_filenames"] is False
+    for path in (
+        Path(__file__).resolve().relative_to(root).as_posix(),
+        "src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py",
+        ".pre-commit-config.yaml",
+    ):
+        assert re.search(hook["files"], path), path
+
+
+@pytest.mark.unit
+def test_park_ladder_wiring_required_lint_runs_the_full_causes_file() -> None:
+    root = Path(__file__).resolve().parents[4]
+    workflow = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
+    steps = [
+        step
+        for step in workflow["jobs"]["lint"]["steps"]
+        if step.get("name") == "Landing decision park ladder (OMN-20890)"
+    ]
+    assert len(steps) == 1
+    step = steps[0]
+    _assert_park_ladder_command(step["run"])
+    assert not step.get("continue-on-error", False)
+    assert "if" not in step

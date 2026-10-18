@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_contract_prerequisite_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Local, check-only ticket-contract precondition (OMN-20864). Read the outgoing
+  commit through the invoking worktree's git context, then import dod_verify's
+  static prerequisite for every branch/subject citation, or every explicit PR
+  title citation. Never execute evidence, author contracts, commit or push.
+  Git read errors and missing evidence return a failed result. The CLI maps
+  that result to exit 1; pre-push and CI invoke this same node in-process.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: []
+handler:
+  module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite
+  class: HandlerTicketContractPrerequisite
+  input_model: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request.ModelTicketContractPrerequisiteRequest
+  output_model: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_result.ModelTicketContractPrerequisiteResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_ticket_contract_prerequisite
+      handler:
+        name: HandlerTicketContractPrerequisite
+        module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite
+      event_model: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request.ModelTicketContractPrerequisiteRequest
+input_model:
+  name: ModelTicketContractPrerequisiteRequest
+  module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request
+output_model:
+  name: ModelTicketContractPrerequisiteResult
+  module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_result
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: pre-push and CI invoke the local node module in the target worktree
+metadata:
+  transport_type: local

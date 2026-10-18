@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m04",
+  "path": "pinned",
+  "sha256": "b269ae697a715bde54c35cad547200294fd9ab6d3c8613799ef71312bfac012e",
+  "response": "The altered line is `[71]+` (`_READ_FIELDS = (\"state_patx\", \"ledger_path\", \"floors_path\")`), which uses `state_patx` instead of `state_path` and therefore contradicts test line 95 where `state_path` is set to empty and test line 102 where the error message is expected to name `state_path`."
+}

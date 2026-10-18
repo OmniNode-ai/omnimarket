@@ -566,17 +566,12 @@ class TestOvernightContractRoutingResolvesEveryTopic:
         The ratchet is shrink-only in BOTH directions: a fixed entry still listed is
         STALE and fails the gate, so leaving the rows behind is not a safe no-op.
         """
-        baseline = yaml.safe_load(
-            (
-                Path(__file__).resolve().parent.parent
-                / "config/validation/subscriber_dispatcher_resolution_baseline.yaml"
-            ).read_text()
+        baseline = (
+            Path(__file__).resolve().parent.parent
+            / "config/validation/subscriber_dispatcher_resolution_baseline.yaml"
         )
-        stale = [
-            row
-            for row in baseline["known_unresolved_subscriptions"]
-            if row["contract"] == "projection_overnight"
-        ]
-        assert not stale, (
-            f"projection_overnight rows still frozen in the baseline: {stale}"
+        # The whole baseline file is deleted (its last rows were burned down), so no
+        # projection_overnight row can be frozen in it.
+        assert not baseline.exists(), (
+            f"{baseline} came back; projection_overnight rows could be frozen in it"
         )

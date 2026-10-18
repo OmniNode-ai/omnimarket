@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProjectionNotMaterializedError
@@ -17,6 +16,10 @@ from omnibase_infra.errors import ProjectionNotMaterializedError
 from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolBusMessage,
     event_type_for,
+)
+from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelDelegateSkillTerminalProjection,
 )
 from omnimarket.nodes.node_work_ledger_append_effect import (
     HandlerWorkLedgerAppendEffect,
@@ -45,23 +48,104 @@ class _Runner:
         return ModelAppendCommandResult(exit_code=0)
 
 
-_KEY = Ed25519PrivateKey.generate()
-
-
 def _host(bus: EventBusInmemory, runner: _Runner, path: Path) -> WorkLedgerAppendHost:
-    # The serve process signs mirrored rows as its operator identity.
+    # The serve process attributes mirrored rows to its operator principal.
     return WorkLedgerAppendHost(
         bus,
         HandlerWorkLedgerAppendEffect(
             runner,
             LocalLedgerFile(path),
             "ledger",
-            public_keys={"operator": _KEY.public_key()},
+            writer_principals=["operator"],
             operator_principal="operator",
         ),
-        mirror_principal="operator",
-        mirror_signing_key=_KEY,
+        writer_principals=["operator"],
+        operator_principal="operator",
     )
+
+
+@pytest.mark.parametrize("terminal_kind", ["completed", "failed"])
+@pytest.mark.parametrize(
+    ("usage_source", "cost_measured"),
+    [(None, None), ("measured", True), ("estimated", False), ("unknown", False)],
+)
+def test_serve_replays_terminal_with_cost_provenance(
+    tmp_path: Path,
+    terminal_kind: str,
+    usage_source: str | None,
+    cost_measured: bool | None,
+) -> None:
+    """Replay the rejected field shape through the serve's subscription.
+
+    The serve log at 2026-10-17 00:00:00,230 reports extra_forbidden for
+    metrics.cost_measured=None and attempts.0.usage_source=None. It does not
+    include the full payload: reconstruct those exact fields in an otherwise
+    valid terminal, then exercise non-null provenance and both terminal topics.
+    """
+
+    async def scenario() -> None:
+        path = tmp_path / "ledger.md"
+        path.write_text("# Ledger\n")
+        runner = _Runner(path)
+        bus = EventBusInmemory(environment="local", group="delegation-ledger-replay")
+        await bus.start()
+        host = _host(bus, runner, path)
+        failures: list[bytes] = []
+
+        async def record(message: ProtocolBusMessage) -> None:
+            failures.append(message.value)
+
+        await bus.subscribe(host.topics.failure, on_message=record, group_id="probe")
+        await host.start()
+        try:
+            topic = host.delegation_topics[0 if terminal_kind == "completed" else 1]
+            run = uuid4()
+            payload = {
+                "status": terminal_kind,
+                "correlation_id": str(run),
+                "task_type": "document",
+                "model_name": "lab-model",
+                "caller_lane": "test-lane",
+                "metrics": {"cost_usd": 0.0, "cost_measured": cost_measured},
+                "attempts": [
+                    {
+                        "tier": "local",
+                        "backend_id": "lab",
+                        "model_id": "lab-model",
+                        "quality_gate_passed": terminal_kind == "completed",
+                        "usage_source": usage_source,
+                    }
+                ],
+            }
+            envelope = ModelEventEnvelope[dict[str, object]](
+                payload=payload,
+                correlation_id=run,
+                event_type=event_type_for(topic),
+            )
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(
+                {**payload, "_envelope": envelope.model_dump(mode="json")}
+            )
+            # Acceptance must retain typed facts, rather than discard the keys.
+            expected_source = (
+                None if usage_source is None else EnumUsageSource(usage_source)
+            )
+            assert terminal.attempts[0].usage_source is expected_source
+            assert terminal.metrics.cost_measured is cost_measured
+            for _ in range(2):
+                envelope = envelope.model_copy(update={"envelope_id": uuid4()})
+                await bus.publish(
+                    topic, str(run).encode(), envelope.model_dump_json().encode()
+                )
+                await host.drain()
+            assert failures == []
+            assert len(runner.calls) == 1
+            assert path.read_text().count(f"run={run}") == 1
+            assert f"outcome={terminal_kind}" in runner.calls[0]
+        finally:
+            await host.stop()
+            await bus.close()
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("terminal_kind", ["completed", "failed"])
@@ -150,7 +234,16 @@ def test_append_failure_reaches_subscription_callback_and_redelivery_recovers(
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("invalid_kind", ["missing-time", "wrong-topic", "malformed"])
+@pytest.mark.parametrize(
+    "invalid_kind",
+    [
+        "missing-time",
+        "wrong-topic",
+        "malformed",
+        "invalid-usage-source",
+        "invalid-cost-measured",
+    ],
+)
 def test_invalid_delegation_terminal_is_answered_without_appending(
     tmp_path: Path, invalid_kind: str
 ) -> None:
@@ -175,6 +268,18 @@ def test_invalid_delegation_terminal_is_answered_without_appending(
                 "correlation_id": str(uuid4()),
                 "task_type": "document",
             }
+            if invalid_kind == "invalid-usage-source":
+                payload["attempts"] = [
+                    {
+                        "tier": "local",
+                        "backend_id": "lab",
+                        "model_id": "lab-model",
+                        "quality_gate_passed": True,
+                        "usage_source": "not-a-source",
+                    }
+                ]
+            elif invalid_kind == "invalid-cost-measured":
+                payload["metrics"] = {"cost_measured": "not-a-boolean"}
             envelope = ModelEventEnvelope[dict[str, object]](
                 payload=payload, event_type=event_type_for(topic)
             )

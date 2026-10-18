@@ -403,6 +403,44 @@ class TestRealPostgresEndToEndWritePath:
             assert isinstance(row["timestamp"], datetime)
             assert isinstance(row["created_at"], datetime)
 
+    async def test_construction_failed_terminal_writes_pair_and_gate_fact_with_no_score(
+        self,
+    ) -> None:
+        """OMN-19013: the failed topic carries the construction pair, the gate's
+        own decision and no score, and real Postgres accepts that row.
+
+        The payload also carries a stale ``actual_score``; the construction
+        pair has no graded content, so the writer must not persist it.
+        """
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            data = _real_delegation_completed_payload(
+                correlation_id=correlation_id, tenant_id="beta-business-proof"
+            )
+            data.update(
+                {
+                    "operational_outcome": "terminal_construction_failed",
+                    "content_verdict": "undetermined",
+                    "terminal_failure_reason": "terminal_construction_failed",
+                    "quality_score": None,
+                    "actual_score": 0.9,
+                }
+            )
+            meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
+
+            ok = await runner.project_event(runner._topic_delegation_failed, data, meta)
+
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT * FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert row is not None, "the write must have landed a real row"
+            assert row["quality_gate_passed"] is True
+            assert row["operational_outcome"] == "terminal_construction_failed"
+            assert row["content_verdict"] == "undetermined"
+            assert row["actual_score"] is None
+
     async def test_quality_gate_result_creates_row_with_real_created_at(
         self,
     ) -> None:

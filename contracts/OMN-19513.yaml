@@ -1,0 +1,104 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19513"
+title: "Hook capture crosses the emit seam raw: no redaction and no hashing for hook.event and content.captured"
+summary: "Operator RULING 2026-10-15T04:24:42Z: captured content goes on the bus raw. The emit registry routes hook.event and content.captured with passthrough instead of redact_capture, and the claude_hook_events projection's wire model accepts a content reference that carries the raw value (field, value, length, content_record_id) and refuses the former digest shape. The projection's table schema is unchanged; storing text columns is a follow-up."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+requirements:
+  - id: "req-raw-on-the-bus"
+    statement: "hook.event and content.captured cross the emit seam untransformed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: both event types resolve to the passthrough transform -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_hook_event_capture_omn19513.py -q --no-cov -k untransformed fails against the pre-change registry"
+  - id: "req-projection-reads-raw-refs"
+    statement: "The claude_hook_events projection ingests an event whose content references carry raw values and refuses a digest reference."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a raw-value reference validates and projects one row, and a sha256 reference is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value fails against the pre-change wire model"
+  - id: "req-stale-projection-heartbeat"
+    statement: "A heartbeat-carried check alerts when the newest claude_hook_events row is older than the contract limit while independent session activity exists, and does not alert when no session is active or when its source cannot be read."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: a 132-minute-old newest row with 29 active actors classifies STALE and publishes one Slack command with a bucketed key, an idle or fresh table publishes nothing, and an unreadable source is UNKNOWN -- falsifier: uv run pytest tests/test_omn19513_projection_freshness_alert.py -q --no-cov fails when the node is absent"
+  - id: "req-oversized-quarantined"
+    statement: "A record the producer refuses as too large is quarantined with reason payload_too_large, tried once, and the drain continues behind it."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: an oversized record at the spool head is quarantined with reason payload_too_large after one attempt and the two records behind it publish -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov fails against the pre-change handler"
+  - id: "req-projection-accepts-item-identity-stamp"
+    statement: "The claude_hook_events projection ingests a lineage event carrying the capture hook's stream and producer_seq stamp, and still refuses a stamp that is not a lineage sequence."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: an event with stream lineage and a producer_seq validates and projects the same row as without them, and a content stream, a zero, a string or a boolean sequence is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k item_identity fails against the pre-change wire model"
+  - id: "req-ledger-terminal-cost-provenance"
+    statement: "The work-ledger serve consumes delegation terminals carrying typed cost provenance, including null fields reported as rejected by the installed serve."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: completed and failed terminals carrying null, measured, estimated or unknown provenance append once after redelivery, preserve the typed fields, and malformed provenance is refused -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
+    command: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py tests/unit/nodes/node_event_emit_effect/ tests/test_golden_chain_projection_claude_hook_events.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19513-ac5-ledger-terminal-cost-provenance"
+    description: "Replay the null provenance field shape rejected by the installed serve through WorkLedgerAppendHost and the delegation mirror handler; cover typed non-null values, invalid values and redelivery. The current source already declares the fields; installing it on the ledger host and the one-hour log observation remain pending."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov"
+    binds_ac: ["AC5"]
+  - id: "dod-omn19513-ac1-passthrough"
+    description: "AC1: hook.event and content.captured resolve to passthrough."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_hook_event_capture_omn19513.py -q --no-cov -k untransformed"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19513-ac2-raw-refs"
+    description: "AC2: the wire model takes the raw value and refuses the digest shape."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19513-deploy-probe"
+    description: "Deploy probe. Read the claude_hook_events wire model from GitHub at the checked-out commit and require the content reference to carry the raw value field. It fails at the merge base, whose wire model carries the sha256 digest field instead."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k raw_value"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    value: str\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19513-ac6-stale-projection-heartbeat"
+    description: "AC6: the freshness classifier and handler, and the golden chain from the heartbeat to the Slack publisher."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_projection_freshness_alert.py tests/test_golden_chain_projection_freshness_alert.py tests/test_omn19513_projection_freshness_real_postgres.py -q --no-cov"
+    binds_ac: ["AC6"]
+  - id: "dod-omn19513-ac3-payload-too-large"
+    description: "The size-refusal test spools an oversized record first, refuses it the way the producer does, and checks its quarantine reason and that the records behind it publish; an ACL refusal keeps topic_authorization_denied."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_quarantine_payload_too_large_omn19513.py -q --no-cov"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19513-ac4-item-identity-stamp"
+    description: "AC4: the wire model takes the capture hook's lineage stream and producer_seq stamp. Deploy probe: read the wire model from GitHub at the checked-out commit and require the producer_seq field; it fails at the merge base, whose wire model forbids the key and so dead-letters every stamped event."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k item_identity"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    producer_seq:\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

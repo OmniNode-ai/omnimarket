@@ -26,6 +26,19 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: lab_run run --task-class keeps only the named task classes -- falsifier: uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only
+  - id: "req-ground-truth-labels"
+    statement: |-
+      A delegated run must be labelled from evidence the acceptance gate never produced, so the gate's false-pass rate is measured against ground truth.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: a code run is adequate only when a hidden test the delegated model never saw passes every case, a document run only when every checklist item is met by a scorer that is not the delegated model, and the labelled items count the gate's false passes per class -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q
+      - id: "AC6"
+        statement: |-
+          AC6: every golden code task's reference passes its hidden test, its control fails it, and no hidden-test line appears in the task prompt -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q
+      - id: "AC7"
+        statement: |-
+          AC7: the summarization, planning, reasoning and research task classes each hold eight golden tasks with four to six yes-or-no checklist items, unique task ids across the four sets, and a last item that tests for invented content -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class
 evidence_requirements:
   - kind: "tests"
     description: "The first page of the exposure carries the newest run for every class."
@@ -39,6 +52,15 @@ evidence_requirements:
   - kind: "tests"
     description: "The lab run keeps only the named task classes."
     command: "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only"
+  - kind: "tests"
+    description: "Runs are labelled from hidden tests and independently scored checklists, and the gate's false passes are counted against those labels."
+    command: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q"
+  - kind: "tests"
+    description: "The golden code tasks' hidden tests pass their references, fail their controls and never appear in the prompts."
+    command: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q"
+  - kind: "tests"
+    description: "Four more task classes carry golden checklist tasks that a scorer other than the delegated model can judge."
+    command: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -76,3 +98,58 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-ground-truth-labels-ac5"
+    description: "The focused test proves the labeller decides from hidden tests and independent checklists and the gate eval counts false passes against them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-golden-hidden-tests-ac6"
+    description: "The focused test proves every golden hidden test passes its reference, fails its control and stays out of the prompt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-golden-checklist-classes-ac7"
+    description: "The focused test proves each of the four classes holds eight well-formed golden checklist tasks."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-ground-truth-label-deploy-probe"
+    description: "PR #3866 on OmniNode-ai/omnimarket: the new node's handler at the PR head defines HandlerGroundTruthLabel."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/handlers/handler_ground_truth_label.py?ref=fe339700221568188bea801d332e2014c88c9187 --jq .content | base64 -d | grep -c 'class HandlerGroundTruthLabel'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-golden-checklist-classes-deploy-probe"
+    description: "The four checklist datasets served by GitHub at the evaluated commit declare their task classes. A missing dataset or a different task_class fails the hosted probe; the focused test checks all eight tasks per class."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_summarization.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: summarization")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_planning.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: planning")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_reasoning.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: reasoning")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_research.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: research")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]

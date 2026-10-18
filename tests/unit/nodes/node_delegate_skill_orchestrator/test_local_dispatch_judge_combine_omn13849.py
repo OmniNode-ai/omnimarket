@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Local acceptance and projection use the deterministic floor (OMN-20164)."""
+"""Local acceptance and projection of an untested code answer (OMN-21077)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TESTS_UNTESTED_REASON,
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
@@ -28,7 +32,7 @@ from omnimarket.routing.delegation_backend_resolution import (
 # A good-but-mechanically-incomplete code answer: it clears the code_generation
 # deterministic floor (compiles / single artifact / non-empty) but carries none of
 # the convention/regression heuristic markers, so the deterministic-only graded
-# score is ~0.733 and fails the 0.85 bar WITHOUT the judge.
+# score is below the bar. With no tests named it completes as UNTESTED.
 _GOOD_CODE = "### ANSWER\ndef add(a: int, b: int) -> int:\n    return a + b"
 
 _LOCAL_BACKEND = ModelResolvedDelegationBackend(
@@ -99,20 +103,47 @@ def _dispatch(
     )
 
 
-def test_code_answer_accepted_on_deterministic_floor(
+def test_untested_code_answer_completes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The declared deterministic floor accepts and projects a valid artifact."""
+    """No tests named: complete the artifact and project its UNTESTED verdict."""
     _no_escalation(monkeypatch)
     port = LocalDelegationDispatchPort(
         effect_handler=_code_effect,
         evidence_db_path=tmp_path / "d.sqlite",
         effect_process_boundary=False,
     )
+    accepted_gates: list[ModelQualityGateResult] = []
+    original_acceptance = port._is_quality_accepted
+
+    def record_acceptance(
+        task_type: str,
+        gate_result: ModelQualityGateResult,
+        *,
+        declared_deterministic: tuple[str, ...] | None = None,
+    ) -> bool:
+        accepted_gates.append(gate_result)
+        return original_acceptance(
+            task_type, gate_result, declared_deterministic=declared_deterministic
+        )
+
+    monkeypatch.setattr(port, "_is_quality_accepted", record_acceptance)
     result = _dispatch(port, task_type="code_generation")
     assert result["status"] == "completed"
     assert result["quality_gate_passed"] is True
     assert float(result["quality_score"]) < 0.85
+
+    assert len(accepted_gates) == 1
+    gate = accepted_gates[0]
+    assert gate.passed is True
+    assert "passes_existing_tests" in gate.skipped_checks
+    evaluation = next(
+        e for e in gate.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
+    assert gate.score_verified is False
 
 
 def test_research_acceptance_and_projection(

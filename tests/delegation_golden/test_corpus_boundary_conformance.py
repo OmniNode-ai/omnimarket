@@ -33,6 +33,15 @@ from omnimarket.models.delegation.wire import model_delegation_request
 from omnimarket.models.delegation.wire.model_delegation_request import (
     validate_acceptance_criteria,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+    delta,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
+    ModelQualityGateInput,
+)
 from scripts.ci.check_corpus_criteria_vocabulary import check_corpus
 from tests.delegation_golden.corpus_loader import (
     ModelCorpus,
@@ -58,11 +67,13 @@ def _corpus_with(case: ModelCorpusCase) -> ModelCorpus:
     )
 
 
-def _integration_case(*criteria: str) -> ModelCorpusCase:
+def _integration_case(
+    *criteria: str, task_type: str = "code_generation"
+) -> ModelCorpusCase:
     return ModelCorpusCase(
         id="CONTROL",
         layer="integration",
-        task_type="code_generation",
+        task_type=task_type,
         prompt="(control) a published case carrying the criteria under test",
         acceptance_criteria=criteria,
         expected=ModelExpected(terminal="completed"),
@@ -132,14 +143,41 @@ def test_control_criterion_with_no_executor_in_either_band_is_refused(
 def test_control_unevaluated_criterion_is_refused() -> None:
     """CONTROL: a criterion the gate never evaluates asserts nothing and fails.
 
-    ``passes_existing_tests`` is allowlisted AND has no wired executor, so
-    OMN-13850 made the gate SKIP it: it contributes neither a pass nor a failure
-    and is dropped from the scored fraction. Declaring it would look like an
-    assertion and be none, which is the phantom always-pass that ticket removed.
+    OMN-21077: on a code class ``passes_existing_tests`` is now evaluated (an
+    INSUFFICIENT refusal without a run), so the control moves to a rubric class,
+    where the check still has no evidence and is skipped.
     """
-    violations = check_corpus(_corpus_with(_integration_case("passes_existing_tests")))
+    violations = check_corpus(
+        _corpus_with(_integration_case("passes_existing_tests", task_type="document"))
+    )
     assert violations, "the unevaluated-criterion half of the check did not fire"
     assert "never evaluates it" in violations[0]
+
+
+def test_control_missing_test_run_is_evaluated_and_refused() -> None:
+    """Valid vocabulary cannot accept named tests that no runner ran."""
+    # OMN-17427: named tests without execution evidence remain INSUFFICIENT.
+    violations = check_corpus(_corpus_with(_integration_case("passes_existing_tests")))
+    assert violations == []
+    result = delta(
+        ModelQualityGateInput(
+            correlation_id=_PAYLOAD_PROBE_CORRELATION_ID,
+            task_type="code_generation",
+            llm_response_content="def add(a, b):\n    return a + b",
+            quality_contract_mode="replace_task_class",
+            acceptance_criteria=("passes_existing_tests",),
+        ),
+        named_tests_requested=True,
+    )
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert result.failure_reasons == (NO_NAMED_TEST_RUN_REASON,)
+    assert result.no_rung_can_satisfy is True
+    evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TEST_RUN_REASON
 
 
 def test_unit_rows_are_exempt_because_the_runner_never_publishes_them() -> None:

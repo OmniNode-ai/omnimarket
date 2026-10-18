@@ -130,9 +130,8 @@ def _state(
 
 
 def _emit_for(payload: BaseModel) -> tuple[str, BaseModel]:
-    output = HandlerHybridCodegenOrchestrator().handle(payload)
-    assert len(output) == 1
-    model = output[0]
+    model = HandlerHybridCodegenOrchestrator().handle(payload)
+    assert isinstance(model, BaseModel)
     return _resolve_topic(model), model
 
 
@@ -172,7 +171,11 @@ class TestSeamMatch:
             ModelCodegenValidationOutcome(state=_state(), is_valid=True)
         )
         assert topic.endswith("mypy-check-requested.v1")
-        _assert_seam("mypy-check-requested.v1", model.model_dump())
+        dump = model.model_dump()
+        _assert_seam("mypy-check-requested.v1", dump)
+        # OMN-21150: the seam carries the factory's policy — never ignore a
+        # missing import — overriding the consumer model's True default.
+        assert dump["ignore_missing_imports"] is False
 
     def test_contract_serialize_seam_matches(self) -> None:
         topic, model = _emit_for(
@@ -184,17 +187,18 @@ class TestSeamMatch:
         # nested analysis must match the consumer's ModelNodeAnalysis shape.
         assert set(dump["analysis"]) <= {"description", "tags", "version"}
 
-    def test_serialize_outcome_drives_file_write_not_a_downstream_seam(self) -> None:
-        # The file-write command targets tier-4's OWN effect, so it legitimately
-        # carries pipeline state — assert the file set is assembled, not a seam.
+    def test_serialize_outcome_drives_handler_test_not_a_downstream_seam(
+        self,
+    ) -> None:
+        # The handler-test command targets tier-4's OWN effect (OMN-21153), so
+        # it legitimately carries pipeline state — not a downstream seam.
         topic, model = _emit_for(
-            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y"))
+            ModelCodegenSerializeOutcome(
+                state=_state(source="SRC", contract_yaml="Y"), lint_passed=True
+            )
         )
-        assert topic.endswith("codegen-file-write.v1")
+        assert topic.endswith("codegen-handler-test-requested.v1")
         assert isinstance(model, BaseModel)
-        by_path = {f.relative_path: f.content for f in model.files}  # type: ignore[attr-defined]
-        assert by_path["handler.py"] == "SRC"
-        assert by_path["contract.yaml"] == "Y"
 
 
 @pytest.mark.unit

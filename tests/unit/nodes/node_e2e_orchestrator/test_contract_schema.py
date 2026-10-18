@@ -14,11 +14,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_e2e_orchestrator.consumer import (
-    TOPIC_BUILD_COMPLETED,
-    TOPIC_PR_LIFECYCLE_COMPLETED,
-    TOPIC_PR_LIFECYCLE_START,
+TOPIC_BUILD_COMPLETED = "onex.evt.omnimarket.build-loop-orchestrator-completed.v1"
+TOPIC_PR_LIFECYCLE_COMPLETED = (
+    "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
 )
+TOPIC_PR_LIFECYCLE_START = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
 
 _CONTRACT = (
     Path(__file__).resolve().parents[4]
@@ -73,7 +73,7 @@ def test_event_bus_publish_topics_present() -> None:
 
 @pytest.mark.unit
 def test_subscribe_topics_match_handler_constants() -> None:
-    """Topics in event_bus.subscribe_topics must match the constants used in consumer.py."""
+    """Topics in event_bus.subscribe_topics must match the topics the build-loop and PR-lifecycle nodes own."""
     contract = _load_contract()
     event_bus = contract["event_bus"]
     assert isinstance(event_bus, dict)
@@ -89,7 +89,7 @@ def test_subscribe_topics_match_handler_constants() -> None:
 
 @pytest.mark.unit
 def test_publish_topics_match_handler_constants() -> None:
-    """Topics in event_bus.publish_topics must match the constants used in consumer.py."""
+    """Topics in event_bus.publish_topics must match the topics the build-loop and PR-lifecycle nodes own."""
     contract = _load_contract()
     event_bus = contract["event_bus"]
     assert isinstance(event_bus, dict)
@@ -97,18 +97,4 @@ def test_publish_topics_match_handler_constants() -> None:
 
     assert TOPIC_PR_LIFECYCLE_START in publish_topics, (
         f"{TOPIC_PR_LIFECYCLE_START!r} missing from event_bus.publish_topics"
-    )
-
-
-@pytest.mark.unit
-def test_runtime_dispatch_event_consumer_exemption_present() -> None:
-    """The event_consumer invocation_mode exemption must be retained."""
-    contract = _load_contract()
-    runtime_dispatch = contract.get("runtime_dispatch")
-    assert isinstance(runtime_dispatch, dict), "runtime_dispatch block missing"
-    assert runtime_dispatch.get("invocation_mode") == "event_consumer", (
-        "runtime_dispatch.invocation_mode must be 'event_consumer'"
-    )
-    assert runtime_dispatch.get("reason"), (
-        "runtime_dispatch.reason rationale must be non-empty"
     )

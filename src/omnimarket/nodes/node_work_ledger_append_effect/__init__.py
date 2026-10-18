@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Ledger-host append effect, reached over the bus (OMN-20275)."""
+"""Ledger-host append effect with broker writer attribution (OMN-20275)."""
 
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,

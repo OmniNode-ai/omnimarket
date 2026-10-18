@@ -40,6 +40,13 @@ import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch,
 )
@@ -75,6 +82,16 @@ _BACKENDS: list[dict[str, object]] = [
         "capabilities": ["code_generation"],
     }
 ]
+
+
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: supply executed passing evidence for this code-class happy path.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -115,10 +132,17 @@ def _local_backend(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _dispatch(db_path: Path, correlation_id: UUID) -> dict[str, Any]:
     port = LocalDelegationDispatchPort(
-        evidence_db_path=db_path, effect_process_boundary=False
+        named_test_runner=_passing_named_test_runner,
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
     )
     result: dict[str, Any] = asyncio.run(
         port.dispatch(
+            named_tests=ModelNamedTestSpec(
+                workspace_root=str(db_path.parent),
+                answer_path="reverse_impl.py",
+                test_ids=("test_reverse.py::test_reverse",),
+            ),
             prompt="reverse a string",
             task_type="code_generation",
             correlation_id=correlation_id,

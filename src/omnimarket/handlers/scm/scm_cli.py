@@ -12,13 +12,19 @@ A lane does GitHub work through this command and no ``gh`` verb:
   (no record, or a non-terminal record older than eight minutes) the read goes
   to node_github_repo_gateway_effect over the bus. ``--source local`` never
   asks the bus; ``--source bus`` never reads locally.
+- **Clone-only reads** (pr-commits, file-read, commit-view, commit-checks) have
+  no node operation: they are answered from the canonical clone and the watcher
+  state, and a read they cannot answer exits 3 with the reason, never reaching
+  the bus or GitHub.
 - **Other reads** (pr-review, pr-ticket, branch-protection, run-list, run-view,
   job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  workflow-run) publish node_github_repo_write_effect's typed request. Its
-  guards apply: quota floor, expected head, idempotency, and the claim pr-close
+  workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready and pr-close take the expected head from the
-  watcher state when ``--head-sha`` is not given.
+  watcher state when ``--head-sha`` is not given. pr-close reads the claim the
+  caller took from the caller's own claim registry and carries it on the
+  command: the effect runs elsewhere and cannot read that directory.
 - **merge, arm, rerun, update-branch** have no node operation and are refused,
   naming the landing controller that does them.
 
@@ -44,6 +50,7 @@ import re
 import sys
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, cast
 
@@ -58,29 +65,38 @@ from omnimarket.delegated_test_loop.lane_bus import (
     open_lab_run_bus,
 )
 from omnimarket.handlers.scm.handler_scm_dispatch import (
+    SCM_LOCAL_VERBS,
     SCM_REFUSED_VERBS,
     SCM_VERBS,
     ScmBusCaller,
 )
 from omnimarket.handlers.scm.handler_scm_local_state import (
+    CLONE_ROOT_ENV,
     HandlerScmLocalState,
+    default_claims_dir,
     default_clone_path,
     default_watcher_state_path,
 )
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.model_github_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmAnswer,
+    ModelScmLocalAnswer,
     ModelScmLocalReadRequest,
+    ModelScmLocalVerb,
     ModelScmVerb,
 )
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
-    EnumGithubGatewayOperation,
-    ModelGithubGatewayRequest,
+from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
+    HandlerPrClaimLookup,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     EnumRepoWriteOperation,
+    ModelRepoWriteClaim,
     ModelRepoWriteRequest,
 )
 
@@ -236,6 +252,9 @@ def verbs_command() -> None:
         json.dumps(
             {
                 "served": [spec.model_dump(mode="json") for spec in SCM_VERBS],
+                "served_local_only": [
+                    local.model_dump(mode="json") for local in SCM_LOCAL_VERBS
+                ],
                 "refused": [
                     refused.model_dump(mode="json") for refused in SCM_REFUSED_VERBS
                 ],
@@ -253,6 +272,7 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
         "pr_status",
         "ci_checks",
         "merge_commit_sha",
+        "merged_pr",
         "review_gate",
         "ticket_ref",
     }
@@ -271,7 +291,12 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--branch", default=None, help="run-list, branch-protection, pr-heads."
     )
     @click.option(
-        "--head-sha", default=None, help="run-list: runs of this head; pr-heads."
+        "--head-sha",
+        default=None,
+        help="run-list: runs of this head; pr-heads; commit-check-runs.",
+    )
+    @click.option(
+        "--check-name", default=None, help="commit-check-runs: runs of this name."
     )
     @click.option("--workflow", default=None, help="run-list: a workflow file or id.")
     @click.option("--event", default=None, help="run-list: the triggering event.")
@@ -296,7 +321,7 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         "--clone",
         type=click.Path(file_okay=False),
         default=None,
-        help="The repository's canonical clone (default $OMNI_HOME/<repo>).",
+        help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
     )
     @click.option("--timeout-s", type=float, default=60.0, show_default=True)
     def command(
@@ -363,6 +388,98 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     return click.command(spec.verb, help=f"Replaces `{spec.replaces}`.")(command)
 
 
+# ------------------------------------------------------- clone-only reads
+
+# The options each clone-only verb takes, beyond the target and the common ones.
+_LOCAL_OPTIONS: Final[dict[EnumScmLocalRead, tuple[str, ...]]] = {
+    EnumScmLocalRead.PR_COMMITS: (),
+    EnumScmLocalRead.FILE_CONTENTS: ("path", "ref", "max_bytes"),
+    EnumScmLocalRead.COMMIT_VIEW: ("ref",),
+    EnumScmLocalRead.COMMIT_CHECKS: ("sha",),
+}
+_LOCAL_OPTION_DECORATORS: Final[
+    dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
+] = {
+    "path": click.option("--path", required=True, help="A file or directory."),
+    "ref": click.option(
+        "--ref",
+        default=None,
+        help="A branch, tag or commit (file-read default: the default branch).",
+    ),
+    "max_bytes": click.option(
+        "--max-bytes", type=int, default=262144, show_default=True
+    ),
+    "sha": click.option(
+        "--sha", required=True, help="The head commit, whole or abbreviated."
+    ),
+}
+
+
+def _local_command(spec: ModelScmLocalVerb) -> click.Command:
+    pr_scoped = spec.read is EnumScmLocalRead.PR_COMMITS
+    ref_required = spec.read is EnumScmLocalRead.COMMIT_VIEW
+
+    def command(
+        target: str,
+        watcher_state: str | None,
+        clone: str | None,
+        **fields: object,
+    ) -> None:
+        repo, number = _target(target, pr=pr_scoped)
+        if ref_required and fields.get("ref") is None:
+            raise click.UsageError("Missing option '--ref'.")
+        try:
+            request = ModelScmLocalReadRequest(
+                read=spec.read,
+                repo=repo,
+                pr_number=number,
+                watcher_state_path=str(
+                    watcher_state or default_watcher_state_path() or ""
+                )
+                or None,
+                clone_path=str(clone or default_clone_path(repo) or "") or None,
+                **{name: value for name, value in fields.items() if value is not None},
+            )
+        except ValidationError as exc:
+            raise click.UsageError(str(exc)) from exc
+        local = HandlerScmLocalState().handle(request)
+        if not local.answered or local.source is None:
+            click.echo(
+                f"local: {local.unanswered_reason} ({spec.verb} has no bus or "
+                f"GitHub fallback)",
+                err=True,
+            )
+            sys.exit(EXIT_LOCAL_UNANSWERED)
+        click.echo(
+            ModelScmLocalAnswer(
+                verb=spec.verb,
+                read=spec.read,
+                repo=repo,
+                source=local.source,
+                watcher_tick=local.watcher_tick,
+                result=local.result,
+            ).model_dump_json()
+        )
+
+    decorated: Callable[..., None] = command
+    for name in reversed(_LOCAL_OPTIONS[spec.read]):
+        decorated = _LOCAL_OPTION_DECORATORS[name](decorated)
+    decorated = click.option(
+        "--watcher-state",
+        type=click.Path(dir_okay=False),
+        default=None,
+        help="The PR watcher state file (default $ONEX_PR_WATCHER_STATE).",
+    )(decorated)
+    decorated = click.option(
+        "--clone",
+        type=click.Path(file_okay=False),
+        default=None,
+        help=f"The repository's canonical clone (default ${CLONE_ROOT_ENV}/<repo>).",
+    )(decorated)
+    decorated = click.argument("target")(decorated)
+    return click.command(spec.verb, help=f"Replaces `{spec.replaces}`.")(decorated)
+
+
 # ------------------------------------------------------------------ writes
 
 # The options each write verb takes, beyond the target and the common ones.
@@ -373,9 +490,16 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_close": ("run", "claims_dir"),
     "pr_comment": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
+    "check_run_create": (
+        "name",
+        "status",
+        "conclusion",
+        "output_title",
+        "output_summary",
+    ),
 }
 _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
-    {"pr_create", "workflow_dispatch"}
+    {"pr_create", "workflow_dispatch", "check_run_create"}
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
     {"pr_edit", "pr_ready", "pr_close"}
@@ -384,6 +508,29 @@ _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
 _OPTION_DECORATORS: Final[
     dict[str, Callable[[click.decorators.FC], click.decorators.FC]]
 ] = {
+    "name": click.option("--name", required=True, help="The check run's name."),
+    "status": click.option(
+        "--status",
+        required=True,
+        type=click.Choice(["queued", "in_progress", "completed"]),
+    ),
+    "conclusion": click.option(
+        "--conclusion",
+        default=None,
+        type=click.Choice(
+            [
+                "action_required",
+                "cancelled",
+                "failure",
+                "neutral",
+                "success",
+                "skipped",
+                "timed_out",
+            ]
+        ),
+    ),
+    "output_title": click.option("--output-title", default=None),
+    "output_summary": click.option("--output-summary", default=None),
     "head": click.option("--head", required=True, help="The PR's head branch."),
     "base": click.option("--base", default=None, help="The base branch."),
     "title": click.option("--title", default=None),
@@ -401,8 +548,10 @@ _OPTION_DECORATORS: Final[
     "claims_dir": click.option(
         "--claims-dir",
         envvar="ONEX_PR_CLAIMS_DIR",
-        required=True,
-        help="The claim registry directory the effect reads ($ONEX_PR_CLAIMS_DIR).",
+        default=None,
+        help="Where this host's claim registry keeps the claim you took "
+        "($ONEX_PR_CLAIMS_DIR, else $ONEX_STATE_DIR/pr-queue/claims). The claim "
+        "is read here and sent on the command; the directory itself is not.",
     ),
     "workflow": click.option("--workflow", required=True),
     "ref": click.option("--ref", required=True),
@@ -410,6 +559,44 @@ _OPTION_DECORATORS: Final[
         "--input", "inputs", multiple=True, help="KEY=VALUE, repeatable."
     ),
 }
+
+
+def _carried_claim(
+    claims_dir: str | None, repo: str, number: int | None
+) -> ModelRepoWriteClaim | None:
+    """The live claim the caller took on the PR, read from the caller's registry.
+
+    None when there is none or it lacks a field the effect checks; the close is
+    then sent without one and the effect refuses it, with the same typed
+    ``claim_not_held`` event a lane reads.
+    """
+    directory = claims_dir or (str(path) if (path := default_claims_dir()) else None)
+    pr_key = f"{repo.lower()}#{number}"
+    if directory is None:
+        click.echo(
+            f"no claim registry to read {pr_key} from; give --claims-dir", err=True
+        )
+        return None
+    held = HandlerPrClaimLookup().active_claim(
+        claims_dir=directory,
+        pr_key=pr_key,
+        now=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    if held is None:
+        click.echo(f"no live claim on {pr_key} in {directory}", err=True)
+        return None
+    try:
+        return ModelRepoWriteClaim(
+            pr_key=pr_key,
+            lane_id=held.lane_id or "",
+            claimed_by_run=held.claimed_by_run or "",
+            action=held.action or "",
+            claimed_at=held.claimed_at or "",
+            last_heartbeat_at=held.last_heartbeat_at,
+        )
+    except ValidationError as exc:
+        click.echo(f"the claim on {pr_key} in {directory} is unusable: {exc}", err=True)
+        return None
 
 
 def _write_command(spec: ModelScmVerb) -> click.Command:
@@ -444,11 +631,26 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 raise click.UsageError(f"--input {item!r} is not KEY=VALUE")
             inputs[key] = value
         run = fields.pop("run", None)
+        claims_dir = fields.pop("claims_dir", None)
+        claim = (
+            _carried_claim(
+                claims_dir if isinstance(claims_dir, str) else None, repo, number
+            )
+            if spec.operation == EnumRepoWriteOperation.PR_CLOSE
+            else None
+        )
         given: dict[str, JsonValue] = {
             name: value
             for name, value in fields.items()
             if value is not None and isinstance(value, (str, bool))
         }
+        if spec.operation == EnumRepoWriteOperation.CHECK_RUN_CREATE:
+            given["head_sha"] = head_sha
+            head_sha = None
+            output_title = given.pop("output_title", None)
+            output_summary = given.pop("output_summary", None)
+            if output_title is not None or output_summary is not None:
+                given["output"] = {"title": output_title, "summary": output_summary}
         if body is not None:
             given["body"] = body
         if run is not None:
@@ -474,6 +676,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
                 expected_head_sha=head_sha,
                 inputs=inputs,
                 dry_run=dry_run,
+                claim=claim,
                 **given,
             )
         except ValidationError as exc:
@@ -503,7 +706,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
     decorated = click.option(
         "--head-sha",
         default=None,
-        help="The head this write expects; a moved head is refused.",
+        help="check-run-create: the commit to report on; other writes: the expected head.",
     )(decorated)
     decorated = click.option(
         "--lane",
@@ -561,6 +764,8 @@ for _spec in SCM_VERBS:
         if _spec.node is EnumScmNode.WRITE
         else _read_command(_spec)
     )
+for _local in SCM_LOCAL_VERBS:
+    scm_group.add_command(_local_command(_local))
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 

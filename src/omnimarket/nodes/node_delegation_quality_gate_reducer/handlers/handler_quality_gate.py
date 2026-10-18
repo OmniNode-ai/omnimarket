@@ -120,8 +120,12 @@ from omnimarket.inference.task_class_authority import (
     EnumQualityRuleEnforcement,
     resolve_quality_rule,
     resolve_reasoning_preamble_policy,
+    resolve_task_class_execution_required,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+    NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
@@ -267,22 +271,23 @@ _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
 # reducer records (OMN-13959).
 _DETERMINISTIC_SCORE_SOURCE = SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 
-# OMN-13850: deterministic checks that require executing an acceptance command
-# against a live target (test suite, sandbox) which the reducer — a pure,
-# I/O-free function — cannot run. There is no wired acceptance-command executor
-# in this ticket, so these checks are UNEVALUATED: they are recorded as SKIPPED
-# and EXCLUDED from the deterministic passed/total fraction. They must NEVER be
-# routed to a stand-in structural check (the prior alias to
-# ``_check_response_non_empty`` made ``passes_existing_tests`` a phantom that
-# reported "passed" on any non-empty answer without executing a single test).
-# Wiring a real acceptance-command EFFECT executor is a scoped follow-up
-# (OMN-13850 PR body): when it lands, an evaluated check moves out of this set
-# and contributes a real pass/fail again.
-_UNEVALUATED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
-    {
-        "passes_existing_tests",
-    }
-)
+# OMN-21076: passes_existing_tests reads a ModelNamedTestRun supplied by the
+# caller; the reducer stays pure and runs nothing itself. With no run supplied,
+# the check is SKIPPED: recorded, excluded from the fraction, never a pass,
+# just like names_resolve without a grounding source.
+#
+# OMN-21077: except for a code class (``execution_required: true``). A code
+# answer is judged by whether it works, so for those classes a declared
+# passes_existing_tests with no run is a deterministic FAILURE carrying the
+# INSUFFICIENT prefix: no tests named means the answer is not checked, and an
+# answer that is not checked is never accepted.
+#
+# OMN-17427: only when the request NAMED tests (``named_tests_requested``) and
+# none ran. A request that named none skips the check as any other class does,
+# and the answer gate records the answer as UNTESTED: no rung can be tested on
+# tests nobody named, so refusing it only climbed the ladder on correct answers.
+_NO_NAMED_TEST_RUN_REASON = NO_NAMED_TEST_RUN_REASON
+
 # OMN-13470: when an LLM-judge adequacy score is combined with the deterministic
 # graded score, the result records ``score_source="combined"`` so downstream
 # experiment analysis and the orchestrator's required-bar gate can distinguish a
@@ -561,6 +566,17 @@ _ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
     "without evidence",
 )
 
+# OMN-20489: a summary of a scan report, a CI log or a changelog reports the word
+# "unverified" as a fact ("0 unverified secrets", `score_unverified_because`), so
+# the bare word is not the summary disclaiming its own accuracy. Three of the
+# 120 calibration answers were vetoed on it. Every other phrase, which does say
+# the writer cannot vouch for the text, stays, and so does the `(unverified)`
+# marker exemption. Scoped to the summarization class by the check name
+# `accurate_summary`; `accurate` keeps the full list for every other class.
+_SUMMARY_ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = tuple(
+    phrase for phrase in _ACCURACY_UNCERTAINTY_PHRASES if phrase != "unverified"
+)
+
 
 _THINKING_TRACE_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
@@ -831,7 +847,27 @@ def _check_signature_preserved(content: str) -> str | None:
     return None
 
 
-def _check_no_refusal(content: str) -> str | None:
+def _is_declared_literal_answer(content: str) -> bool:
+    """Whether ``content`` is a bare Python literal that is not a string.
+
+    OMN-20844. ``(None, None)``, ``None``, ``False``, ``42`` and ``[]`` are what
+    ``repr()`` prints for an answer, and every word in them is a negation token
+    or a bracket. A string literal stays out: ``'none'`` is the declination in
+    quotes, and a quoted filler word is still filler.
+    """
+    candidate = _strip_markdown_code_fence(content.strip()).strip()
+    if not candidate:
+        return False
+    try:
+        value = ast.literal_eval(candidate)
+    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+        return False
+    return not isinstance(value, str | bytes)
+
+
+def _check_no_refusal(
+    content: str, *, declared_literal_shape: bool = False
+) -> str | None:
     """Heuristic: no refusal phrases and no ultra-short content-free response.
 
     Two-pass refusal pre-filter (OMN-13409):
@@ -851,12 +887,20 @@ def _check_no_refusal(content: str) -> str | None:
     "as an ai", "error:", "traceback") and the OMN-13409 additions that cover
     common model soft-refusal patterns ("cannot be fulfilled", "unable to complete",
     "not possible", etc.).
+
+    OMN-20844: ``declared_literal_shape`` is True only when the request's band
+    carries ``short_form_adequacy``, which the contract selects from the
+    PROMPT's declared shape and never from the response. For such a request a
+    response that is itself a non-string Python literal is the answer, not a
+    declination: Pass 1 does not apply to it. Pass 2 still does.
     """
     stripped = content.strip()
 
     # Pass 1: ultra-short content-free response pre-pass.
     words = stripped.split()
-    if 0 < len(words) <= _REFUSAL_SHORT_WORD_THRESHOLD:
+    if 0 < len(words) <= _REFUSAL_SHORT_WORD_THRESHOLD and not (
+        declared_literal_shape and _is_declared_literal_answer(stripped)
+    ):
         # Normalize each token: lowercase, strip surrounding punctuation.
         normalized_tokens = [word.lower().strip(".,;:!?\"'()[]{}`-") for word in words]
         # A response whose every token is a negation word (or empty after stripping)
@@ -988,6 +1032,18 @@ def _check_semantic_adequacy(
     if stripped[-1] in _TRUNCATION_TRAILING_TOKENS:
         return "WEAK_OUTPUT: response truncated mid-token, fails semantic_adequacy"
 
+    # An unfinished YAML flow collection is incomplete even when its last
+    # character is an ordinary word. Research's optional prose rules must not
+    # be the only reason a truncated configuration block is refused.
+    structured = re.sub(r"\A### ANSWER\s*\n", "", stripped, flags=re.IGNORECASE)
+    if re.match(r"[A-Za-z_][\w.-]*:\s*[\[{]", structured):
+        try:
+            yaml.compose(structured, Loader=yaml.SafeLoader)
+        except yaml.YAMLError:
+            return (
+                "WEAK_OUTPUT: malformed YAML flow collection, fails semantic_adequacy"
+            )
+
     # A complete structured / code artifact is a complete answer regardless of
     # prose sentence shape.
     if _extract_fenced_code_blocks(content) or '"""' in stripped or "'''" in stripped:
@@ -1025,13 +1081,43 @@ def _check_semantic_adequacy(
     #
     # OMN-13967: a request that asked for one word never reaches this rule. Its
     # declared shape replaces this check with ``short_form_adequacy``.
-    if len(words) < 2:
+    #
+    # OMN-21088: a short direct question ("what is 2+2") is answered whole by one
+    # token ("4"). The prompt is the grounding source, so this is the request
+    # declaring its own short shape, not the content guessing one.
+    if len(words) < 2 and not _is_short_direct_question(grounding_source):
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
         )
 
     return None
+
+
+#: OMN-21088: the words a short direct question opens with. ``how`` counts only
+#: with a quantity word after it: "how many" asks for a number, "how does X
+#: work" asks for an explanation.
+_DIRECT_QUESTION_RE = re.compile(
+    r"^(?:what|who|whom|whose|when|where|which|is|are|was|were|do|does|did|"
+    r"can|could|will|would|should|how (?:many|much|old|long|far|big))\b",
+    re.IGNORECASE,
+)
+
+#: A one-line question longer than this is a request for more than one token.
+#: Measured 2026-10-15 on the branch: "If a train leaves at 3pm and travels for
+#: 2 hours, what time does it arrive?" (16 words) was answered "5pm" and refused
+#: at a 12-word bound.
+_DIRECT_QUESTION_MAX_WORDS: int = 30
+
+
+def _is_short_direct_question(prompt: str | None) -> bool:
+    """Whether ``prompt`` is one short line asking a direct question (OMN-21088)."""
+    if not prompt:
+        return False
+    stripped = prompt.strip()
+    if "\n" in stripped or len(stripped.split()) > _DIRECT_QUESTION_MAX_WORDS:
+        return False
+    return bool(_DIRECT_QUESTION_RE.match(stripped)) or stripped.endswith("?")
 
 
 def _check_short_form_adequacy(
@@ -1233,6 +1319,8 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
                 f"TASK_MISMATCH: pytest.{node.attr} does not exist; "
                 "test module would fail to import"
             )
+    if _reads_unbound_pytest(tree):
+        return _UNBOUND_PYTEST
     scopes: list[ast.Module | ast.ClassDef] = [tree]
     for node in ast.walk(tree):
         if isinstance(
@@ -1247,6 +1335,40 @@ def _check_uses_pytest_mark_unit(content: str) -> str | None:
         if any(_is_unit_marker_assignment(statement) for statement in scope.body):
             return None
     return _MISSING_UNIT_MARK
+
+
+_UNBOUND_PYTEST = (
+    "TASK_MISMATCH: the module reads pytest but never imports it; "
+    "test module would fail to import (NameError)"
+)
+
+
+def _reads_unbound_pytest(tree: ast.Module) -> bool:
+    """OMN-20844: whether a module with its own imports reads an unbound ``pytest``.
+
+    A module that imports anything is a whole test module, so a ``pytest`` it
+    reads (``@pytest.mark.unit``) and binds nowhere raises ``NameError`` when
+    pytest collects it. A fragment with no import at all may be pasted into a
+    module that imports pytest, so its binding cannot be judged and it is not.
+    The prompt naming pytest binds nothing in the answer, which is why
+    ``names_resolve`` passes this: the name occurs in the grounding source.
+    """
+    has_import = False
+    reads = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            has_import = True
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                if bound == "pytest":
+                    return False
+        elif isinstance(node, ast.Name) and node.id == "pytest":
+            if not isinstance(node.ctx, ast.Load):
+                return False
+            reads = True
+        elif isinstance(node, ast.arg) and node.arg == "pytest":
+            return False
+    return has_import and reads
 
 
 def _is_unit_mark(node: ast.expr) -> bool:
@@ -1343,6 +1465,115 @@ def _check_exactly_two_sentences(content: str) -> str | None:
     count = len(_sentences(content))
     if count != 2:
         return f"TASK_MISMATCH: expected exactly 2 sentences, found {count}"
+    return None
+
+
+# OMN-20489: the sentence limit a summarization prompt states ("in at most 4
+# sentences"). The two lenient accepts of the 120-answer calibration (a 5-sentence
+# answer to "at most 4" and a 6-sentence answer to "at most 5") were faithful, so
+# no grounding check could see them; only a count can.
+_SENTENCE_LIMIT_CHECK = "within_sentence_limit"
+_SENTENCE_LIMIT_WORDS: dict[str, int] = {
+    word: value
+    for value, word in enumerate(
+        (
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+        ),
+        start=1,
+    )
+}
+_SENTENCE_LIMIT_RE = re.compile(
+    r"\b(?:at\s+most|no\s+more\s+than)\s+(\d+|" + "|".join(_SENTENCE_LIMIT_WORDS) + r")"
+    r"\s+sentences?\b",
+    re.IGNORECASE,
+)
+_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+")
+# A sentence ends at . ! or ? (plus closing quotes or brackets), then whitespace,
+# then the start of another sentence. A dot inside a version, a file name or a
+# number is not followed by whitespace, and "e.g. foo" continues in lower case.
+_SENTENCE_BOUNDARY_RE = re.compile(
+    r"""(?<=[.!?])["')\]*_]*\s+(?=["'(\[`*_]*[A-Z0-9])"""
+)
+_SENTENCE_ABBREVIATION_RE = re.compile(r"(?:\be\.g|\bi\.e|\bvs|\bcf|\betc)\.$", re.I)
+
+
+def _sentence_limit(prompt: str | None) -> int | None:
+    """The first "at most N sentences" limit the prompt states, if any."""
+    if prompt is None:
+        return None
+    match = _SENTENCE_LIMIT_RE.search(prompt)
+    if match is None:
+        return None
+    raw = match.group(1).lower()
+    return int(raw) if raw.isdigit() else _SENTENCE_LIMIT_WORDS[raw]
+
+
+def _count_prose_sentences(content: str) -> int:
+    """Count sentences the way the limit is read: a list item is one sentence.
+
+    A semicolon run-on is one sentence, a soft-wrapped line continues its
+    paragraph, and code spans never end one. This is a count for a ceiling, not
+    a parser: the 120-answer calibration set agrees with a careful reading on
+    every answer's side of its limit.
+    """
+    text = _CODE_SPAN_RE.sub("X", content)
+    items: list[str] = []
+    for block in re.split(r"\n\s*\n", text):
+        current: str | None = None
+        for line in block.splitlines():
+            if not line.strip():
+                continue
+            if _LIST_ITEM_RE.match(line) or line.lstrip().startswith("#"):
+                if current is not None:
+                    items.append(current)
+                current = _LIST_ITEM_RE.sub("", line).strip().lstrip("#").strip()
+            else:
+                current = (
+                    line.strip() if current is None else f"{current} {line.strip()}"
+                )
+        if current is not None:
+            items.append(current)
+    count = 0
+    for item in items:
+        if not item:
+            continue
+        count += 1 + sum(
+            1
+            for match in _SENTENCE_BOUNDARY_RE.finditer(item)
+            if not _SENTENCE_ABBREVIATION_RE.search(item[: match.start()])
+        )
+    return count
+
+
+def _check_within_sentence_limit(
+    content: str, grounding_source: str | None = None
+) -> str | None:
+    """Heuristic, reject-only: the answer stays within the prompt's sentence limit.
+
+    The prompt is the grounding source. With no stated limit, or no prompt, there
+    is nothing to hold the answer to and the check passes.
+    """
+    limit = _sentence_limit(grounding_source)
+    if limit is None:
+        return None
+    count = _count_prose_sentences(content)
+    if count > limit:
+        return (
+            f"TASK_MISMATCH: response has {count} sentences, "
+            f"the prompt allows at most {limit}"
+        )
     return None
 
 
@@ -1674,7 +1905,11 @@ def _unquoted_offsets(
     return offsets
 
 
-def _check_accurate(content: str, grounding_source: str | None = None) -> str | None:
+def _check_accurate(
+    content: str,
+    grounding_source: str | None = None,
+    phrases: tuple[str, ...] | None = None,
+) -> str | None:
     """Heuristic: response must not explicitly disclaim its own accuracy.
 
     True semantic accuracy requires source context that ModelQualityGateInput
@@ -1705,7 +1940,7 @@ def _check_accurate(content: str, grounding_source: str | None = None) -> str | 
     )
     source_core = _core_joined(source_words) if source_words is not None else None
     detected: list[str] = []
-    for phrase in _ACCURACY_UNCERTAINTY_PHRASES:
+    for phrase in _ACCURACY_UNCERTAINTY_PHRASES if phrases is None else phrases:
         offsets = _unquoted_offsets(lowered, phrase, words, source_words, source_core)
         if offsets:
             detected.append(f"{phrase}@offset={offsets[0]}")
@@ -1716,6 +1951,15 @@ def _check_accurate(content: str, grounding_source: str | None = None) -> str | 
     return None
 
 
+def _check_accurate_summary(
+    content: str, grounding_source: str | None = None
+) -> str | None:
+    """``accurate`` for a summary: the bare word "unverified" is not a disclaimer."""
+    return _check_accurate(
+        content, grounding_source, _SUMMARY_ACCURACY_UNCERTAINTY_PHRASES
+    )
+
+
 # OMN-19433: heuristic checks that read the grounding source as well as the
 # response. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, the response-only
 # form, so the set of known check names is unchanged.
@@ -1723,7 +1967,26 @@ _GROUNDING_AWARE_HEURISTIC_CHECKS: dict[
     str, Callable[[str, str | None], str | None]
 ] = {
     "accurate": _check_accurate,
+    # OMN-20489: summarization's own forms of `accurate` and a sentence ceiling.
+    "accurate_summary": _check_accurate_summary,
+    _SENTENCE_LIMIT_CHECK: _check_within_sentence_limit,
 }
+
+
+def _check_passes_existing_tests(run: ModelNamedTestRun) -> str | None:
+    """Judge upstream named-test evidence without executing tests (OMN-21076)."""
+    if run.passed:
+        return None
+    if run.failed_test_ids:
+        return (
+            f"WEAK_OUTPUT: passes_existing_tests: {len(run.failed_test_ids)} of "
+            f"{len(run.test_ids)} named test(s) failed against the delegated code "
+            f"(exit {run.exit_code}): {', '.join(run.failed_test_ids)}"
+        )
+    return (
+        f"WEAK_OUTPUT: passes_existing_tests: the named test run exited "
+        f"{run.exit_code} with no passing result for: {', '.join(run.test_ids)}"
+    )
 
 
 def _evaluate_deterministic_checks(
@@ -1731,19 +1994,28 @@ def _evaluate_deterministic_checks(
     dod_deterministic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
+    named_test_run: ModelNamedTestRun | None = None,
+    require_executed_tests: bool = False,
+    untested_code_class: bool = False,
 ) -> tuple[list[str], list[str], list[ModelQualityRuleEvaluation]]:
     """Run all deterministic DoD checks.
 
     Returns:
         ``(failures, skipped, evaluations)``. ``failures`` are the
         human-readable messages of checks that were evaluated and failed;
-        ``skipped`` are the names of UNEVALUATED checks
-        (``_UNEVALUATED_DETERMINISTIC_CHECKS``) that have no wired executor in
-        this reducer. A skipped check produces NEITHER a pass nor a failure —
-        it is excluded from the deterministic passed/total fraction by the
-        caller (OMN-13850). This removes the phantom always-pass that
-        ``passes_existing_tests`` had while it was aliased to
-        ``_check_response_non_empty``.
+        ``skipped`` names checks without the evidence needed to evaluate them.
+        ``passes_existing_tests`` reads a supplied named-test run (OMN-21076)
+        and is skipped only when none is supplied, unless
+        ``require_executed_tests`` (a code class, OMN-21077) makes the missing
+        run an INSUFFICIENT failure. A skipped check produces
+        neither a pass nor a failure and is excluded from the deterministic
+        passed/total fraction by the caller.
+
+        ``untested_code_class`` (OMN-17427) is a code class whose request named
+        no tests: the check is skipped as above AND recorded as a scored
+        evaluation that did not pass, carrying the UNTESTED reason, so the
+        acceptance predicate and the receipt can tell "nobody named tests" from
+        "a gate that never evaluated the check".
 
         ``evaluations`` (OMN-18295) is the per-check record for the receipt,
         built HERE because this is the only place that knows which check
@@ -1755,17 +2027,10 @@ def _evaluate_deterministic_checks(
     evaluations: list[ModelQualityRuleEvaluation] = []
     for check in dod_deterministic:
         reason: str | None = None
-        if check in _UNEVALUATED_DETERMINISTIC_CHECKS:
-            # OMN-13850: no acceptance-command executor is wired for this check in
-            # this reducer. Record it as SKIPPED so it neither passes nor fails
-            # and is dropped from the deterministic fraction — it must never
-            # silently report "passed" without executing anything.
-            skipped.append(check)
-            continue
         if check == "names_resolve":
             # OMN-19529: needs the input as well as the response, so with no
-            # grounding source it is SKIPPED exactly like an unevaluated check
-            # above -- recorded, excluded from the fraction, never a pass.
+            # grounding source it is SKIPPED -- recorded, excluded from the
+            # fraction, never a pass.
             names_verdict = evaluate_name_resolution(
                 content=content,
                 grounding_source=grounding_source,
@@ -1775,6 +2040,23 @@ def _evaluate_deterministic_checks(
                 skipped.append(check)
                 continue
             reason = _unresolved_names_failure_reason(names_verdict.unresolved)
+        elif check == "passes_existing_tests":
+            if named_test_run is not None:
+                reason = _check_passes_existing_tests(named_test_run)
+            elif require_executed_tests:
+                reason = _NO_NAMED_TEST_RUN_REASON
+            else:
+                skipped.append(check)
+                if untested_code_class:
+                    evaluations.append(
+                        ModelQualityRuleEvaluation(
+                            rule=check,
+                            enforcement="scored",
+                            passed=False,
+                            detail=NO_NAMED_TESTS_UNTESTED_REASON,
+                        )
+                    )
+                continue
         elif check == "output_parses":
             reason = _check_output_parses(content)
         elif check == "signature_preserved":
@@ -1831,9 +2113,9 @@ def _evaluate_deterministic_checks(
 # of this module's own AST and fails if the two disagree. Adding a check to the
 # chain without adding it here is a red test, not a silent divergence.
 #
-# `_UNEVALUATED_DETERMINISTIC_CHECKS` are deliberately absent: those are names
-# the gate knows and declines to score, which is not the same as names it
-# cannot run.
+# Evidence-dependent checks are supported even when a caller omits their
+# evidence: passes_existing_tests needs a named-test run and names_resolve
+# needs a grounding source. Such calls record the check as skipped.
 SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "compiles_without_errors",
@@ -1844,6 +2126,7 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         "final_artifact_only",
         "no_refusal",
         "output_parses",
+        "passes_existing_tests",
         "plain_text_only",
         # Both share one arm, spelled `check in (...)` rather than `check ==`.
         # They were missed on the first cut of this set, and the drift test was
@@ -1859,6 +2142,9 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
 )
 
 
+# The adequacy authority a contract-declared response shape puts in the band.
+_SHORT_FORM_ADEQUACY_CHECK = "short_form_adequacy"
+
 # Dispatch table: named heuristic check → checker function (content → failure message or None)
 _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "no_refusal": _check_no_refusal,
@@ -1867,6 +2153,8 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "cites_sources": _check_cites_sources,
     "concise": _check_concise,
     "accurate": _check_accurate,
+    "accurate_summary": _check_accurate_summary,
+    _SENTENCE_LIMIT_CHECK: _check_within_sentence_limit,
     "semantic_adequacy": _check_semantic_adequacy,
     # OMN-16932: adequacy authority for a contract-declared constrained
     # response shape. Deliberately NOT in _REJECT_ONLY_HEURISTIC_CHECKS -
@@ -1879,6 +2167,8 @@ _REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "no_refusal",
         "accurate",
+        "accurate_summary",
+        _SENTENCE_LIMIT_CHECK,
         "concise",
         "covers_args_returns_raises",
         "cites_specific_lines",
@@ -2125,6 +2415,12 @@ def _evaluate_heuristic_checks(
     claims_check = _claim_grounding_check_name()
 
     for check in dod_heuristic:
+        if check == _SENTENCE_LIMIT_CHECK and grounding_source is None:
+            # OMN-20489: the limit is stated in the prompt. With no prompt the
+            # check is recorded SKIPPED, as the other source-reading checks are,
+            # so it neither inflates nor deflates the score.
+            skipped_heuristic.append(check)
+            continue
         if check in _GROUNDING_AWARE_HEURISTIC_CHECKS:
             # OMN-19433: this check also reads the text the response was
             # derived from, so a phrase quoted from it is not held against the
@@ -2185,11 +2481,17 @@ def _evaluate_heuristic_checks(
             evaluations.append(_rule_evaluation(check, reason))
             continue
         grounding_aware = _GROUNDING_AWARE_ADEQUACY_CHECKS.get(check)
-        reason = (
-            grounding_aware(content, grounding_source)
-            if grounding_aware is not None
-            else _apply_heuristic_check(check, content)
-        )
+        if check == "no_refusal" and _SHORT_FORM_ADEQUACY_CHECK in dod_heuristic:
+            # OMN-20844: the band was replaced by a prompt-declared shape (only
+            # a shape_overrides entry puts short_form_adequacy here), so a bare
+            # literal answer is what was asked for.
+            reason = _check_no_refusal(content, declared_literal_shape=True)
+        else:
+            reason = (
+                grounding_aware(content, grounding_source)
+                if grounding_aware is not None
+                else _apply_heuristic_check(check, content)
+            )
         if reason is None and check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
             if m:
@@ -2261,6 +2563,9 @@ def _run_contract_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
+    named_test_run: ModelNamedTestRun | None = None,
+    require_executed_tests: bool = False,
+    untested_code_class: bool = False,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -2276,7 +2581,12 @@ def _run_contract_checks(
     """
     det_failures, skipped_deterministic, det_evaluations = (
         _evaluate_deterministic_checks(
-            content, dod_deterministic, grounding_source=grounding_source
+            content,
+            dod_deterministic,
+            grounding_source=grounding_source,
+            named_test_run=named_test_run,
+            require_executed_tests=require_executed_tests,
+            untested_code_class=untested_code_class,
         )
     )
     (
@@ -2529,7 +2839,7 @@ def _evaluated_deterministic_total(
     """Return the count of deterministic checks that were actually evaluated.
 
     OMN-13850: the deterministic passed/total fraction must EXCLUDE unevaluated
-    (skipped) checks so a check with no wired executor cannot inflate the score
+    (skipped) checks so a check without its evidence cannot inflate the score
     with a phantom pass. The total is the declared deterministic checks minus the
     skipped ones, floored at the failure count so unsupported checks — which
     surface as extra deterministic failures beyond the declared set — are always
@@ -2585,8 +2895,8 @@ def _deterministic_acceptance_evidence(
 
     OMN-13850: unevaluated (skipped) deterministic checks are EXCLUDED from the
     evaluated-check total, so the ``actual_score`` fraction reflects only checks
-    that were actually run — never a phantom "pass" for a check with no wired
-    executor. The skipped names are recorded in ``skipped_checks`` so the
+    that were actually evaluated — never a phantom "pass" for a check without
+    its evidence. The skipped names are recorded in ``skipped_checks`` so the
     unevaluated status is durable evidence, not a silent drop.
     """
     evaluated_total = _evaluated_deterministic_total(
@@ -2639,21 +2949,20 @@ def _is_verifiable_deterministic_acceptance(
     this guard, ``task_type=code_generation`` + ``acceptance_criteria=
     ["no_refusal"]`` + a clean output leaked to ``passed=True`` (OMN-13375).
 
-    OMN-13850: an UNEVALUATED (skipped) check — one with no wired executor, e.g.
-    ``passes_existing_tests`` — likewise confers NO acceptance authority. It runs
-    nothing, so it cannot promote a clean output to adequate. A verifiable set
+    OMN-21076: an unevaluated (skipped) check — e.g. ``passes_existing_tests``
+    without a supplied named-test run — confers no acceptance authority. Without
+    evidence it cannot promote a clean output to adequate. A verifiable set
     whose only non-reject-only member is a skipped check therefore has no
     evaluated authority and falls through to the reject-only / no-authority path
     (``fail_heuristic`` unless a real evaluated authority is present).
 
     OMN-19734: response-dependent skips, including unsupported fence languages,
-    have the same no-authority status as checks with no executor.
+    have the same no-authority status as checks without their evidence.
     """
     if gate_input.task_type not in _VERIFIABLE_TASK_TYPES:
         return False
     return any(
         not _is_reject_only_deterministic_check(check)
-        and check not in _UNEVALUATED_DETERMINISTIC_CHECKS
         and check not in skipped_deterministic
         for check in dod_deterministic
     )
@@ -2767,7 +3076,6 @@ def _has_adequacy_authority(
     """
     if any(
         not _is_reject_only_deterministic_check(check)
-        and check not in _UNEVALUATED_DETERMINISTIC_CHECKS
         and check not in skipped_deterministic
         for check in dod_deterministic
     ):
@@ -3116,8 +3424,10 @@ def delta(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
+    named_test_run: ModelNamedTestRun | None = None,
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     reasoning_stripped_chars: int = 0,
+    named_tests_requested: bool = False,
 ) -> ModelQualityGateResult:
     """Refuse leaked reasoning at the deterministic floor, then grade clean output.
 
@@ -3224,6 +3534,8 @@ def delta(
             judge_verdict=judge_verdict,
             response_contract=response_contract,
             grounding_source=grounding_source,
+            named_test_run=named_test_run,
+            named_tests_requested=named_tests_requested,
         )
     return result.model_copy(
         update={
@@ -3241,6 +3553,8 @@ def _delta_over_answer_segment(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
+    named_test_run: ModelNamedTestRun | None = None,
+    named_tests_requested: bool = False,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -3249,6 +3563,9 @@ def _delta_over_answer_segment(
     canonical inference path; its already-resolved 0.0-1.0 adequacy score is
     passed in here, so this reducer stays pure and replay-safe (the recorded
     judge verdict is read back, never re-called).
+
+    OMN-21076: ``named_test_run`` likewise carries upstream execution evidence
+    for ``passes_existing_tests``. With no run supplied, that check is skipped.
 
     OMN-15193: when ``response_contract`` is supplied (a caller-declared JSON
     Schema), structural schema validation REPLACES everything below --
@@ -3302,6 +3619,13 @@ def _delta_over_answer_segment(
             that check UNEVALUATED: it is named in ``skipped_checks`` and
             excluded from the scored total, never counted as a pass. Every
             other path is byte-identical to pre-OMN-18297 behaviour.
+        named_test_run: Optional outcome of named tests run upstream against the
+            delegated code. ``None`` leaves ``passes_existing_tests`` skipped,
+            excluded from the scored total, and never counted as a pass -- or,
+            for a code class (``execution_required``) whose request named
+            tests, an INSUFFICIENT deterministic failure (OMN-21077).
+        named_tests_requested: Whether the request named tests (OMN-17427).
+            A code class with no tests named keeps the check skipped.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -3328,11 +3652,18 @@ def _delta_over_answer_segment(
         return _run_legacy_checks(gate_input)
 
     content = _strip_thinking_traces(gate_input.llm_response_content)
+    code_class = resolve_task_class_execution_required(gate_input.task_type)
     outcome = _run_contract_checks(
         content,
         dod_deterministic,
         dod_heuristic,
         grounding_source=grounding_source,
+        named_test_run=named_test_run,
+        # OMN-21077: a code class is judged by tests run against its answer.
+        # OMN-17427: refused for a missing run only when tests were named; a
+        # code class that named none is recorded UNTESTED.
+        require_executed_tests=named_tests_requested and code_class,
+        untested_code_class=code_class and not named_tests_requested,
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic
@@ -3348,7 +3679,7 @@ def _delta_over_answer_segment(
     # OMN-13850: empty/refusal deterministic HARD FLOOR (MUST-NOT-change). On the
     # verifiable-acceptance path the empty guard used to come ONLY from
     # ``passes_existing_tests`` aliased to ``_check_response_non_empty``. Now that
-    # ``passes_existing_tests`` is SKIPPED (unevaluated, no wired executor), an
+    # ``passes_existing_tests`` is skipped without a supplied named-test run, an
     # empty answer would otherwise slip through for a declared set that does not
     # name ``response_non_empty`` (``compiles_without_errors`` accepts ``""``). The
     # floor is a first-class, always-applied deterministic failure on the
@@ -3389,7 +3720,7 @@ def _delta_over_answer_segment(
     # Unsupported heuristic checks surface as deterministic failures, so the
     # deterministic band total includes any extra failures beyond the declared
     # deterministic check count. OMN-13850: unevaluated (skipped) deterministic
-    # checks are EXCLUDED from the total so a check with no wired executor cannot
+    # checks are EXCLUDED from the total so a check without its evidence cannot
     # inflate the fraction with a phantom pass.
     deterministic_total = _evaluated_deterministic_total(
         dod_deterministic=dod_deterministic,

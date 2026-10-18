@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e02",
+  "path": "pinned",
+  "sha256": "d0cca3056ef70a384293517057b17b2c82b6fe0e811ccf883f7a2e7d798e0812",
+  "response": "PR #3373 adds a CI guard (tests/test_single_savings_definition.py) that enforces savings to be defined only once in node_metering_summary_compute by blocking hard-coded baselines, token-price multiplication in SQL outside that definition, and requiring the guard to run as a blocking step in ci.yml. This prevents a second savings definition from being reintroduced since five applied migrations still contain 'claude-opus-4.1' as baseline_model and later migrations could add hard-coded baselines or price calculations without detection, even though live views are already clean (OMN-19980)."
+}

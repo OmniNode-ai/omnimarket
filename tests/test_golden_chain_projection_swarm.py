@@ -152,7 +152,7 @@ class TestSwarmDispatchFailedPathRealProducerSeam:
     def _real_failed_payload(
         self, error: str = "boom: endpoint unreachable"
     ) -> dict[str, object]:
-        orchestrator = HandlerSwarmDispatchOrchestrator()
+        orchestrator = HandlerSwarmDispatchOrchestrator(event_bus=None)
         state = ModelOrchestratorState(
             fsm_state=EnumSwarmOrchestratorState.DISPATCHING,
             run_id="run-real-fail-001",
@@ -201,7 +201,7 @@ class TestSwarmDispatchFullFSMGoldenChain:
     """
 
     def test_full_fsm_chain_projects_completed_row(self) -> None:
-        orchestrator = HandlerSwarmDispatchOrchestrator()
+        orchestrator = HandlerSwarmDispatchOrchestrator(event_bus=None)
         state = ModelOrchestratorState(
             fsm_state=EnumSwarmOrchestratorState.RECEIVED,
             run_id="run-golden-001",
@@ -473,3 +473,42 @@ class TestProjectionSwarmModels:
         assert EnumSwarmRunStatus.FAILED == "failed"
         assert EnumFreshnessState.FRESH == "fresh"
         assert EnumFreshnessState.DEGRADED == "degraded"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["succeeded", "failed"])
+async def test_orchestrator_terminal_wire_reaches_projection(status: str) -> None:
+    """The producer must emit the envelope the runtime unwraps before db_io."""
+    import json
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import uuid4
+
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+        ProtocolEventBusPublisher,
+    )
+
+    bus = MagicMock(spec=ProtocolEventBusPublisher)
+    bus.publish = AsyncMock(spec=ProtocolEventBusPublisher.publish)
+    orchestrator = HandlerSwarmDispatchOrchestrator(event_bus=bus)
+    payload = _completed_event(
+        run_id=str(uuid4()), correlation_id=str(uuid4()), status=status
+    ).model_dump(mode="json")
+    topic = (
+        orchestrator._topic_completed
+        if status == "succeeded"
+        else orchestrator._topic_failed
+    )
+    await orchestrator._flush([(topic, payload)])
+    wire = json.loads(bus.publish.call_args.kwargs["value"])
+    envelope = ModelEventEnvelope.model_validate(wire)
+    db = InmemoryDatabaseAdapter()
+    request = {**envelope.payload, "_db": db, "_topic": topic}
+    assert HANDLER.handle(request)["rows_upserted"] == 1
+    HANDLER.handle(request)
+    rows = db.query("swarm_runs")
+    assert len(rows) == 1
+    assert rows[0]["run_id"] == payload["run_id"]
+    assert rows[0]["correlation_id"] == payload["correlation_id"]
+    assert rows[0]["status"] == status

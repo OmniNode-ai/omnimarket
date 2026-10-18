@@ -20,6 +20,7 @@ inputs whose decisions were recorded at 3fe55c842, before this change).
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 from typing import Any
@@ -601,62 +602,74 @@ class TestOccOnlyReplay:
 
 
 # --------------------------------------------------------------------------- #
-# AC6: no new non-canonical file; the change lives in the node's own modules.
+# AC6: no new non-canonical file; the repo-first implementation lives in the
+# node's own gate modules. The contract binds AC6 to ``-k no_module``, so the
+# test names below carry that token.
 # --------------------------------------------------------------------------- #
 
 _NODE_DIR = Path(durable_evidence_gate.__file__).resolve().parents[1]
-_NODE_FILES = frozenset(
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_FILE_SHAPE_BASELINE = (
+    _REPO_ROOT / ".onex_ratchets" / "canonical_file_shape_baseline.txt"
+)
+# The two modules the change edited; it added none (7586d0e04).
+_GATE_MODULES = frozenset(
+    {"services/durable_evidence_gate.py", "models/model_durable_evidence_gate.py"}
+)
+# The top-level names the change introduced.
+_REPO_FIRST_NAMES = frozenset(
     {
-        "__init__.py",
-        "__main__.py",
-        "contract.yaml",
-        "metadata.yaml",
-        "handlers/__init__.py",
-        "handlers/dod_evidence_local_source.py",
-        "handlers/handler_dod_evidence_github_effect.py",
-        "handlers/handler_dod_verify.py",
-        # OMN-20917: the S7 replay's handler, models and pure rules.
-        "handlers/handler_occ_replay.py",
-        "handlers/handler_runtime_sha_verify.py",
-        "models/__init__.py",
-        "models/model_ac_binding_retirement.py",
-        "models/model_ac_falsifier_command.py",
-        "models/model_dod_acceptance_summary.py",
-        "models/model_dod_contract_subject.py",
-        "models/model_dod_evidence_github_lookup.py",
-        "models/model_dod_verify_completed_event.py",
-        "models/model_dod_verify_start_command.py",
-        "models/model_dod_verify_state.py",
-        "models/model_durable_evidence_gate.py",
-        "models/model_occ_replay.py",
-        "models/model_occ_verdict_difference.py",
-        "services/__init__.py",
-        "services/ac_binding_retirements.py",
-        "services/ac_falsifier_checks.py",
-        "services/behavior_check_execution.py",
-        "services/check_proof_class.py",
-        "services/contract_subject.py",
-        "services/durable_evidence_gate.py",
-        "services/evidence_collector.py",
-        "services/occ_replay.py",
-        "services/occ_verdict_difference.py",
-        "services/receipt_bound_evidence.py",
-        "services/released_evidence.py",
-        "services/runtime_ops_readback.py",
+        "EnumRepoContractReadStatus",
+        "EnumRepoEvidenceOutcome",
+        "ModelRepoContractRead",
+        "ModelRepoEvidenceCheckRun",
+        "ModelRepoEvidenceVerdict",
+        "ModelTicketMergedPr",
+        "REPO_EVIDENCE_APP_SLUG",
+        "REPO_EVIDENCE_CHECK_NAME",
+        "RepoContractReader",
+        "RepoEvidenceCheckRunsReader",
+        "evaluate_repo_evidence",
     }
 )
 
 
+def _top_level_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
 @pytest.mark.unit
 class TestCanonicalShape:
-    def test_no_module_added_and_repo_first_lives_in_the_gate_modules(self) -> None:
-        present = frozenset(
-            str(p.relative_to(_NODE_DIR))
-            for p in _NODE_DIR.rglob("*")
-            if p.is_file() and p.suffix in {".py", ".yaml"}
-        )
-        assert present == _NODE_FILES
+    def test_no_module_defines_repo_first_names_outside_the_gate_modules(
+        self,
+    ) -> None:
+        definers: dict[str, set[str]] = {}
+        for path in sorted(_NODE_DIR.rglob("*.py")):
+            rel = str(path.relative_to(_NODE_DIR))
+            for name in _top_level_names(path) & _REPO_FIRST_NAMES:
+                definers.setdefault(name, set()).add(rel)
+        assert set(definers) == _REPO_FIRST_NAMES
+        stray = {n: m for n, m in definers.items() if not m <= _GATE_MODULES}
+        assert stray == {}
 
+    def test_no_module_of_the_node_is_in_the_file_shape_baseline(self) -> None:
+        node_prefix = str(_NODE_DIR.relative_to(_REPO_ROOT))
+        baseline = _FILE_SHAPE_BASELINE.read_text(encoding="utf-8").splitlines()
+        assert len(baseline) > 0
+        assert [line for line in baseline if node_prefix in line] == []
+
+    def test_no_module_added_and_repo_first_lives_in_the_gate_modules(self) -> None:
+        # This ticket constrains the repo-first gate's implementation, not
+        # unrelated verifier services added by later tickets (OMN-20864).
         gate_module = durable_evidence_gate.__name__
         model_module = ModelTicketMergedPr.__module__
         assert evaluate_repo_evidence.__module__ == gate_module

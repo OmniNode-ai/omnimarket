@@ -7,10 +7,11 @@ differs from the recorded one in method, path or body fails the test, so the
 node's request shapes are pinned. Response bodies follow GitHub's documented
 REST and GraphQL shapes; a mutation cannot be recorded without mutating.
 
-Covered: each of the six writes; the expected-head refusal; the refused close
+Covered: each write operation; the expected-head refusal; the refused close
 (no claim, and a claim held by another lane) against the real claim registry
-on a temporary directory; the quota-floor refusal; idempotent replays; and
-dry_run, which sends nothing.
+on a temporary directory; the quota-floor refusal; idempotent replays;
+dry_run, which sends nothing; and the contract's own mode per repository
+class, with every guard applied in each registry repository.
 """
 
 from __future__ import annotations
@@ -22,7 +23,11 @@ from uuid import UUID
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.events.pr_landing_github.model_github_quota_reading import (
+    ModelGithubQuotaReading,
+)
 from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     convert_to_draft_request,
@@ -41,6 +46,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpResponse,
 )
 from omnimarket.models.pr_claim import EnumPrClaimOperation, ModelPrClaimRegistryRequest
+from omnimarket.nodes.node_git_query_mirror_effect.git_mirror import REGISTRY_REPOS
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_github_repo_write import (
     HandlerGithubRepoWriteEffect,
     idempotency_marker,
@@ -52,6 +58,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
     EnumRepoWriteRefusal,
+    ModelRepoWriteClaim,
     ModelRepoWriteCompleted,
     ModelRepoWriteConfig,
     ModelRepoWriteFailed,
@@ -66,7 +73,9 @@ from omnimarket.nodes.node_pr_claim_registry_effect.handlers.handler_pr_claim_re
 
 pytestmark = pytest.mark.unit
 
-_REPO = "OmniNode-ai/omnimarket"
+# Generic write/adapter behavior outside the M4 contract gate.
+# M4 PR-create refusals and success are covered in the OMN-20864 suite.
+_REPO = "OmniNode-ai/omnibase_spi"
 _HEAD = "4ceedeafeb4040c987883d96c20e745ad5eed6e1"
 _MOVED = "a7f20d7a0" + "0" * 31
 _NODE_ID = "PR_kwDOR6jjtc8AAAABFQhbqA"
@@ -151,6 +160,7 @@ def _handler(
     *,
     claims: ProtocolPrClaimLookup | None = None,
     enforce: bool = True,
+    runtime_claims_dir: str = "",
 ) -> HandlerGithubRepoWriteEffect:
     config = ModelRepoWriteConfig(
         github_mode=EnumRepoWriteMode.DRY_RUN,
@@ -159,6 +169,7 @@ def _handler(
     return HandlerGithubRepoWriteEffect(
         transport,
         claim_lookup=claims or _NoClaims(),
+        runtime_claims_dir=runtime_claims_dir,
         config=config,
         clock=lambda: _NOW,
     )
@@ -382,7 +393,7 @@ async def test_graphql_errors_in_a_200_are_a_refusal() -> None:
 # --- pr_close and the claim ----------------------------------------------------
 
 
-def _acquire(claims_dir: Path, *, lane: str, run: str) -> None:
+def _acquire(claims_dir: Path, *, lane: str, run: str, repo: str = _REPO) -> None:
     registry = HandlerPrClaimRegistry()
     result = registry.handle(
         ModelPrClaimRegistryRequest(
@@ -393,7 +404,7 @@ def _acquire(claims_dir: Path, *, lane: str, run: str) -> None:
             ),
             instance_id_path=str(claims_dir / "instance-id"),
             host="lab-host",
-            pr_key=f"{_REPO.lower()}#4000",
+            pr_key=f"{repo.lower()}#4000",
             run_id=run,
             action="close",
             lane_id=lane,
@@ -454,6 +465,228 @@ async def test_pr_close_with_the_lanes_claim_closes_the_pr(tmp_path: Path) -> No
     assert isinstance(result, ModelRepoWriteCompleted)
     assert result.replayed is False
     assert transport.drained()
+
+
+# --- pr_close with the claim the caller took (OMN-21067) ------------------------
+#
+# The claim lands in the caller's registry, on the caller's host; the effect
+# runs on the bus lane's runtime and cannot read it. The caller carries the
+# claim on the command, and the effect checks it.
+
+
+def _stamp(offset_seconds: float) -> str:
+    return datetime.fromtimestamp(_NOW + offset_seconds, tz=UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _carried(**kw: object) -> ModelRepoWriteClaim:
+    fields: dict[str, object] = {
+        "pr_key": f"{_REPO.lower()}#4000",
+        "lane_id": _LANE,
+        "claimed_by_run": _RUN,
+        "action": "close",
+        "claimed_at": _stamp(-60),
+        **kw,
+    }
+    return ModelRepoWriteClaim.model_validate(fields)
+
+
+def _close_with(
+    claim: ModelRepoWriteClaim | None, **kw: object
+) -> ModelRepoWriteRequest:
+    return _req(
+        EnumRepoWriteOperation.PR_CLOSE,
+        pr_number=4000,
+        expected_head_sha=_HEAD,
+        requested_by_run=_RUN,
+        claim=claim,
+        **kw,
+    )
+
+
+def _close_exchanges() -> list[tuple[ModelGithubHttpRequest, ModelGithubHttpResponse]]:
+    return [
+        (pull_request_request(_REPO, 4000), _ok(_pr())),
+        (
+            edit_pull_request_request(_REPO, 4000, {"state": "closed"}),
+            _ok(_pr(state="closed")),
+        ),
+    ]
+
+
+async def test_pr_close_with_the_carried_claim_closes_with_no_registry_claim() -> None:
+    # AC1: the effect's registry holds nothing, the command carries the claim.
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried())
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert transport.drained()
+
+
+async def test_pr_close_with_the_carried_claim_closes_past_an_unreadable_dir(
+    tmp_path: Path,
+) -> None:
+    # AC1: --claims-dir named the caller's directory; the runtime's copy of
+    # that path is empty, which used to refuse every close.
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(), claims_dir=str(tmp_path))
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert transport.drained()
+
+
+async def test_a_carried_claim_with_a_recent_heartbeat_is_live() -> None:
+    # AC1: the registry's own liveness rule: a claim older than two hours is
+    # live while its heartbeat is under thirty minutes old.
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(
+            _carried(claimed_at=_stamp(-3 * 3600), last_heartbeat_at=_stamp(-300))
+        )
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+
+
+async def test_a_dry_run_close_with_the_carried_claim_plans_the_calls() -> None:
+    transport = _Recorded([])
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(), dry_run=True)
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert transport.sent == []
+
+
+async def test_pr_close_with_no_claim_anywhere_is_refused(tmp_path: Path) -> None:
+    # AC2: nothing carried, nothing in the registry: still refused.
+    for kw in ({}, {"claims_dir": str(tmp_path)}):
+        transport = _Recorded([])
+        result = await _handler(
+            transport, claims=HandlerPrClaimLookup(), runtime_claims_dir=str(tmp_path)
+        ).handle(_close_with(None, **kw))
+        assert isinstance(result, ModelRepoWriteFailed)
+        assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+        assert "no live claim" in result.detail
+        assert transport.sent == []
+
+
+@pytest.mark.parametrize(
+    ("claim_kw", "detail"),
+    [
+        ({"lane_id": "some-other-lane"}, "some-other-lane"),
+        ({"claimed_by_run": "another-run"}, "another-run"),
+        ({"pr_key": "omninode-ai/omnibase_spi#4001"}, "4001"),
+        (
+            {"claimed_at": _stamp(-3 * 3600), "last_heartbeat_at": _stamp(-3600)},
+            "expired",
+        ),
+        ({"claimed_at": _stamp(3600)}, "future"),
+        ({"claimed_at": _stamp(-60), "last_heartbeat_at": _stamp(3600)}, "future"),
+    ],
+    ids=["other-lane", "other-run", "other-pr", "expired", "future", "future-beat"],
+)
+async def test_a_carried_claim_that_is_not_the_requesters_live_claim_is_refused(
+    claim_kw: dict[str, object], detail: str
+) -> None:
+    # AC2: carrying a claim is not enough; it must be this lane's and run's,
+    # on this PR, and live.
+    transport = _Recorded([])
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(**claim_kw))
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert detail in result.detail
+    assert transport.sent == []
+
+
+async def test_a_peers_live_registry_claim_beats_the_carried_claim(
+    tmp_path: Path,
+) -> None:
+    # AC2: the registry the effect reads says another lane holds the PR.
+    _acquire(tmp_path, lane="peer-lane", run="peer-run")
+    transport = _Recorded([])
+    result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close_with(_carried(), claims_dir=str(tmp_path))
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert "peer-lane" in result.detail
+    assert transport.sent == []
+
+
+async def test_a_peers_claim_in_the_runtime_registry_beats_the_carried_claim(
+    tmp_path: Path,
+) -> None:
+    # AC2: the same, where the request names no directory and the runtime
+    # reads its own.
+    _acquire(tmp_path, lane="peer-lane", run="peer-run")
+    transport = _Recorded([])
+    result = await _handler(
+        transport, claims=HandlerPrClaimLookup(), runtime_claims_dir=str(tmp_path)
+    ).handle(_close_with(_carried()))
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert "peer-lane" in result.detail
+
+
+async def test_the_requesters_own_runtime_registry_claim_closes_without_a_carried_one(
+    tmp_path: Path,
+) -> None:
+    _acquire(tmp_path, lane=_LANE, run=_RUN)
+    transport = _Recorded(_close_exchanges())
+    result = await _handler(
+        transport, claims=HandlerPrClaimLookup(), runtime_claims_dir=str(tmp_path)
+    ).handle(_close_with(None))
+    assert isinstance(result, ModelRepoWriteCompleted)
+
+
+@pytest.mark.parametrize("filed_as", [_REPO, _REPO.lower(), _REPO.upper()])
+def test_the_lookup_finds_a_claim_filed_under_another_case(
+    tmp_path: Path, filed_as: str
+) -> None:
+    # pr_claim_registry_cli.py files a claim under the key as typed; the
+    # effect asks for the lowercase canonical key. On a case-sensitive
+    # filesystem those are two files.
+    registry = HandlerPrClaimRegistry()
+    assert registry.handle(
+        ModelPrClaimRegistryRequest(
+            operation=EnumPrClaimOperation.ACQUIRE,
+            claims_dir=str(tmp_path),
+            now=_stamp(-60),
+            instance_id_path=str(tmp_path / "instance-id"),
+            host="lab-host",
+            pr_key=f"{filed_as}#4000",
+            run_id=_RUN,
+            action="close",
+            lane_id=_LANE,
+        )
+    ).succeeded
+    claim = HandlerPrClaimLookup().active_claim(
+        claims_dir=str(tmp_path), pr_key=f"{_REPO.lower()}#4000", now=_stamp(0)
+    )
+    assert claim is not None
+    assert (claim.lane_id, claim.claimed_by_run) == (_LANE, _RUN)
+
+
+def test_the_lookup_does_not_match_another_pr_number(tmp_path: Path) -> None:
+    _acquire(tmp_path, lane=_LANE, run=_RUN)
+    assert (
+        HandlerPrClaimLookup().active_claim(
+            claims_dir=str(tmp_path),
+            pr_key=f"{_REPO.lower()}#40",
+            now=_stamp(0),
+        )
+        is None
+    )
+
+
+def test_a_carried_claim_with_an_unparseable_timestamp_is_not_a_claim() -> None:
+    with pytest.raises(ValueError, match="claimed_at"):
+        _carried(claimed_at="yesterday")
 
 
 async def test_quota_floor_refuses_the_next_call_before_it_is_sent(
@@ -578,6 +811,159 @@ async def test_a_request_can_force_dry_run_but_not_enforce() -> None:
     assert transport.sent == []
 
 
+def _contract_handler(
+    transport: _Recorded, *, claims: ProtocolPrClaimLookup | None = None
+) -> HandlerGithubRepoWriteEffect:
+    """The handler with the mode its contract declares, no injected config."""
+    return HandlerGithubRepoWriteEffect(
+        transport, claim_lookup=claims or _NoClaims(), clock=lambda: _NOW
+    )
+
+
+# --- the contract's mode, per repository class ----------------------------------
+#
+# Three classes of repository reach the write effect: omnimarket, every other
+# registry repository, and a repository outside the declared owner. Each
+# registry repository writes in enforce under the contract's own config, and
+# every guard (expected head, quota floor, claim for close) still applies to
+# it; a repository outside the owner runs dry and sends nothing.
+
+_OUTSIDE = "octocat/hello-world"
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_performs_a_pr_edit_in_each_registry_repository(
+    repo: str,
+) -> None:
+    transport = _Recorded(
+        [
+            (pull_request_request(repo, 4000), _ok(_pr())),
+            (edit_pull_request_request(repo, 4000, {"title": "new"}), _ok(_pr())),
+        ]
+    )
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=repo,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert [r.method for r in transport.sent] == ["GET", "PATCH"]
+    assert transport.drained()
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_refuses_a_moved_head_in_each_registry_repository(
+    repo: str,
+) -> None:
+    transport = _Recorded([(pull_request_request(repo, 4000), _ok(_pr(head=_MOVED)))])
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=repo,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.HEAD_MOVED
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert [r.method for r in transport.sent] == ["GET"]
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_holds_the_quota_floor_in_each_registry_repository(
+    repo: str,
+) -> None:
+    transport = _Recorded(
+        [(pull_request_request(repo, 4000), _ok(_pr(), remaining=120))]
+    )
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=repo,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.QUOTA_FLOOR
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert [r.method for r in transport.sent] == ["GET"]
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_refuses_a_close_without_a_claim_in_each_registry_repository(
+    repo: str, tmp_path: Path
+) -> None:
+    transport = _Recorded([])
+    result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close(tmp_path, repo=repo)
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert transport.sent == []
+
+
+@pytest.mark.parametrize("repo", REGISTRY_REPOS)
+async def test_contract_mode_closes_with_the_lanes_claim_in_each_registry_repository(
+    repo: str, tmp_path: Path
+) -> None:
+    _acquire(tmp_path, lane=_LANE, run=_RUN, repo=repo)
+    transport = _Recorded(
+        [
+            (pull_request_request(repo, 4000), _ok(_pr())),
+            (
+                edit_pull_request_request(repo, 4000, {"state": "closed"}),
+                _ok(_pr(state="closed")),
+            ),
+        ]
+    )
+    result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close(tmp_path, repo=repo)
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.ENFORCE
+    assert transport.drained()
+
+
+async def test_contract_mode_runs_dry_outside_the_declared_owner() -> None:
+    transport = _Recorded([])
+    result = await _contract_handler(transport).handle(
+        _req(
+            EnumRepoWriteOperation.PR_EDIT,
+            repo=_OUTSIDE,
+            pr_number=4000,
+            expected_head_sha=_HEAD,
+            title="new",
+        )
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert [r.method for r in result.requests] == ["GET", "PATCH"]
+    assert transport.sent == []
+
+
+async def test_contract_mode_still_needs_the_claim_to_close_outside_the_owner(
+    tmp_path: Path,
+) -> None:
+    transport = _Recorded([])
+    result = await _contract_handler(transport, claims=HandlerPrClaimLookup()).handle(
+        _close(tmp_path, repo=_OUTSIDE)
+    )
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.CLAIM_NOT_HELD
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert transport.sent == []
+
+
 async def test_dry_run_close_still_needs_the_claim(tmp_path: Path) -> None:
     transport = _Recorded([])
     result = await _handler(transport, claims=HandlerPrClaimLookup()).handle(
@@ -597,7 +983,7 @@ async def test_dry_run_close_still_needs_the_claim(tmp_path: Path) -> None:
         (
             EnumRepoWriteOperation.PR_CLOSE,
             {"pr_number": 1, "expected_head_sha": _HEAD},
-            "claims_dir",
+            "requested_by_run",
         ),
         (EnumRepoWriteOperation.PR_CREATE, {"head": "h"}, "base"),
         (EnumRepoWriteOperation.WORKFLOW_DISPATCH, {"workflow": "ci.yml"}, "ref"),
@@ -615,8 +1001,9 @@ def test_contract_declares_mode_floor_and_topics() -> None:
     contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
     config = ModelRepoWriteConfig.from_contract(_CONTRACT)
     assert config.github_mode is EnumRepoWriteMode.DRY_RUN
+    assert config.github_mode_by_owner == {"OmniNode-ai": EnumRepoWriteMode.ENFORCE}
     assert config.mode_for("omninode-ai/OMNIMARKET") is EnumRepoWriteMode.ENFORCE
-    assert config.mode_for("OmniNode-ai/omnibase_core") is EnumRepoWriteMode.DRY_RUN
+    assert config.mode_for(_OUTSIDE) is EnumRepoWriteMode.DRY_RUN
     assert contract["quota_floor"]["min_remaining"] == {"core": 500, "graphql": 500}
     assert {op["name"] for op in contract["operations"]} == {
         op.value for op in EnumRepoWriteOperation
@@ -631,3 +1018,239 @@ def test_contract_declares_mode_floor_and_topics() -> None:
     assert contract["event_bus"]["subscribe_topics"] == [
         "onex.cmd.omnimarket.github-repo-write-requested.v1"
     ]
+
+
+def test_contract_enforces_every_registry_repository_through_the_owner_row() -> None:
+    config = ModelRepoWriteConfig.from_contract(_CONTRACT)
+    assert config.github_mode is EnumRepoWriteMode.DRY_RUN
+    dry = [
+        r for r in REGISTRY_REPOS if config.mode_for(r) is not EnumRepoWriteMode.ENFORCE
+    ]
+    assert dry == []
+
+
+@pytest.mark.parametrize(
+    "repo", [_OUTSIDE, "OmniNode-ai-fork/omnimarket", "omninode/omnimarket"]
+)
+def test_contract_keeps_a_repository_outside_the_owner_dry(repo: str) -> None:
+    config = ModelRepoWriteConfig.from_contract(_CONTRACT)
+    assert config.mode_for(repo) is EnumRepoWriteMode.DRY_RUN
+
+
+def test_a_repository_can_still_be_pinned_to_dry_run_by_declaration() -> None:
+    contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    table = dict(contract["write_config"]["github_mode_by_repository"])
+    table["OmniNode-ai/omnibase_core"] = "dry_run"
+    config = ModelRepoWriteConfig.model_validate(
+        {**contract["write_config"], "github_mode_by_repository": table}
+    )
+    assert config.mode_for("OmniNode-ai/omnibase_core") is EnumRepoWriteMode.DRY_RUN
+    assert config.mode_for("OmniNode-ai/omnimarket") is EnumRepoWriteMode.ENFORCE
+
+
+def test_an_owner_row_naming_a_repository_is_refused_at_load() -> None:
+    with pytest.raises(ValueError, match="must name an owner"):
+        ModelRepoWriteConfig.model_validate(
+            {"github_mode_by_owner": {"OmniNode-ai/omnimarket": "enforce"}}
+        )
+
+
+# --- check_run_create ----------------------------------------------------------
+
+
+def _check_command(**overrides: object) -> ModelRepoWriteRequest:
+    return ModelRepoWriteRequest.model_validate(
+        {
+            "correlation_id": _CORRELATION,
+            "operation": "check_run_create",
+            "repo": _REPO,
+            "idempotency_key": "check-run-create-19998",
+            "requested_by_lane": _LANE,
+            "name": "lab/pr-merged-publisher",
+            "head_sha": _HEAD,
+            "status": "completed",
+            "conclusion": "success",
+            "output": {"title": "Lab publisher", "summary": "One merge published."},
+            **overrides,
+        }
+    )
+
+
+def _check_post(
+    *, status: str = "completed", conclusion: str | None = "success"
+) -> ModelGithubHttpRequest:
+    body: dict[str, object] = {
+        "name": "lab/pr-merged-publisher",
+        "head_sha": _HEAD,
+        "status": status,
+        "output": {"title": "Lab publisher", "summary": "One merge published."},
+    }
+    if conclusion is not None:
+        body["conclusion"] = conclusion
+    return ModelGithubHttpRequest(
+        method="POST", path=f"/repos/{_REPO}/check-runs", body=body
+    )
+
+
+async def test_check_run_create_posts_recorded_response_and_replays() -> None:
+    # Recorded 201 shape from https://docs.github.com/en/rest/checks/runs,
+    # adapted to the test repository and head; this is not a live capture.
+    # No live GitHub transport is constructed in this test.
+    response = _ok(
+        {
+            "id": 4,
+            "head_sha": _HEAD,
+            "html_url": f"https://github.com/{_REPO}/runs/4",
+            "name": "lab/pr-merged-publisher",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        status=201,
+    )
+    transport = _Recorded([(_check_post(), response)])
+    handler = _handler(transport)
+    request = _check_command()
+    result = await handler.handle(
+        ModelRepoWriteRequest.model_validate_json(request.model_dump_json())
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.check_run_id == 4
+    assert result.html_url == f"https://github.com/{_REPO}/runs/4"
+    assert result.head_sha == _HEAD
+    assert result.http_statuses == (201,)
+    assert result.quota is not None
+    assert result.quota.remaining == 4900
+    assert result.pr_number is None
+    replay = await handler.handle(
+        request.model_copy(update={"correlation_id": UUID(int=1)})
+    )
+    assert isinstance(replay, ModelRepoWriteCompleted)
+    assert replay.replayed
+    assert replay.check_run_id == 4
+    assert replay.correlation_id == UUID(int=1)
+    assert transport.sent == [_check_post()]
+    assert transport.drained()
+
+
+@pytest.mark.parametrize("status", ["queued", "in_progress"])
+async def test_check_run_create_nonterminal_omits_conclusion(status: str) -> None:
+    post = _check_post(status=status, conclusion=None)
+    transport = _Recorded([(post, _ok({"id": 4, "head_sha": _HEAD}, status=201))])
+    result = await _handler(transport).handle(
+        _check_command(status=status, conclusion=None)
+    )
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.check_run_id == 4
+    assert transport.drained()
+
+
+async def test_check_run_create_dry_run_plans_same_post_without_transport() -> None:
+    transport = _Recorded([])
+    result = await _handler(transport).handle(_check_command(dry_run=True))
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.mode is EnumRepoWriteMode.DRY_RUN
+    assert result.requests == (_check_post(),)
+    assert result.check_run_id is None
+    assert transport.sent == []
+
+
+async def test_check_run_create_refuses_under_quota_before_post() -> None:
+    transport = _Recorded([])
+    handler = _handler(transport)
+    handler.record_reading(
+        ModelGithubQuotaReading.from_response_headers(
+            _headers(remaining=499), identity="test"
+        )
+    )
+    result = await handler.handle(_check_command())
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.QUOTA_FLOOR
+    assert transport.sent == []
+
+
+@pytest.mark.parametrize("http_status", [403, 422])
+async def test_check_run_create_github_refusal_is_typed(http_status: int) -> None:
+    transport = _Recorded(
+        [(_check_post(), _ok({"message": "Checks write refused"}, status=http_status))]
+    )
+    result = await _handler(transport).handle(_check_command())
+    assert isinstance(result, ModelRepoWriteFailed)
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert result.terminal_failure_cause is result.reason
+    assert result.http_status == http_status
+    assert transport.drained()
+
+
+@pytest.mark.parametrize("field", ["name", "head_sha", "status"])
+def test_check_run_create_requires_fields(field: str) -> None:
+    with pytest.raises(ValueError, match=field):
+        _check_command(**{field: None})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"head_sha": "main"},
+        {"name": ""},
+        {"status": "pending"},
+        {"status": "completed", "conclusion": None},
+        {"status": "queued", "conclusion": "success"},
+        {"status": "in_progress", "conclusion": "failure"},
+        {"conclusion": "stale"},
+        {"output": {"summary": "missing title"}},
+        {"output": {"title": "missing summary"}},
+        {"output": {"title": "title", "summary": "ok", "extra": True}},
+    ],
+)
+def test_check_run_create_rejects_invalid_fields(overrides: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _check_command(**overrides)
+
+
+def test_contract_declares_check_run_create() -> None:
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    assert "check_run_create" in {row["name"] for row in contract["operations"]}
+
+
+@pytest.mark.parametrize(
+    "conclusion",
+    [
+        "success",
+        "failure",
+        "neutral",
+        "cancelled",
+        "skipped",
+        "timed_out",
+        "action_required",
+    ],
+)
+def test_check_run_create_accepts_completed_conclusions(conclusion: str) -> None:
+    request = _check_command(conclusion=conclusion)
+    assert request.conclusion == conclusion
+
+
+def test_check_run_create_fields_are_refused_for_other_operations() -> None:
+    with pytest.raises(ValidationError, match="read only by check_run_create"):
+        _req(
+            EnumRepoWriteOperation.WORKFLOW_DISPATCH,
+            workflow="ci.yml",
+            ref="dev",
+            name="ignored-check",
+        )
+
+
+async def test_check_run_create_omits_optional_output() -> None:
+    post = ModelGithubHttpRequest(
+        method="POST",
+        path=f"/repos/{_REPO}/check-runs",
+        body={
+            "name": "lab/pr-merged-publisher",
+            "head_sha": _HEAD,
+            "status": "completed",
+            "conclusion": "success",
+        },
+    )
+    transport = _Recorded([(post, _ok({"id": 4, "head_sha": _HEAD}, status=201))])
+    result = await _handler(transport).handle(_check_command(output=None))
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert transport.drained()

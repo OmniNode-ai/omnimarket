@@ -850,6 +850,54 @@ def _node_name_for_command(command_name: str) -> str:
     return f"node_{candidate}"
 
 
+def _select_operation_contract(
+    contract: dict[str, Any], command_name: str
+) -> dict[str, Any]:
+    """Retain unqualified legacy commands; an explicit operation must resolve."""
+    if command_name == "delegate_skill.orchestrate":
+        # This established command alias names the orchestrator, not an operation.
+        return contract
+    _, separator, operation = command_name.partition(".")
+    routing = contract.get("handler_routing")
+    if (
+        not isinstance(routing, dict)
+        or routing.get("routing_strategy") != "operation_match"
+    ):
+        return contract
+    handlers = routing.get("handlers")
+    entries = (
+        [entry for entry in handlers if isinstance(entry, dict)]
+        if isinstance(handlers, list)
+        else []
+    )
+    if separator:
+        entries = [entry for entry in entries if entry.get("operation") == operation]
+        if len(entries) != 1:
+            raise ValueError(f"Contract cannot resolve operation {operation!r}")
+    elif contract.get("handler"):
+        return contract
+    if not entries:
+        raise ValueError("Contract has no operation handler")
+    # The first operation remains the unqualified command for existing callers.
+    entry = entries[0]
+    handler = entry.get("handler")
+    if not isinstance(handler, dict):
+        raise ValueError("Contract operation lacks a handler mapping")
+    selected_handler = dict(handler)
+    selected_handler.setdefault("class", selected_handler.get("name"))
+    model = (
+        entry.get("input_model")
+        or entry.get("event_model")
+        or handler.get("input_model")
+    )
+    if model is not None:
+        selected_handler["input_model"] = model
+    selected = {**contract, "handler": selected_handler}
+    if model is not None:
+        selected["input_model"] = model
+    return selected
+
+
 def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None:
     contract_path = _NODE_ROOT / _node_name_for_command(command_name) / "contract.yaml"
     if not contract_path.exists():
@@ -861,6 +909,10 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     if not isinstance(raw, dict):
         return None
     if not _has_valid_contract_shapes(raw):
+        return None
+    try:
+        raw = _select_operation_contract(raw, command_name)
+    except ValueError:
         return None
 
     event_bus_raw = raw.get("event_bus", {})

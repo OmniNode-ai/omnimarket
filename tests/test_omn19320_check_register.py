@@ -32,7 +32,6 @@ from omnimarket.delegation.identifier_grounding import (
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     _HEURISTIC_CONTAINS_ANY_CHECKS,
     _HEURISTIC_SIMPLE_CHECKS,
-    _UNEVALUATED_DETERMINISTIC_CHECKS,
     SUPPORTED_DETERMINISTIC_CHECKS,
 )
 from omnimarket.ranges import (
@@ -279,7 +278,7 @@ class TestRequiredDelegationAcceptanceEntries:
             for prefix in (FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)
             for name in REQUIRED_FALSE_PASS_CLASSES
         )
-        assert len(required_check_ids()) == 49
+        assert len(required_check_ids()) == 51
 
     def test_the_committed_register_passes_with_all_required_entries(self) -> None:
         document = yaml.safe_load(
@@ -402,7 +401,6 @@ class TestRequiredDelegationAcceptanceInventory:
     def test_gate_checks_match_the_quality_gate_inventory(self) -> None:
         gate_checks = (
             set(SUPPORTED_DETERMINISTIC_CHECKS)
-            | set(_UNEVALUATED_DETERMINISTIC_CHECKS)
             | set(_HEURISTIC_SIMPLE_CHECKS)
             | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
             | {
@@ -412,7 +410,7 @@ class TestRequiredDelegationAcceptanceInventory:
             }
         )
         assert gate_checks
-        assert len(gate_checks) == 35
+        assert len(gate_checks) == 37
         assert tuple(sorted(gate_checks)) == REQUIRED_GATE_CHECKS
 
     def test_false_pass_classes_match_the_seven_acceptance_classes(self) -> None:

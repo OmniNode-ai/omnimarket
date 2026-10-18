@@ -1,0 +1,115 @@
+---
+name: node_delegation_tier_comparison_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure builder of the tiered delegation comparison records (OMN-20968, plan section 6.1). The
+  judged items of every arm of one eval run in, one numeric-and-enumerated record per task class,
+  kind and arm out: accepted of n with a Wilson interval under each judge, judge agreement and
+  kappa, the pre-registered pass rule per judge, the class baseline (the cheapest Claude tier up to
+  the mapped one that passes under both judges), the paired gap to that baseline with a seeded
+  bootstrap interval, latency percentiles, mean tokens, cost per attempt and per accepted answer,
+  and the quality-adjusted saving per task with its range for local arms. A run with a class that
+  has no pre-registered n, a repeated arm, a repeated item or an arm with no items is refused whole.
+  Reads no file, calls no model, reads no clock and holds no price: costs arrive on the items.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_tier_comparison
+      handler:
+        name: HandlerDelegationTierComparison
+        module: omnimarket.nodes.node_delegation_tier_comparison_compute.handlers.handler_delegation_tier_comparison
+
+handler:
+  module: omnimarket.nodes.node_delegation_tier_comparison_compute.handlers.handler_delegation_tier_comparison
+  class: HandlerDelegationTierComparison
+  input_model: omnimarket.models.delegation_tier_comparison.model_comparison_request.ModelComparisonRequest
+  output_model: omnimarket.models.delegation_tier_comparison.model_comparison_result.ModelComparisonResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [main]
+
+inputs:
+  eval_run_id:
+    type: str
+    required: true
+    description: The eval run the arms belong to; the judged events carry it as origin eval.
+  prereg_sha256:
+    type: str
+    required: true
+    description: The sha256 of the pre-registration manifest filed before the first call.
+  rubric_id:
+    type: str
+    required: true
+  rubric_version:
+    type: str
+    required: true
+  measured_at:
+    type: str
+    required: true
+    description: The date of the measurement.
+  requirements:
+    type: tuple
+    required: true
+    description: The pre-registered n of each task class and kind.
+  arms:
+    type: tuple
+    required: true
+    description: Every arm of every class with its judged items under both judges.
+  accept_rate_min:
+    type: float
+    required: false
+    description: Pre-registered accept rate floor, 0.80 by default.
+  wilson_low_min:
+    type: float
+    required: false
+    description: Pre-registered Wilson lower bound floor, 0.60 by default.
+  gap_margin:
+    type: float
+    required: false
+    description: The non-inferiority margin the consumer compares the gap upper bound with, 0.10 by default.
+  bootstrap_resamples:
+    type: int
+    required: false
+    description: Paired bootstrap resamples, 10000 by default.
+  bootstrap_seed:
+    type: int
+    required: false
+    description: The fixed bootstrap seed.
+
+outputs:
+  records:
+    type: tuple
+  underpowered:
+    type: tuple
+  issues:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.delegation-tier-comparison-measured.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-tier-comparison-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-tier-comparison-measured.v1
+
+# The Jev decision step and the dashboard read the records from this topic.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-tier-comparison-measured.v1
+
+published_events:
+  - event_type: DelegationTierComparisonMeasured
+    topic: onex.evt.omnimarket.delegation-tier-comparison-measured.v1
+    description: The comparison records of one eval run, or the refusals that stopped it.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-tier-comparison-requested.v1

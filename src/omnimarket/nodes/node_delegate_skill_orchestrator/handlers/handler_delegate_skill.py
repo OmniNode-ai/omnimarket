@@ -12,9 +12,10 @@ internal.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
@@ -34,6 +35,11 @@ from omnibase_infra.runtime.dispatch_envelope_context import (
 from pydantic import ValidationError
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.declared_outputs_contract import (
+    build_declared_outputs_response_contract,
+    render_declared_outputs_instruction,
+)
+from omnimarket.delegation.deliverable_extraction import final_answer_text
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -41,6 +47,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptKind
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
@@ -80,6 +87,12 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
 )
+from omnimarket.models.delegation.wire.model_delegation_output_files import (
+    ModelDeclaredOutputs,
+)
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    ModelNamedTestSpec,
+)
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -106,6 +119,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_cla
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
+)
+from omnimarket.nodes.node_delegation_output_extract_compute import (
+    ModelDelegationOutputExtractRequest,
+    extract_declared_outputs,
 )
 from omnimarket.pricing import (
     build_premium_counterfactual,
@@ -178,6 +195,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -246,6 +264,54 @@ def _attribution_dispatch_kwargs(
     if attribution:
         return {"attribution": attribution}
     return {}
+
+
+class _NamedTestsDispatchKwargs(TypedDict, total=False):
+    """The tests a code-class request names, for the port (OMN-21077).
+
+    Passed only when the request names tests AND the port declares the keyword.
+    omnibase_infra injects its own runtime dispatch port, which runs no tests
+    and would raise ``TypeError`` on an unknown keyword; there the tests are
+    not run, the gate sees no test run, and the code answer is refused as
+    INSUFFICIENT rather than accepted untested.
+    """
+
+    named_tests: ModelNamedTestSpec
+
+
+def _named_tests_dispatch_kwargs(
+    request: ModelDelegateSkillRequest, dispatch: Callable[..., object]
+) -> _NamedTestsDispatchKwargs:
+    try:
+        spec = ModelNamedTestSpec.from_metadata(
+            request.metadata,
+            default_workspace=request.working_directory or request.cwd,
+        )
+    except (ValueError, ValidationError) as exc:
+        logger.warning(
+            "delegate-skill named tests refused (correlation_id=%s): %s",
+            request.correlation_id,
+            exc,
+        )
+        return {}
+    if spec is None:
+        return {}
+    try:
+        parameters = inspect.signature(dispatch).parameters
+    except (TypeError, ValueError):
+        return {"named_tests": spec}
+    accepts = "named_tests" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if not accepts:
+        logger.warning(
+            "delegate-skill named tests not run (correlation_id=%s): this dispatch "
+            "port runs no tests, so the code answer will be refused as INSUFFICIENT",
+            request.correlation_id,
+        )
+        return {}
+    return {"named_tests": spec}
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -450,6 +516,34 @@ def _as_terminal_failure_cause(
         return EnumDelegationTerminalFailureCause(value)
     msg = f"invalid terminal_failure_cause {value!r}"
     raise ValueError(msg)
+
+
+def _as_usage_source(value: object) -> EnumUsageSource | None:
+    """A rung's reported usage source, or None when it reported none.
+
+    OMN-20717. An unrecognised value is read as ``unknown`` rather than
+    dropped: the rung did report a source, and it was not a measured one.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return EnumUsageSource(str(value))
+    except ValueError:
+        return EnumUsageSource.UNKNOWN
+
+
+def _cost_measured(attempts: Sequence[ModelDelegateSkillAttemptRecord]) -> bool | None:
+    """Whether the delegation's cost was measured, from its rungs' sources.
+
+    OMN-20717 AC2. True when any rung's cost was measured; False when rungs
+    reported a source and none was measured, so the call was not priced and a
+    zero cost means unknown rather than free; None when no rung reported a
+    source, in which case the cost is taken as given.
+    """
+    sources = [a.usage_source for a in attempts if a.usage_source is not None]
+    if not sources:
+        return None
+    return any(source is EnumUsageSource.MEASURED for source in sources)
 
 
 def _measured_cost_usd(result: dict[str, object]) -> float:
@@ -671,6 +765,7 @@ def _attempt_records(
                         else None
                     ),
                     cost_usd=_as_float(raw.get("cost_usd")),
+                    usage_source=_as_usage_source(raw.get("usage_source")),
                     failure_class=(
                         str(raw["failure_class"])
                         if raw.get("failure_class") is not None
@@ -707,6 +802,7 @@ def _attempt_records(
                     else None
                 ),
                 cost_usd=_as_float(raw.get("cost_usd")),
+                usage_source=_as_usage_source(raw.get("usage_source")),
                 failure_class=(
                     str(raw["failure_class"])
                     if raw.get("failure_class") is not None
@@ -1014,6 +1110,31 @@ def _response_from_result(
     else:
         cost_savings_usd = 0.0
     manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
+    final_answer, response_reasoning = final_answer_text(str(result.get("content", "")))
+    if (
+        response_reasoning
+        and deciding_attempt is not None
+        and response_reasoning not in deciding_attempt.reasoning_preamble
+    ):
+        # Keep the removed text on the existing wire evidence of the rung
+        # that supplied it; older consumers cannot decode a new terminal key.
+        updated_attempt = deciding_attempt.model_copy(
+            update={
+                "reasoning_preamble": "\n\n".join(
+                    part
+                    for part in (
+                        deciding_attempt.reasoning_preamble,
+                        response_reasoning,
+                    )
+                    if part
+                )
+            }
+        )
+        attempts = [
+            updated_attempt if attempt is deciding_attempt else attempt
+            for attempt in attempts
+        ]
+        deciding_attempt = updated_attempt
     return ModelDelegateSkillResponse(
         status=status_value,
         finish_reason=deciding_attempt.finish_reason if deciding_attempt else None,
@@ -1061,7 +1182,9 @@ def _response_from_result(
             else manifest_version
         ),
         prompt_text=request.prompt,
-        response=str(result.get("content", "")),
+        # OMN-21088: the caller receives the final answer only. Reasoning the
+        # provider returned with it is kept locally and in the attempt evidence.
+        response=final_answer,
         quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
@@ -1093,6 +1216,7 @@ def _response_from_result(
             tokens_to_compliance=_as_int(result.get("tokens_to_compliance")),
             compliance_attempts=_as_int(result.get("compliance_attempts")),
             cost_usd=actual_cost_usd,
+            cost_measured=_cost_measured(attempts),
             cost_savings_usd=cost_savings_usd,
             frontier_costs_usd=_frontier_cost_estimates(result),
             premium_counterfactual=_premium_counterfactual(
@@ -1111,6 +1235,53 @@ def _response_from_result(
         # which is the only party that knows when it picked the record up.
         queue_wait_ms=queue_wait_ms,
         execution_duration_ms=execution_duration_ms,
+    ).retain_response_reasoning(response_reasoning)
+
+
+def _request_with_declared_outputs_contract(
+    request: ModelDelegateSkillRequest, declared: ModelDeclaredOutputs
+) -> ModelDelegateSkillRequest:
+    """Ask for the declared files through the request's existing contract seam.
+
+    OMN-19599: the schema rides as ``response_contract``, so the quality gate
+    already refuses a reply that is not the declared files before anything is
+    accepted; the instruction tells the model the same thing in words. The
+    request model refuses a caller contract beside ``declared_outputs``, so this
+    never overwrites one.
+    """
+    return request.model_copy(
+        update={
+            "prompt": (
+                f"{request.prompt}\n\n{render_declared_outputs_instruction(declared)}"
+            ),
+            "response_contract": build_declared_outputs_response_contract(declared),
+        }
+    )
+
+
+def _terminal_with_output_files(
+    terminal: ModelDelegateSkillCompleted | ModelDelegateSkillFailed,
+    declared: ModelDeclaredOutputs,
+) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
+    """Stamp the accepted files and their manifest on a completed terminal.
+
+    A failed terminal accepted no reply, so it names no files. The extract
+    compute never raises on model output: every unsafe, undeclared, oversize
+    or missing file is a typed refusal inside the manifest, so a completed
+    terminal whose files do not match the declaration says so by name.
+    """
+    if not isinstance(terminal, ModelDelegateSkillCompleted):
+        return terminal
+    extracted = extract_declared_outputs(
+        ModelDelegationOutputExtractRequest(
+            response_text=terminal.response, declared_outputs=declared
+        )
+    )
+    return terminal.model_copy(
+        update={
+            "output_manifest": extracted.manifest,
+            "output_files": extracted.files,
+        }
     )
 
 
@@ -1169,8 +1340,19 @@ class HandlerDelegateSkill:
         command message the OMN-18887 claim keys on, so two commands sharing a
         correlation yield terminals that differ in it. No bound delivery (a
         direct call) leaves it absent rather than substituting another id.
+
+        OMN-19437: the same place copies the command's ``trace_id`` and
+        ``span_id``, so every terminal path answers with the ids of the command
+        it answers. A command that carried none leaves them absent.
         """
-        terminal = await self._dispatch_and_build_untagged_terminal(request)
+        declared = request.declared_outputs
+        terminal = await self._dispatch_and_build_untagged_terminal(
+            request
+            if declared is None
+            else _request_with_declared_outputs_contract(request, declared)
+        )
+        if declared is not None:
+            terminal = _terminal_with_output_files(terminal, declared)
         delivery = current_dispatch_envelope()
         attribution: dict[str, object] = {
             key: value
@@ -1178,6 +1360,8 @@ class HandlerDelegateSkill:
                 ("ticket_id", _request_ticket_id(request)),
                 ("caller_lane", _request_caller_lane(request)),
                 ("session_id", _request_session_id(request)),
+                ("trace_id", request.trace_id),
+                ("span_id", request.span_id),
                 ("command_id", None if delivery is None else delivery.envelope_id),
             )
             if value is not None
@@ -1262,7 +1446,13 @@ class HandlerDelegateSkill:
                     "task_class_timeout_ceiling_seconds="
                     f"{timeout_ceiling_seconds}"
                 ),
-                terminal_failure_cause=None,
+                # OMN-19448: a refusal before dispatch has no ladder to derive a
+                # cause from, so the terminal names the event itself.
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                # OMN-19004: nothing was attempted, so the count says zero.
+                attempts_count=0,
             )
         execution_timeout_seconds = (
             timeout_ceiling_seconds
@@ -1337,6 +1527,10 @@ class HandlerDelegateSkill:
                     **_no_escalation_dispatch_kwargs(request),
                     # OMN-20606: only when named -- see _AttributionDispatchKwargs.
                     **_attribution_dispatch_kwargs(request),
+                    # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
+                    **_named_tests_dispatch_kwargs(
+                        request, self._dispatch_port.dispatch
+                    ),
                 ),
                 timeout=float(
                     execution_timeout_seconds
@@ -1344,6 +1538,9 @@ class HandlerDelegateSkill:
                 ),
             )
         except asyncio.CancelledError:
+            progress.finalize_run_steps(
+                "runtime_shutdown", "runtime shut down during the run"
+            )
             # OMN-20117: the runtime is shutting down under this run (a
             # redeploy, restart or stop). The runtime drains running dispatches
             # first and cancels the ones still running while its producer is
@@ -1401,6 +1598,10 @@ class HandlerDelegateSkill:
             # run 37977092319 lost all of it and its receipt named no backend,
             # model, key source or attempt.
             cancelled_stage = progress.cancelled_stage or progress.stage
+            progress.finalize_run_steps(
+                "timeout",
+                f"handler execution budget expired at stage={cancelled_stage}",
+            )
             return delegate_skill_terminal_from_response(
                 _response_from_result(
                     request,
@@ -1423,6 +1624,10 @@ class HandlerDelegateSkill:
                 )
             )
         except Exception as exc:
+            failure_cause = resolve_terminal_failure_cause((), error_message=str(exc))
+            progress.finalize_run_steps(
+                "unknown" if failure_cause is None else failure_cause.value, str(exc)
+            )
             return ModelDelegateSkillFailed(
                 status="failed",
                 correlation_id=request.correlation_id,
@@ -1438,9 +1643,7 @@ class HandlerDelegateSkill:
                 # must carry the FAILED class identity. Returning the base
                 # response here routed hard dispatch failures onto the SUCCESS
                 # terminal by map-miss fallback.
-                terminal_failure_cause=resolve_terminal_failure_cause(
-                    (), error_message=str(exc)
-                ),
+                terminal_failure_cause=failure_cause,
                 budget_evidence=budget_evidence,
             )
 

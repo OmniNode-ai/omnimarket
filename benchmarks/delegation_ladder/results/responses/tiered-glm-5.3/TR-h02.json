@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h02",
+  "path": "pinned",
+  "sha256": "8452222db5b4396a1216b9441d263f252cf44c63fc2ca7d9ab6ab9affbd17e07",
+  "response": "**[35]** — the docstring line in `render_requirements_block` reading \"Measured on ``origin/dev`` at ``605ebfd729``: of **9,301** contracts\".\n\nIt contradicts line **[148]** of the added test `tests/unit/occ/test_omn_19038_requirements_transcription.py` (\"Measured on ``origin/dev`` 2026-09-21 at ``605ebfd729``: **9,300** contracts under ``onex_change_control/contracts/``\"), which cites the identical census at the identical commit but counts 9,300 contracts — a figure the PR description also carries — so the two claims about the same measurement cannot both be true."
+}

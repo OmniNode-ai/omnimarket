@@ -56,6 +56,7 @@ from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from pydantic import BaseModel
 
 from omnimarket.codegen.models import (
+    ModelCodegenHandlerTestResult,
     ModelCodegenPipelineState,
     ModelCodegenSerializeOutcome,
     ModelCodegenSpec,
@@ -80,6 +81,7 @@ _CONTRACT_PATH = (
 _T_VALIDATION_OUTCOME = "onex.evt.omnimarket.codegen-validation-outcome.v1"
 _T_TYPECHECK_OUTCOME = "onex.evt.omnimarket.codegen-typecheck-outcome.v1"
 _T_SERIALIZE_OUTCOME = "onex.evt.omnimarket.codegen-serialize-outcome.v1"
+_T_HANDLER_TEST_COMPLETED = "onex.evt.omnimarket.codegen-handler-test-completed.v1"
 
 
 def _contract() -> dict[str, object]:
@@ -136,19 +138,19 @@ def _resolve_emit_topic(model: BaseModel) -> str:
 
 
 class _DispatchProofAdapter:
-    """Adapt def-B tuple fan-out to the legacy dispatch proof surface."""
+    """Adapt the def-B single-model return to the legacy dispatch proof surface."""
 
     def __init__(self) -> None:
         self._inner = HandlerHybridCodegenOrchestrator()
 
     def handle(self, request: BaseModel) -> ModelHandlerOutput[None]:
-        events = tuple(
+        emitted = self._inner.handle(request)  # type: ignore[arg-type]
+        events = (
             ModelEventEnvelope(
                 payload=emitted,
                 correlation_id=uuid4(),
                 event_type=_resolve_emit_topic(emitted),
-            )
-            for emitted in self._inner.handle(request)  # type: ignore[arg-type]
+            ),
         )
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
@@ -201,6 +203,7 @@ class TestContractAssignsEventCategory:
             _T_VALIDATION_OUTCOME,
             _T_TYPECHECK_OUTCOME,
             _T_SERIALIZE_OUTCOME,
+            _T_HANDLER_TEST_COMPLETED,
         ):
             assert topic in by_topic, f"{topic} not routed as its own entry"
             assert (
@@ -280,7 +283,18 @@ class TestOutcomeEventsRouteViaRealCategoryFilter:
             ),
             (
                 _T_SERIALIZE_OUTCOME,
-                lambda: ModelCodegenSerializeOutcome(state=_state()),
+                lambda: ModelCodegenSerializeOutcome(state=_state(), lint_passed=True),
+                "onex.cmd.omnimarket.codegen-handler-test-requested.v1",
+            ),
+            (
+                _T_HANDLER_TEST_COMPLETED,
+                lambda: ModelCodegenHandlerTestResult(
+                    state=_state(),
+                    real_outcome="passed",
+                    mutant_outcome="failed_call",
+                    grade_status="accepted_call",
+                    accepted=True,
+                ),
                 "onex.cmd.omnimarket.codegen-file-write.v1",
             ),
         ],

@@ -26,6 +26,12 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillCompleted,
     ModelDelegateSkillFailed,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
     ProtocolDelegationDispatchPort,
@@ -43,6 +49,24 @@ from omnimarket.routing import delegation_backend_resolution
 pytestmark = pytest.mark.unit
 
 
+def _passing_named_test_runner(
+    request: ModelNamedTestRunRequest,
+) -> ModelNamedTestRunResult:
+    # OMN-21077: command identity assertions need a tested code answer.
+    return ModelNamedTestRunResult(
+        status=EnumNamedTestRunStatus.COMPLETED,
+        run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+    )
+
+
+def _named_test_metadata(workspace: Path) -> dict[str, str]:
+    return {
+        "named_tests": "test_normalize_status.py::test_normalize_status_ok",
+        "named_tests_answer_path": "test_normalize_status.py",
+        "named_tests_workspace": str(workspace),
+    }
+
+
 def _delivery(correlation_id: UUID, envelope_id: UUID) -> ModelEventEnvelope[object]:
     """One delivered record: a redelivery carries the same id, a new command a new one."""
     return ModelEventEnvelope[object](
@@ -55,12 +79,15 @@ def _delivery(correlation_id: UUID, envelope_id: UUID) -> ModelEventEnvelope[obj
     )
 
 
-def _request(correlation_id: UUID) -> ModelDelegateSkillRequest:
+def _request(
+    correlation_id: UUID, *, workspace: Path | None = None
+) -> ModelDelegateSkillRequest:
     return ModelDelegateSkillRequest(
         prompt="Write pytest unit tests for normalize_status.",
         task_type="test",
         source="codex",
         correlation_id=correlation_id,
+        metadata=_named_test_metadata(workspace) if workspace is not None else {},
     )
 
 
@@ -124,6 +151,7 @@ def completing_handler(
     port = LocalDelegationDispatchPort(
         evidence_db_path=tmp_path / "delegation.sqlite",
         effect_process_boundary=False,
+        named_test_runner=_passing_named_test_runner,
     )
     return HandlerDelegateSkill(dispatch_port=port)
 
@@ -168,10 +196,11 @@ class _MemoryClaimPort:
 
 async def test_two_commands_sharing_a_correlation_carry_different_command_ids(
     completing_handler: HandlerDelegateSkill,
+    tmp_path: Path,
 ) -> None:
     correlation_id = uuid4()
     first_id, second_id = uuid4(), uuid4()
-    request = _request(correlation_id)
+    request = _request(correlation_id, workspace=tmp_path)
 
     with bind_dispatch_envelope(_delivery(correlation_id, first_id)):
         first = await completing_handler.handle(request)
@@ -188,10 +217,11 @@ async def test_two_commands_sharing_a_correlation_carry_different_command_ids(
 
 async def test_a_served_replay_keeps_its_command_id(
     completing_handler: HandlerDelegateSkill,
+    tmp_path: Path,
 ) -> None:
     correlation_id = uuid4()
     command_id = uuid4()
-    request = _request(correlation_id)
+    request = _request(correlation_id, workspace=tmp_path)
     delivery = _delivery(correlation_id, command_id)
 
     with bind_dispatch_envelope(delivery):

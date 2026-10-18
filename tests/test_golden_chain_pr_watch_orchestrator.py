@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
 from collections.abc import Iterable
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -19,6 +17,9 @@ from pydantic import ValidationError
 
 from omnimarket.adapters.codex.local_runtime_dispatch import LocalRuntimeDispatch
 from omnimarket.adapters.codex.runtime_client import ModelDispatchBusCommand
+from omnimarket.nodes.node_pr_watch_orchestrator.handlers import (
+    handler_pr_watch_orchestrator as handler_module,
+)
 from omnimarket.nodes.node_pr_watch_orchestrator.models import (
     EnumPrWatchConclusion,
     EnumPrWatchStatus,
@@ -63,30 +64,55 @@ def _check(name: str, bucket: str, state: str = "SUCCESS") -> dict[str, str]:
     }
 
 
-def _mock_gh_pr_checks(
+def _mock_github_rest(
     monkeypatch: pytest.MonkeyPatch,
     snapshots: Iterable[list[dict[str, str]]],
-) -> list[list[str]]:
-    calls: list[list[str]] = []
+) -> list[str]:
+    """Replace the GitHub REST read under the default checks client.
+
+    Each snapshot is served for one poll: a poll is one read of the PR, so the
+    snapshot index advances on the PR read.
+    """
+    paths: list[str] = []
     remaining = list(snapshots)
-    assert remaining, "test must provide at least one gh checks snapshot"
+    assert remaining, "test must provide at least one checks snapshot"
+    polls = 0
 
-    def fake_run(
-        command: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        calls.append(command)
-        index = min(len(calls) - 1, len(remaining) - 1)
-        snapshot = remaining[index]
-        returncode = 8 if any(row["bucket"] == "pending" for row in snapshot) else 0
-        return subprocess.CompletedProcess(
-            args=command,
-            returncode=returncode,
-            stdout=json.dumps(snapshot),
-            stderr="",
-        )
+    def fake_rest_get(path: str, token: str) -> dict[str, Any]:
+        nonlocal polls
+        paths.append(path)
+        if path.endswith("/pulls/12349"):
+            polls += 1
+            return {"head": {"sha": "abc123"}}
+        if "/check-runs" in path:
+            snapshot = remaining[min(polls - 1, len(remaining) - 1)]
+            return {
+                "total_count": len(snapshot),
+                "check_runs": [_check_run(row) for row in snapshot],
+            }
+        return {"statuses": []}
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    return calls
+    monkeypatch.setattr(handler_module, "_rest_get", fake_rest_get)
+    monkeypatch.setattr(handler_module, "_resolve_github_token", lambda: "test-token")
+    return paths
+
+
+def _check_run(row: dict[str, str]) -> dict[str, Any]:
+    status, conclusion = {
+        "pass": ("completed", "success"),
+        "skipping": ("completed", "skipped"),
+        "fail": ("completed", "failure"),
+        "pending": ("in_progress", None),
+    }[row["bucket"]]
+    return {
+        "name": row["name"],
+        "status": status,
+        "conclusion": conclusion,
+        "html_url": row["link"],
+        "started_at": row["startedAt"],
+        "completed_at": row["completedAt"] or None,
+        "app": {"slug": row["workflow"]},
+    }
 
 
 def _record_bus_publish_topics(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -211,7 +237,7 @@ async def test_runtime_dispatch_polls_until_green(
     tmp_path: Path,
 ) -> None:
     bus_topics = _record_bus_publish_topics(monkeypatch)
-    calls = _mock_gh_pr_checks(
+    calls = _mock_github_rest(
         monkeypatch,
         [
             [_check("unit", "pending", "IN_PROGRESS")],
@@ -235,8 +261,8 @@ async def test_runtime_dispatch_polls_until_green(
     assert payload["terminal_event"] == "onex.evt.omnimarket.pr-watch-completed.v1"
     assert payload["attempts"] == 2
     assert "onex.evt.omnimarket.pr-watch-completed.v1" in bus_topics
-    assert calls[0][:5] == ["gh", "pr", "checks", "12349", "--repo"]
-    assert calls[0][5] == "OmniNode-ai/omnimarket"
+    assert calls[0] == "/repos/OmniNode-ai/omnimarket/pulls/12349"
+    assert all(path.startswith("/repos/OmniNode-ai/omnimarket/") for path in calls)
 
 
 @pytest.mark.asyncio
@@ -246,7 +272,7 @@ async def test_runtime_dispatch_emits_failed_result_on_red(
     tmp_path: Path,
 ) -> None:
     bus_topics = _record_bus_publish_topics(monkeypatch)
-    _mock_gh_pr_checks(
+    _mock_github_rest(
         monkeypatch,
         [[_check("unit", "pass"), _check("lint", "fail", "FAILURE")]],
     )
@@ -277,7 +303,7 @@ async def test_runtime_dispatch_emits_timeout_result_on_pending_deadline(
     tmp_path: Path,
 ) -> None:
     bus_topics = _record_bus_publish_topics(monkeypatch)
-    _mock_gh_pr_checks(
+    _mock_github_rest(
         monkeypatch,
         [[_check("unit", "pending", "IN_PROGRESS")]],
     )

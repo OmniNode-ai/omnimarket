@@ -10,8 +10,8 @@ class resolves to the right publish **topic** via the contract's ``published_eve
 ``handle(envelope)`` produced, this IS the def-B == envelope routing-equivalence
 proof (OMN-14403 §4). The rejection branches emit a terminal completed.
 
-Definition B (OMN-14355): the handler takes a bare typed payload and returns a
-tuple of bare typed models — no ``ModelEventEnvelope``, no ``event_type`` on the
+Definition B (OMN-14355): the handler takes a bare typed payload and returns one
+bare typed model — no ``ModelEventEnvelope``, no ``event_type`` on the
 handler side. The topic lives in the contract, resolved here exactly as the
 applier does (``removeprefix('Model')`` then published_events lookup).
 """
@@ -29,6 +29,8 @@ from pydantic import BaseModel
 from omnimarket.codegen.models import (
     EnumCodegenStatus,
     ModelCodegenCompleted,
+    ModelCodegenHandlerTestCommand,
+    ModelCodegenHandlerTestResult,
     ModelCodegenPipelineState,
     ModelCodegenSerializeOutcome,
     ModelCodegenSpec,
@@ -88,9 +90,8 @@ def _state(source: str = "", contract_yaml: str = "") -> ModelCodegenPipelineSta
 
 def _handle(payload: BaseModel) -> tuple[str, BaseModel]:
     """Drive one phase; return the single emitted (resolved-topic, payload-model)."""
-    output = HandlerHybridCodegenOrchestrator().handle(payload)
-    assert len(output) == 1
-    model = output[0]
+    model = HandlerHybridCodegenOrchestrator().handle(payload)
+    assert isinstance(model, BaseModel)
     return _resolve_topic(model), model
 
 
@@ -121,6 +122,9 @@ class TestPhaseRoutingEquivalence:
         assert topic.endswith("mypy-check-requested.v1")
         assert isinstance(payload, ModelMypyRequestSeam)
         assert payload.source_text == "code"
+        # OMN-21150: the factory overrides the consumer's ignore_missing_imports
+        # default so a phantom import fails the type-check leg.
+        assert payload.ignore_missing_imports is False
 
     def test_invalid_outcome_emits_rejected_terminal(self) -> None:
         topic, payload = _handle(
@@ -150,19 +154,74 @@ class TestPhaseRoutingEquivalence:
         assert isinstance(payload, ModelCodegenCompleted)
         assert payload.status is EnumCodegenStatus.REJECTED_TYPECHECK
 
-    def test_serialize_outcome_emits_file_write_with_files(self) -> None:
+    def test_serialize_outcome_emits_handler_test_command(self) -> None:
+        # OMN-21153: a lint-passed serialize outcome hands the run to the
+        # acceptance control before anything is written.
         topic, payload = _handle(
             ModelCodegenSerializeOutcome(
-                state=_state(source="handler-src", contract_yaml="name: x\n")
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                lint_passed=True,
+            )
+        )
+        assert topic.endswith("codegen-handler-test-requested.v1")
+        assert isinstance(payload, ModelCodegenHandlerTestCommand)
+        assert payload.state.source_text == "handler-src"
+
+    def test_handler_test_accepted_emits_file_write_with_files(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenHandlerTestResult(
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                real_outcome="passed",
+                mutant_outcome="failed_call",
+                grade_status="accepted_call",
+                accepted=True,
             )
         )
         assert topic.endswith("codegen-file-write.v1")
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
-        assert by_path["handler.py"] == "handler-src"
-        assert by_path["contract.yaml"] == "name: x\n"
-        assert "metadata.yaml" in by_path
-        assert ".rsd_provenance.json" in by_path
+        base = "omnimarket/nodes/node_greeter_compute"
+        # OMN-21152: the canonical node package layout; OMN-21153 adds the
+        # per-handler test that the acceptance control already ran.
+        assert by_path[f"{base}/handlers/handler_greeter_compute.py"] == "handler-src"
+        assert f"{base}/contract.yaml" in by_path
+        assert f"{base}/metadata.yaml" in by_path
+        assert f"{base}/__init__.py" in by_path
+        assert f"{base}/handlers/__init__.py" in by_path
+        assert f"{base}/tests/test_handler_greeter_compute.py" in by_path
+        assert f"{base}/.rsd_provenance.json" in by_path
+
+    def test_handler_test_rejected_emits_rejected_terminal(self) -> None:
+        topic, payload = _handle(
+            ModelCodegenHandlerTestResult(
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                real_outcome="failed_call",
+                mutant_outcome="no_tests",
+                grade_status="control_did_not_fail",
+                accepted=False,
+                reason="generated test did not pass the handler",
+            )
+        )
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.REJECTED_HANDLER_TEST
+        assert payload.issues == ("generated test did not pass the handler",)
+
+    def test_serialize_lint_failure_emits_rejected_contract_lint(self) -> None:
+        # OMN-21151: a contract that failed its lint never reaches the file
+        # writer — the run ends rejected_contract_lint carrying the gate's
+        # messages instead of writing an unlintable contract to disk.
+        topic, payload = _handle(
+            ModelCodegenSerializeOutcome(
+                state=_state(source="handler-src", contract_yaml="name: x\n"),
+                lint_passed=False,
+                lint_messages=("missing required top-level key: metadata",),
+            )
+        )
+        assert topic.endswith("hybrid-codegen-completed.v1")
+        assert isinstance(payload, ModelCodegenCompleted)
+        assert payload.status is EnumCodegenStatus.REJECTED_CONTRACT_LINT
+        assert payload.issues == ("missing required top-level key: metadata",)
 
     def test_files_written_emits_completed_terminal(self) -> None:
         topic, payload = _handle(
@@ -215,6 +274,7 @@ class TestDefBCanonShape:
             "ValidatorRequestSeam",
             "MypyRequestSeam",
             "ContractAssemblyRequestSeam",
+            "CodegenHandlerTestCommand",
             "FileWriteCommand",
             "CodegenCompleted",
         }
@@ -235,9 +295,11 @@ class TestContractTopicCoverage:
             "onex.cmd.omnimarket.generated-code-validation-requested.v1",
             "onex.cmd.omnimarket.mypy-check-requested.v1",
             "onex.cmd.omnimarket.contract-serialize-requested.v1",
+            "onex.cmd.omnimarket.codegen-handler-test-requested.v1",
             "onex.cmd.omnimarket.codegen-file-write.v1",
         } <= publish
         assert "onex.cmd.omnimarket.hybrid-codegen-start.v1" in subscribe
+        assert "onex.evt.omnimarket.codegen-handler-test-completed.v1" in subscribe
         assert contract["terminal_event"] == (
             "onex.evt.omnimarket.hybrid-codegen-completed.v1"
         )
@@ -264,10 +326,18 @@ class TestProvenanceStampSeam:
 
     def test_provenance_stamp_is_a_generated_file(self) -> None:
         state = _state(source="handler-src", contract_yaml="name: x\n")
-        _, payload = _handle(ModelCodegenSerializeOutcome(state=state))
+        _, payload = _handle(
+            ModelCodegenHandlerTestResult(
+                state=state,
+                real_outcome="passed",
+                mutant_outcome="failed_call",
+                grade_status="accepted_call",
+                accepted=True,
+            )
+        )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
-        assert ".rsd_provenance.json" in by_path
+        assert "omnimarket/nodes/node_greeter_compute/.rsd_provenance.json" in by_path
 
     def test_provenance_stamp_schema_matches_gate_seam_contract(self) -> None:
         state = ModelCodegenPipelineState(
@@ -276,10 +346,19 @@ class TestProvenanceStampSeam:
             source_text="class Handler: ...",
             contract_yaml="name: node_greeter_compute\n",
         )
-        _, payload = _handle(ModelCodegenSerializeOutcome(state=state))
+        _, payload = _handle(
+            ModelCodegenHandlerTestResult(
+                state=state,
+                real_outcome="passed",
+                mutant_outcome="failed_call",
+                grade_status="accepted_call",
+                accepted=True,
+            )
+        )
         assert isinstance(payload, ModelFileWriteCommand)
         by_path = {f.relative_path: f.content for f in payload.files}
-        stamp = json.loads(by_path[".rsd_provenance.json"])
+        base = "omnimarket/nodes/node_greeter_compute"
+        stamp = json.loads(by_path[f"{base}/.rsd_provenance.json"])
 
         # Field-for-field seam contract (OMN-14208 guard): every key/type the
         # omnibase_core gate reads MUST be present with these exact names.
@@ -289,9 +368,13 @@ class TestProvenanceStampSeam:
         assert stamp["run_id"] == "run-abc-123"
         assert stamp["node_name"] == "NodeGreeterCompute"
         assert set(stamp["files_sha256"]) == {
-            "handler.py",
+            "__init__.py",
             "contract.yaml",
             "metadata.yaml",
+            "handlers/__init__.py",
+            "handlers/handler_greeter_compute.py",
+            "tests/__init__.py",
+            "tests/test_handler_greeter_compute.py",
         }
 
         # The digest is RECOMPUTED here from the same content written to the
@@ -300,6 +383,5 @@ class TestProvenanceStampSeam:
         def _sha(text: str) -> str:
             return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-        assert stamp["files_sha256"]["handler.py"] == _sha(by_path["handler.py"])
-        assert stamp["files_sha256"]["contract.yaml"] == _sha(by_path["contract.yaml"])
-        assert stamp["files_sha256"]["metadata.yaml"] == _sha(by_path["metadata.yaml"])
+        for rel, digest in stamp["files_sha256"].items():
+            assert digest == _sha(by_path[f"{base}/{rel}"]), rel

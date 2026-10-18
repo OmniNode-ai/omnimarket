@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-m07",
+  "path": "pinned",
+  "sha256": "3a2dc0f11b704b3bc7c9e18c89324bab724be22e04797798a5262fdbfaf03e01",
+  "response": "**[22]** — The line reads `record.get(\"criterion_hasx\")` (a nonexistent key, so every hash comes back empty and the hash check vacuously passes), directly contradicting `items[-1][\"ac_bindings\"][0][\"criterion_hash\"] = \"f\" * 64` in `test_second_lane_acceptance_of_a_changed_criterion_does_not_clear`, which changes the `criterion_hash` key and expects the second lane's acceptance to no longer clear the binding (`assert len(self_accepted_bindings(items)) == 2`)."
+}

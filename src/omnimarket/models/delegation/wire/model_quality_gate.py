@@ -58,15 +58,40 @@ SCORE_SOURCE_COMBINED = "combined"
 # model -- see ``ModelQualityGateResult.no_rung_can_satisfy``.
 SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 
+# OMN-21077: the verdict prefix a failure reason carries when the evidence a
+# code answer is judged on never reached the gate -- a code class's declared
+# ``passes_existing_tests`` with no executed test run. No costlier rung can
+# supply a test run the request did not name, so a reason carrying it makes
+# climbing futile whatever else was refused beside it.
+INSUFFICIENT_EVIDENCE_VERDICT_PREFIX = "INSUFFICIENT"
+NO_NAMED_TEST_RUN_REASON = (
+    f"{INSUFFICIENT_EVIDENCE_VERDICT_PREFIX}: passes_existing_tests: no named "
+    "test run reached the gate; a code answer is accepted only on tests run "
+    "against it"
+)
+
+# OMN-17427: the verdict a code answer gets when its request named NO tests.
+# INSUFFICIENT is kept for a request that named tests no runner ran. A request
+# that named none has nothing any rung could be tested on, so refusing it failed
+# every such code delegation at the local rung whatever its quality and climbed
+# the ladder on correct answers (84 of 125 on the dev lane, 2026-10-15). The
+# answer is decided by its contract checks and recorded as UNTESTED, never as
+# tests passed.
+UNTESTED_VERDICT_PREFIX = "UNTESTED"
+NO_NAMED_TESTS_UNTESTED_REASON = (
+    f"{UNTESTED_VERDICT_PREFIX}: passes_existing_tests: the request named no "
+    "tests, so the code answer was decided by its contract checks alone and "
+    "was not run; name tests to have it graded on them"
+)
+
 # OMN-19529: the checks whose PASS establishes that a response is correct, as
 # distinct from checks that can only refute one. Every other check the gate
 # runs is a pre-filter or a grounding check: it can show an answer is wrong
 # (unparseable, a refusal, a number the input does not hold) and can never show
-# it is right. ``passes_existing_tests`` executes the delegated artifact against
-# its acceptance tests; it is the only such check the contract names, and no
-# executor is wired for it in the gate today (OMN-13850), so it is always
-# skipped. That is the honest state the property below reports: a score of 1.0
-# today is the fraction of refutation checks an answer survived, not a proof.
+# it is right. ``passes_existing_tests`` is the only such check the contract
+# names. The gate evaluates it from a ModelNamedTestRun when the caller supplies
+# one and skips it otherwise (OMN-21076). Without an executed verifying pass,
+# a score of 1.0 is the fraction of refutation checks an answer survived.
 SCORE_VERIFYING_CHECKS: frozenset[str] = frozenset({"passes_existing_tests"})
 
 # Why a score reads unverified, as the tokens ``score_unverified_because``
@@ -223,10 +248,10 @@ class ModelQualityGateResult(BaseModel):
     skipped_checks: tuple[str, ...] = Field(
         default=(),
         description=(
-            "Deterministic DoD checks that were NOT evaluated because no "
-            "acceptance-command executor is wired for them (OMN-13850). Recorded "
-            "as durable evidence of the unevaluated status; excluded from the "
-            "deterministic passed/total fraction so a check with no executor "
+            "DoD checks that were NOT evaluated because the evidence they need, "
+            "such as a named-test run or a grounding source, was not supplied. "
+            "Recorded as durable evidence of the unevaluated status; excluded "
+            "from the passed/total fraction so a check without its evidence "
             "cannot report a phantom 'passed'."
         ),
     )
@@ -371,7 +396,16 @@ class ModelQualityGateResult(BaseModel):
 
     @property
     def no_rung_can_satisfy(self) -> bool:
-        """Whether every reason refusing this response is a shape refusal."""
+        """Whether no costlier rung can cure the reasons refusing this response.
+
+        True when every reason is a shape refusal, or when any reason says the
+        evidence the answer is judged on was never supplied (OMN-21077).
+        """
+        if any(
+            reason.startswith(INSUFFICIENT_EVIDENCE_VERDICT_PREFIX)
+            for reason in self.failure_reasons
+        ):
+            return True
         return bool(self.failure_reasons) and all(
             reason.startswith(SHAPE_REFUSED_VERDICT_PREFIX)
             for reason in self.failure_reasons
@@ -384,11 +418,15 @@ class ModelQualityGateResult(BaseModel):
 # second definition here would be two wire contracts for one wire field. They
 # are re-exported from this module so every existing importer keeps its path.
 __all__: list[str] = [
+    "INSUFFICIENT_EVIDENCE_VERDICT_PREFIX",
+    "NO_NAMED_TESTS_UNTESTED_REASON",
+    "NO_NAMED_TEST_RUN_REASON",
     "NO_RUNG_CAN_SATISFY_WIRE_KEY",
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
     "SCORE_VERIFYING_CHECKS",
     "SHAPE_REFUSED_VERDICT_PREFIX",
+    "UNTESTED_VERDICT_PREFIX",
     "UNVERIFIED_GATE_FAILED",
     "UNVERIFIED_NO_EXECUTED_CHECK",
     "UNVERIFIED_SKIPPED_PREFIX",

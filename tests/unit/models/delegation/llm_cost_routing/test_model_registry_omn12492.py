@@ -4,8 +4,7 @@
 """Unit tests for OMN-12492 model registry refresh.
 
 Verifies that the 2026-05-30 registry refresh correctly contains:
-- Updated local model facts for Qwen3.6-35B-A3B (.201:8000) and
-  Qwen3.6-27B-MTP (.201:8001) under the stable routing keys
+- Updated local model facts under the active routing key
 - Cloud Gemini Flash entry, retargeted to gemini-2.5-flash-lite (OMN-12937)
 - New openrouter-nemotron-ultra entry (cheap frontier direct)
 - All new entries pass existing registry invariants
@@ -67,13 +66,9 @@ class TestOmn12492LocalModelFacts:
         # deployment since, the 35B and now the 27B, reports 131072.
         assert model.context_window == 131072
 
-    def test_deepseek_r1_14b_model_name_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """deepseek-r1-14b is a stale slot: .201:8001 is dead (OMN-16442), the
-        entry records the last-served model for routing-key stability."""
-        model = registry.get_model("deepseek-r1-14b")
-        assert model.model_name == "Qwen3.6-27B-MTP-IQ4_XS.gguf"
-        assert model.endpoint_env == "LLM_CODER_FAST_URL"
-        assert model.context_window == 114688
+    def test_retired_local_slot_is_not_resolvable(self, registry) -> None:  # type: ignore[no-untyped-def]
+        with pytest.raises(KeyError, match="not found in registry"):
+            registry.get_model("deepseek-r1-14b")
 
 
 @pytest.mark.unit
@@ -192,8 +187,11 @@ class TestOmn12492RegistryInvariants:
             )
 
     def test_registry_version_bumped(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """OMN-12937 set 1.2.0 (Gemini retarget); OMN-12972 → 1.3.0 (per-env served names)."""
-        assert registry.model_registry_version == "1.3.0"
+        """Catalog changes bump the version without changing existing prices.
+
+        1.5.0 adds the OpenRouter onboarding default (a customer's model on the
+        customer's key, not a delegation rung)."""
+        assert registry.model_registry_version == "1.5.0"
 
     def test_pricing_manifest_version_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
         assert registry.pricing_manifest_version == "2026-06-11-gemini-25-flash-lite"

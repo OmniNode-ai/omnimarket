@@ -60,6 +60,7 @@ import re
 import sqlite3
 import stat
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
 
@@ -75,6 +76,15 @@ LOCAL_INSTALL_TENANT_ID = "localinstall"
 #: The one table this module adds to the existing local delegation database.
 LOCAL_CREDENTIAL_TABLE = "local_inference_credentials"
 
+#: OMN-21059: the ordered models a credential may serve, one row per position.
+#: Position 0 is mirrored into the credential row's ``model`` column, so a
+#: reader written before the list existed still sees the first model.
+LOCAL_CREDENTIAL_MODEL_TABLE = "local_byok_credential_models"
+
+#: OMN-21078: who chose the model stored with a credential.
+MODEL_CHOSEN_BY_CUSTOMER: Final[str] = "customer"
+MODEL_CHOSEN_BY_CATALOGUE: Final[str] = "catalogue"
+
 _LOCAL_CREDENTIAL_DDL = f"""
 CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_TABLE} (
     secret_ref     TEXT PRIMARY KEY,
@@ -82,7 +92,19 @@ CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_TABLE} (
     secret_value   TEXT NOT NULL,
     registered_at  TEXT NOT NULL DEFAULT (datetime('now')),
     plan           TEXT,
-    model          TEXT
+    model          TEXT,
+    model_chosen_by TEXT
+)
+"""
+
+_LOCAL_CREDENTIAL_MODEL_DDL = f"""
+CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_MODEL_TABLE} (
+    secret_ref  TEXT NOT NULL REFERENCES {LOCAL_CREDENTIAL_TABLE}(secret_ref)
+                ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    chosen_by   TEXT,
+    PRIMARY KEY (secret_ref, position)
 )
 """
 
@@ -167,7 +189,11 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.chmod(0o600)
     conn = sqlite3.connect(str(db_path))  # no-contract-check: secret-store boundary
     conn.row_factory = sqlite3.Row
+    # OMN-21059: the model list cascades off its credential row, so a delete or
+    # a replace of the row can never leave a stale list behind.
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.execute(_LOCAL_CREDENTIAL_DDL)
+    conn.execute(_LOCAL_CREDENTIAL_MODEL_DDL)
     # OMN-20157: a database created before plans existed has no ``plan`` column.
     # ``CREATE TABLE IF NOT EXISTS`` leaves it as it was, so add the column the
     # one time it is missing. Nullable: a row with no plan resolves the
@@ -182,8 +208,69 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     # Nullable on the same terms: a row with no model is resolved at call time.
     if "model" not in columns:
         conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model TEXT")
+    # OMN-21078: only a recorded catalogue pick may be re-aimed. Earlier rows
+    # have no record and are treated as the customer's choice.
+    if "model_chosen_by" not in columns:
+        conn.execute(
+            f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model_chosen_by TEXT"
+        )
+    # OMN-21059: a credential stored with the single ``model`` column becomes a
+    # list of one at position 0, keeping its recorded chooser. Idempotent: a
+    # credential that already has list rows is left as it is.
+    conn.execute(
+        f"INSERT INTO {LOCAL_CREDENTIAL_MODEL_TABLE} "
+        "(secret_ref, position, model, chosen_by) "
+        f"SELECT secret_ref, 0, model, model_chosen_by FROM {LOCAL_CREDENTIAL_TABLE} "
+        "WHERE model IS NOT NULL AND model != '' AND secret_ref NOT IN "
+        f"(SELECT secret_ref FROM {LOCAL_CREDENTIAL_MODEL_TABLE})"
+    )
     conn.commit()
     return conn
+
+
+def _normalize_models(
+    model: str | None, models: Sequence[str] | None
+) -> tuple[str, ...]:
+    """The ordered, stripped, duplicate-free models a caller asked to store."""
+    if model is not None and models:
+        raise LocalByokCredentialError(
+            "pass either model or models, not both: models is the ordered list "
+            "and model is its one-entry form"
+        )
+    raw = list(models) if models else ([model] if model else [])
+    cleaned = [entry.strip() for entry in raw if entry and entry.strip()]
+    if len(set(cleaned)) != len(cleaned):
+        raise LocalByokCredentialError(
+            "a model appears twice in the list; each model may be chosen once"
+        )
+    return tuple(cleaned)
+
+
+def _write_models(
+    conn: sqlite3.Connection,
+    secret_ref: str,
+    models: tuple[str, ...],
+    chosen_by: str | None,
+) -> None:
+    """Replace ``secret_ref``'s ordered models and mirror position 0 on its row."""
+    conn.execute(
+        f"DELETE FROM {LOCAL_CREDENTIAL_MODEL_TABLE} WHERE secret_ref = ?",
+        (secret_ref,),
+    )
+    conn.executemany(
+        f"INSERT INTO {LOCAL_CREDENTIAL_MODEL_TABLE} "
+        "(secret_ref, position, model, chosen_by) VALUES (?, ?, ?, ?)",
+        [(secret_ref, index, entry, chosen_by) for index, entry in enumerate(models)],
+    )
+    conn.execute(
+        f"UPDATE {LOCAL_CREDENTIAL_TABLE} SET model = ?, model_chosen_by = ? "
+        "WHERE secret_ref = ?",
+        (
+            models[0] if models else None,
+            chosen_by if models else None,
+            secret_ref,
+        ),
+    )
 
 
 def register_local_byok_credential(
@@ -192,6 +279,8 @@ def register_local_byok_credential(
     *,
     plan: str | None = None,
     model: str | None = None,
+    models: Sequence[str] | None = None,
+    model_chosen_by: str | None = None,
     db_path: Path | None = None,
 ) -> str:
     """Store ``secret_value`` under a freshly minted ref and return the ref.
@@ -214,6 +303,13 @@ def register_local_byok_credential(
             resolves the provider's default plan. A plan the catalogue declares
             detection-only (glm ``coding_plan``, barred from third-party systems
             by z.ai's terms) is refused.
+        models: OMN-21059. The ordered models the key may serve, first is
+            tried first. ``model`` is the one-entry form; pass one or the
+            other. Re-registering replaces the whole list.
+        model_chosen_by: OMN-21078. Whether the customer or catalogue chose
+            the model. ``None`` records no chooser and prevents re-aiming on a
+            provider where the customer chooses. No model stores no chooser.
+            Every entry of the list carries the same chooser.
         db_path: the local database. Defaults to the existing
             ``~/.omninode/delegation/delegation.sqlite``.
 
@@ -221,10 +317,19 @@ def register_local_byok_credential(
         The minted, tenant-shaped reference. Safe to print and log.
 
     Raises:
-        LocalByokCredentialError: the provider or the value is empty.
+        LocalByokCredentialError: the provider or the value is empty, the
+            model chooser is invalid, or the model list repeats a model.
         ByokPlanNotPermittedError: ``plan`` is a detection-only plan. Nothing is
             written.
     """
+    if model_chosen_by not in (
+        None,
+        MODEL_CHOSEN_BY_CUSTOMER,
+        MODEL_CHOSEN_BY_CATALOGUE,
+    ):
+        raise LocalByokCredentialError(
+            "model_chosen_by must be 'customer', 'catalogue', or None"
+        )
     normalized = provider.strip().lower()
     if not normalized:
         raise LocalByokCredentialError("provider must be a non-empty string")
@@ -235,6 +340,7 @@ def register_local_byok_credential(
             f"no value supplied for provider {normalized!r}; a blank credential "
             "would register a reference that can never resolve"
         )
+    chosen_models = _normalize_models(model, models)
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     ref = mint_local_byok_credential_ref(normalized)
     conn = _connect(resolved_path)
@@ -245,20 +351,58 @@ def register_local_byok_credential(
         )
         conn.execute(
             f"INSERT INTO {LOCAL_CREDENTIAL_TABLE} "
-            "(secret_ref, provider, secret_value, plan, model) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(secret_ref, provider, secret_value, plan) VALUES (?, ?, ?, ?)",
             (
                 ref,
                 normalized,
                 secret_value.strip(),
                 plan.strip().lower() if plan else None,
-                model.strip() if model and model.strip() else None,
             ),
         )
+        _write_models(conn, ref, chosen_models, model_chosen_by)
         conn.commit()
     finally:
         conn.close()
     return ref
+
+
+def set_local_byok_credential_models(
+    provider: str,
+    models: Sequence[str],
+    *,
+    model_chosen_by: str | None = None,
+    db_path: Path | None = None,
+) -> bool:
+    """Replace the ordered models of ``provider``'s stored credential, keeping its key.
+
+    OMN-21059. The whole list is written at once, so an add, a reorder and a
+    remove are each one replacement and a reader never sees a half-edited list.
+    Returns whether a credential for ``provider`` exists; ``False`` writes
+    nothing. An empty ``models`` clears the list.
+
+    Raises:
+        LocalByokCredentialError: the chooser is invalid or a model repeats.
+    """
+    if model_chosen_by not in (
+        None,
+        MODEL_CHOSEN_BY_CUSTOMER,
+        MODEL_CHOSEN_BY_CATALOGUE,
+    ):
+        raise LocalByokCredentialError(
+            "model_chosen_by must be 'customer', 'catalogue', or None"
+        )
+    chosen_models = _normalize_models(None, models)
+    ref = resolve_local_byok_credential_ref(provider, db_path=db_path)
+    if ref is None:
+        return False
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    conn = _connect(resolved_path)
+    try:
+        _write_models(conn, ref, chosen_models, model_chosen_by)
+        conn.commit()
+    finally:
+        conn.close()
+    return True
 
 
 def revoke_local_byok_credential(provider: str, *, db_path: Path | None = None) -> int:
@@ -340,17 +484,68 @@ def resolve_local_byok_credential_plan(
     return str(row["plan"]) if row is not None and row["plan"] else None
 
 
-def resolve_local_byok_credential_model(
+def resolve_local_byok_credential_models(
     provider: str, *, db_path: Path | None = None
-) -> str | None:
-    """Return the model stored with the registered credential for ``provider``.
+) -> tuple[str, ...]:
+    """Return the ordered models stored with the credential for ``provider``.
 
-    OMN-20157. ``None`` when no credential is registered or none resolved a
-    model; the route then carries the unresolved marker and the effect resolves
-    the model from the provider's list before the call. Never returns a value.
+    OMN-21059. Empty when no credential is registered or none holds a model;
+    the route then carries the unresolved marker and the effect resolves the
+    model from the provider's list before the call. A credential written
+    straight into the ``model`` column, with no list rows, reads as a list of
+    that one model. Never returns a value.
     """
     normalized = provider.strip().lower()
     if not normalized:
+        return ()
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return ()
+    conn = _connect(resolved_path)
+    try:
+        row = conn.execute(
+            f"SELECT secret_ref, model FROM {LOCAL_CREDENTIAL_TABLE} "
+            "WHERE provider = ? ORDER BY registered_at DESC LIMIT 1",
+            (normalized,),
+        ).fetchone()
+        if row is None:
+            return ()
+        listed = conn.execute(
+            f"SELECT model FROM {LOCAL_CREDENTIAL_MODEL_TABLE} "
+            "WHERE secret_ref = ? ORDER BY position",
+            (row["secret_ref"],),
+        ).fetchall()
+    finally:
+        conn.close()
+    if listed:
+        return tuple(str(entry["model"]) for entry in listed)
+    return (str(row["model"]),) if row["model"] else ()
+
+
+def resolve_local_byok_credential_model(
+    provider: str, *, db_path: Path | None = None
+) -> str | None:
+    """Return the first model stored with the credential for ``provider``.
+
+    OMN-20157. ``None`` when no credential is registered or none resolved a
+    model; the route then carries the unresolved marker and the effect resolves
+    the model from the provider's list before the call. OMN-21059: the first
+    entry of :func:`resolve_local_byok_credential_models`. Never returns a value.
+    """
+    models = resolve_local_byok_credential_models(provider, db_path=db_path)
+    return models[0] if models else None
+
+
+def resolve_local_byok_model_chooser(
+    secret_ref: str | None, *, db_path: Path | None = None
+) -> str | None:
+    """Return who chose the model stored with credential ``secret_ref``.
+
+    OMN-21078. ``None`` for an absent database, an unknown reference or no
+    recorded chooser; on a provider where the customer chooses, all three
+    are treated as the customer's choice.
+    """
+    if not secret_ref:
         return None
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     if not resolved_path.is_file():
@@ -358,22 +553,26 @@ def resolve_local_byok_credential_model(
     conn = _connect(resolved_path)
     try:
         row = conn.execute(
-            f"SELECT model FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? "
-            "ORDER BY registered_at DESC LIMIT 1",
-            (normalized,),
+            f"SELECT model_chosen_by FROM {LOCAL_CREDENTIAL_TABLE} WHERE secret_ref = ?",
+            (secret_ref,),
         ).fetchone()
     finally:
         conn.close()
-    return str(row["model"]) if row is not None and row["model"] else None
+    return (
+        str(row["model_chosen_by"])
+        if row is not None and row["model_chosen_by"]
+        else None
+    )
 
 
 def record_local_byok_model(
     secret_ref: str, model: str, *, db_path: Path | None = None
 ) -> bool:
-    """Store ``model`` as the resolved model of the credential ``secret_ref``.
+    """Store ``model`` as a catalogue pick for credential ``secret_ref``.
 
     OMN-20157. Called by the effect after a call-time re-resolve, so the next
     delegation runs the model the provider now offers instead of re-learning it.
+    OMN-21078: records that the catalogue chose it, so a later call may re-aim it.
     Returns whether a row was updated; an absent database or an unknown
     reference updates nothing and is not an error.
     """
@@ -384,12 +583,16 @@ def record_local_byok_model(
         return False
     conn = _connect(resolved_path)
     try:
-        cursor = conn.execute(
-            f"UPDATE {LOCAL_CREDENTIAL_TABLE} SET model = ? WHERE secret_ref = ?",
-            (model.strip(), secret_ref),
-        )
+        known = conn.execute(
+            f"SELECT 1 FROM {LOCAL_CREDENTIAL_TABLE} WHERE secret_ref = ?",
+            (secret_ref,),
+        ).fetchone()
+        if known is None:
+            return False
+        # OMN-21059: a catalogue pick is a list of one; it replaces the list.
+        _write_models(conn, secret_ref, (model.strip(),), MODEL_CHOSEN_BY_CATALOGUE)
         conn.commit()
-        return bool(cursor.rowcount)
+        return True
     finally:
         conn.close()
 
@@ -564,8 +767,11 @@ def local_credential_registered_at(
 
 
 __all__: list[str] = [
+    "LOCAL_CREDENTIAL_MODEL_TABLE",
     "LOCAL_CREDENTIAL_TABLE",
     "LOCAL_INSTALL_TENANT_ID",
+    "MODEL_CHOSEN_BY_CATALOGUE",
+    "MODEL_CHOSEN_BY_CUSTOMER",
     "LocalByokCredentialError",
     "LocalByokCredentialStore",
     "is_local_store_only_ref",
@@ -574,7 +780,11 @@ __all__: list[str] = [
     "mint_local_byok_credential_ref",
     "register_local_byok_credential",
     "registered_local_byok_providers",
+    "resolve_local_byok_credential_model",
+    "resolve_local_byok_credential_models",
     "resolve_local_byok_credential_plan",
     "resolve_local_byok_credential_ref",
+    "resolve_local_byok_model_chooser",
     "revoke_local_byok_credential",
+    "set_local_byok_credential_models",
 ]

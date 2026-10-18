@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-m05",
+  "title": "predict aggregate_outcome (omnimarket)",
+  "task_type": "reasoning",
+  "difficulty": "medium",
+  "provenance": "Function aggregate_outcome in omnimarket@7acb97b72bd6:src/omnimarket/delegated_test_loop/must_fail_control.py; the call and the asserted result come from tests/unit/delegated_test_loop/test_must_fail_control_omn20032.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\n_STRONGEST_FIRST = ('failed_call', 'failed_collection', 'error_setup', 'infra_error', 'no_tests', 'passed')\n\ndef aggregate_outcome(outcomes):\n    for candidate in _STRONGEST_FIRST:\n        if candidate in outcomes:\n            return candidate\n    return 'infra_error'\n```\n\nWhat does `aggregate_outcome(['passed', 'infra_error'])` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'infra_error'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

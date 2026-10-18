@@ -3,10 +3,13 @@
 """Builds the inputs of a recorded merge sweep from its scenario spec (OMN-20676).
 
 ``fixtures/recorded_sweep.json`` holds one trimmed snapshot of the PR watcher's state file and a
-list of scenario specs over it (draft flips, run overrides, ``ready_at`` and changed files that the
-watcher does not record yet, merges, ledger rows, controller ticks). The recorder ran the merge-sweep
-skill's own ``sweep_read.live_reading`` over the files this module builds and stored the answer next
-to each spec; the tests build the same files and run the node.
+list of scenario specs over it (draft flips, run overrides, check detail the state lacks, changed
+files that the watcher does not record, merges, ledger rows, controller ticks, out-of-scope
+rulings). The recorder ran the merge-sweep skill's own ``sweep_read.live_reading`` over the files
+this module builds and stored the answer next to each spec; the tests build the same files and run
+the node. Every repository name in the fixture is a placeholder (``repo-NN``) the recorder applied
+to the inputs and the answers alike, numbered in the sorted order of the names it replaced, so the
+fleet, the non-product repositories and the rulings reach the node as data, as they do in a sweep.
 """
 
 from __future__ import annotations
@@ -22,6 +25,15 @@ FIXTURE = Path(__file__).parent / "fixtures" / "recorded_sweep.json"
 def load_recorded() -> dict[str, Any]:
     loaded: dict[str, Any] = json.loads(FIXTURE.read_text())
     return loaded
+
+
+def repository_facts(recorded: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+    """The repositories the script read the scenario with, as a request carries them."""
+    return {
+        "fleet": list(recorded["repositories"]["fleet"]),
+        "non_product_repos": list(recorded["repositories"]["non_product"]),
+        "out_of_scope": dict(spec.get("out_of_scope", {})),
+    }
 
 
 def _detail(runs: list[list[Any]]) -> list[list[str]]:
@@ -64,6 +76,9 @@ def build_state(base: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     for key, runs in spec.get("runs", {}).items():
         rec = state["prs"][key]
         rec["ci"] = _ci_for(rec["facts"]["head_sha"], runs, spec["now_tick"])
+    for key, names in spec.get("detail_drop", {}).items():
+        ci = state["prs"][key]["ci"]
+        ci["detail"] = [row for row in ci["detail"] if row[0] not in names]
     for extra in spec.get("extra_prs", []):
         key = f"{extra['repo']}#{extra['number']}"
         sha = extra["head_sha"]

@@ -33,6 +33,13 @@ from omnimarket.nodes.node_codegen_outcome_reducer.handlers.handler_codegen_outc
     HandlerCodegenOutcomeReducer,
 )
 
+
+@pytest.fixture(autouse=True)
+def _isolate_retained_state() -> None:
+    """The retained store is shared by every instance, so isolate each test."""
+    HandlerCodegenOutcomeReducer._retained_by_correlation.clear()
+
+
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "src"
@@ -171,6 +178,44 @@ class TestReducerJoin:
         assert isinstance(outcome, ModelCodegenSerializeOutcome)
         assert outcome.state.contract_yaml == "name: x\n"
 
+    def test_serialize_verdict_carries_lint_status(self) -> None:
+        # OMN-21151: the serialize outcome must carry the lint verdict so the
+        # orchestrator can stop before writing files. The reducer joins it from
+        # the real ModelContractDocument the serialize node publishes.
+        reducer = HandlerCodegenOutcomeReducer()
+        reducer.handle(ModelLlmGenerateResult(state=_state("corr-1")))
+        outcome = reducer.handle(
+            ModelContractDocument(
+                contract_yaml="name: x\n",
+                contract_sha256="abc",
+                subcontracts_rendered=(),
+                lint_status=EnumLintStatus.PASS,
+                correlation_id="corr-1",
+            )
+        )
+        assert isinstance(outcome, ModelCodegenSerializeOutcome)
+        assert outcome.lint_passed is True
+        assert outcome.lint_messages == ()
+
+    def test_serialize_verdict_carries_lint_failure(self) -> None:
+        # OMN-21151: a failing lint verdict rides the outcome as lint_passed
+        # False with the gate's messages, never dropped on the join floor.
+        reducer = HandlerCodegenOutcomeReducer()
+        reducer.handle(ModelLlmGenerateResult(state=_state("corr-1")))
+        outcome = reducer.handle(
+            ModelContractDocument(
+                contract_yaml="name: x\n",
+                contract_sha256="abc",
+                subcontracts_rendered=(),
+                lint_status=EnumLintStatus.FAIL,
+                lint_messages=("missing required top-level key: metadata",),
+                correlation_id="corr-1",
+            )
+        )
+        assert isinstance(outcome, ModelCodegenSerializeOutcome)
+        assert outcome.lint_passed is False
+        assert outcome.lint_messages == ("missing required top-level key: metadata",)
+
     def test_two_correlations_do_not_cross(self) -> None:
         reducer = HandlerCodegenOutcomeReducer()
         reducer.handle(ModelLlmGenerateResult(state=_state("corr-A", source="A_SRC")))
@@ -220,3 +265,58 @@ class TestReducerJoin:
                     correlation_id="",
                 )
             )
+
+
+class TestSharedAcrossRuntimeInstances:
+    """The runtime builds one handler instance per routing entry.
+
+    The seed arrives on one entry and each verdict on another, so a store held on
+    the instance would hold the seed where no verdict looks for it.
+    """
+
+    def test_verdict_joins_a_seed_recorded_by_another_instance(self) -> None:
+        seed_instance = HandlerCodegenOutcomeReducer()
+        verdict_instance = HandlerCodegenOutcomeReducer()
+        seed_instance.handle(
+            ModelLlmGenerateResult(state=_state("corr-shared", source="SRC"))
+        )
+
+        outcome = verdict_instance.handle(
+            ModelGeneratedCodeValidation(
+                parses=True,
+                syntax_error=None,
+                stub_methods=(),
+                structure_issues=(),
+                is_valid=True,
+                correlation_id="corr-shared",
+            )
+        )
+
+        assert isinstance(outcome, ModelCodegenValidationOutcome)
+        assert outcome.state.source_text == "SRC"
+
+    def test_retained_runs_are_bounded(self) -> None:
+        reducer = HandlerCodegenOutcomeReducer()
+        limit = HandlerCodegenOutcomeReducer._MAX_RETAINED_RUNS
+        for index in range(limit + 5):
+            reducer.handle(ModelLlmGenerateResult(state=_state(f"corr-{index}")))
+
+        retained = HandlerCodegenOutcomeReducer._retained_by_correlation
+        assert len(retained) == limit
+        assert "corr-0" not in retained
+        assert f"corr-{limit + 4}" in retained
+
+
+class TestOutcomesAreDeclaredPublishedEvents:
+    """A reducer's bare model return is a projection unless the contract maps its
+    class to a topic, and a projection is never published."""
+
+    def test_each_outcome_class_maps_to_its_outcome_topic(self) -> None:
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+        published = {e["event_type"]: e["topic"] for e in contract["published_events"]}
+        assert published == {
+            "CodegenValidationOutcome": "onex.evt.omnimarket.codegen-validation-outcome.v1",
+            "CodegenTypecheckOutcome": "onex.evt.omnimarket.codegen-typecheck-outcome.v1",
+            "CodegenSerializeOutcome": "onex.evt.omnimarket.codegen-serialize-outcome.v1",
+        }
+        assert set(published.values()) == _EXPECTED_PUBLISH

@@ -50,6 +50,7 @@ OPERATIONS = (
     "read_lab_fill_receipts",
     "pick_lab_fill_fallback_host",
     "write_lab_fill_status",
+    "run_lab_fill_tick",
 )
 POOL = [
     {"name": "h1", "cores": 32, "load1": 3.0, "mem_avail_gb": 90.0, "runner_slots": 4}

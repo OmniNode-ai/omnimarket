@@ -27,6 +27,39 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: A repeated observation or a replayed event_id emits no second ci-run-failed event, decision or start -- falsifier: a duplicate or replay emits again
+  - id: "req-ci-red-triage-model"
+    statement: |-
+      Before the durable red CI triage contract is built, a design note fixes its scope, record identity, one writer and checkpoints, and a TLA+ model checks it, with each property failing on a one-knob mutation and an approving verdict that names the model's digest.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: One triage per canonical run identity (repo, workflow_run_id, run_attempt, check_name): the design config of formal/ci_red_triage passes OneTriagePerIdentity and each mutant targeting it (key per delivery, blind insert, dedup in process memory) records a counterexample -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k one_triage_per_identity
+      - id: "AC6"
+        statement: |-
+          AC6: No lost red: the design config passes NoLostRed and each mutant targeting it (a key without the run attempt, no poll backstop) records a counterexample -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k no_lost_red
+      - id: "AC7"
+        statement: |-
+          AC7: The poll backstop never double-writes: the design config passes PollNeverDoubleWrites and the mutant where the poll inserts outside the shared writer records a counterexample -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k poll_never_double_writes
+      - id: "AC8"
+        statement: |-
+          AC8: formal/ci_red_triage/README.txt is the design note, and formal/ci_red_triage/VERDICT.txt holds exactly one verdict line, an APPROVE naming the sha256 of the committed CiRedTriage.tla -- falsifier: uv run pytest tests/formal/test_ci_red_triage_model.py -k verdict_names_model_digest
+  - id: "req-ci-red-bus-chain-gate"
+    statement: |-
+      The red CI chain that ruling 2026-10-08T14:27:26Z requires stays connected on the bus, and CI and pre-commit refuse a change that cuts a leg.
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: Cutting any leg of the chain (the emitter consuming pr-state-observed or publishing ci-run-failed, the orchestrator consuming ci-run-failed or publishing ci-red-triage-decided, the reducer consuming the decision, a route to a deleted handler module) fails tests/ci/test_red_ci_bus_chain_omn20730.py, and the required lint job and the red-ci-event-chain pre-commit hook both run it -- falsifier: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -k "planted_violation or required_lint or pre_commit_hook"
+  - id: "req-dev-head-red-dispatch"
+    statement: |-
+      A red verdict on a landing branch head, which names no PR, reaches the orchestrator on the bus and asks for one cause lane unless the cause is owned.
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: A red summary verdict on a landing branch head observed on onex.evt.github.branch-head.v1 emits one onex.evt.omnimarket.dev-head-red.v1 event per repo, branch, head and check, and a green, pending, merge-group, ref-advance or non-landing-branch observation or a repeat of the same red emits none -- falsifier: uv run pytest tests/unit/nodes/node_pr_state_emit_effect/test_detect_dev_head_red_omn20730.py
+      - id: "AC11"
+        statement: |-
+          AC11: node_pr_lifecycle_orchestrator answers an unowned dev-head red with exactly one onex.cmd.omnimarket.dev-cause-lane-requested.v1 request carrying cause <repo>:<check>, and a second identical event, a request it made inside the lease, a bus owner claim on the dev owner key or a live cause CLAIM on the work ledger yields none; an unread owner or act false withholds it; every red gets one onex.evt.omnimarket.dev-head-red-decided.v1 decision -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_dev_head_red_dispatch_omn20730.py
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the detector emits ci-run-failed for open, non-draft RED PRs and drops the rest."
@@ -37,6 +70,15 @@ evidence_requirements:
   - kind: "tests"
     description: "AC3 and AC4: one owner start per shared cause, and duplicates and replays emit nothing."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
+  - kind: "tests"
+    description: "AC5 to AC8: the red CI triage model, its TLC results and its verdict agree."
+    command: "uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC9: the five contract legs of the red CI chain, each cut refused, and the lint job and pre-commit hook that run the gate."
+    command: "uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC10 and AC11: a red landing-branch head emits dev-head-red once, and the orchestrator asks for one cause lane unless the cause is owned."
+    command: "uv run pytest tests/unit/nodes/node_pr_state_emit_effect/test_detect_dev_head_red_omn20730.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_dev_head_red_dispatch_omn20730.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -66,3 +108,34 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac3_three_shared_reds_have_one_owner_start tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_duplicate_emits_nothing tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py::test_ac4_event_id_replay_skips_changed_or_failing_facts tests/unit/nodes/node_pr_state_emit_effect/test_detect_ci_red.py::test_read_timestamp_does_not_trigger_second_event -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3", "AC4"]
+  - id: "dod-omn20730-ac5-ac8-triage-model"
+    description: "AC5 to AC8: the red CI triage model passes its design config, each property fails on its one-knob mutation, the results match the committed model, configs and outputs, and the verdict approves the model's digest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5", "AC6", "AC7", "AC8"]
+  - id: "dod-omn20730-ac9-bus-chain-gate"
+    description: "AC9: every planted cut of the red CI chain is refused, and the lint job and the pre-commit hook run the gate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn20730-ac10-ac11-dev-head-red-dispatch"
+    description: "AC10 and AC11: the dev-head red detector and the one-cause-lane dispatcher pass their tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_state_emit_effect/test_detect_dev_head_red_omn20730.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_dev_head_red_dispatch_omn20730.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10", "AC11"]
+  - id: "dod-omn20730-dev-head-red-deploy-probe"
+    description: "Hosted deploy probe: read the dispatcher source from GitHub at the checked-out commit and require its cause-lane request topic mapping. A missing dispatcher or missing mapping fails. The AC10 and AC11 tests separately exercise detection, dispatch, replay and owner withholding; this probe does not claim a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_dev_head_red_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'ModelDevCauseLaneRequest: DEV_CAUSE_LANE_REQUESTED_TOPIC_V1,' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"

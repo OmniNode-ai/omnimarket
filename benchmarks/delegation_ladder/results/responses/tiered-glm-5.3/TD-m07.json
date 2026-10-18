@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m07",
+  "path": "pinned",
+  "sha256": "244f81bb91b2f1d8a5a19c7ec31466f7af5dab299f7ca1e3b2e9ae3ffc5c541f",
+  "response": "## Release notes\n\n- **#1551** — Backfilled `agent_source` on `ModelClaudeCodeHookEvent`; Cursor retyped str → `EnumAgentSource`, with a validator still coercing bare strings — wire shape unchanged.\n- **#1690** — Receipt Gate fix: receipt-gate.yml routed every pull-request event to the untrusted public runner class; the untrusted test is now the fork test.\n- **#1262** — Canonical-inference gate now permits a model-CLI subprocess (codex/claude/gemini/opencode) only when the enclosing node's contract.yaml declares `descriptor.agent_invocation: true`; otherwise it fails closed.\n- **#1430** — New non-canonical lifecycle-class ratchet gate (omnibase_core canary): AST allowlist flags CamelCase classes with non-canonical lifecycle type-words and blocks new ones outside a frozen per-repo baseline.\n- **#1723** — Receipt Gate now accepts a dependency-pin-only outcome, consulting the occ-autobind producer's head-SHA-bound 'occ-autobind / outcome' check-run."
+}

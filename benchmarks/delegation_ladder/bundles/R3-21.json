@@ -1,0 +1,17 @@
+{
+  "task_id": "R3-21",
+  "title": "what env_config_overrides returns for a given call",
+  "task_type": "review",
+  "provenance": "omnibase_infra.cli.delegate_env_config_overrides at omnibase_infra 0b3ba9e02991d483cf2c149db1ccfdbc8242487c. The question is taken from an assertion in the module's own repository test; the held answer holds because that test passes against this source.",
+  "prompt": "Read this module and answer the question about it.\n\n```python\n# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.\n# SPDX-License-Identifier: MIT\n\n\"\"\"Report environment overrides of delegation configuration paths.\"\"\"\n\nfrom __future__ import annotations\n\nfrom collections.abc import Mapping\n\nfrom omnibase_infra.cli.model_delegate_env_config_override import (\n    ModelDelegateEnvConfigOverride,\n)\n\nDELEGATION_ENV_CONFIG_KEYS: tuple[str, ...] = (\n    \"BIFROST_CONTRACT_PATH\",\n    \"BIFROST_OVERLAY_PATH\",\n    \"DELEGATION_ROUTING_TIERS_PATH\",\n)\n\n\ndef env_config_overrides(\n    env: Mapping[str, str],\n) -> tuple[ModelDelegateEnvConfigOverride, ...]:\n    \"\"\"Return non-blank overrides in the declared configuration key order.\"\"\"\n    return tuple(\n        ModelDelegateEnvConfigOverride(config_key=key, resolved_path=path)\n        for key in DELEGATION_ENV_CONFIG_KEYS\n        if (path := env.get(key, \"\").strip())\n    )\n\n\ndef format_override_line(o: ModelDelegateEnvConfigOverride) -> str:\n    \"\"\"Describe an override for the CLI's stderr output.\"\"\"\n    return (\n        f\"config override: {o.config_key} resolved from environment \"\n        f\"(source={o.source}) path={o.resolved_path}\"\n    )\n```\n\nQUESTION: What exactly does `env_config_overrides({'PATH': '/usr/bin'})` return? Answer as `RESULT: ` followed by the value exactly as Python's repr prints it, and nothing else.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "RESULT: ()"
+    ],
+    "forbidden": []
+  },
+  "fixture_files": {},
+  "rung": "R3",
+  "dependent_reasoning_steps": 2
+}

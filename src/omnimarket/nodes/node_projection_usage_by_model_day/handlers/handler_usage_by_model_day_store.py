@@ -13,16 +13,28 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 
 CALLS_TABLE = "usage_by_model_day_calls"
 AGGREGATE_TABLE = "usage_by_model_day"
+AGGREGATE_KEY = "tenant_id,usage_day,model_id,cost_tier_name"
+
+
+class UsageCallReadBackError(RuntimeError):
+    """The store did not read back a call it was just given, so no share can be counted from it."""
 
 
 def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
-    """Persist a new call and recount its key; a replay performs no writes."""
+    """Persist a new call and recount its key; a replay performs no writes.
+
+    OMN-21015: the key carries the call's tier, and each row's call_share is its
+    calls over all calls of its tenant and day. A new call changes every share of
+    that day, so every row of the day is written once with its own, which also
+    moves each row's cursor, as its served share moved.
+    """
     if db.query(CALLS_TABLE, {"call_id": delta.call_id}):
         return False
     key: dict[str, object] = {
         "tenant_id": delta.tenant_id,
         "usage_day": delta.usage_day,
         "model_id": delta.model_id,
+        "cost_tier_name": delta.cost_tier_name,
     }
     updated_at = datetime.now(UTC).isoformat()
     db.upsert(
@@ -40,6 +52,12 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
         },
     )
     calls = db.query(CALLS_TABLE, key)
+    if not calls:
+        # The call was just written under `key`, so an empty read means the store lost the write. Refuse rather than
+        # count a share from a day with no calls in it (a division by zero) or store an aggregate it never kept.
+        raise UsageCallReadBackError(
+            f"call {delta.call_id} was written under {key} but not read back"
+        )
     # Only a measured cost is a measurement. A call stored before usage_source
     # existed carries none, so it is counted as unmeasured, never as measured.
     measured = [
@@ -47,9 +65,19 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
         for row in calls
         if row.get("usage_source") == EnumUsageSource.MEASURED.value
     ]
+    others = [
+        row
+        for row in db.query(
+            AGGREGATE_TABLE,
+            {"tenant_id": delta.tenant_id, "usage_day": delta.usage_day},
+        )
+        if (row["model_id"], row["cost_tier_name"])
+        != (delta.model_id, delta.cost_tier_name)
+    ]
+    day_calls = len(calls) + sum(int(str(row["call_count"])) for row in others)
     db.upsert(
         AGGREGATE_TABLE,
-        "tenant_id,usage_day,model_id",
+        AGGREGATE_KEY,
         {
             **key,
             "input_tokens": sum(int(str(row["input_tokens"])) for row in calls),
@@ -60,10 +88,29 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
             "measured_cost_usd": sum(measured, Decimal(0)) if measured else None,
             "unmeasured_call_count": len(calls) - len(measured),
             "call_count": len(calls),
+            "call_share": len(calls) / day_calls,
             "updated_at": updated_at,
         },
     )
+    for row in others:
+        # Rewriting updated_at re-stamps the row's cursor: its served share moved.
+        stored = {k: v for k, v in row.items() if k != "projection_cursor"}
+        db.upsert(
+            AGGREGATE_TABLE,
+            AGGREGATE_KEY,
+            {
+                **stored,
+                "call_share": int(str(row["call_count"])) / day_calls,
+                "updated_at": updated_at,
+            },
+        )
     return True
 
 
-__all__ = ["AGGREGATE_TABLE", "CALLS_TABLE", "apply_usage_call"]
+__all__ = [
+    "AGGREGATE_KEY",
+    "AGGREGATE_TABLE",
+    "CALLS_TABLE",
+    "UsageCallReadBackError",
+    "apply_usage_call",
+]

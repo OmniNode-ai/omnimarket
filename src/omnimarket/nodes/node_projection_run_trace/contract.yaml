@@ -1,0 +1,118 @@
+---
+name: projection_run_trace
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_run_trace.models.model_delegation_run_step.ModelDelegationRunStep
+description: >
+  OMN-19987. Stores each numbered step of a delegation run once, per tenant,
+  keyed by the step sequence the delegate orchestrator assigned, and exposes
+  one run's steps in that order through snapshot deltas.
+runtime_profiles: [tenant-projection]
+
+handler:
+  module: omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_trace
+  class: HandlerProjectionRunTrace
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_trace_projection_writer
+      handler:
+        name: RunTraceProjectionWriter
+        module: omnimarket.nodes.node_projection_run_trace.handlers.handler_run_trace_writer
+      handler_module: omnimarket.nodes.node_projection_run_trace.handlers.handler_run_trace_writer
+terminal_event: onex.evt.omnimarket.projection-run-trace-applied.v1
+golden_path:
+  - "Validate a run step that names its tenant, its run and its step sequence"
+  - "Derive its row; the step sequence is the row's place in the run"
+  - "Insert the step once under (tenant, run, sequence); a redelivery writes nothing"
+  - "Publish the accepted row to the bus-backed projection API"
+  - "Emit onex.evt.omnimarket.projection-run-trace-applied.v1"
+dod_evidence:
+  - test: tests/test_omn19987_run_trace.py::test_a_shuffled_chain_with_two_equal_timestamps_stores_in_step_order
+    description: "A chain delivered shuffled, with equal timestamps, stores in the orchestrator's step order"
+  - test: tests/test_omn19987_run_trace.py::test_another_tenants_step_never_joins_or_overwrites_the_run
+    description: "Another tenant's step with the same run id and sequence neither joins nor overwrites the run"
+  - test: tests/test_omn19987_run_trace.py::test_replaying_the_chain_changes_nothing
+    description: "Replaying the chain leaves rows and timestamps unchanged"
+  - test: tests/test_omn19987_run_trace.py::test_a_step_missing_part_of_its_key_is_refused_not_given_a_default
+    description: "A step without a tenant, run id or sequence fails validation and writes no row"
+  - test: tests/test_omn19987_run_trace.py::test_a_timed_out_run_marks_the_provider_call_not_the_terminal
+    description: "A failed run's terminal names the earlier step that failed it"
+  - test: tests/test_omn19987_run_trace.py::test_fold_is_pure_and_replay_deterministic
+    description: "Identical inputs produce identical rows"
+  - test: tests/test_omn19987_run_trace.py::test_no_postgres_only_sql_is_reachable_from_the_store_neutral_path
+    description: "The portable store uses only the DatabaseAdapter protocol"
+  - test: tests/projection/test_omn19987_run_trace_served.py::test_a_shuffled_chain_with_equal_timestamps_and_a_foreign_step_is_served_in_step_order
+    description: "The served rows for one run are in step order and hold no other tenant's step"
+  - test: tests/test_omn19987_run_trace.py::test_runtime_dispatch_resolves_only_the_writer
+    description: "Runtime routing dispatches only the effect writer"
+  - test: tests/test_omn19987_run_trace.py::test_the_writer_declares_in_process_dispatch
+    description: "The shared runtime dispatches the writer in-process"
+  - test: tests/test_omn19987_run_trace.py::test_the_postgres_migration_declares_the_table_and_its_key
+    description: "Migration owns the table, its composite key and its cursor"
+db_io:
+  db_tables:
+    - name: run_trace
+      database_ref: application
+      schema: public
+      migration: "0000_create_run_trace.sql"
+      access: read_write
+      role: run_trace
+  dedupe_key: [tenant_id, correlation_id, step_sequence]
+  ordering_key: step_sequence
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegation-run-step.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-run-trace-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-run-trace-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-run-trace-applied.v1
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.run-trace.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  key_grain: "mutable"
+  table: "run_trace"
+  schema: "omnidash_analytics"
+  columns:
+    - tenant_id
+    # Declared so a read can be narrowed to one run with ?correlation_id=.
+    - correlation_id
+    - step_sequence
+    - step_kind
+    - started_at
+    - duration_ms
+    - outcome
+    - failure_cause
+    - backend_id
+    - model_id
+    - attempt_number
+    - reason
+    - candidates
+    # Set on the terminal of a failed run: the earlier step that failed it.
+    - failing_step_sequence
+    - updated_at
+    - projection_cursor
+  json_columns:
+    - candidates
+  # The step sequence is the only order within a run. No timestamp appears here:
+  # two steps may share one, and arrival order means nothing.
+  order_by: "correlation_id ASC, step_sequence ASC"
+  cursor_column: projection_cursor
+  freshness_column: updated_at
+  limit: 500
+  bus_backed: true
+  key_columns: [tenant_id, correlation_id, step_sequence]
+  # A read is scoped to the reading tenant by the server, so the page never
+  # receives, or filters out, another tenant's steps.
+  tenant_column: tenant_id
+  # The Workflow page that reads this exposure is still a draft. The
+  # exposure-reader-coverage gate fails a standing opt-out once a reader exists,
+  # so landing that reader forces this pair out.
+  consumers: none
+  consumers_reason: >-
+    reader pending in omnidash#397 (OMN-19987); remove when it lands
+metadata:
+  transport_type: kafka

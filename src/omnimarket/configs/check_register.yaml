@@ -43,6 +43,16 @@ checks:
       - wave exit
     source: plan section 2b; the running sha equals the expected sha, read once
 
+  - check_id: delegation.lab_first_routing
+    check_class: gate
+    blocks:
+      - a routing contract change in a pull request
+    source: >-
+      operator ruling 2026-10-08T23:48:01Z (lab models first for appropriate
+      tasks, with a scoring rubric): a deterministic read of the committed task
+      class contracts and routing tiers, refusing a lab-passing class routed to a
+      cloud model first
+
   - check_id: delegation_regression_nightly.per_run_gates
     check_class: gate
     blocks:
@@ -114,6 +124,16 @@ checks:
     source: >-
       the delegation quality gate's `accurate` check (handler_quality_gate); per-check calibration
       is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.accurate_summary
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `accurate_summary` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
 
@@ -453,6 +473,16 @@ checks:
       - delegation acceptance
     source: >-
       the delegation quality gate's `uses_pytest_mark_unit` check (handler_quality_gate); per-check
+      calibration is unmeasured: the committed measurement
+      (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
+      refuse verdict per class, not each check's catches, wrong refusals or skips
+
+  - check_id: delegation.acceptance.gate.within_sentence_limit
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      the delegation quality gate's `within_sentence_limit` check (handler_quality_gate); per-check
       calibration is unmeasured: the committed measurement
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips

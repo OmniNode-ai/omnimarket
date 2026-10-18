@@ -1,0 +1,15 @@
+{
+  "task_id": "TN-e01",
+  "title": "predict resolve_pr_number (omnibase_core)",
+  "task_type": "reasoning",
+  "difficulty": "easy",
+  "provenance": "Function resolve_pr_number in omnibase_core@d677b4e78219:scripts/ci/check_occ_companion_merged.py; the call and the asserted result come from tests/unit/scripts/ci/test_check_occ_companion_merged.py. The held value was re-derived by executing the call.",
+  "prompt": "Here is a Python program.\n\n```python\nimport re\n\nMERGE_GROUP_PR_RE = re.compile('/pr-(\\\\d+)-')\n\ndef resolve_pr_number(event_name, pr_number, merge_group_head_ref):\n    if pr_number:\n        return pr_number\n    if event_name == 'merge_group' and merge_group_head_ref:\n        match = MERGE_GROUP_PR_RE.search(merge_group_head_ref)\n        if match:\n            return match.group(1)\n    return ''\n```\n\nWhat does `resolve_pr_number('pull_request', '123', '')` evaluate to? Reply with only the Python literal it evaluates to, exactly as repr() would print it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "literal_equals",
+  "scorer_config": {
+    "expected": "'123'"
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

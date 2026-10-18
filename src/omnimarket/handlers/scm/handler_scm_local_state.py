@@ -5,7 +5,8 @@
 The PR watcher already reads every open PR and its CI on each tick and writes
 the result to its state file (``$ONEX_PR_WATCHER_STATE``, else
 ``$OMNI_HOME/.claude_scratch/pr-watcher/state.json``). The canonical clones
-hold every merged commit. A lane's PR and CI state read is answered from those
+(``$ONEX_SCM_CLONE_ROOT/<repo name>``, else under ``$OMNI_HOME``) hold every
+merged commit. A lane's PR and CI state read is answered from those
 two before any bus call, with zero GitHub requests.
 
 Freshness is the rule ``pr_state_local.py`` and node_dod_verify's local source
@@ -35,19 +36,22 @@ from typing import Final, Literal
 
 from pydantic import JsonValue
 
+from omnimarket.handlers.scm.handler_scm_local_git import HandlerScmLocalGit
+from omnimarket.models.model_github_gateway_io import (
+    ModelPrHead,
+    ModelPrHeadsResult,
+)
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     ModelScmLocalReadRequest,
     ModelScmLocalReadResult,
 )
-from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
-    ModelPrHead,
-    ModelPrHeadsResult,
-)
 
 logger = logging.getLogger(__name__)
 
 WATCHER_STATE_ENV: Final[str] = "ONEX_PR_WATCHER_STATE"
+# The directory holding one canonical clone per repository name.
+CLONE_ROOT_ENV: Final[str] = "ONEX_SCM_CLONE_ROOT"
 WATCHER_SCHEMA: Final[int] = 1
 WATCHER_MAX_AGE: Final[timedelta] = timedelta(minutes=8)
 _TERMINAL_STATES: Final[frozenset[str]] = frozenset({"MERGED", "CLOSED"})
@@ -90,12 +94,35 @@ def default_watcher_state_path() -> Path | None:
     return Path(registry_root) / ".claude_scratch" / "pr-watcher" / "state.json"
 
 
-def default_clone_path(repo: str) -> Path | None:
-    """``$OMNI_HOME/<repo name>`` when it is a git checkout."""
+def default_claims_dir() -> Path | None:
+    """The caller's PR claim registry: where ``pr_claim_registry_cli.py`` claims.
+
+    ``$ONEX_PR_CLAIMS_DIR``, else ``$ONEX_STATE_DIR/pr-queue/claims``, else
+    ``$OMNI_HOME/.onex_state/pr-queue/claims``.
+    """
+    declared = os.environ.get("ONEX_PR_CLAIMS_DIR")
+    if declared:
+        return Path(declared)
+    state_dir = os.environ.get("ONEX_STATE_DIR")
+    if state_dir:
+        return Path(state_dir) / "pr-queue" / "claims"
     registry_root = os.environ.get("OMNI_HOME")
     if not registry_root:
         return None
-    clone = Path(registry_root) / repo.split("/", 1)[1]
+    return Path(registry_root) / ".onex_state" / "pr-queue" / "claims"
+
+
+def default_clone_path(repo: str) -> Path | None:
+    """``$ONEX_SCM_CLONE_ROOT/<repo name>`` when it is a git checkout.
+
+    A declared root is the only root read: one that holds no clone of the repo
+    answers None and never falls through. A host that declares none resolves
+    the clone under ``$OMNI_HOME``, which the command's help does not name.
+    """
+    root = os.environ.get(CLONE_ROOT_ENV) or os.environ.get("OMNI_HOME")
+    if not root:
+        return None
+    clone = Path(root) / repo.split("/", 1)[1]
     return clone if (clone / ".git").exists() else None
 
 
@@ -149,6 +176,13 @@ class HandlerScmLocalState:
             return self._list(request, state_dict, tick_text)
         if request.read is EnumScmLocalRead.PR_HEADS:
             return self._pr_heads(request, state_dict, tick_text, fresh=fresh)
+        if request.read in (
+            EnumScmLocalRead.FILE_CONTENTS,
+            EnumScmLocalRead.COMMIT_VIEW,
+        ):
+            return HandlerScmLocalGit().handle(request)
+        if request.read is EnumScmLocalRead.COMMIT_CHECKS:
+            return self._commit_checks(request, state_dict, tick_text, fresh=fresh)
 
         short = request.repo.split("/", 1)[1]
         key = f"{short}#{request.pr_number}"
@@ -166,6 +200,17 @@ class HandlerScmLocalState:
             )
         if not terminal and not fresh:
             return self._unanswered(request, why or "the watcher state is stale")
+
+        if request.read is EnumScmLocalRead.PR_COMMITS:
+            return (
+                HandlerScmLocalGit()
+                .handle(
+                    request,
+                    head_sha=self._str(facts.get("head_sha")),
+                    base=self._str(facts.get("base")),
+                )
+                .model_copy(update={"watcher_tick": tick_text})
+            )
 
         result: dict[str, JsonValue] = {
             "repo": request.repo,
@@ -194,19 +239,7 @@ class HandlerScmLocalState:
                 return self._unanswered(
                     request, f"the watcher has no CI read of {key} yet"
                 )
-            result.update(
-                {
-                    "head_sha": facts.get("head_sha"),
-                    "class": record.get("cls"),
-                    "read_at": ci.get("read_at"),
-                    "red": ci.get("red"),
-                    "pending": ci.get("pending"),
-                    "cancelled": ci.get("cancelled"),
-                    "red_facts": ci.get("red_facts"),
-                    "runs": ci.get("runs"),
-                    "detail": ci.get("detail"),
-                }
-            )
+            result.update(self._ci_payload(record, facts, ci))
         return ModelScmLocalReadResult(
             read=request.read,
             repo=request.repo,
@@ -250,6 +283,79 @@ class HandlerScmLocalState:
             source="watcher",
             watcher_tick=tick,
             result={"repo": request.repo, "count": len(prs), "prs": prs},
+        )
+
+    @staticmethod
+    def _ci_payload(
+        record: dict[str, JsonValue],
+        facts: dict[str, JsonValue],
+        ci: dict[str, JsonValue],
+    ) -> dict[str, JsonValue]:
+        return {
+            "head_sha": facts.get("head_sha"),
+            "class": record.get("cls"),
+            "read_at": ci.get("read_at"),
+            "red": ci.get("red"),
+            "pending": ci.get("pending"),
+            "cancelled": ci.get("cancelled"),
+            "red_facts": ci.get("red_facts"),
+            "runs": ci.get("runs"),
+            "detail": ci.get("detail"),
+        }
+
+    def _commit_checks(
+        self,
+        request: ModelScmLocalReadRequest,
+        state: dict[str, JsonValue],
+        tick: str | None,
+        *,
+        fresh: bool,
+    ) -> ModelScmLocalReadResult:
+        """The watcher's CI read of the PR whose head is ``request.sha``."""
+        if request.sha is None:
+            return self._unanswered(request, "commit_checks needs a sha")
+        prefix = f"{request.repo.split('/', 1)[1]}#"
+        held: list[tuple[int, dict[str, JsonValue], dict[str, JsonValue]]] = []
+        for key, value in self._dict(state.get("prs")).items():
+            record = self._dict(value)
+            facts = self._dict(record.get("facts"))
+            head = self._str(facts.get("head_sha"))
+            suffix = key[len(prefix) :]
+            if (
+                key.startswith(prefix)
+                and suffix.isdigit()
+                and head is not None
+                and head.startswith(request.sha)
+                and self._dict(record.get("ci"))
+            ):
+                held.append((int(suffix), record, facts))
+        if not held:
+            return self._unanswered(
+                request,
+                f"the watcher holds no CI read of a {request.repo} PR whose head "
+                f"starts {request.sha}",
+            )
+        # The newest PR number wins when two PRs share a head.
+        number, record, facts = max(held, key=lambda item: item[0])
+        terminal = facts.get("state") in _TERMINAL_STATES
+        if not terminal and not fresh:
+            return self._unanswered(
+                request,
+                f"the watcher state is older than {WATCHER_MAX_AGE} (last_tick {tick})",
+            )
+        return ModelScmLocalReadResult(
+            read=request.read,
+            repo=request.repo,
+            pr_number=number,
+            answered=True,
+            source="watcher",
+            watcher_tick=tick,
+            result={
+                "repo": request.repo,
+                "sha": request.sha,
+                "number": number,
+                **self._ci_payload(record, facts, self._dict(record.get("ci"))),
+            },
         )
 
     def _merge_commit(
@@ -518,8 +624,10 @@ class HandlerScmLocalState:
 
 
 __all__: list[str] = [
+    "CLONE_ROOT_ENV",
     "WATCHER_MAX_AGE",
     "HandlerScmLocalState",
+    "default_claims_dir",
     "default_clone_path",
     "default_watcher_state_path",
 ]

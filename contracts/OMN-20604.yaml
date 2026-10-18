@@ -28,6 +28,13 @@ requirements:
         statement: "AC8: every statement the check effect issues through its store is a SELECT in a read-only transaction, and the guard refuses INSERT, UPDATE, DELETE, DDL and multi-statement text before the driver sees it -- falsifier: uv run pytest tests/unit/nodes/node_lab_job_check/test_lab_job_check_effect.py -k 'selects_only or select_only_guard or accepts_every_statement' -q in omnimarket fails at the merge base, where the node does not exist"
       - id: "AC9"
         statement: "AC9: on an in-memory bus a runtime tick ends as one lab-job-checked record per open job -- falsifier: uv run pytest tests/test_golden_chain_lab_job_check_effect.py -q in omnimarket fails at the merge base, where the node does not exist"
+  - id: "req-lab-job-projection"
+    statement: "node_projection_lab_job is a pure fold plus an in-process writer: the writer stores the newest state row per job and every transition once, ordered by the CAS-assigned seq."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: the lab job projection writer refuses an older seq, an equal seq and a redelivered transition, so a replay writes nothing -- falsifier: uv run pytest tests/test_lab_job_projection.py -k 'older_transition or redelivered or equal_seq' -q in omnimarket fails at the merge base, where the node does not exist"
+      - id: "AC11"
+        statement: "AC11: only the writer is routed and it declares in-process dispatch, while the pure fold writes no rows -- falsifier: uv run pytest tests/test_golden_chain_projection_lab_job.py -k 'trap or routes_only_the_writer' -q in omnimarket fails at the merge base, where the node does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3 hosted probe. The reducer tests pass at the head and fail at the merge base, where the reducer does not exist."
@@ -115,4 +122,27 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_job_check_schedule_compute/handlers/handler_lab_job_check_schedule.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'scheduled_at=request.scheduled_at'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20604-ac10-projection-ordering-guard"
+    description: "AC10 hosted probe. An older seq, an equal seq and a redelivered transition are refused by the writer's statements. The test file exists only at the head, so the check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lab_job_projection.py -k 'older_transition or redelivered or equal_seq' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn20604-ac11-projection-golden-chain"
+    description: "AC11 hosted probe. Only the writer is routed and dispatched in process; the pure fold writes nothing. The test file exists only at the head, so the check fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_lab_job.py -k 'trap or routes_only_the_writer' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
+  - id: "dod-omn20604-projection-deploy-probe"
+    description: "Deploy probe. The lab job projection writer at the checked-out commit declares in-process dispatch; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base, where the node does not exist. The dev-lane readout after the deploy agent rolls it is one omninode_internal.lab_job_state row per job after a lab-job-transitioned event."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_lab_job/handlers/handler_lab_job_writer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'onex_runtime_inprocess_dispatch = True'"
         cwd: "${OMNI_HOME}/omnimarket"

@@ -23,6 +23,9 @@ Options:
     --resume-run-id RUN_ID     Resume an interrupted run
     --max-cost-usd FLOAT       Hard budget cap
     --allow-external           Allow non-local LLM providers
+    --grader-model-key KEY     Model key the grader calls. Without --allow-external
+                               a run that grades is refused unless this names a
+                               lab-hosted key (the contract default is a paid one).
     --bootstrap SERVERS        Kafka bootstrap servers (env: KAFKA_BOOTSTRAP_SERVERS)
     --topic TOPIC              Override command topic (default: read from contract.yaml)
 
@@ -84,6 +87,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--resume-run-id", default=None)
     p.add_argument("--max-cost-usd", type=float, default=None)
     p.add_argument("--allow-external", action="store_true")
+    p.add_argument("--grader-model-key", default=None)
     p.add_argument(
         "--bootstrap",
         default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""),
@@ -128,6 +132,7 @@ async def _publish(args: argparse.Namespace) -> None:
         "resume_run_id": args.resume_run_id,
         "max_cost_usd": args.max_cost_usd,
         "allow_external_providers": args.allow_external,
+        "grader_model_key": args.grader_model_key,
     }
 
     envelope = {

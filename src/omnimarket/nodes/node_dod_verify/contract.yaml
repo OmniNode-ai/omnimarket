@@ -34,13 +34,26 @@ handler_routing:
   handlers:
     # OMN-13253: operation_match entries require an `operation`; runtime_local
     # rejects the contract without it ("handlers[0].operation is missing").
+    # OMN-21146: each entry names the subscribe topic it owns, so the runtime
+    # assigns the start command and the merge event to their own handler.
     - operation: verify
+      topic: onex.cmd.omnimarket.dod-verify-start.v1
       handler:
         name: HandlerDodVerify
         module: omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify
       event_model:
         name: ModelDodVerifyStartCommand
         module: omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command
+    # OMN-21146: a merged PR that cites a ticket is verified at merge time, by
+    # the same verification a start command gets; no ticket, no run.
+    - operation: verify_on_merge
+      topic: onex.evt.github.pr-merged.v1
+      handler:
+        name: HandlerDodVerifyOnMerge
+        module: omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify_on_merge
+      event_model:
+        name: ModelPrMergedEvent
+        module: omnimarket.events.github
 
 descriptor:
   node_archetype: compute
@@ -158,7 +171,28 @@ outputs:
     description: >-
       Why the run reached no verdict, from EnumDodVerifyUnresolvedCause
       (run_error_or_timeout | pr_lookup_failed | pr_lookup_ambiguous |
-      repo_lookup_failed | unknown). Set exactly when status is `unresolved`.
+      repo_lookup_failed | ticket_unavailable | unknown). Set exactly when
+      status is `unresolved`.
+  # OMN-20858: the contract's pinned criteria against the live ticket's.
+  criteria_revision:
+    type: str
+    description: >-
+      Revision (sha256 over every labelled criterion and its change-control
+      hash) of the live ticket's criteria this verdict was computed against.
+      The Done transition re-checks it. Absent when the contract records no
+      criteria or no ticket was read.
+  criteria_drift:
+    type: list
+    description: >-
+      Criteria on which the live ticket and the contract disagree (edited,
+      deleted, added, duplicate_label), each naming the criterion. Non-empty
+      means CRITERIA_DRIFT: the binding is unproven and its earlier PASS
+      evidence does not count.
+  criteria_amendment:
+    type: object
+    description: >-
+      The one amendment record the contract needs to follow the live ticket:
+      bindings to rebind, retire and add, and labels to make unique.
   goal_id:
     type: uuid
     description: "Goal identity attached to this verification attempt."
@@ -189,6 +223,7 @@ terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.dod-verify-start.v1
+    - onex.evt.github.pr-merged.v1
   publish_topics:
     - onex.evt.omnimarket.dod-verify-completed.v1
 

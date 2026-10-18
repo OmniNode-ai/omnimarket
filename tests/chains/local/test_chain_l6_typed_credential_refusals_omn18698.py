@@ -50,6 +50,7 @@ import pathlib
 import sqlite3
 from collections.abc import Iterator
 from copy import deepcopy
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -69,7 +70,17 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_local_delegation_dispatch,
+)
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
+from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,
     PROVIDER_SLUG,
@@ -86,6 +97,38 @@ from tests.chains.local.harness import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.local_chain]
 
+
+@pytest.fixture(autouse=True)
+def _passing_named_tests(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # OMN-21077: these chain assertions need executed tests for their code happy path.
+    def passing_runner(request: ModelNamedTestRunRequest) -> ModelNamedTestRunResult:
+        return ModelNamedTestRunResult(
+            status=EnumNamedTestRunStatus.COMPLETED,
+            run=ModelNamedTestRun(test_ids=request.spec.test_ids, exit_code=0),
+        )
+
+    monkeypatch.setattr(
+        local_chain_harness,
+        "LocalDelegationDispatchPort",
+        partial(
+            local_chain_harness.LocalDelegationDispatchPort,
+            named_test_runner=passing_runner,
+        ),
+    )
+    monkeypatch.setattr(
+        local_chain_harness,
+        "ModelDelegateSkillRequest",
+        partial(
+            local_chain_harness.ModelDelegateSkillRequest,
+            metadata={
+                "named_tests": "test_answer.py::test_answer",
+                "named_tests_answer_path": "answer.py",
+                "named_tests_workspace": str(tmp_path),
+            },
+        ),
+    )
+
+
 _CUSTOMER_KEY_VALUE = "sk-or-omn18698-l6-customer-value"
 
 #: The model every stand-in successor rung serves.
@@ -94,11 +137,24 @@ _NEXT_RUNG_MODEL_ID = "omn18698-keyless-model"
 #: The tier the first rung sits on. Escalation excludes the whole tier of the
 #: attempt that failed, so every OTHER tier in the closed order is a possible
 #: successor.
-_PINNED_TIER = "cheap_frontier"
+_INITIAL_TIER = "cheap_frontier"
+
+
+@pytest.fixture(autouse=True)
+def _initial_tier_without_a_backend_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    # OMN-20844: a backend pin now forbids moving to any successor. These
+    # chains distinguish credential refusals from retryable outages, so select
+    # their initial tier without pinning the run. Successor resolution and
+    # every no-climb assertion still exercise the production ladder.
+    monkeypatch.setattr(
+        port_local_delegation_dispatch,
+        "first_eligible_tier",
+        lambda *_args, **_kwargs: _INITIAL_TIER,
+    )
 
 
 def declared_successor_backend_ids() -> tuple[str, ...]:
-    """Every backend id a climb off the pinned tier could resolve to.
+    """Every backend id a climb off the initial tier could resolve to.
 
     Read from the two files the routing authority reads -- the task class's
     closed ``escalation_policy.tier_order`` and ``routing_tiers.yaml``'s models
@@ -129,10 +185,10 @@ def declared_successor_backend_ids() -> tuple[str, ...]:
     tier_order = [
         tier
         for tier in entry["escalation_policy"]["tier_order"]
-        if tier != _PINNED_TIER
+        if tier != _INITIAL_TIER
     ]
     assert tier_order, (
-        f"{TASK_TYPE!r} declares no tier other than {_PINNED_TIER!r}; the "
+        f"{TASK_TYPE!r} declares no tier other than {_INITIAL_TIER!r}; the "
         "positive control below cannot distinguish a ladder that refused from "
         "one that had nowhere to climb"
     )
@@ -268,6 +324,7 @@ async def test_golden_chain_a_resolvable_key_completes_with_no_refusal(
             prompt="write a function that parses a semver string",
             db_path=db_path,
             correlation_id=uuid4(),
+            backend_id=None,
         )
 
     assert response.status == "completed", response.error_message
@@ -311,6 +368,7 @@ async def test_error_chain_a_rejected_key_is_typed_and_does_not_climb(
             prompt="write a function that parses a semver string",
             db_path=db_path,
             correlation_id=uuid4(),
+            backend_id=None,
         )
 
     assert response.status == "failed"
@@ -364,6 +422,7 @@ async def test_error_chain_an_absent_value_is_typed_and_does_not_climb(
             prompt="write a function that parses a semver string",
             db_path=db_path,
             correlation_id=uuid4(),
+            backend_id=None,
         )
 
     assert response.status == "failed"
@@ -416,10 +475,15 @@ async def test_error_chain_a_provider_outage_is_not_a_credential_refusal(
             prompt="write a function that parses a semver string",
             db_path=db_path,
             correlation_id=uuid4(),
+            backend_id=None,
         )
 
     assert response.credential_refusal is None, (
         "an unreachable host says nothing about the credential"
+    )
+    assert response.attempts[0].backend_id == BYOK_BACKEND_ID
+    assert response.attempts[0].failure_class == (
+        EnumDelegationFailureClass.MODEL_UNAVAILABLE.value
     )
     assert next_rung_provider.authorizations != [], (
         "a retryable failure must climb; if it does not, the no-climb "

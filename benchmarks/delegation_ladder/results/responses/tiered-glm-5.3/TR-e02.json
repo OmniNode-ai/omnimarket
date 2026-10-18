@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e02",
+  "path": "pinned",
+  "sha256": "25890a085f4a3b03a1e7d9f9a919445a1682c11a295852739156c4e3fac64871",
+  "response": "**[47]** — It sets `TECH_DEBT_TRIAGE = \"tech_debt_triagx\"`, which contradicts line [51] of the added test, `assert EnumAgentCapability.TECH_DEBT_TRIAGE.value == \"tech_debt_triage\"`."
+}

@@ -1,0 +1,82 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20991"
+title: "A tenant provider key carries an expiry date: intake records it on the credential, its event and the catalog row, and warns when it is not January 1"
+summary: "Contract first for the central company key pool (operator rulings 2026-10-11T16:00:52Z and 16:02:35Z). The BYOK create request, the credential-registered event and the create response gain an optional expires_at; the request refuses a naive or past value before anything is stored. The response carries a typed expiry_warning (EXPIRY_ABSENT, EXPIRY_NOT_JANUARY_1) and never refuses a valid key for its date. Projection migration 0006 adds a nullable expires_at column to tenant_inference_credentials; the Postgres runner and the SQLite store write it with COALESCE so a re-delivery never erases it, and the snapshot exposure lists it. onex secret register-tenant-key takes --expires YYYY-MM-DD and prints the expiry and the warning beside the reference, never the value."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "public_api"
+requirements:
+  - id: "req-omn20991-key-expiry-on-the-credential"
+    statement: |-
+      Every registered provider key can carry the date it expires, recorded on the credential, its event and the catalog row, with a warning when the date is not January 1.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the create request and the credential-registered event accept an optional timezone-aware expires_at, the request refuses a naive or past value and stores nothing -- falsifier: uv run pytest tests/test_credential_publisher.py -k expires_at
+      - id: "AC2"
+        statement: |-
+          AC2: the create response carries expiry_warning with a typed code when expires_at is absent or is not January 1, and none when it is January 1 -- falsifier: uv run pytest tests/test_credential_publisher.py -k expiry_warning
+      - id: "AC3"
+        statement: |-
+          AC3: a projection migration adds a nullable expires_at column to tenant_inference_credentials, the projection writes it from the event, and the snapshot exposure lists it -- falsifier: uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k expires_at
+      - id: "AC4"
+        statement: |-
+          AC4: onex secret register-tenant-key takes --expires YYYY-MM-DD and prints the warning code beside the reference, never the value -- falsifier: uv run pytest tests/unit/cli -k register_tenant_key_expires
+evidence_requirements:
+  - kind: "tests"
+    description: "The publisher, projection and CLI expiry tests pass at the head; on the base the publisher test module fails to import credential_expiry_warning."
+    command: "uv run pytest tests/test_credential_publisher.py tests/test_omn16316_tenant_credentials_projection.py tests/unit/cli/test_omn17099_register_tenant_key.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20991-ac1-ac2-publisher-expiry"
+    description: "The request refuses a naive or past expires_at before the store is touched; the event and response carry the date; the response warns EXPIRY_ABSENT or EXPIRY_NOT_JANUARY_1 and stores the key either way."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_credential_publisher.py -k 'expires_at or expiry_warning' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20991-ac3-catalog-expiry"
+    description: "Migration 0006 is one additive nullable column; the Postgres runner and the SQLite store write it with COALESCE; the exposure lists it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k expires_at -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20991-ac4-cli-expires"
+    description: "register-tenant-key --expires prints the expiry and the warning, never the value; a malformed or past date refuses and stores nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn17099_register_tenant_key.py -k register_tenant_key_expires -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20991-deploy-probe-migration"
+    description: "The projection test exercises the event write, SQLite re-delivery and snapshot exposure, and checks that migration 0006 adds exactly the nullable expiry column. The same test file fails against the merge-base projection implementation. Deploy probe: the migration file GitHub serves at the checked-out commit adds the expires_at column; the file does not exist at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k expires_at -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/migrations/0006_tenant_credentials_expires_at.sql?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20991-deploy-probe-publisher"
+    description: "The publisher test covers the expiry validation and the response warning. Deploy probe: the credential publisher GitHub serves at the checked-out commit defines credential_expiry_warning, the function that returns EXPIRY_ABSENT or EXPIRY_NOT_JANUARY_1; the symbol is absent at the merge base, so the content read answers false there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_credential_publisher.py -k 'expires_at or expiry_warning' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/credential_publisher.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def credential_expiry_warning(\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]

@@ -4,12 +4,11 @@
 
 The callers that minted, healed, waited on or verified a PR's OCC evidence
 companion are deleted, and neither CI Summary nor the required-checks manifest
-expects a context that needs one. ``OCC Emitter Golden Gate`` and ``ONEX Change
-Control Schema Compatibility`` test this repository's own companion emitter
-against a pinned onex_change_control checkout and read no PR companion, so
-branch protection no longer requires them but CI Summary still enforces them.
-The report-only observers that computed, planned or attested a PR's companion
-are deleted too.
+expects a context that needs one. ``ONEX Change Control Schema Compatibility``
+tests the ticket-contract schema and reads no PR companion, so branch protection
+no longer requires it but CI Summary still enforces it. ``OCC Emitter Golden
+Gate`` is gone from both. The report-only observers that computed, planned or
+attested a PR's companion are deleted too.
 """
 
 from pathlib import Path
@@ -28,9 +27,9 @@ COMPANION_CONTEXTS = {
     "verify / verify",
 }
 EMITTER_CONTEXTS = {
-    "OCC Emitter Golden Gate",
     "ONEX Change Control Schema Compatibility",
 }
+RETIRED_EMITTER_CONTEXTS = {"OCC Emitter Golden Gate"}
 PROTECTION_OCC_CONTEXTS = {
     "occ-preflight / eligibility",
     "call-reject-skip-token / occ-preflight / eligibility",
@@ -82,6 +81,7 @@ def test_ci_summary_expects_no_companion_context() -> None:
         expected = gate.expected_external_contexts(event)
         assert not COMPANION_CONTEXTS.intersection(expected), event
         assert EMITTER_CONTEXTS.issubset(expected), event
+        assert not RETIRED_EMITTER_CONTEXTS.intersection(expected), event
         assert "call-reject-skip-token / scan / reject-skip-gate-token" in expected
         if event != "merge_group":
             assert "repo-evidence / dod-verify" in expected

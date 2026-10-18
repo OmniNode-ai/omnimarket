@@ -25,10 +25,29 @@ lab-fill effect for parked, escalated or unowned-red PRs, decided by the rule la
 (omnimarket.handlers.rules_lab_fill_pr_land); free slots with none of them say why, and an unreadable
 hold source is UNKNOWN and names no lane.
 
+OMN-17427 (2026-10-12): Codex headroom is read apart from Claude's. A host the lab host table lets run
+Codex (`codex_allowed`) gets a Codex reading from its newest placement reading (`codex=login/...`,
+`CODEX-LIMITED-UNTIL=`, its slots); a Claude-limited or Claude-auth-expired host with free Codex slots is a
+MISSING lab-headroom line naming them instead of "limited; no dispatch". The Claude marks never gate Codex
+and the `.codex-sandbox-<host>` marks (landing workers only) are not judged.
+
+OMN-20864 (2026-10-13, h202 read 3 free slots while placement refused it on swap traffic): when the caller
+sets `live_admission`, each host's free slots are the runner's live pool admission (`admission`), per engine,
+and the receipts, marks and parses decide nothing. A refused engine is named with its rule and the other engine
+keeps its slots; Claude and Codex lanes draw from one shared slot budget, so the pr-land fallback counts the
+host's slots once; a host the probe could not read is UNKNOWN.
+
 OMN-20851: a lane the ledger records as dispatched with no placement receipt for more than
 `unplaced_lane_alarm_minutes`, and a cross-host dispatch-venv divergence older than
 `venv_divergence_alarm_minutes`, are ALARM verdicts (typed in `alarms`, exit code 1), a younger one a NOTE;
 a running receipt counts as a running lane only when a CLAIM carrying `host=` and a run id backs it.
+
+OMN-19998 (operator RULING 2026-10-15T00:42:51Z lane=orchestrator-bb1a): given `repo_status` facts, every
+repository with open non-draft PRs and no merge in the window gets one typed status verdict, read from the
+watcher state, state.json and tick lines already in the request (merging normally, waiting on CI, base branch
+red, merge queue ejecting, shared red unowned, parked or escalated). An unowned shared red or an ejecting
+queue is a MISSING `repo-status:<repo>` line whose FIX names one cause lane or the controller; every other
+verdict is a NOTE. A verdict event is due only when no unit is open for the repository or its verdict changed.
 """
 
 from __future__ import annotations
@@ -43,12 +62,18 @@ from omnibase_core.types import JsonType
 from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
+    ModelCodexHeadroom,
+    ModelLabAdmission,
     ModelLabHeadroomFacts,
+    ModelLabHost,
     ModelLabMark,
     ModelLabReceipt,
+    ModelRepoStatusFacts,
+    ModelRepoStatusVerdict,
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
     ModelTickAlarmVerdict,
+    RepoStatusVerdict,
 )
 
 CELLS = ("causes", "cause_leases", "cause_members", "cause_exhausted", "fixer_hold")
@@ -117,8 +142,26 @@ VENV_DIVERGENCE_FIX = (
     "both hosts' venvs again, and until they agree place no lane on either host that needs the diverged "
     "package set; the tick dispatches nothing"
 )
+SHARED_RED_FIX = (
+    "dispatch ONE cause lane for check {check} in {repo} (red on {prs}; no cause lease or park owns it), "
+    "pr_claim_registry_cli.py list first for a peer already on it; gates still decide; the tick dispatches nothing"
+)
+EJECT_FIX = (
+    "the merge queue ejected {prs} for the base-branch red {checks}: the controller re-admits them once the base "
+    "is green (/omni:landing-controller status); with no cause lease on it, dispatch ONE cause lane for {checks} "
+    "on the {repo} base branch; the tick dispatches nothing"
+)
+EJECT_OWNED_FIX = "the controller owns it ({owner}): read /omni:landing-controller status; the session starts no fix work for it"
+BASE_RED = frozenset({"failure", "timed_out", "startup_failure"})
 PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
+
+
+DEPLOY_DRIFT_FIX = (
+    "the host's lab daemon sync (python -m omnimarket.nodes.node_lab_daemon_sync_effect) installs "
+    "main through the daemon's own installer every tick; read its alarm and fix lane in "
+    "~/.local/state/omni/lab-daemon-sync/<host>.json on that host, and never install a branch by hand"
+)
 
 
 def parse_stamp(value: str) -> datetime:
@@ -132,6 +175,7 @@ class Report:
     unknown: list[str] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
     alarms: list[ModelTickAlarmVerdict] = field(default_factory=list)
+    codex: list[ModelCodexHeadroom] = field(default_factory=list)
     # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
     floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
 
@@ -700,6 +744,7 @@ def report_floors(
 READING_REFUSALS = ("UNREADABLE(", "ADMISSION-REFUSED(", "LANE-REFUSED(")
 READING_WINDOW = timedelta(minutes=15)
 READING_FIELD_RE = re.compile(r"(?:[:,])([a-z_]+)=([^,]+)")
+CODEX_LIMITED_RE = re.compile(r",CODEX-LIMITED-UNTIL=([^,]+)")
 
 
 def _mark_until(mark: ModelLabMark) -> datetime | None:
@@ -736,6 +781,112 @@ def _receipt_summary(
     return running, latest
 
 
+def _cap_count(
+    host: ModelLabHost,
+    fields: dict[str, str],
+    running: dict[str, int],
+    placed: dict[str, int],
+) -> tuple[int, int]:
+    """(cap, running lanes) of a host from its reading's fields; KeyError/ValueError when the reading lacks
+    them. The snapshot precedes placement: markers and live receipts include that new lane, so max avoids
+    charging it twice and also counts landing workers in the same pool."""
+    cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
+    return cap, max(placed.get(host.name, 0), running.get(host.name, 0))
+
+
+def _free_slots(fields: dict[str, str], cap: int, count: int) -> int:
+    """Further lanes a host can take: its reading's slots, with the placed units the reading already counts."""
+    observed = int(fields["placed"])
+    return max(0, min(cap - count, int(fields["slots"]) + observed - count))
+
+
+def _codex_headroom(
+    host: ModelLabHost,
+    latest: dict[str, tuple[datetime, str]],
+    running: dict[str, int],
+    placed: dict[str, int],
+    now: datetime,
+) -> ModelCodexHeadroom | None:
+    """The host's Codex headroom from its newest placement reading, apart from Claude's: the reading names the
+    Codex login (`codex=login/<sandbox>`) and a Codex usage limit (`CODEX-LIMITED-UNTIL=`), and its slots are
+    the host's admission slots. None: the shared host table does not let this host run Codex. The sandbox word
+    is not judged: the `.codex-sandbox-<host>` marks gate landing workers only, and a Codex lane probes its
+    own sandbox before Codex starts."""
+    if not host.codex_allowed:
+        return None
+
+    def none(why: str, **cells: Any) -> ModelCodexHeadroom:
+        return ModelCodexHeadroom(host=host.name, free=0, refusal=why, **cells)
+
+    cached = latest.get(host.name)
+    if cached is None or not timedelta(0) <= now - cached[0] <= READING_WINDOW:
+        return none(
+            f"no placement reading in the last {READING_WINDOW.total_seconds() / 60:.0f} min"
+        )
+    reading = cached[1]
+    parse = host.parses.get(reading)
+    if any(reason in reading for reason in READING_REFUSALS):
+        return none("unhealthy placement reading")
+    if parse is None or not parse.parsed:
+        return none("unreadable placement reading")
+    fields = dict(READING_FIELD_RE.findall(reading))
+    login = fields.get("codex", "").partition("/")[0]
+    if login != "login":
+        return none("no Codex login" if login == "nologin" else "Codex login unread")
+    limited = CODEX_LIMITED_RE.search(reading)
+    if limited is not None:
+        try:
+            if parse_stamp(limited.group(1)) > now:
+                return none(f"Codex usage limit until {limited.group(1)}")
+        except ValueError:
+            return none("Codex usage limit mark unreadable")
+    try:
+        cap, count = _cap_count(host, fields, running, placed)
+        if parse.admission_refusal is not None:
+            return none(
+                f"admission refused: {parse.admission_refusal}", cap=cap, running=count
+            )
+        free = _free_slots(fields, cap, count)
+    except (KeyError, ValueError):
+        return none("incomplete placement reading")
+    if free == 0:
+        return none("no free Codex slots", cap=cap, running=count)
+    return ModelCodexHeadroom(host=host.name, free=free, cap=cap, running=count)
+
+
+def _claude_blocked_host(
+    rep: Report,
+    label: str,
+    host: ModelLabHost,
+    note: str,
+    blocked: str,
+    codex: ModelCodexHeadroom | None,
+) -> None:
+    """A host Claude lanes cannot use. Free Codex slots there are MISSING capacity (2026-10-12: the tick said
+    `limited until 22:01Z; no dispatch` all day over 11 free Codex slots); otherwise the host is a NOTE that
+    names why Codex cannot use it either."""
+    if codex is None:
+        rep.note(f"{label} | {note}; no dispatch")
+        return
+    claimed = codex.model_copy(update={"claude_blocked": blocked})
+    rep.codex.append(claimed)
+    if claimed.free:
+        rep.miss(
+            label,
+            f"{blocked}; codex free slots {claimed.free} "
+            f"(running lanes {claimed.running} of cap {claimed.cap})",
+            f"dispatch up to {claimed.free} Codex lanes (--model codex) to {host.name} through the "
+            "remote-lane runner; never pin to a host without headroom",
+        )
+    else:
+        rep.note(f"{label} | {note}; no dispatch (codex: {claimed.refusal})")
+
+
+LIVE_UNREAD_FIX = (
+    "rerun the tick; if the probe stays unreadable, read {host}'s live capacity with "
+    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a host that "
+    "cannot be read is a lab fault to name to the operator, never free and never full"
+)
 PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
 HOLD_SOURCE_FIX = (
     "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
@@ -760,6 +911,8 @@ def check_lab_headroom(
     if facts.placement_error is not None:
         rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
         return None
+    if facts.live_admission:
+        return _pr_land_fallback(rep, _check_live_admission(rep, facts), now, pr_land)
     free_lines: list[
         tuple[int, int]
     ] = []  # (index in rep.lines, free slots), host order
@@ -777,8 +930,13 @@ def check_lab_headroom(
             rep.note(f"{label} | limited mark unreadable; no dispatch")
             continue
         if until is not None and until > now:
-            rep.note(
-                f"{label} | limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}; no dispatch"
+            _claude_blocked_host(
+                rep,
+                label,
+                host,
+                f"limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                f"claude limited until {until.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                _codex_headroom(host, latest, running, placed, now),
             )
             continue
         try:
@@ -789,8 +947,13 @@ def check_lab_headroom(
             rep.note(f"{label} | auth-expired mark unreadable; no dispatch")
             continue
         if auth_until is not None and auth_until > now:
-            rep.note(
-                f"{label} | claude auth expired since {host.auth_mark.at}; log in again; no dispatch"
+            _claude_blocked_host(
+                rep,
+                label,
+                host,
+                f"claude auth expired since {host.auth_mark.at}; log in again",
+                f"claude auth expired since {host.auth_mark.at}",
+                _codex_headroom(host, latest, running, placed, now),
             )
             continue
         cached = latest.get(host.name)
@@ -814,11 +977,11 @@ def check_lab_headroom(
             rep.note(f"{label} | unreadable placement reading; no dispatch")
             continue
         fields = dict(READING_FIELD_RE.findall(reading))
+        codex = _codex_headroom(host, latest, running, placed, now)
+        if codex is not None:
+            rep.codex.append(codex)
         try:
-            cap = max(0, host.cap if host.cap is not None else int(fields["cap"]))
-            # The snapshot precedes placement. Markers and live receipts include that new lane;
-            # max avoids charging it twice and also counts landing workers in the same pool.
-            count = max(placed.get(host.name, 0), running.get(host.name, 0))
+            cap, count = _cap_count(host, fields, running, placed)
         except (KeyError, ValueError):
             rep.note(f"{label} | incomplete placement reading; no dispatch")
             continue
@@ -829,8 +992,7 @@ def check_lab_headroom(
             )
             continue
         try:
-            observed = int(fields["placed"])
-            free = max(0, min(cap - count, int(fields["slots"]) + observed - count))
+            free = _free_slots(fields, cap, count)
         except (KeyError, ValueError):
             rep.note(f"{label} | incomplete placement reading; no dispatch")
             continue
@@ -844,6 +1006,80 @@ def check_lab_headroom(
             )
         else:
             rep.note(f"{label} | running lanes {count} of cap {cap}, free slots 0")
+    return _pr_land_fallback(rep, free_lines, now, pr_land)
+
+
+def _live_fix(host: str, admission: ModelLabAdmission) -> str:
+    """The FIX of a host with admitted slots: only an admitted engine is named, and the engines share one budget."""
+    lanes = []
+    if admission.claude_slots:
+        lanes.append(f"up to {admission.claude_slots} Claude lanes")
+    if admission.codex_slots:
+        lanes.append(f"up to {admission.codex_slots} Codex lanes (--model codex)")
+    return (
+        f"dispatch {' or '.join(lanes)} to {host} through the remote-lane runner, sharing "
+        f"{admission.slots} slots; never pin to a host without headroom"
+    )
+
+
+def _check_live_admission(
+    rep: Report, facts: ModelLabHeadroomFacts
+) -> list[tuple[int, int]]:
+    """One finding per host from the runner's live admission (OMN-20864): free slots are what placement would
+    admit now, per engine, never the cap minus the lanes a receipt shows. A refused engine is named with the rule
+    that refused it and the other engine keeps its slots; a host the probe could not read is UNKNOWN. Returns
+    (index in rep.lines, free slots) of each MISSING line, host order."""
+    free_lines: list[tuple[int, int]] = []
+    for host in facts.hosts:
+        label = f"lab-headroom:{host.name}"
+        adm = host.admission
+        if adm is None or adm.probe_error is not None:
+            why = "no live admission reading" if adm is None else adm.probe_error
+            rep.unk(
+                label,
+                f"live admission probe unreadable ({why}): its capacity is unread",
+                LIVE_UNREAD_FIX.format(host=host.name),
+            )
+            continue
+        rep.codex.append(
+            ModelCodexHeadroom(
+                host=host.name,
+                free=adm.codex_slots,
+                cap=adm.cap,
+                running=adm.lanes,
+                refusal=None if adm.codex_slots else adm.codex_refusal,
+                claude_blocked=None if adm.claude_slots else adm.claude_refusal,
+            )
+        )
+        summary = (
+            f"running lanes {adm.lanes}, placed units {adm.placed} of cap {adm.cap}, "
+            f"free Claude slots {adm.claude_slots}, free Codex slots {adm.codex_slots} "
+            f"(shared slots {adm.slots})"
+        )
+        refused = "".join(
+            f"; {engine} refused: {reason}"
+            for engine, reason in (
+                ("Claude", adm.claude_refusal),
+                ("Codex", adm.codex_refusal),
+            )
+            if reason
+        )
+        free = max(adm.claude_slots, adm.codex_slots)
+        if free:
+            free_lines.append((len(rep.lines), free))
+            rep.miss(label, summary + refused, _live_fix(host.name, adm))
+        else:
+            rep.note(f"{label} | {summary}{refused}; no dispatch")
+    return free_lines
+
+
+def _pr_land_fallback(
+    rep: Report,
+    free_lines: list[tuple[int, int]],
+    now: datetime,
+    pr_land: ModelLabFillPrLandFacts | None,
+) -> ModelLabFillPrLandPlan | None:
+    """The idle-slot pr-land fallback over the free-slot lines (OMN-20864)."""
     if pr_land is None:
         return None
     plan = plan_pr_land_fallback(
@@ -1031,6 +1267,257 @@ def check_venv_divergence(
             )
 
 
+def check_deploy_drift(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A lab daemon lagging its source tip past the bound is MISSING `deploy-drift:<daemon>@<host>`;
+    a younger lag, or one an unexpired branch install holds, is a NOTE (OMN-19998)."""
+    rep.checked.append("deploy-drift")
+    bound = request.deploy_drift_max_hours
+    for drift in sorted(
+        request.deploy_drifts or [], key=lambda d: (d.lagging_since, d.daemon, d.host)
+    ):
+        loop = f"deploy-drift:{drift.daemon}@{drift.host}"
+        hours = max(
+            0.0, (now - parse_stamp(drift.lagging_since)).total_seconds() / 3600
+        )
+        installed = (drift.installed_revision or "unreadable")[:8]
+        source = (drift.source_revision or "unreadable")[:8]
+        why = (
+            f"installed {installed} lags source {source} since {drift.lagging_since} "
+            f"({round(hours, 1):g}h, {'>' if hours > bound else '<='} {bound:g}h)"
+            + (f"; blocker: {drift.blocker}" if drift.blocker else "")
+        )
+        held = drift.branch_until is not None and parse_stamp(drift.branch_until) > now
+        if held:
+            rep.note(f"{loop} | {why}; branch install held until {drift.branch_until}")
+        elif hours > bound:
+            rep.miss(loop, why, DEPLOY_DRIFT_FIX)
+        else:
+            rep.note(f"{loop} | {why}")
+
+
+def _pr_short(text: object) -> str:
+    """`Owner/repo#n` or `repo#n` to `repo#n`."""
+    return str(text).rsplit("/", 1)[-1]
+
+
+def _base_red(data: dict[str, Any], repo: str) -> list[str]:
+    """Checks whose newest run on the repository's default branch failed, sorted."""
+    repos = data.get("repos") or {}
+    base = (repos.get(repo) or {}).get("default_branch") or "main"
+    branch = (data.get("branches") or {}).get(f"{repo}@{base}") or {}
+    rows = (branch.get("checks") or {}).get("rows") or []
+    newest: dict[str, list[Any]] = {}
+    for row in rows:
+        if isinstance(row, list) and len(row) >= 4:
+            name = str(row[0])
+            if name not in newest or str(row[3]) > str(newest[name][3]):
+                newest[name] = row
+    return sorted(
+        name
+        for name, row in newest.items()
+        if row[1] == "completed" and row[2] in BASE_RED
+    )
+
+
+def _repo_verdict(
+    repo: str,
+    prs: list[tuple[str, dict[str, Any]]],
+    data: dict[str, Any],
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+    now: datetime,
+) -> tuple[RepoStatusVerdict, str | None, str, float | None, list[str]]:
+    """(verdict, check, reason, queue wait, prs) for one repository, most urgent first."""
+    keys = [key for key, _ in prs]
+    repo_covers = [
+        c
+        for c in covers
+        if c.repo == repo or {_pr_short(m) for m in c.members} & set(keys)
+    ]
+    leased = [c for c in repo_covers if c.lease_id]
+    reds: dict[str, list[str]] = {}
+    for key, pr in prs:
+        for name in (pr.get("ci") or {}).get("red") or []:
+            reds.setdefault(str(name), []).append(key)
+    shared = sorted(
+        ((name, sorted(on)) for name, on in reds.items() if len(on) > 1),
+        key=lambda item: (-len(item[1]), item[0]),
+    )
+    if shared and not leased and not any(c.parked_until for c in repo_covers):
+        name, on = shared[0]
+        return "shared_red_unowned", name, f"{name} red on {len(on)} open PRs", None, on
+    newest = ticks[0] if ticks else {}
+    blocked = newest.get("base_blocked")
+    if not isinstance(blocked, dict):
+        blocked = {}
+    ejected = sorted(
+        _pr_short(s)
+        for s in blocked.get("prs") or []
+        if _pr_short(s).partition("#")[0] == repo
+    )
+    if ejected:
+        checks = sorted(str(c) for c in (blocked.get("checks") or []))
+        return (
+            "merge_queue_ejecting",
+            ", ".join(checks) or None,
+            f"{len(ejected)} PRs ejected for base-branch red {', '.join(checks) or 'unread'}",
+            None,
+            ejected,
+        )
+    base = _base_red(data, repo)
+    if base:
+        return (
+            "base_branch_red",
+            base[0],
+            f"base branch red on {', '.join(base)}",
+            None,
+            [],
+        )
+    degraded = {_pr_short(s) for s in _degraded_subjects(newest)} & set(keys)
+    parked = sorted(
+        key
+        for key, pr in prs
+        if str(pr.get("reason") or "").startswith(f"repo {repo} is parked")
+    )
+    if repo_covers or degraded or parked:
+        if repo_covers:
+            reason = "; ".join(sorted({c.note() for c in repo_covers}))
+        elif degraded:
+            reason = f"the controller escalated {', '.join(sorted(degraded))}"
+        else:
+            reason = f"repo {repo} is parked"
+        return "parked_or_escalated", None, reason, None, sorted(degraded) or parked
+    waits = []
+    for _, pr in prs:
+        ci = pr.get("ci") or {}
+        pending = set(ci.get("pending") or [])
+        for row in ci.get("detail") or []:
+            if isinstance(row, list) and len(row) >= 3 and row[0] in pending:
+                try:
+                    waits.append((now - parse_stamp(str(row[2]))).total_seconds() / 60)
+                except ValueError:
+                    continue
+    waiting = sorted(key for key, pr in prs if (pr.get("ci") or {}).get("pending"))
+    if waiting:
+        wait = round(max(waits), 1) if waits else None
+        return (
+            "waiting_on_ci",
+            None,
+            f"{len(waiting)} PRs with checks pending",
+            wait,
+            waiting,
+        )
+    queued = sorted(key for key, pr in prs if pr.get("queued"))
+    reason = (
+        f"{len(queued)} PRs in the merge queue"
+        if queued
+        else "no blocker in the watcher, controller or base reads"
+    )
+    return "merging_normally", None, reason, None, queued
+
+
+def check_repo_status(
+    rep: Report,
+    request: ModelThroughputTickRequest,
+    facts: ModelRepoStatusFacts,
+    covers: list[Cover],
+    ticks: list[dict[str, Any]],
+    now: datetime,
+) -> list[ModelRepoStatusVerdict]:
+    """One verdict per repository with open non-draft PRs and no merge in the window (OMN-19998)."""
+    rep.checked.append("repo-status")
+    window = timedelta(minutes=facts.window_minutes)
+    try:
+        if request.watcher_read_error is not None:
+            raise ValueError(request.watcher_read_error)
+        if request.watcher_path is None:
+            raise ValueError("no PR watcher state to read")
+        data: Any = request.watcher_state
+        ts = data["last_tick"]
+        age = (now - parse_stamp(ts)).total_seconds() / 60
+        open_prs: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        merged: dict[str, int] = {}
+        for key, pr in data["prs"].items():
+            pr_facts = pr["facts"]
+            repo = pr_facts.get("repo")
+            if not repo:
+                continue
+            if pr_facts.get("merged_at"):
+                elapsed = now - parse_stamp(pr_facts["merged_at"])
+                merged[repo] = merged.get(repo, 0) + (timedelta(0) <= elapsed <= window)
+            elif (
+                pr_facts.get("state") == "OPEN"
+                and not pr_facts.get("draft")
+                and pr.get("cls") != "held-excluded"
+            ):
+                open_prs.setdefault(repo, []).append((_pr_short(key), pr))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        rep.unk(
+            "repo-status",
+            f"cannot read watcher state {request.watcher_path}: {exc}",
+            WATCHER_FIX,
+        )
+        return []
+    if age > request.watcher_max_minutes:
+        rep.unk(
+            "repo-status",
+            f"stale watcher: last tick {ts} is {age:.0f} min old (> {request.watcher_max_minutes})",
+            WATCHER_FIX,
+        )
+        return []
+    units = {u.repo: u for u in facts.open_units}
+    verdicts = []
+    for repo in sorted(open_prs):
+        if merged.get(repo):
+            continue
+        prs = sorted(open_prs[repo])
+        verdict, check, reason, wait, named = _repo_verdict(
+            repo, prs, data, covers, ticks, now
+        )
+        unit = units.get(repo)
+        event = unit is None or unit.verdict != verdict
+        result = ModelRepoStatusVerdict(
+            repo=repo,
+            verdict=verdict,
+            open_prs=len(prs),
+            merges_in_window=0,
+            window_minutes=facts.window_minutes,
+            check=check,
+            reason=reason,
+            queue_wait_minutes=wait,
+            prs=named,
+            opened_at=request.now if event or unit is None else unit.opened_at,
+            event=event,
+        )
+        verdicts.append(result)
+        loop = f"repo-status:{repo}"
+        why = (
+            f"{repo}: {len(prs)} open, 0 merged in {facts.window_minutes} min; {verdict}: {reason}"
+            + (f" (waiting {wait:g} min)" if wait is not None else "")
+        )
+        if verdict == "shared_red_unowned":
+            rep.miss(
+                loop,
+                why,
+                SHARED_RED_FIX.format(check=check, repo=repo, prs=", ".join(named)),
+            )
+        elif verdict == "merge_queue_ejecting":
+            owner = next((c for c in covers if c.lease_id and c.repo == repo), None)
+            fix = (
+                EJECT_OWNED_FIX.format(owner=owner.note())
+                if owner is not None
+                else EJECT_FIX.format(
+                    prs=", ".join(named), checks=check or "unread", repo=repo
+                )
+            )
+            rep.miss(loop, why, fix)
+        else:
+            rep.note(f"{loop} | {why}")
+    return verdicts
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -1067,6 +1554,13 @@ class HandlerThroughputTickDecision:
             check_unplaced_lanes(rep, request, now)
         if request.venv_divergences is not None:
             check_venv_divergence(rep, request, now)
+        if request.deploy_drifts is not None:
+            check_deploy_drift(rep, request, now)
+        repo_status = (
+            check_repo_status(rep, request, request.repo_status, covers, ticks, now)
+            if request.repo_status is not None
+            else []
+        )
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
@@ -1074,9 +1568,11 @@ class HandlerThroughputTickDecision:
             unknown=rep.unknown,
             checked=rep.checked,
             alarms=rep.alarms,
+            codex_headroom=rep.codex,
             exit_code=0
             if not rep.missing and not rep.unknown and not rep.alarms
             else 1,
             open_count=opened,
             pr_land=pr_land,
+            repo_status=repo_status,
         )

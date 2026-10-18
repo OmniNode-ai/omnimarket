@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_captured_secret_resolve_effect
+version: "1.0.0"
+description: "Resolves a captured secret reference to its value through a secret store read with the caller's own identity, logging the reference and accessor, never the value"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_captured_secret_resolve_effect: "omnimarket.nodes.node_captured_secret_resolve_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["secret", "capture", "redaction", "effect"]
+pack: "capture"
+display_name: "Captured Secret Resolve Effect"
+node_role: "effect"

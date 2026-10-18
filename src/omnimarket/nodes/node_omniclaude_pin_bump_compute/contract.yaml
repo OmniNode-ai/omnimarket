@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Omniclaude Pin Bump Compute (OMN-20001)
+#
+# Operator ruling 2026-10-01T21:43:10Z (3): a producer release that extends a
+# cross-repo contract notifies its consumer, and the consumer's update is a PR
+# that lands through the consumer's own checks. This is the pure half of that
+# PR: the ci.yml text and the released version in, the text with every omniclaude
+# pin moved (or a typed refusal) out. Directly invoked by the omniclaude-pin-bump
+# workflow; it declares empty event_bus topics and a typed local invocation.
+name: "node_omniclaude_pin_bump_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Pure pin bump: rewrites every omniclaude pin in ci.yml to the tag of a
+  released version, and refuses a release candidate, a missing or loose pin,
+  disagreeing pins, and a version that is not strictly ahead of the current pin.
+input_model:
+  name: "ModelOmniclaudePinBumpRequest"
+  module: "omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump"
+  description: "The ci.yml text and the released omniclaude version."
+output_model:
+  name: "ModelOmniclaudePinBumpResult"
+  module: "omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump"
+  description: "The rewritten text when accepted, a typed refusal otherwise."
+
+handler:
+  module: "omnimarket.nodes.node_omniclaude_pin_bump_compute.handlers.handler_omniclaude_pin_bump"
+  class: "HandlerOmniclaudePinBump"
+  input_model: "omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump.ModelOmniclaudePinBumpRequest"
+  output_model: "omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump.ModelOmniclaudePinBumpResult"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_omniclaude_pin_bump_compute.handlers.handler_omniclaude_pin_bump:HandlerOmniclaudePinBump"
+  handlers:
+    - operation: "bump_omniclaude_pin"
+      handler:
+        name: "HandlerOmniclaudePinBump"
+        module: "omnimarket.nodes.node_omniclaude_pin_bump_compute.handlers.handler_omniclaude_pin_bump"
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "The omniclaude-pin-bump workflow invokes the local node module with ci.yml and the released version."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: local
+  description: "Omniclaude pin bump COMPUTE - moves the pin on a producer release (OMN-20001, no external transport)"
+  author: "OmniNode Team"
+  created: "2026-10-13"
+  tags:
+    - "compute"
+    - "ci"
+    - "pin"
+    - "OMN-20001"
+  related_tickets:
+    - "OMN-20001"

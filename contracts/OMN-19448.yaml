@@ -53,6 +53,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_terminal_stop_reason_columns_omn19448.py -q -k \"migration_adds_stop_reason_columns\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19448-terminal-fields-container-smoke"
+    description: "Hosted deploy probe for the projection writers: a disposable container mounts the checked-out source read-only and checks that both delegate-skill row builders copy the terminal's declared operational_outcome and content_verdict. The probe is absent at the merge base and present at the head. A full in-container pytest run exceeded the verifier's 30 second per-check budget on a hosted runner, so the behavioural proof stays in the test_passes checks of dod-omn19448-ticket-ac1-terminal-fields-copied and the lab readback."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq \"event.operational_outcome)\" \"\$f\"; grep -Fq \"event.content_verdict)\" \"\$f\"; done"'
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-stop-reason-columns-ac2"
     description: "The local dispatch payload and the canonical terminal carry the deciding rung's stop reason, and the projection writes both columns, keeps them across a sparse terminal, and leaves them NULL for an unknown stop reason."
     source: "manual"
@@ -85,3 +93,45 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn19448-lab-readback"
+    description: "Lab readback, 2026-10-15T01:15:44Z, on the lab dev lane database omnidash_analytics (delegation_events), over the 208 rows written since the runtime-effects image built from omnibase_infra revision f32d46c8965d57f23d12127e41c86bddf8a1d9c7 at 2026-10-15T00:02:27Z. Columns written from the terminal: requested_model, queue_wait_ms and execution_ms 99 rows, finish_reason and truncated 203, routed_model 205, answering_backend 205, trace_id 0. All 109 rows with a NULL requested_model are failed rows; no row with terminal_ok true lacks it. Row for correlation f58ffb0f-452a-4b1f-ab77-cd91838fb108: requested_model Qwen3.8-27B, queue_wait_ms 4013, execution_ms 9512, finish_reason absent, truncated false, routed_model Qwen3.8-27B, answering_backend local-heavy-reasoning, operational_outcome completed, content_verdict usable. Failed rows since the build by terminal_failure_cause/operational_outcome: quality_gate_refused/quality_rejected 126, timeout/timeout 3, quality_gate_refused/schema_rejected 1, runtime_shutdown/empty 1, empty/empty 1. The AC3 falsifier (a failed row with a null cause after the deploy) returns one row: correlation 252a8269-bcbc-44f1-a47e-c1fbfa036649, written 2026-10-15T00:48:35Z, a request refused before dispatch by the task-class timeout ceiling (requested 300 seconds, ceiling 240), with attempt_history empty and the cause, outcome and verdict all empty. Earlier pre-dispatch refusals show the same shape: 2026-10-14T02:25:49Z (credential_absent) and 2026-10-14T08:01:16Z (timeout_exceeds_task_class_ceiling). Every other failed row since the build carries a terminal_failure_cause. The check re-runs the column tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19448-pr3924-merged-cause-control"
+    description: "AC3 evidence for the lab readback: the gate-decided cause tests pass with merged fix 3bbef4dee3f15cef026c6e89292403685009f8da and fail when its product change is reverted at the merge base. The original lab readback and the pre-dispatch refusal it records remain unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_gate_decided_cause_derived_omn19448.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19448-ticket-ac1-terminal-fields-copied"
+    description: "Ticket AC1: the sync and async projection writers copy the terminal's terminal_failure_cause, operational_outcome and content_verdict into in-memory, SQLite and real PostgreSQL rows. The regressions exercise both terminal families with and without a declared quality_gate_refused cause: refusal text alone must not invent a cause. They fail at the merge base because the delegate-skill row builders drop the declared outcome and verdict."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_cause_copied_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py tests/unit/delegation/test_terminal_fields_copied_binding_omn19448.py -k \"quality_gate_refused or inmemory_row_carries or sqlite_local_store\" -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19448_terminal_fields_projection_real_postgres.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19448-refused-before-dispatch-cause"
+    description: "Ticket AC3: a request refused before dispatch (a requested timeout above the task-class ceiling) leaves no ladder to derive a cause from, and the lab readback found one such failed row with a NULL terminal_failure_cause. The refusal terminal now names refused_before_dispatch, and the projection keeps it on an empty ladder. The handler test fails at the merge base, where the refusal declares no cause; the negative control shows a request inside the ceiling carries none."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_pre_dispatch_refusal_cause_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19448-pre-dispatch-container-smoke"
+    description: "Hosted deploy probe for the delegate-skill handler: a disposable container mounts the checked-out source read-only and checks that the pre-dispatch refusal names the refused_before_dispatch cause. The probe is absent at the merge base and present at the head; the behavioural proof stays in the test_passes check of dod-omn19448-refused-before-dispatch-cause."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; grep -Fq EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py"'
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -18,6 +18,18 @@ from scripts.ci import ci_summary_gate as gate
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
 CONTEXT = "repo-evidence / dod-verify"
+JOB_KEY = "repo-evidence-preflight"
+# OMN-20074: these four workflows still key the same wait job occ-preflight.
+# omniclaude's advisory-job gate grandfathers each by "<file>::occ-preflight" in
+# its census baseline (none of the four files carries a required context), so
+# the key moves only after that baseline entry is renamed in omniclaude.
+LEGACY_KEY = "occ-preflight"
+LEGACY_KEYED = (
+    "auto-merge.yml",
+    "dep-health-gate.yml",
+    "market-skill-baseline.yml",
+    "plugin-compat-gate.yml",
+)
 POLLERS = (
     "auto-merge.yml",
     "ci.yml",
@@ -30,7 +42,7 @@ POLLERS = (
 
 def _poller(filename: str) -> dict:
     workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
-    return workflow["jobs"]["occ-preflight"]
+    return workflow["jobs"][LEGACY_KEY if filename in LEGACY_KEYED else JOB_KEY]
 
 
 @pytest.mark.parametrize("filename", POLLERS)
@@ -154,10 +166,44 @@ def test_repo_evidence_summary_queue_expects_no_occ_contexts() -> None:
     assert CONTEXT not in queue
     assert set(queue) == set(gate.EXPECTED_EXTERNAL_CONTEXTS) - {CONTEXT}
     assert "occ-preflight / eligibility" not in queue
-    assert "OCC Emitter Golden Gate" in queue
+    assert "OCC Emitter Golden Gate" not in queue
     assert "ONEX Change Control Schema Compatibility" in queue
     assert "verify / verify" not in queue
     assert "call-reject-skip-token / occ-preflight / eligibility" not in queue
     assert "call-reject-skip-token / scan / reject-skip-gate-token" in queue
     assert "OCC Companion Merged Gate (OMN-15214)" not in gate.STRICT_GATE_JOBS
     assert "Repo Evidence Dependency" in gate.STRICT_GATE_JOBS
+
+
+def _needs(job: dict) -> list[str]:
+    needs = job.get("needs") or []
+    return [needs] if isinstance(needs, str) else list(needs)
+
+
+def test_repo_evidence_wait_is_keyed_by_what_it_waits_for() -> None:
+    """OMN-20074: the wait job reads repo evidence, so its key no longer names OCC.
+
+    Every workflow that waits on ``repo-evidence / dod-verify`` declares the job
+    as ``repo-evidence-preflight``, except the four in ``LEGACY_KEYED``, and no
+    other workflow declares, needs or reads the result of a job keyed
+    ``occ-preflight``. The key keeps the word ``preflight``: omnibase_core's
+    shape-gate independence guard finds the preflight job by that word, so
+    dropping it would hide the job from the guard.
+    """
+    keyed: set[str] = set()
+    legacy: list[str] = []
+    for path in sorted((ROOT / ".github/workflows").glob("*.y*ml")):
+        text = path.read_text()
+        jobs = (yaml.safe_load(text) or {}).get("jobs") or {}
+        if JOB_KEY in jobs:
+            keyed.add(path.name)
+        if path.name in LEGACY_KEYED:
+            continue
+        for job_id, job in jobs.items():
+            if job_id == "occ-preflight" or "occ-preflight" in _needs(job or {}):
+                legacy.append(f"{path.name}:{job_id}")
+        if "needs.occ-preflight." in text:
+            legacy.append(f"{path.name}:needs.occ-preflight expression")
+    assert "preflight" in JOB_KEY
+    assert keyed == set(POLLERS) - set(LEGACY_KEYED)
+    assert not legacy, legacy

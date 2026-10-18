@@ -34,6 +34,7 @@ test until it is removed from the list in the same change.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,12 @@ import pytest
 import yaml
 from omnibase_core.container import ModelONEXContainer
 from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
+from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
+    ProtocolEventBusSubscriber,
+)
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
@@ -84,9 +91,6 @@ _IDS_OVER_LIMIT: dict[str, str] = {}
 # cannot supply honestly (a secret, an operator overlay, explicit dependencies)
 # or because of a defect already filed.
 _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
-    "node_adr_canary_orchestrator": (
-        "HandlerCanaryOrchestrator needs the ADR bus protocol as an explicit dependency"
-    ),
     "node_memory_storage_effect": (
         "omnimemory HandlerFileSystemAdapter requires a config constructor argument"
     ),
@@ -106,10 +110,26 @@ def _field_max_length(field_name: str) -> int:
 
 
 def _manifest() -> ModelAutoWiringManifest:
-    discovered = discover_contracts_from_paths(sorted(_NODES.glob("*/contract.yaml")))
+    # This gate checks every package's contracts, including those outside the
+    # caller's active lane. Otherwise discovery hides a known wiring failure
+    # and the shrink-only baseline incorrectly reports that failure as fixed.
+    with pytest.MonkeyPatch.context() as environment:
+        environment.delenv("ONEX_ACTIVE_RUNTIME_PACKAGES", raising=False)
+        discovered = discover_contracts_from_paths(
+            sorted(_NODES.glob("*/contract.yaml"))
+        )
     assert not discovered.errors, discovered.errors
     assert discovered.contracts, f"no contracts discovered under {_NODES}"
     return ModelAutoWiringManifest(contracts=tuple(discovered.contracts))
+
+
+def test_manifest_includes_contracts_outside_the_active_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_ACTIVE_RUNTIME_PACKAGES", "omnimarket")
+    manifest = _manifest()
+    assert "node_memory_storage_effect" in {c.name for c in manifest.contracts}
+    assert os.environ["ONEX_ACTIVE_RUNTIME_PACKAGES"] == "omnimarket"
 
 
 def _shrink_only(actual: dict[str, str], listed: dict[str, str], what: str) -> None:
@@ -224,13 +244,19 @@ async def test_every_node_auto_wires_in_process(
     monkeypatch.delenv("ONEX_WIRING_STRICT_MODE", raising=False)
 
     bus = EventBusInmemory()
+    # The kernel registers its bus under both protocol keys before it wires
+    # (service_kernel, ahead of wire_from_manifest); a handler that builds bus
+    # request/response adapters resolves the bus from the container.
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(ProtocolEventBusPublisher, bus)
+    await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
     try:
         report = await wire_from_manifest(
             _manifest(),
             MessageDispatchEngine(),
             event_bus=bus,
             environment=_TOPOLOGY_PROFILE,
-            container=ModelONEXContainer(),
+            container=container,
             topology=topology,
         )
     finally:

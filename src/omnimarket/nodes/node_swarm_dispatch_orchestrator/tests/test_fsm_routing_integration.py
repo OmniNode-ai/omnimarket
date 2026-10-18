@@ -74,7 +74,7 @@ class _MemoryStateStore:
 # ---------------------------------------------------------------------------
 
 _RUN_ID = "run-integration-001"
-_CORR_ID = "corr-integration-001"
+_CORR_ID = "00000000-0000-4000-8000-000000000002"
 
 _HEALTH_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-endpoint-health-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
 _DECOMPOSITION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-decomposition-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics

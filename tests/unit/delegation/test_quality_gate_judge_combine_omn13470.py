@@ -56,6 +56,10 @@ from omnimarket.events.delegation_judge_verdict import (
 from omnimarket.inference.secret_store_resolver import (
     clear_secret_store_resolver_cache,
 )
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_FAILED,
@@ -118,9 +122,11 @@ _CODE_GEN_HEUR = (
 # A good-but-mechanically-incomplete code answer: it compiles, is a single
 # artifact, and is non-empty (deterministic floor passes), but it carries none of
 # the convention/regression markers, so the deterministic-only graded score is
-# ~0.733 and fails the 0.85 bar without the judge.
+# ~0.733. A code class is decided by its executed tests (OMN-21077), so the
+# combine is exercised below with a passing named-test run.
 _GOOD_CODE = "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```"
 _GOOD_CODE_MARKED = "### ANSWER\n" + _GOOD_CODE
+_PASSED_TESTS = ModelNamedTestRun(test_ids=("test_add.py::test_add",), exit_code=0)
 
 _REFUSAL = "I cannot help with that request."
 
@@ -269,7 +275,9 @@ class TestGateCombineUnit:
     def test_good_incomplete_code_passes_with_high_judge(self) -> None:
         """A high judge adequacy score lifts the combined score over the bar."""
         result = quality_gate_delta(
-            _code_gate_input(_GOOD_CODE), judge_adequacy_score=0.95
+            _code_gate_input(_GOOD_CODE),
+            judge_adequacy_score=0.95,
+            named_test_run=_PASSED_TESTS,
         )
         assert result.passed is True
         assert result.score_source == "combined"
@@ -277,7 +285,9 @@ class TestGateCombineUnit:
 
     def test_low_judge_score_keeps_combined_below_bar(self) -> None:
         result = quality_gate_delta(
-            _code_gate_input(_GOOD_CODE), judge_adequacy_score=0.30
+            _code_gate_input(_GOOD_CODE),
+            judge_adequacy_score=0.30,
+            named_test_run=_PASSED_TESTS,
         )
         assert result.score_source == "combined"
         assert result.quality_score < 0.85
@@ -572,7 +582,7 @@ class TestJudgeCombineRealBusChain:
         # --- orchestrator FSM start: emit routing intent ---
         routing_intents = workflow.handle_delegation_request(request)
         assert isinstance(routing_intents[0], ModelRoutingIntent)
-        # OMN-13599: for the fail-closed refusal proof, pin the terminal ceiling
+        # OMN-13599/OMN-21077: for the fail-closed refusal proofs, pin the terminal ceiling
         # tier so a single-pass gate failure has no higher tier to escalate to
         # and MUST emit a terminal delegation-failed event. (Under the new
         # local -> cheap_cloud -> claude order the cheap_cloud primary and the
@@ -636,18 +646,28 @@ class TestJudgeCombineRealBusChain:
         return gate_result, terminal_events, workflow, consumed_topics
 
     @pytest.mark.asyncio
-    async def test_good_code_completes_via_deterministic_floor_over_bus(self) -> None:
+    async def test_untested_code_completes_over_bus(self) -> None:
         gate_result, _terminal, workflow, consumed = await self._drive_chain(
             llm_content=_GOOD_CODE_MARKED,
+            min_tier_name="claude",
         )
-        assert gate_result.score_source == "deterministic_acceptance"  # type: ignore[attr-defined]
+        assert isinstance(gate_result, ModelQualityGateResult)
+        assert gate_result.score_source == "deterministic_acceptance"
+        assert gate_result.passed is True
+        assert "passes_existing_tests" in gate_result.skipped_checks
+        evaluation = next(
+            e for e in gate_result.rule_evaluations if e.rule == "passes_existing_tests"
+        )
+        assert evaluation.enforcement == "scored"
+        assert evaluation.passed is False
+        assert evaluation.detail is not None
+        assert evaluation.detail.startswith("UNTESTED:")
         assert TOPIC_ID_DELEGATION_COMPLETED in consumed, (
-            "good code answer must publish a terminal delegation-completed event "
+            "untested code answer must publish a terminal delegation-completed event "
             f"over the bus; consumed={consumed}"
         )
-        wf = workflow.workflows[
-            UUID(str(gate_result.correlation_id))  # type: ignore[attr-defined]
-        ]
+        assert TOPIC_ID_DELEGATION_FAILED not in consumed
+        wf = workflow.workflows[UUID(str(gate_result.correlation_id))]
         assert wf.state == EnumDelegationState.COMPLETED
 
     @pytest.mark.asyncio

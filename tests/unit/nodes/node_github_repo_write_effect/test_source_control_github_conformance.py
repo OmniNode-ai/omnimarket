@@ -12,6 +12,7 @@ not served raises ``SourceControlOperationNotSupportedError`` naming itself.
 
 from __future__ import annotations
 
+import base64
 import inspect
 from dataclasses import dataclass, field
 
@@ -34,6 +35,7 @@ from omnibase_spi.protocols.types.protocol_service_types import (
 from omnimarket.github_landing.github_landing_requests import (
     compare_request,
     create_pull_request_request,
+    git_ref_request,
     head_check_runs_request,
     open_pulls_for_head_request,
     pull_request_request,
@@ -240,10 +242,27 @@ async def test_create_pr_goes_through_the_write_effect() -> None:
     adapter, fake = await _adapter(
         [
             (open_pulls_for_head_request(_REPO, "branch-4000"), _ok([])),
+            (git_ref_request(_REPO, "branch-4000"), _ok({"object": {"sha": _HEAD}})),
+            (
+                ModelGithubHttpRequest(
+                    method="GET",
+                    path=f"/repos/{_REPO}/contents/contracts/OMN-20864.yaml?ref={_HEAD}",
+                ),
+                _ok(
+                    {
+                        "type": "file",
+                        "encoding": "base64",
+                        "content": base64.b64encode(
+                            b'ticket_id: OMN-20864\ndod_evidence: [{id: probe, checks: [{check_type: test_passes, check_value: "uv run pytest tests/ci/test_ticket_contract_prerequisite_omn20864.py -q"}]}]\n'
+                        ).decode(),
+                    }
+                ),
+            ),
+            (git_ref_request(_REPO, "branch-4000"), _ok({"object": {"sha": _HEAD}})),
             (
                 create_pull_request_request(
                     _REPO,
-                    title="t",
+                    title="fix(OMN-20864): t",
                     head="branch-4000",
                     base="dev",
                     body="b",
@@ -254,9 +273,11 @@ async def test_create_pr_goes_through_the_write_effect() -> None:
             (pull_request_request(_REPO, 4000), _ok(created)),
         ]
     )
-    pr = await adapter.create_pr(_REPO, "t", "b", "branch-4000", base="dev")
+    pr = await adapter.create_pr(
+        _REPO, "fix(OMN-20864): t", "b", "branch-4000", base="dev"
+    )
     assert pr.number == 4000
-    assert [r.method for r in fake.sent] == ["GET", "POST", "GET"]
+    assert [r.method for r in fake.sent] == ["GET", "GET", "GET", "GET", "POST", "GET"]
 
 
 # --- not served ------------------------------------------------------------------

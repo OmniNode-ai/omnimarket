@@ -41,6 +41,7 @@ Related:
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
@@ -85,6 +86,9 @@ from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command
     ModelRepoHealthRepairCommand,
 )
 
+pytestmark = pytest.mark.usefixtures("lane_intake_gate")
+
+
 _REPO = "OmniNode-ai/omnimarket"
 _FAILING_COMMAND = "pre-commit run --all-files"
 
@@ -124,7 +128,14 @@ class _StubLinearClient:
     def search_issues_by_content_key(self, *, content_key: str) -> str | None:
         return None
 
-    def create_issue(self, *, title: str, description: str, parent_id: str) -> str:
+    def create_issue(
+        self,
+        *,
+        title: str,
+        description: str,
+        parent_id: str,
+        label_names: Sequence[str] = (),
+    ) -> str:
         ref = f"OMN-99{len(self.created):03d}"
         self.created.append(ref)
         return ref

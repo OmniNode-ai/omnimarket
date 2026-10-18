@@ -20,6 +20,7 @@ from uuid import UUID
 import pytest
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta,
 )
@@ -43,6 +44,10 @@ _CORRELATION_ID = UUID("12717000-0000-4000-8000-000000000001")
 _FINISH_REASONS = (
     EnumProviderFinishReason.STOP,
     EnumProviderFinishReason.ABSENT,
+)
+# OMN-21077: isolate artifact checks with supplied passing execution evidence.
+_PASSED_RUN = ModelNamedTestRun(
+    test_ids=("tests/test_artifact.py::test_artifact",), exit_code=0
 )
 
 
@@ -90,6 +95,7 @@ def _verdict(
         response_contract=item["response_contract"],
         grounding_source=grounding_source,
         finish_reason=finish_reason,
+        named_test_run=_PASSED_RUN,
     )
     return Verdict(
         item=item,
@@ -224,7 +230,8 @@ def test_literal_or_single_name_python_is_not_a_code_artifact(content: str) -> N
             llm_response_content=content,
             dod_deterministic=deterministic,
             dod_heuristic=heuristic,
-        )
+        ),
+        named_test_run=_PASSED_RUN,
     )
     assert not result.passed
     assert any("code artifact" in reason for reason in result.failure_reasons)
@@ -252,7 +259,8 @@ def test_non_trivial_code_artifacts_pass_the_new_floor(content: str) -> None:
             llm_response_content=content,
             dod_deterministic=deterministic,
             dod_heuristic=heuristic,
-        )
+        ),
+        named_test_run=_PASSED_RUN,
     )
     assert result.passed, result.failure_reasons
 
@@ -274,6 +282,7 @@ def test_grounded_prompt_keeps_the_stronger_name_resolution_check() -> None:
             dod_heuristic=heuristic,
         ),
         grounding_source=prompt,
+        named_test_run=_PASSED_RUN,
     )
     assert not result.passed
     assert "names_resolve" not in result.skipped_checks
@@ -291,7 +300,8 @@ def _test_artifact_verdict(content: str) -> ModelQualityGateResult:
             llm_response_content=content,
             dod_deterministic=deterministic,
             dod_heuristic=heuristic,
-        )
+        ),
+        named_test_run=_PASSED_RUN,
     )
 
 

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ WORKFLOW = (
 
 def _extract_verdict_snippet() -> str:
     text = WORKFLOW.read_text(encoding="utf-8")
-    start = text.index('VERDICT_DATA=$(REVIEW_JSON="$REVIEW_JSON" python3 - ')
+    start = text.index('VERDICT_DATA=$(REVIEW_JSON_FILE="$REVIEW_JSON_FILE" python3 - ')
     body = text[text.index("\n", start) + 1 : text.index("PYEOF\n", start)]
     return "\n".join(
         line[10:] if line.startswith(" " * 10) else line for line in body.splitlines()
@@ -46,14 +47,17 @@ def _extract_verdict_snippet() -> str:
 
 
 def _run(payload: dict[str, Any]) -> dict[str, str]:
-    completed = subprocess.run(
-        [sys.executable, "-c", _extract_verdict_snippet()],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-        env={"REVIEW_JSON": json.dumps(payload), "PATH": "/usr/bin:/bin"},
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        result = Path(tmp) / "hostile-reviewer-result.json"
+        result.write_text(json.dumps(payload), encoding="utf-8")
+        completed = subprocess.run(
+            [sys.executable, "-c", _extract_verdict_snippet()],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+            env={"REVIEW_JSON_FILE": str(result), "PATH": "/usr/bin:/bin"},
+        )
     return dict(
         line.split("=", 1) for line in completed.stdout.splitlines() if "=" in line
     )

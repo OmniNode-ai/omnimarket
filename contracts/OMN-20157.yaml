@@ -20,6 +20,19 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: a criterion bound only by retired bindings is still reported unbound and still demotes the verdict, retired bindings are listed in acceptance_retired_bindings and refused ones in acceptance_refused_retirements, and the failing checks of a retired item still fail -- falsifier: a retired-only criterion counts as bound, a retirement is not listed, or a failing check of a retired item is skipped
+  - id: "req-byok-catalogue-ticket-criteria"
+    statement: |-
+      The BYOK catalogue criteria of the ticket that this repository's retirement change also carried. The three criteria above are the retirement change's own and share the labels AC1 to AC3 with the ticket's catalogue criteria; the criteria below are the ticket's AC4, AC5 and AC6, transcribed verbatim from the ticket body. The ticket's AC5 is bound by a hosted test of the BYOK Gemini receipt (the served model named in model_name, secret_source store, backend byok-gemini, http 200); its lab receipt readback is a local_done_gate item that binds no criterion, because the hosted must-fail control can never run a local_done_gate item. Each id is the label a binding item claims through binds_ac.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: the vertex not_offered reason states that SSO-style auth is out of scope and cites the ruling -- falsifier: uv run pytest tests/test_byok_gemini_glm_plans.py -q
+      - id: "AC5"
+        statement: |-
+          AC5: a real Gemini delegation and a GLM coding-plan delegation run through the BYOK path on the lab with the key from the secret store, and the receipt names the model -- falsifier: lab receipt readback naming model_name for each run id
+      - id: "AC6"
+        statement: |-
+          AC6 (added 2026-10-01, shipped in omnimarket#3140): no catalogue row pins a model id; the model is resolved per key from the provider's list-models endpoint and stored with the credential; a provider 404, 402 and 401 are typed refusals (PROVIDER_MODEL_NOT_FOUND, PROVIDER_BILLING, PROVIDER_AUTH_FAILED) with no same-backend retry -- falsifier: uv run pytest tests/test_omn20157_byok_model_discovery_and_typed_refusals.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The retirement conditions, refusals, verdict impact and visibility are exercised by the retirement test file."
@@ -37,3 +50,50 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_ac_binding_retirement.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2", "AC3"]
+  - id: "dod-omn20157-ac4-vertex-scope-reason"
+    description: "AC4 hosted probe. The catalogue test file asserts the vertex not_offered row carries the ticket, states that SSO-style auth is out of scope and names the operator ruling (test_the_reason_states_the_scope_decision_and_not_a_gap). The ticket's falsifier, run unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_byok_gemini_glm_plans.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20157-ac6-model-discovery-typed-refusals"
+    description: "AC6 hosted probe. The discovery and typed-refusal test file asserts that the model is discovered from the provider's list-models endpoint before the first post and that a provider 404, 402 and 401 are the typed refusals PROVIDER_MODEL_NOT_FOUND, PROVIDER_BILLING and PROVIDER_AUTH_FAILED with no same-backend retry. The ticket's falsifier, run unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20157_byok_model_discovery_and_typed_refusals.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20157-ac5-byok-gemini-receipt-names-model"
+    description: "AC5 hosted probe. A customer BYOK delegation on backend byok-gemini, with the key read from the secret store and the provider stubbed, completes and its receipt names the served model gemini-3.5-flash-lite in model_name (configured, and discovered from the provider's model list when unresolved), records secret_source store and one byok-gemini attempt with http 200. The real lab run is read by the local_done_gate item dod-omn20157-ac5-gemini-receipt-fec634b0."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20157_ac5_byok_gemini_receipt_names_model.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20157-ac5-gemini-receipt-fec634b0"
+    description: >-
+      AC5 lab receipt readback, Gemini leg. Lab delegation run fec634b0-8294-4910-b81f-9ba515789a36 ran
+      on lab host h201 on 2026-10-07 in-process (onex delegate --backend-id byok-gemini --bus inmemory
+      --locus in-process, ticket OMN-20157) with the key registered by `onex secret set llm.gemini.api_key`.
+      The check reads that run's receipt.json from the canonical state root of the host that runs the local Done gate (h201 holds the run) and requires status completed,
+      model_name gemini-3.5-flash-lite, backend byok-gemini, secret_source store, http 200 and ticket
+      OMN-20157. The GLM coding-plan leg of the AC5 line is not claimed: customer GLM BYOK is out of the
+      beta (RULING 2026-09-30T23:01:09Z, lane glm-out-of-beta). The binding on onex_change_control
+      carries the same item, accepted by lane deleg-walk-a-1540 on 2026-10-08.
+      It binds no criterion here (binds_ac is empty): the hosted must-fail control never runs a local_done_gate
+      item, so AC5 is bound by dod-omn20157-ac5-byok-gemini-receipt-names-model. The local gate also runs that
+      item's hosted receipt test beside the readback.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          r=.onex_state/runs/fec634b0-8294-4910-b81f-9ba515789a36/receipt.json; cat "$OMNI_HOME/$r" | jq -er '.receipt.result | select(.status == "completed" and .model_name == "gemini-3.5-flash-lite" and .secret_source == "store" and .ticket_id == "OMN-20157" and .attempts[0].backend_id == "byok-gemini" and .attempts[0].http_status == 200) | "run fec634b0-8294-4910-b81f-9ba515789a36 receipt: status \(.status), model_name \(.model_name), backend \(.attempts[0].backend_id), provider \(.provider), secret_source \(.secret_source), http \(.attempts[0].http_status)"'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20157_ac5_byok_gemini_receipt_names_model.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: []

@@ -8,7 +8,8 @@ embedding endpoint and searches the onex_antipatterns Qdrant collection for
 nearest-neighbor antipattern entries.
 
 Design invariants:
-  - Embedding endpoint URL from EMBEDDING_MODEL_URL env var — fail-fast if unset.
+  - Embedding endpoint URL from EMBEDDING_MODEL_URL env var — a graceful skip
+    (empty matches + error_message) if unset, so the requester still gets an answer.
   - Qdrant collection from ANTIPATTERN_QDRANT_COLLECTION (default: onex_antipatterns).
   - Qdrant unavailability is a graceful skip — returns empty matches + error_message.
   - Freshness decay: recently-discovered antipatterns ranked higher via configurable factor.
@@ -118,18 +119,32 @@ class HandlerAntipatternMatchEffect:
             payload.embedding_endpoint_override
             or os.environ.get("EMBEDDING_MODEL_URL", "")  # contract-config-ok: config
         )
-        if not endpoint:
-            raise OSError(
-                "EMBEDDING_MODEL_URL is required but not set. "
-                "Set this env var to the OpenAI-compatible embedding endpoint base URL."
-            )
-
         collection = (
             payload.qdrant_collection_override
             or os.environ.get(  # contract-config-ok: config
                 "ANTIPATTERN_QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION
             )
         )
+
+        if not endpoint:
+            # A raise here dead-letters the command and the requester, which waits
+            # on this response topic, never hears back. Answer instead, with the
+            # reason in error_message, like the Qdrant-unavailable skip below.
+            logger.warning(
+                "EMBEDDING_MODEL_URL not set — skipping antipattern match (correlation_id=%s)",
+                correlation_id,
+            )
+            return ModelAntipatternMatchResponse(
+                correlation_id=correlation_id,
+                validation_context=payload.validation_context,
+                matches=(),
+                query_text_used=query_text,
+                qdrant_collection=collection,
+                error_message=(
+                    "Embedding endpoint unavailable — EMBEDDING_MODEL_URL is not set "
+                    "and the request names no embedding_endpoint_override."
+                ),
+            )
 
         resolved_client = self._qdrant_client
         if resolved_client is None:
@@ -141,6 +156,7 @@ class HandlerAntipatternMatchEffect:
                 )
                 return ModelAntipatternMatchResponse(
                     correlation_id=correlation_id,
+                    validation_context=payload.validation_context,
                     matches=(),
                     query_text_used=query_text,
                     qdrant_collection=collection,
@@ -154,6 +170,7 @@ class HandlerAntipatternMatchEffect:
             )
             return ModelAntipatternMatchResponse(
                 correlation_id=correlation_id,
+                validation_context=payload.validation_context,
                 matches=(),
                 query_text_used=query_text,
                 qdrant_collection=collection,
@@ -171,6 +188,7 @@ class HandlerAntipatternMatchEffect:
             logger.exception("Qdrant search failed (correlation_id=%s)", correlation_id)
             return ModelAntipatternMatchResponse(
                 correlation_id=correlation_id,
+                validation_context=payload.validation_context,
                 matches=(),
                 query_text_used=query_text,
                 qdrant_collection=collection,
@@ -227,6 +245,7 @@ class HandlerAntipatternMatchEffect:
 
         return ModelAntipatternMatchResponse(
             correlation_id=correlation_id,
+            validation_context=payload.validation_context,
             matches=tuple(matches),
             query_text_used=query_text,
             qdrant_collection=collection,

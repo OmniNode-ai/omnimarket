@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Falsifiers for the release-staleness gate moved from OCC (OMN-18010, S8)."""
+"""Falsifiers for the release-staleness check moved from OCC (OMN-18010, S8).
+
+OMN-19998: the check runs and reports on every PR, and CI Summary no longer
+gates on it (operator ruling 2026-10-16T07:34:18Z: no release wait).
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -21,17 +25,23 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 CI_SUMMARY_GATE = REPO_ROOT / "scripts" / "ci" / "ci_summary_gate.py"
 JOB_DISPLAY_NAME = "Release Staleness (OMN-18010)"
+CANONICAL_FILE_SHAPE_DISPLAY_NAME = "Canonical File Shape (OMN-20304)"
 MEASURE_STEP_NAME = "Measure dev-vs-tag release staleness (OMN-18010)"
 
 
 def _job() -> dict[str, Any]:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return workflow["jobs"]["release-staleness"]
+    return cast(dict[str, Any], workflow["jobs"]["release-staleness"])
 
 
 def _run_text() -> str:
-    return next(
-        step["run"] for step in _job()["steps"] if step.get("name") == MEASURE_STEP_NAME
+    return cast(
+        str,
+        next(
+            step["run"]
+            for step in _job()["steps"]
+            if step.get("name") == MEASURE_STEP_NAME
+        ),
     )
 
 
@@ -139,8 +149,7 @@ def test_absent_or_conditional_job_is_refused() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     jobs = list(workflow["jobs"])
     index = jobs.index("release-staleness")
-    assert jobs[index - 1] == "canonical-file-shape"
-    assert jobs[index + 1] == "ci-summary"
+    assert jobs.index("canonical-file-shape") < index < jobs.index("ci-summary")
     checkout = job["steps"][0]
     assert (
         checkout["uses"] == workflow["jobs"]["canonical-file-shape"]["steps"][0]["uses"]
@@ -152,7 +161,7 @@ def test_absent_or_conditional_job_is_refused() -> None:
     assert "continue-on-error" not in job
 
 
-def test_missing_or_skippable_ci_summary_registration_is_refused() -> None:
+def _load_gate() -> Any:
     spec = importlib.util.spec_from_file_location(
         "release_staleness_summary", CI_SUMMARY_GATE
     )
@@ -162,14 +171,180 @@ def test_missing_or_skippable_ci_summary_registration_is_refused() -> None:
     sys.modules[spec.name] = gate
     try:
         spec.loader.exec_module(gate)
-        assert JOB_DISPLAY_NAME in gate.STRICT_GATE_JOBS
-        assert gate.STRICT_GATE_JOBS[-2:] == (
-            "Canonical File Shape (OMN-20304)",
-            JOB_DISPLAY_NAME,
-        )
-        assert JOB_DISPLAY_NAME not in gate.SKIPPABLE_GATE_JOBS
     finally:
         sys.modules.pop(spec.name, None)
+    return gate
+
+
+def test_release_staleness_is_advisory_under_ci_summary() -> None:
+    gate = _load_gate()
+    _assert_advisory_registration(
+        gate.STRICT_GATE_JOBS, gate.SKIPPABLE_GATE_JOBS, gate.SOFT_ALLOWLIST
+    )
+
+
+def _assert_advisory_registration(
+    strict_jobs: tuple[str, ...],
+    skippable_jobs: tuple[str, ...],
+    allowlist: frozenset[str],
+) -> None:
+    # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): no release wait while
+    # there are no external users, so the measurement runs and reports but
+    # never gates CI Summary.
+    assert JOB_DISPLAY_NAME in allowlist
+    assert JOB_DISPLAY_NAME not in strict_jobs
+    assert JOB_DISPLAY_NAME not in skippable_jobs
+    assert CANONICAL_FILE_SHAPE_DISPLAY_NAME in strict_jobs
+
+
+def _summary_jobs(gate: Any, staleness: str | None) -> list[dict[str, object]]:
+    jobs: list[dict[str, object]] = [
+        {"name": name, "status": "completed", "conclusion": "success"}
+        for name in (*gate.STRICT_GATE_JOBS, *gate.SKIPPABLE_GATE_JOBS)
+        if name != JOB_DISPLAY_NAME
+    ]
+    jobs.append(
+        {"name": "Tests (Split 1/1)", "status": "completed", "conclusion": "success"}
+    )
+    jobs.append({"name": gate.SELF_JOB_NAME, "status": "in_progress"})
+    if staleness is not None:
+        jobs.append(
+            {"name": JOB_DISPLAY_NAME, "status": "completed", "conclusion": staleness}
+        )
+    return jobs
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", None])
+def test_stale_or_absent_release_staleness_cannot_fail_ci_summary(
+    conclusion: str | None,
+) -> None:
+    gate = _load_gate()
+    code, report = gate.evaluate(_summary_jobs(gate, conclusion), run_attempt=1)
+    assert code == gate.EXIT_SUCCESS, report
+
+
+def test_running_release_staleness_cannot_hold_ci_summary() -> None:
+    gate = _load_gate()
+    jobs = _summary_jobs(gate, None)
+    jobs.append({"name": JOB_DISPLAY_NAME, "status": "in_progress"})
+    code, report = gate.evaluate(jobs, run_attempt=1)
+    assert code == gate.EXIT_SUCCESS, report
+
+
+def test_other_failed_job_still_fails_ci_summary_positive_control() -> None:
+    gate = _load_gate()
+    jobs = _summary_jobs(gate, "failure")
+    jobs.append(
+        {
+            "name": "Some Unregistered Job",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+    )
+    code, report = gate.evaluate(jobs, run_attempt=1)
+    assert code == gate.EXIT_FAILURE, report
+
+
+def test_release_staleness_failure_fails_a_strict_registration_control() -> None:
+    gate = _load_gate()
+    code, report = gate.evaluate(
+        _summary_jobs(gate, "failure"),
+        run_attempt=1,
+        strict_gates=(*gate.STRICT_GATE_JOBS, JOB_DISPLAY_NAME),
+        allowlist=frozenset(),
+    )
+    assert code == gate.EXIT_FAILURE, report
+
+
+def test_added_gates_do_not_displace_release_staleness_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    jobs: dict[str, Any] = {}
+    for name, job in workflow["jobs"].items():
+        if name == "release-staleness":
+            jobs["additional-before"] = {"name": "Additional before"}
+        jobs[name] = job
+        if name == "release-staleness":
+            jobs["additional-after"] = {"name": "Additional after"}
+    workflow["jobs"] = jobs
+    workflow_path = tmp_path / "ci.yml"
+    workflow_path.write_text(
+        yaml.safe_dump(workflow, sort_keys=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", workflow_path)
+    test_absent_or_conditional_job_is_refused()
+
+    summary_path = tmp_path / "ci_summary_gate.py"
+    summary_path.write_text(
+        CI_SUMMARY_GATE.read_text(encoding="utf-8")
+        + '\nSTRICT_GATE_JOBS += ("Additional gate",)\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys.modules[__name__], "CI_SUMMARY_GATE", summary_path)
+    test_release_staleness_is_advisory_under_ci_summary()
+
+
+@pytest.mark.parametrize("field", ["if", "needs", "continue-on-error"])
+def test_added_gates_do_not_hide_a_conditional_release_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    workflow["jobs"]["release-staleness"][field] = "false"
+    workflow_path = tmp_path / "ci.yml"
+    workflow_path.write_text(
+        yaml.safe_dump(workflow, sort_keys=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", workflow_path)
+    with pytest.raises(AssertionError):
+        test_absent_or_conditional_job_is_refused()
+
+
+def test_release_gate_refuses_conditional_or_tolerated_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for control in ("if", "continue-on-error"):
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        workflow["jobs"]["release-staleness"]["steps"][-1][control] = True
+        path = tmp_path / f"ci-{control}.yml"
+        path.write_text(yaml.safe_dump(workflow, sort_keys=False), encoding="utf-8")
+        monkeypatch.setattr(sys.modules[__name__], "WORKFLOW", path)
+        with pytest.raises(AssertionError):
+            test_absent_or_conditional_job_is_refused()
+
+
+@pytest.mark.parametrize(
+    ("strict_jobs", "skippable_jobs", "allowlist"),
+    [
+        ((CANONICAL_FILE_SHAPE_DISPLAY_NAME,), (), frozenset()),
+        (
+            (CANONICAL_FILE_SHAPE_DISPLAY_NAME, JOB_DISPLAY_NAME),
+            (),
+            frozenset({JOB_DISPLAY_NAME}),
+        ),
+        (
+            (CANONICAL_FILE_SHAPE_DISPLAY_NAME,),
+            (JOB_DISPLAY_NAME,),
+            frozenset({JOB_DISPLAY_NAME}),
+        ),
+        ((), (), frozenset({JOB_DISPLAY_NAME})),
+    ],
+)
+def test_registration_refuses_gating_or_missing_release_staleness(
+    strict_jobs: tuple[str, ...],
+    skippable_jobs: tuple[str, ...],
+    allowlist: frozenset[str],
+) -> None:
+    with pytest.raises(AssertionError):
+        _assert_advisory_registration(strict_jobs, skippable_jobs, allowlist)
+
+
+def test_registration_accepts_unrelated_gates_around_it() -> None:
+    _assert_advisory_registration(
+        ("Another gate", CANONICAL_FILE_SHAPE_DISPLAY_NAME),
+        ("Skippable gate",),
+        frozenset({JOB_DISPLAY_NAME, "Another advisory"}),
+    )
 
 
 @pytest.mark.parametrize("path", ["src/a.py", "pyproject.toml", "uv.lock"])

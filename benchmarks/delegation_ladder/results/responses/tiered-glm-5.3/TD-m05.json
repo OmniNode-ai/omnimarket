@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m05",
+  "path": "pinned",
+  "sha256": "023dfebfa40179e3262a4eed70de314d4083ed6b445ecef4ae454e7a857b0b9f",
+  "response": "- **#1301** — ArtifactStore Phase 1 hardening: retention classes (ephemeral/session/ticket/permanent) with configurable per-class TTLs and per-write override; quota enforcement (max per-write and per-scope total size) raises ArtifactQuotaExceededError with no silent truncation.\n- **#1146** — Adds ModelKnowledgeContextBundle with frozen Pydantic sub-models ModelAntipatternExample and ModelAntipatternEntry; validator enforces pattern_type=semantic requires vector_enabled=True.\n- **#3331** — Routing test-gap fill, no source change: complexity rung threshold boundaries and delegation routing outcome tests.\n- **#3686** — Landing orchestrator merges a green, clean omnimarket PR at its head instead of arming; new landing_config block, unknown keys refused at load; default github_mode dry_run.\n- **#265** — Bumps actions/setup-python from 6 to 7."
+}

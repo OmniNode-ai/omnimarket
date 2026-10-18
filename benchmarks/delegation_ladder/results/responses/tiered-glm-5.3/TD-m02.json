@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m02",
+  "path": "pinned",
+  "sha256": "3ea9042f6454d56f76d01f062c09276d534164d320e8646ba4f636fe9578f361",
+  "response": "- **#3660** — New `node_glm_allowance_compute` adds GLM Coding Plan allowance awareness: it returns remaining rolling-window and weekly allowance, a verdict, the chain order to try, and skipped GLM rungs with reasons.\n- **#249** — omnibase_spi v0.23.0 repins omnibase-core from git tag v0.45.0 to PyPI `>=0.46.1,<0.47.0`, removing the git-source override.\n- **#1869** — A binding for a merged fix must fail at the merge base with that fix reverted; the gate reads a Binds-Merged-Fix trailer and checks the sha is merged, has one parent, and cites the ticket.\n- **#3045** — Adds landing decision compute models, TLC-trace fixtures S1–S20, a replay world checking safety properties, and one test per mutation.\n- **#3436** — The budget-state write is one transaction that increments in the database and counts each event once; applied-events RLS is split into 0057, granting the writer."
+}

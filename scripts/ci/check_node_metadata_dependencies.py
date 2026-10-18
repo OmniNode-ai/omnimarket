@@ -26,7 +26,6 @@ MODULE_TO_DISTRIBUTION = {
     "omnibase_infra": "omnibase-infra",
     "omnibase_spi": "omnibase-spi",
     "omnimemory": "omninode-memory",
-    "onex_change_control": "onex-change-control",
     "psycopg2": "psycopg2-binary",
     "pydantic": "pydantic",
     "qdrant_client": "qdrant-client",

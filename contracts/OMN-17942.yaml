@@ -1,0 +1,73 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17942"
+title: "Nodes that open Linear items label and stamp them as lane-created and admit them against a daily intake budget"
+summary: >-
+  Every Linear item a lane or node opens is written through the operator's one existing
+  Linear key, so its author field reads as the operator's own. node_create_ticket and
+  node_repo_health_repair_effect now give every item they open a lane-intake label and a
+  first-line stamp naming the lane (or, for the repair node with no lane declared, the node),
+  and ask the installed ticket-creation guard to admit the create: a create with no declared
+  lane identity, or past the day's intake budget in the guard's policy, is refused before
+  Linear is touched. The label, stamp prefix and budget are read from the guard's policy, not
+  spelled here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-node-create-ticket-lane-intake"
+    statement: "node_create_ticket stamps, labels and routes every create through the guard in node mode."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a create made with a declared lane reaches Linear with the stamp as its first
+          line and the lane-intake label, a create with no lane is handed to the guard
+          unstamped (which refuses it), and a dry run asks the guard not to spend the budget --
+          falsifier: tests/nodes/node_create_ticket/test_lane_intake.py asserts the client
+          description and label_names, the guard payload, and the guard argv for create and dry run
+  - id: "req-repair-node-lane-intake"
+    statement: "node_repo_health_repair_effect opens only lane-created items and creates nothing when intake is refused."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: the repair ticket carries the stamp and label, an item is admitted by the
+          lane-intake check before Linear is called, a refused intake creates nothing, and a dry
+          run or a deduplicated ticket spends no intake -- falsifier:
+          tests/nodes/node_repo_health_repair_effect/test_lane_intake.py asserts the created
+          description and labels, and the refused, dry-run and deduplicated cases create nothing
+evidence_requirements:
+  - kind: "tests"
+    description: "The lane-intake tests for both nodes and the existing create and repair suites with the stamp and label in their expectations."
+    command: "uv run pytest tests/nodes/node_create_ticket tests/nodes/node_repo_health_repair_effect tests/test_golden_chain_create_ticket.py tests/test_repo_health_lane_split_integration.py tests/integration/node_create_ticket -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17942-ac1-create-ticket"
+    description: "AC1: node_create_ticket stamps the first line, applies the label, runs the guard in node mode with the lane in its environment, and asks it not to record on a dry run."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_lane_intake.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn17942-ac2-repair-node"
+    description: "AC2: the repair ticket is stamped and labelled, admitted before Linear is called, and a refused intake creates nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_repo_health_repair_effect/test_lane_intake.py -q"
+    binds_ac: ["AC2"]
+  - id: "dod-omn17942-regressions"
+    description: "The create and repair suites, the golden chains and the create-ticket integration test still pass with the stamp and label in their expectations."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket tests/nodes/node_repo_health_repair_effect tests/test_golden_chain_create_ticket.py tests/test_repo_health_lane_split_integration.py tests/integration/node_create_ticket -q"
+  - id: "dod-omn17942-deploy-handler"
+    description: "Deploy probe: read the shared lane-intake handler at the checked-out commit from GitHub and require the guard admission and the stamp. The base has no such handler. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_lane_intake.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; s = sys.stdin.read(); assert "def admit_lane_intake" in s; assert "def stamp_description" in s; assert "--lane-intake" in s'

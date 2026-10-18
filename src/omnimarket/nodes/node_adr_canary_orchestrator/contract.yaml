@@ -13,10 +13,18 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 uuid: "c4d5e6f7-a8b9-0123-cdef-012345678901"
 node_type: orchestrator
+# canary: the standalone `onex up canary` demo runtime. effects: the dev-lane
+# runtime that already owns the ingestion, segmentation, extraction and grading
+# effect nodes; no dev-lane runtime starts the canary profile, so without this
+# line nothing there subscribes adr-canary-requested.
 runtime_profiles:
   - canary
+  - effects
 input_model: "ModelCanaryCommandPayload"
 output_model: "ModelCanaryReport"
+# `onex run-node` polls this topic for the run's result and refuses a node that
+# declares none.
+terminal_event: "onex.evt.omnimarket.adr-canary-completed.v1"
 handler:
   module: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator
   class: HandlerCanaryOrchestrator
@@ -62,7 +70,11 @@ config:
     description: "Maximum concurrent LLM extraction calls per manifest entry"
   grader_model_key:
     default: "opus"
-    description: "LLM model key for the extraction grader"
+    description: >
+      LLM model key for the extraction grader when the request names none. The
+      default is a paid provider: with allow_external_providers false, a run
+      that grades is refused unless the request names a lab-hosted
+      grader_model_key.
   max_cost_usd:
     default: null
     description: >

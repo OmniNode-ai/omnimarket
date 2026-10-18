@@ -1,0 +1,35 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21048"
+title: "Runtime wiring tests for node_dod_closeout_sweep_compute"
+summary: >-
+  Adds a test file that wires node_dod_closeout_sweep_compute from its installed
+  contract with wire_from_manifest on an in-memory bus, publishes enveloped
+  decide-requested commands and reads the decided topic by correlation id. No node,
+  contract or handler code changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-runtime-wiring"
+    statement: "The node answers a command on its declared command topic with a decided event when wired the way a deployed runtime wires it."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: The wired node answers precheck, plan_scope, unknown kind and extra-field commands on its command topic with a decided event, and a command on another topic gets none -- falsifier: uv run pytest on the runtime wiring test file fails if the contract topics or the dispatch wiring change
+evidence_requirements:
+  - kind: "tests"
+    description: "Runtime wiring cases pass."
+    command: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_runtime_wiring_dod_closeout_sweep_compute.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21048-ac1-runtime-wiring"
+    description: "The five runtime wiring cases pass against the installed node contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_runtime_wiring_dod_closeout_sweep_compute.py -q -n 0"
+    binds_ac: ["AC1"]

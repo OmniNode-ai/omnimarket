@@ -36,6 +36,7 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
+    ModelScmLocalVerb,
     ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
@@ -128,6 +129,19 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh pr list --state merged --json headRefName,headRefOid",
         local_read=EnumScmLocalRead.PR_HEADS,
     ),
+    # OMN-21146: the reads node_dod_verify sends the gateway.
+    ModelScmVerb(
+        verb="commit-check-runs",
+        node=_G,
+        operation="commit_check_runs",
+        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
+    ),
+    ModelScmVerb(
+        verb="pr-merged",
+        node=_G,
+        operation="merged_pr",
+        replaces="gh pr view --json state,mergedAt,mergeCommit,headRefOid",
+    ),
     ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),
@@ -146,6 +160,39 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="workflow_dispatch",
         replaces="gh workflow run",
+    ),
+    ModelScmVerb(
+        verb="check-run-create",
+        node=_W,
+        operation="check_run_create",
+        replaces="gh api --method POST /repos/{o}/{r}/check-runs",
+    ),
+)
+
+#: Verbs no node contract has an operation for: answered from the canonical
+#: clones and the watcher state alone. The measured gh read refusals they
+#: replace (the shared call log) are PR commit lists, file contents, one commit
+#: and one commit's check runs.
+SCM_LOCAL_VERBS: Final[tuple[ModelScmLocalVerb, ...]] = (
+    ModelScmLocalVerb(
+        verb="pr-commits",
+        read=EnumScmLocalRead.PR_COMMITS,
+        replaces="gh api repos/<o>/<r>/pulls/<n>/commits",
+    ),
+    ModelScmLocalVerb(
+        verb="file-read",
+        read=EnumScmLocalRead.FILE_CONTENTS,
+        replaces="gh api repos/<o>/<r>/contents/<path>",
+    ),
+    ModelScmLocalVerb(
+        verb="commit-view",
+        read=EnumScmLocalRead.COMMIT_VIEW,
+        replaces="gh api repos/<o>/<r>/commits/<ref>",
+    ),
+    ModelScmLocalVerb(
+        verb="commit-checks",
+        read=EnumScmLocalRead.COMMIT_CHECKS,
+        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
     ),
 )
 
@@ -317,6 +364,7 @@ class ScmBusCaller:
 
 __all__: list[str] = [
     "LANDING_CONTROLLER",
+    "SCM_LOCAL_VERBS",
     "SCM_REFUSED_VERBS",
     "SCM_VERBS",
     "ScmBusCaller",

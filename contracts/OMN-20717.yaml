@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20717"
+title: "The decisions exposure serves the cost the store holds, in both serving modes"
+summary: "Tests only. The decisions exposure already serves cost_usd; these tests show a non-zero stored cost comes back unchanged through the local store and the real dashboard app, that the served costs of a day add up to the stored costs, and that the row republished to the bus snapshot carries the cost the store returned."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-decisions-cost-matches-the-store"
+    statement: |-
+      The per-call exposure serves each call's own cost unchanged, so a sum over the call rows can be compared with the Usage page's figure.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: decisions.v1 declares `cost_usd`, and a priced call's row returns the same `cost_usd` that `delegation_events` stores -- falsifier: uv run pytest on the exposure test shows the column missing or a different value
+      - id: "AC2"
+        statement: |-
+          AC2: an unpriced call returns null, never 0 -- falsifier: the same test finds 0.0 for an unpriced call
+evidence_requirements:
+  - kind: "tests"
+    description: "A non-zero stored cost is served unchanged in both serving modes, and a row with no cost is served as null; with cost_usd dropped from the exposure every test fails, and with the writer storing a constant zero the republish tests fail."
+    command: "uv run pytest tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20717-decisions-cost-matches-the-store"
+    description: "Through the local store and the real dashboard app, two calls with non-round costs are served with the stored value, the served costs add up to the stored costs, and a row with no cost is served as null and left out of the sum. Through the real terminal write path, the row republished to the decisions snapshot carries the cost the store returned. AC2 is proved for the local store; in Postgres the column cannot be null, which is a separate ticket."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20717-unpriced-cost-null-on-postgres"
+    description: "AC2 on Postgres (Jonah's ruling, 2026-10-14): with migration 0061 the column takes NULL, an unpriced call written by the real projection runner reads back as NULL on all three write paths (canonical terminal priced by no cost model, a row the verdict creates first, a delegate-skill terminal whose rungs measured no cost), a priced call and a free local call keep their costs, the backfill run by the table's non-superuser owner under FORCE ROW LEVEL SECURITY nulls only no_cost_model zero rows, and the token-usage aggregate sums priced calls only with the unpriced calls counted beside it. The unit test pins how the delegate-skill metrics decide the cost was measured."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20717_unpriced_cost_null_real_postgres.py tests/unit/delegation/test_omn20717_cost_measured_from_rungs.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20717-deploy-probe-0061"
+    description: "Deploy probe: the 0061 migration GitHub serves at the checked-out commit backfills under the omn20717_unpriced_backfill helper policy; the file does not exist at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/migrations/0061_delegation_events_cost_usd_nullable.sql?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"DROP POLICY omn20717_unpriced_backfill ON delegation_events\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20717-consumer-first-cost-fields"
+    description: "Consumer-first for the Postgres half of AC2: the released wire models decode an attempt carrying usage_source and metrics carrying cost_measured, dropping each key, while every other unknown key is still refused. The producer that emits them lands after the release that carries this consumer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_cost_measured_omn20717.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20717-consumer-first-deploy-probe"
+    description: "Deploy probe: the wire model GitHub serves at the checked-out commit accepts cost_measured as a forthcoming metrics key; at the merge base the set does not exist, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"_FORTHCOMING_METRICS_KEYS: frozenset[str] = frozenset({\\\"cost_measured\\\"})\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20717-declared-cost-fields"
+    description: "The producer half of the consumer-first step: usage_source on the attempt and cost_measured on the metrics are declared fields, so each decodes to the value it was sent instead of being dropped, neither key is on a forthcoming list, and every other unknown key is still refused. Supersedes the consumer-first item, whose test asserted the drop this change ends."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn20717-consumer-first-cost-fields"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_cost_measured_omn20717.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20717-declared-cost-fields-deploy-probe"
+    description: "Deploy probe: the wire model GitHub serves at the checked-out commit declares usage_source on the attempt record; at the merge base it is only a forthcoming key, so the check fails there. Supersedes the consumer-first deploy probe, whose forthcoming metrics set this change removes."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn20717-consumer-first-deploy-probe"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"usage_source: EnumUsageSource | None = Field(default=None)\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"

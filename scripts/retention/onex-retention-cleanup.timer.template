@@ -1,0 +1,13 @@
+# Once a day. Persistent: a run missed across a reboot fires on boot.
+
+[Unit]
+Description=ONEX retention cleanup timer, lab host
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+RandomizedDelaySec=5min
+Persistent=true
+Unit=onex-retention-cleanup.service
+
+[Install]
+WantedBy=timers.target

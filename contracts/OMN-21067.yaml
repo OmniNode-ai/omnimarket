@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-21067
+title: PR close through the source-control node works with a claim the caller took
+summary: A pr_close command carries the claim the caller took (lane, run, action, taken-at, heartbeat), read by
+  onex scm pr-close from the caller's own claim registry. node_github_repo_write_effect checks it against the
+  request and the claim registry's liveness rule, and still reads the registry its runtime keeps, where a live
+  claim held by another lane or run refuses the close. The claim lookup finds a claim the claim CLI filed under the key as typed (mixed case). A close with no claim anywhere is refused. AC3 is the
+  proof close of omnimarket#3586 on the dev lane and is a deployment check, not hosted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-pr-close-works-with-the-callers-claim
+  statement: A close whose caller took the claim in a registry the effect cannot read is accepted when the claim
+    travels on the command, and refused in every case where it is not the requester's live claim.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: onex scm pr-close sends the claim the caller took on the command, and the effect closes on it
+      with no claim in any registry the effect reads -- falsifier: the AC1 tests fail at the merge base, where the
+      request model has no claim'
+  - id: AC2
+    statement: 'AC2: a pr_close with no claim anywhere, or a carried claim on another PR, lane or run, expired,
+      future-dated or contradicted by a peer''s live claim in the registry the effect reads, is refused with
+      claim_not_held and no GitHub call -- falsifier: with the claim check removed from the handler the AC2 tests
+      fail'
+evidence_requirements:
+- kind: tests
+  description: AC1 and AC2 over the effect handler, the onex scm command and the bus golden chain.
+  command: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py tests/unit/handlers/scm/test_onex_scm_command.py
+    tests/test_golden_chain_github_repo_write_effect.py -q -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21067-ac1-carried-claim-closes
+  description: The CLI carries the claim and the effect closes on it with no registry claim.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py
+      tests/unit/handlers/scm/test_onex_scm_command.py tests/test_golden_chain_github_repo_write_effect.py -q -n 0 -k
+      "closes_with_no_registry_claim or closes_past_an_unreadable_dir or recent_heartbeat_is_live or sends_the_claim_the_caller_took
+      or reads_the_claim_from_the_default_registry or finds_a_claim_filed_under_another_case or crosses_the_bus_and_completes or dry_run_close_with_the_carried"
+  binds_ac:
+  - AC1
+- id: dod-omn21067-ac2-no-claim-no-close
+  description: A close with no claim, or a claim that is not the requester's live claim, is refused.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py
+      tests/unit/handlers/scm/test_onex_scm_command.py tests/test_golden_chain_github_repo_write_effect.py -q -n 0 -k
+      "no_claim_anywhere or not_the_requesters_live_claim or beats_the_carried_claim or sends_none_and_says_so or on_another_pr
+      or without_a_claim_is_refused or with_another_lanes_claim"
+  binds_ac:
+  - AC2
+- id: dod-omn21067-deploy-probe
+  description: Deploy smoke on the runtime after the deploy agent rolls this change - import the write request
+    model from the running container and assert that it carries a claim field and that a pr_close with no claim
+    and no claims_dir validates. The command exits nonzero when the deployed image lacks the change, including the
+    merge-base image. It reads deployed code, not this contract or a receipt. Hosted CI has no runtime; the local
+    Done gate must execute this unbound deployment check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "from uuid import uuid4; from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import ModelRepoWriteRequest as M; assert \"claim\" in M.model_fields; M(correlation_id=uuid4(), operation=\"pr_close\", repo=\"OmniNode-ai/omnimarket\", idempotency_key=\"deploy-probe-1\", requested_by_lane=\"probe\", requested_by_run=\"probe\", pr_number=1, expected_head_sha=\"a\" * 40)"'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21067-deploy-hosted-runtime-smoke
+  description: Hosted smoke over the packaged write effect through RuntimeDispatch, contract discovery and
+    the in-memory bus. The carried claim must produce a completed terminal without a runtime registry claim.
+    The test fails when the claim field or handler support is absent. This runs at the PR head; the separate
+    local Done-gate probe still reads the deployed container after rollout.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_github_repo_write_effect.py -q -k
+      "a_close_carrying_the_callers_claim_crosses_the_bus_and_completes"

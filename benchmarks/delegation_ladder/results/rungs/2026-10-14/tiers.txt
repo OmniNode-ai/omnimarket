@@ -1,0 +1,52 @@
+### test by difficulty
+
+| rung | tier | accepted | share | 95% interval | answer correct | no answer | median wall s | median model s |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| local-qwen3.8-27b | easy | 4/10 | 40% | 17%-69% | 5 | 0 | 28.2 | 12.7 |
+| glm-5.3-flash | easy | 5/10 | 50% | 24%-76% | 5 | 4 | 116.5 | n/a |
+| glm-5.3 | easy | 8/10 | 80% | 49%-94% | 8 | 0 | 60.5 | n/a |
+| openrouter-nemotron-ultra | easy | 3/10 | 30% | 11%-60% | 5 | 0 | 106.6 | 71.6 |
+| openrouter-nemotron-super | easy | 0/10 | 0% | 0%-28% | 7 | 0 | 203.2 | 173.7 |
+| local-qwen3.8-27b | medium | 3/8 | 38% | 14%-69% | 3 | 0 | 30.5 | 15.1 |
+| glm-5.3-flash | medium | 3/8 | 38% | 14%-69% | 3 | 5 | 175.1 | n/a |
+| glm-5.3 | medium | 5/8 | 62% | 31%-86% | 5 | 2 | 104.7 | n/a |
+| openrouter-nemotron-ultra | medium | 3/8 | 38% | 14%-69% | 4 | 0 | 119.0 | 102.0 |
+| openrouter-nemotron-super | medium | 2/8 | 25% | 7%-59% | 3 | 1 | 88.6 | 40.5 |
+| local-qwen3.8-27b | hard | 3/8 | 38% | 14%-69% | 3 | 0 | 45.2 | 30.0 |
+| glm-5.3-flash | hard | 0/8 | 0% | 0%-32% | 0 | 8 | 175.1 | n/a |
+| glm-5.3 | hard | 3/8 | 38% | 14%-69% | 3 | 3 | 158.5 | n/a |
+| openrouter-nemotron-ultra | hard | 2/8 | 25% | 7%-59% | 3 | 0 | 202.2 | 176.2 |
+| openrouter-nemotron-super | hard | 0/8 | 0% | 0%-32% | 3 | 1 | 182.8 | 141.2 |
+
+### code_generation by difficulty
+
+| rung | tier | accepted | share | 95% interval | answer correct | no answer | median wall s | median model s |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| local-qwen3.8-27b | easy | 6/8 | 75% | 41%-93% | 6 | 0 | 19.2 | 4.0 |
+| glm-5.3-flash | easy | 6/8 | 75% | 41%-93% | 6 | 1 | 33.5 | n/a |
+| glm-5.3 | easy | 8/8 | 100% | 68%-100% | 8 | 0 | 13.4 | n/a |
+| openrouter-nemotron-ultra | easy | 7/8 | 88% | 53%-98% | 7 | 0 | 72.8 | 27.2 |
+| openrouter-nemotron-super | easy | 6/8 | 75% | 41%-93% | 6 | 0 | 49.4 | 23.7 |
+| local-qwen3.8-27b | medium | 9/10 | 90% | 60%-98% | 9 | 0 | 21.2 | 4.3 |
+| glm-5.3-flash | medium | 5/10 | 50% | 24%-76% | 5 | 4 | 58.8 | n/a |
+| glm-5.3 | medium | 8/10 | 80% | 49%-94% | 8 | 0 | 22.4 | n/a |
+| openrouter-nemotron-ultra | medium | 7/10 | 70% | 40%-89% | 7 | 0 | 52.3 | 21.3 |
+| openrouter-nemotron-super | medium | 6/10 | 60% | 31%-83% | 6 | 0 | 49.4 | 27.8 |
+| local-qwen3.8-27b | hard | 6/8 | 75% | 41%-93% | 6 | 0 | 27.1 | 6.4 |
+| glm-5.3-flash | hard | 7/8 | 88% | 53%-98% | 7 | 1 | 60.1 | n/a |
+| glm-5.3 | hard | 8/8 | 100% | 68%-100% | 8 | 0 | 37.5 | n/a |
+| openrouter-nemotron-ultra | hard | 6/8 | 75% | 41%-93% | 7 | 0 | 66.7 | 36.9 |
+| openrouter-nemotron-super | hard | 5/8 | 62% | 31%-86% | 5 | 0 | 64.3 | 49.1 |
+
+### where each rung starts failing
+
+- code_generation / glm-5.3: first miss: medium; first majority failure: none
+- code_generation / glm-5.3-flash: first miss: easy; first majority failure: none
+- code_generation / local-qwen3.8-27b: first miss: easy; first majority failure: none
+- code_generation / openrouter-nemotron-super: first miss: easy; first majority failure: none
+- code_generation / openrouter-nemotron-ultra: first miss: easy; first majority failure: none
+- test / glm-5.3: first miss: easy; first majority failure: hard
+- test / glm-5.3-flash: first miss: easy; first majority failure: medium
+- test / local-qwen3.8-27b: first miss: easy; first majority failure: easy
+- test / openrouter-nemotron-super: first miss: easy; first majority failure: easy
+- test / openrouter-nemotron-ultra: first miss: easy; first majority failure: easy

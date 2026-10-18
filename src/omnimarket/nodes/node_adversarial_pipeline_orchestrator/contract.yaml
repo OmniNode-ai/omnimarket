@@ -60,6 +60,13 @@ metadata:
 runtime_dispatch:
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.adversarial-pipeline-start.v1
+  # The result applier publishes a returned model to the success terminal, and to the one
+  # declared failure terminal when the model states a failure verdict (status == "failed",
+  # i.e. the hostile-review gate was not met). Without this declaration the gate-failed
+  # topic is published by nothing and a below-gate run lands on the completed topic.
+  terminal_events:
+    success: onex.evt.omnimarket.adversarial-pipeline-completed.v1
+    failure: onex.evt.omnimarket.adversarial-pipeline-gate-failed.v1
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.

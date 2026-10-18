@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-21069
+title: the merge-sweep reading compute and its rules reach today's script, with every repository name as data
+summary: The reading request carries the fleet, the non-product repositories and the out-of-scope rulings as
+  data, and no repository list remains in the rules module. A ruled-out repository's PRs are named under
+  out_of_scope_prs and never classified; every red is classified, in (repository, number) order; checks_state
+  decides a PR's checks; the claim check takes self_lane. The recorded fixtures were re-recorded from the
+  script with every repository name mapped by the recorder to an order-preserving placeholder.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-reading-parity
+  statement: The reading node reads a recorded sweep as the script reads it, with the repositories arriving as
+    data on the request, and refuses a request it cannot evaluate as asked by naming the reason.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: on the recorded fixture, the reading node''s product, controller, reds, chain_heads, escalations
+      and out_of_scope_prs equal the script''s output at the named plugin sha after the G14 normalizations only --
+      falsifier: uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py -q
+      fails with the out_of_scope filter removed, and fails with the sort removed'
+  - id: AC2
+    statement: 'AC2: an out-of-scope entry with an empty ruling, a non-UTC now, and a checks_state outside the four
+      values are each refused with a named reason -- falsifier: uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_error_chain_merge_sweep_reading_compute.py
+      -q'
+evidence_requirements:
+- kind: tests
+  description: Reading parity over the re-recorded fixture, and the reading error chain.
+  command: uv run pytest tests/nodes/node_merge_sweep_reading_compute -q -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21069-ac1-parity
+  description: The reading and claim-check parity over every recorded scenario, including the out-of-scope, every-red,
+    shuffled-order, rollup-only, merge-repository and self-lane scenarios.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_merge_sweep_reading_parity.py -q -n 0
+  binds_ac:
+  - AC1
+- id: dod-omn21069-ac2-refusals
+  description: Each malformed reading request is refused with its named reason.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_merge_sweep_reading_compute/test_error_chain_merge_sweep_reading_compute.py
+      -q -n 0
+  binds_ac:
+  - AC2
+- id: dod-omn21069-deploy-probe
+  description: Deploy smoke on the runtime after the deploy agent rolls this change - import the reading request
+    model and the rules module from the running container and assert that the request takes the fleet and the
+    out-of-scope rulings as data, has no max_reds, and that the rules module holds no repository list. The command
+    exits nonzero when the deployed image lacks the change, including the merge-base image. It reads deployed code,
+    not this contract or a receipt. Hosted CI has no runtime; the local Done gate must execute this unbound deployment
+    check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "from omnimarket.models.merge_sweep import ModelMergeSweepReadRequest as M; from omnimarket.handlers import rules_merge_sweep as r; f = M.model_fields; assert {\"fleet\", \"non_product_repos\", \"out_of_scope\"} <= set(f); assert \"max_reds\" not in f; assert not hasattr(r, \"FLEET_REPOS\") and not hasattr(r, \"NON_PRODUCT_REPOS\")"'
+    cwd: ${OMNI_HOME}/omnimarket

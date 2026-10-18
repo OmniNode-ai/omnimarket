@@ -63,6 +63,16 @@ logger = logging.getLogger(__name__)
 WATCHER_STATE_ENV: Final[str] = "ONEX_PR_WATCHER_STATE"
 WATCHER_SCHEMA: Final[int] = 1
 WATCHER_MAX_AGE: Final[timedelta] = timedelta(minutes=8)
+# OMN-20768: the sanctioned read for a PR no local source holds (a closed PR
+# the watcher already dropped): ``onex scm pr-view`` over the bus, answered by
+# the GitHub gateway node on its own identity. Never ``gh``.
+SCM_BIN_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_BIN"
+SCM_BUS_LANE_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_BUS_LANE"
+# A directory shared by the ``gh`` shims of one verification run (each shim is
+# its own process), so a PR read once over the bus is not read again.
+SCM_CACHE_DIR_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_CACHE_DIR"
+_SCM_DEFAULT_BUS_LANE: Final[str] = "dev"
+_SCM_TIMEOUT_S: Final[int] = 75
 _GIT_TIMEOUT_S: Final[int] = 60
 
 # ``git diff --name-status`` letters to the GitHub pull-request files API's
@@ -81,6 +91,9 @@ _GOVERNANCE_REPO_NAME: Final[str] = "onex_change_control"
 
 # The parsed watcher file, keyed by (path, mtime): one parse per process.
 _STATE_CACHE: dict[tuple[str, float], dict[str, Any]] = {}
+# Gateway answers per (repo, number) for the process, absences included, so a
+# PR the gateway cannot read costs one timeout, not one per item.
+_SCM_CACHE: dict[tuple[str, int], dict[str, Any] | None] = {}
 
 _ORIGIN_URL_RE = re.compile(r"[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 
@@ -295,16 +308,102 @@ class DodEvidenceLocalSource:
             return rec
         sha = self.squash_commit(repo, number)
         if sha is None:
-            return None
+            return self._scm_pr_view(repo, number)
         self.local_reads += 1
         return {
             "state": "MERGED",
             "mergedAt": None,
             "headRefName": "",
-            "baseRefName": "",
+            "baseRefName": self._default_branch(repo),
             "headRefOid": "",
             "mergeCommit": {"oid": sha},
         }
+
+    @staticmethod
+    def _scm_binary() -> str | None:
+        declared = os.environ.get(SCM_BIN_ENV)
+        if declared:
+            return declared if Path(declared).is_file() else None
+        registry_root = os.environ.get("OMNI_HOME")
+        if not registry_root:
+            return None
+        candidate = Path(registry_root) / "omnibase_infra" / "scripts" / "onex"
+        return str(candidate) if candidate.is_file() else None
+
+    def _scm_pr_view(self, repo: str, number: int) -> dict[str, Any] | None:
+        """``gh pr view`` facts from ``onex scm pr-view --source bus``, or ``None``.
+
+        OMN-20768: a closed PR leaves the watcher's state a day after it closes
+        and never has a squash commit, so neither local source holds it. The
+        gateway reads it on its own identity; the lane never spawns ``gh``.
+        """
+        key = (repo, number)
+        if key in _SCM_CACHE:
+            return _SCM_CACHE[key]
+        binary = self._scm_binary()
+        if binary is None:
+            return None
+        cache_dir = os.environ.get(SCM_CACHE_DIR_ENV)
+        cache_file = (
+            Path(cache_dir) / f"scm-{repo.replace('/', '_')}-{number}.json"
+            if cache_dir
+            else None
+        )
+        if cache_file is not None and cache_file.is_file():
+            try:
+                cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                cached = None
+            if isinstance(cached, dict) and "view" in cached:
+                _SCM_CACHE[key] = cached["view"]
+                return _SCM_CACHE[key]
+        lane = os.environ.get(SCM_BUS_LANE_ENV) or _SCM_DEFAULT_BUS_LANE
+        try:
+            proc = subprocess.run(
+                [
+                    binary,
+                    "scm",
+                    "pr-view",
+                    f"{repo}#{number}",
+                    "--source",
+                    "bus",
+                    "--bus-lane",
+                    lane,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_SCM_TIMEOUT_S,
+                check=False,
+            )
+            payload = json.loads(proc.stdout) if proc.returncode == 0 else None
+        except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
+            logger.debug("scm pr-view %s#%d failed: %s", repo, number, exc)
+            payload = None
+        result = payload.get("result") if isinstance(payload, dict) else None
+        view: dict[str, Any] | None = None
+        if (
+            isinstance(payload, dict)
+            and payload.get("outcome") == "completed"
+            and isinstance(result, dict)
+            and result.get("pr_number") == number
+            and isinstance(result.get("state"), str)
+        ):
+            merged = result.get("merged") is True
+            view = {
+                "state": "MERGED" if merged else str(result["state"]).upper(),
+                "mergedAt": None,
+                "headRefName": str(result.get("head_ref") or ""),
+                "baseRefName": str(result.get("base_ref") or ""),
+                "headRefOid": str(result.get("head_sha") or ""),
+            }
+            self.local_reads += 1
+        _SCM_CACHE[key] = view
+        if cache_file is not None:
+            try:
+                cache_file.write_text(json.dumps({"view": view}), encoding="utf-8")
+            except OSError as exc:
+                logger.debug("scm cache write %s failed: %s", cache_file, exc)
+        return view
 
     def commit_parents(self, repo: str, sha: str) -> list[str] | None:
         """``commits/<sha>``'s parents from the clone, or ``None``."""
@@ -343,6 +442,134 @@ class DodEvidenceLocalSource:
             files.append({"filename": cols[-1], "status": status})
         self.local_reads += 1
         return files
+
+    def commit_facts(self, repo: str, sha: str) -> dict[str, str] | None:
+        """A commit's subject and committer time (UTC, ``...Z``) from the clone.
+
+        OMN-20768: a merged PR's squash subject is the PR title with ``(#<n>)``
+        appended, and the commit time is its merge time, so both outlive the
+        PR watcher's merge record.
+        """
+        clone = canonical_clone(repo)
+        if clone is None or not sha:
+            return None
+        rc, out = _git(clone, "show", "-s", "--format=%cI%x09%s", sha)
+        stamp, _, subject = out.strip().partition("\t")
+        if rc != 0 or not subject:
+            return None
+        try:
+            when = datetime.fromisoformat(stamp).astimezone(UTC)
+        except ValueError:
+            return None
+        self.local_reads += 1
+        return {
+            "subject": subject,
+            "committed_at": when.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    def file_stats(
+        self, repo: str, parent_sha: str, merge_sha: str
+    ) -> list[dict[str, object]] | None:
+        """The squash commit's files in ``gh pr view --json files`` shape:
+        ``path``, ``additions``, ``deletions`` (a rename carries its new path)."""
+        clone = canonical_clone(repo)
+        if clone is None or not parent_sha or not merge_sha:
+            return None
+        rc, out = _git(
+            clone, "diff", "--numstat", "-z", "-M", "--no-color", parent_sha, merge_sha
+        )
+        if rc != 0:
+            return None
+        fields = out.split("\0")
+        files: list[dict[str, object]] = []
+        i = 0
+        while i < len(fields) and fields[i]:
+            head = fields[i].split("\t")
+            if len(head) != 3:
+                return None
+            # ``-z`` renames: ``add<TAB>del<TAB>`` then the old and new paths.
+            if head[2] == "":
+                if i + 2 >= len(fields):
+                    return None
+                path = fields[i + 2]
+                i += 3
+            else:
+                path = head[2]
+                i += 1
+            binary = head[0] == "-"
+            files.append(
+                {
+                    "path": path,
+                    "additions": 0 if binary else int(head[0]),
+                    "deletions": 0 if binary else int(head[1]),
+                }
+            )
+        self.local_reads += 1
+        return files
+
+    def archive_at(self, repo: str, sha: str) -> bytes | None:
+        """The repository tree at commit ``sha`` as a gzip tarball, shaped like
+        the contents of GitHub's ``tarball/<ref>`` (one leading directory)."""
+        clone = canonical_clone(repo)
+        if clone is None or not sha:
+            return None
+        rc, _ = _git(clone, "cat-file", "-e", f"{sha}^{{commit}}")
+        if rc != 0:
+            return None
+        prefix = f"{repo.replace('/', '-')}-{sha[:7]}/"
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(clone),
+                    "archive",
+                    "--format=tar.gz",
+                    f"--prefix={prefix}",
+                    sha,
+                ],
+                capture_output=True,
+                timeout=_GIT_TIMEOUT_S * 5,
+                check=False,
+                env=scrub_git_location_env(os.environ),
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            logger.debug("git archive %s in %s failed: %s", sha, clone, exc)
+            return None
+        if proc.returncode != 0:
+            return None
+        self.local_reads += 1
+        return proc.stdout
+
+    def landing_ref(self, repo: str) -> str | None:
+        """``origin/<default branch>`` of the repository's clone, when held."""
+        clone = canonical_clone(repo)
+        branch = self._default_branch(repo) if clone is not None else ""
+        if clone is None or not branch or self._clone_ref(clone, branch) is None:
+            return None
+        return f"origin/{branch}"
+
+    def file_at(self, repo: str, sha: str, path: str) -> bytes | None:
+        """``path`` at commit ``sha`` from the clone; ``None`` when not held."""
+        clone = canonical_clone(repo)
+        if clone is None or not sha or not path:
+            return None
+        env = scrub_git_location_env(os.environ)
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(clone), "show", f"{sha}:{path}"],
+                capture_output=True,
+                timeout=_GIT_TIMEOUT_S,
+                check=False,
+                env=env,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            logger.debug("git show %s:%s in %s failed: %s", sha, path, clone, exc)
+            return None
+        if proc.returncode != 0:
+            return None
+        self.local_reads += 1
+        return proc.stdout
 
     # ------------------------------------------------------------ tickets
 

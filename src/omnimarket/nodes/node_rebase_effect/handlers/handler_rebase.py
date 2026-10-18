@@ -13,9 +13,15 @@ Source clone selection:
   Fails loud if both are unset.
 
 Branch guards:
-  - Refuses to operate on main/master/develop as HEAD (feature-branch only).
+  - Refuses to operate on a landing branch (main/master/develop/dev) as HEAD
+    (feature-branch only).
   - Refuses if head_ref == base_ref.
-  - Force-with-lease=<ref>:<expected_sha> for concurrent-push safety.
+  - Refuses a head_ref that is not a plain branch name (a refspec, a tag path,
+    an option-shaped or git-invalid name).
+  - Refuses to push unless the remote head ref is still the PR head the command
+    named (head_ref_oid): the only ref ever pushed is that PR's own head branch.
+  - Force-with-lease=refs/heads/<ref>:<expected_sha> for concurrent-push safety,
+    pushed as HEAD:refs/heads/<ref> so no other ref can be addressed.
 
 Thin canonical shape (OMN-14242): ``handle()`` returns the typed
 ``ModelRebaseCompletedEvent`` directly -- no ``ModelHandlerOutput`` wrapper,
@@ -29,6 +35,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -41,7 +48,21 @@ from omnimarket.nodes.node_rebase_effect.models.model_rebase_completed_event imp
 
 _log = logging.getLogger(__name__)
 
-_PROTECTED_HEADS = {"main", "master", "develop"}
+_PROTECTED_HEADS = {"main", "master", "develop", "dev"}
+
+# A plain branch name: starts alphanumeric, then name characters and single slashes.
+_BRANCH_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*")
+
+
+def _invalid_head_ref_reason(head_ref: str) -> str | None:
+    """Why ``head_ref`` cannot be the name of a PR head branch, or None if it can."""
+    if not _BRANCH_NAME.fullmatch(head_ref):
+        return "not a plain branch name"
+    if head_ref.startswith("refs/"):
+        return "qualified ref, not a branch name"
+    if ".." in head_ref or head_ref.endswith((".", ".lock")) or "/." in head_ref:
+        return "not a valid git branch name"
+    return None
 
 
 def _source_clone_root() -> Path:
@@ -136,6 +157,11 @@ class HandlerRebaseEffect:
         if head_ref in _PROTECTED_HEADS:
             return _fail(f"protected_head_ref: refusing to rebase {head_ref!r}")
 
+        # Guard: the push target is built from head_ref, so it must name a branch
+        invalid_reason = _invalid_head_ref_reason(head_ref)
+        if invalid_reason is not None:
+            return _fail(f"invalid_head_ref: {head_ref!r} is {invalid_reason}")
+
         # Guard: head == base is nonsensical
         if head_ref == base_ref:
             return _fail(f"head_ref == base_ref ({head_ref!r}): cannot self-rebase")
@@ -198,6 +224,18 @@ class HandlerRebaseEffect:
             if rc != 0:
                 return _fail(f"git checkout {head_ref} failed: {stderr}")
 
+            # Step 2b: The remote ref must still be the PR head the command named
+            rc, remote_sha_raw, stderr = await _run(
+                ["git", "-C", str(wt_root), "rev-parse", f"origin/{head_ref}"]
+            )
+            if rc != 0:
+                return _fail(f"git rev-parse origin/{head_ref} failed: {stderr}")
+            if remote_sha_raw.strip() != expected_sha:
+                return _fail(
+                    f"head_moved: origin/{head_ref} is {remote_sha_raw.strip()!r}, "
+                    f"the command named {expected_sha!r}; nothing pushed"
+                )
+
             # Step 3: Fetch base
             rc, _, stderr = await _run(
                 ["git", "-C", str(wt_root), "fetch", "origin", base_ref]
@@ -218,16 +256,17 @@ class HandlerRebaseEffect:
                     conflict_files=conflict_files,
                 )
 
-            # Step 5: Force-with-lease push
+            # Step 5: Force-with-lease push, to the PR's own head branch ref only
+            head_full_ref = f"refs/heads/{head_ref}"
             rc, _, stderr = await _run(
                 [
                     "git",
                     "-C",
                     str(wt_root),
                     "push",
-                    f"--force-with-lease={head_ref}:{expected_sha}",
+                    f"--force-with-lease={head_full_ref}:{expected_sha}",
                     "origin",
-                    head_ref,
+                    f"HEAD:{head_full_ref}",
                 ]
             )
             if rc != 0:

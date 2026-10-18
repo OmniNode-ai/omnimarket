@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e04",
+  "path": "pinned",
+  "sha256": "209a7b9010c7969ca4824772a90cd4abefe5db9e9d4ea443bf7191bce2b06576",
+  "response": "Added a new `protocols/intelligence/` domain to omnibase_spi with `ProtocolIntentClassifier` for classifying user intents across 9 categories, plus `ProtocolIntentGraph` for intent graph persistence, with compliance tests and an omnibase-core >=0.9.3 dependency bump (OMN-1478, #67). This enables the ONEX platform to support intent-based routing and analysis."
+}

@@ -1,0 +1,82 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21059"
+title: "The models a user picks for each API key become that user's delegation routing order"
+summary: >-
+  First two tasks of the OMN-21059 split (store the ordered list; onex models verbs
+  over it). The local credential
+  store keeps an ordered list of models per provider key in a child table keyed by
+  credential reference and position, migrates a key stored with the single model
+  column into a list of one that keeps its recorded chooser, and reads the list
+  back through resolve_local_byok_credential_models. The single-model reader
+  returns the first entry. The local secret store node request carries the list.
+  onex models add-model, reorder and remove --model edit a stored key's list through
+  the local secret store node, and list shows it. The local delegation path then
+  follows the list: when a key's model fails retryably or fails the quality gate,
+  the next model the customer chose for that key answers, in their order, before
+  any other key. The refusal on every provider and the hosted intake are later tasks
+  of the split and are not claimed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ordered-model-list"
+    statement: "A provider key in the local customer config stores the ordered list of models its owner chose, and an older single-model store reads back as that list."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: every BYOK provider key (OpenRouter, OpenAI, Gemini, Anthropic, Ollama) stores an ordered list of user-chosen models in the customer's own config -- falsifier: uv run pytest on a key-registration test per provider that registers two models in order and reads the same ordered list back from the customer config
+  - id: "req-models-verbs"
+    statement: "onex models adds, lists, reorders and removes a key's chosen models after onboarding."
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          AC4: `onex models` can add, list, reorder and remove a key's chosen models after onboarding -- falsifier: uv run pytest on a CLI test that reorders two chosen models and asserts the next routing plan follows the new order
+  - id: "req-routing-follows-list"
+    statement: "On the local delegation path, a key's chosen models answer in the order the customer set, one after another, on that key."
+    acceptance:
+      - id: "AC5"
+        statement: >-
+          AC5: with three models chosen for one OpenRouter key and no house credential, an unpinned document delegation whose first chosen model fails retryably or fails the quality gate is answered next by the second chosen model on the same key, then the third, in the order set, and a run with a healthy first model is answered by it alone; a model the caller names is never swapped for a later pick -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q -n 0 fails, or its fall-through tests pass against the merge base.
+evidence_requirements:
+  - kind: "tests"
+    description: "Ordered list round trip per provider, whole-list replacement, migration of a single-model database, cascade on revoke, and the node path."
+    command: "uv run pytest tests/unit/inference/test_omn21059_local_byok_model_list.py -q -n 0"
+  - kind: "tests"
+    description: "onex models add-model, list, reorder and remove --model, with the route's first model following the new order."
+    command: "uv run pytest tests/unit/cli/test_omn21059_onex_models_list_verbs.py -q -n 0"
+  - kind: "tests"
+    description: "A key's chosen models answer in the customer's order on a retryable failure and on a quality-gate FAIL; a healthy first model answers alone; a caller-named model is never swapped."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21059-ac1-ordered-list"
+    description: "The eighteen model list tests pass: two models per provider read back in the order stored for each of the five providers, a re-registration replaces the whole list, and a database written by the single-model schema reads back as a list of one with its chooser."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_omn21059_local_byok_model_list.py -q -n 0"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21059-ac4-models-verbs"
+    description: "The fifteen CLI tests pass: add-model appends, reorder replaces the whole list and the next BYOK route's model is the new first entry, remove --model drops one, and a reorder that misses or adds a member is refused with the list unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21059_onex_models_list_verbs.py -q -n 0"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21059-ac5-routing-follows-list"
+    description: "The six routing tests pass: a healthy first model answers alone, a retryable failure and a quality-gate FAIL each move to the second chosen model on the same key, the models are tried in the order set, every model failing ends the run once each is tried, and a caller-named model is never swapped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q -n 0"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21059-deploy-probe"
+    description: "Deploy probe: the adapter read from GitHub at the checked-out commit defines the ordered list reader. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/inference/local_byok_credential_adapter.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def resolve_local_byok_credential_models'"

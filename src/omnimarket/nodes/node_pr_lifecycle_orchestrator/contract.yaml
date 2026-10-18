@@ -45,6 +45,15 @@ handler_routing:
       event_model:
         name: ModelCiRunFailedEvent
         module: omnimarket.models.ci_red_triage
+    - operation: dev_head_red_dispatch
+      topic: onex.evt.omnimarket.dev-head-red.v1
+      message_category: event
+      handler:
+        name: HandlerDevHeadRedDispatch
+        module: omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_dev_head_red_dispatch
+      event_model:
+        name: ModelDevHeadRedEvent
+        module: omnimarket.models.dev_head_red
 
 # act: one flag per red class (runner, pr_own, shared_cause, dev_head). A class
 # acts only when the landing controller has stopped dispatching that same class,
@@ -67,6 +76,22 @@ ci_red_triage:
     table: pr_lifecycle_ledger_entries
     dsn_env: OMNIDASH_ANALYTICS_DB_URL
 
+# OMN-20730, ruling 2026-10-08T14:27:26Z: a red landing-branch head (dev-head-red, a push run
+# that names no PR) asks for one cause lane, the remote-lane runner with --cause <repo>:<check>,
+# unless the cause is owned: by a request this process made inside the lease, by the bus owner
+# claim on the dev_head owner key (ci_red_triage.claims), or by a live cause CLAIM on the work
+# ledger (a remote lane's cause=<repo>:<check>, the landing controller's relay CLAIM). An unread
+# owner withholds the request. lease_seconds is node_pr_landing_decision_compute's
+# cause_lease_seconds: a CLAIM older than it, or a request this process made before it, owns
+# nothing. The landing controller dispatches no lane for a push red, so the class acts by
+# default. Rollback: set ONEX_DEV_HEAD_RED_DISPATCH_ACT=false.
+dev_head_red_dispatch:
+  act: "${env.ONEX_DEV_HEAD_RED_DISPATCH_ACT:true}"
+  lease_seconds: 5400
+  owners:
+    relation: omninode_internal.work_ledger_rows
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+
 published_events:
   - event_type: PrLifecycleStartCommand
     topic: onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
@@ -77,6 +102,12 @@ published_events:
   - event_type: CiRedTriageDecided
     topic: onex.evt.omnimarket.ci-red-triage-decided.v1
     description: "One deterministic decision per PR head and deciding check."
+  - event_type: DevCauseLaneRequest
+    topic: onex.cmd.omnimarket.dev-cause-lane-requested.v1
+    description: "One cause lane asked for per dev-head cause and head; the receiver starts one lane per dispatch_key."
+  - event_type: DevHeadRedDecided
+    topic: onex.evt.omnimarket.dev-head-red-decided.v1
+    description: "One decision per red landing-branch head and check: dispatched, owned or withheld."
 
 descriptor:
   node_archetype: orchestrator
@@ -350,6 +381,7 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
     - onex.evt.omnimarket.ci-run-failed.v1
+    - onex.evt.omnimarket.dev-head-red.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1
     - onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
@@ -367,6 +399,8 @@ event_bus:
     - onex.evt.omnimarket.ci-red-triage-decided.v1
     - onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1
     - onex.cmd.omnimarket.pr-landing-github-requested.v1
+    - onex.cmd.omnimarket.dev-cause-lane-requested.v1
+    - onex.evt.omnimarket.dev-head-red-decided.v1
 
 # OMN-12569: durable, reconstructable PR-ledger projection.
 # The ledger is a DERIVED projection (not authoritative truth) materialized
@@ -636,3 +670,7 @@ externally_consumed_topics:
   - onex.evt.omnimarket.pr-lifecycle-triage-classified.v1
   # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py
   - onex.evt.omnimarket.pr-lifecycle-verification-completed.v1
+  # OMN-20730: the lane-dispatching host's runner takes the request (the remote-lane runner runs
+  # there, not in a shared runtime); the decision is read by queue-status and the ledger views.
+  - onex.cmd.omnimarket.dev-cause-lane-requested.v1
+  - onex.evt.omnimarket.dev-head-red-decided.v1

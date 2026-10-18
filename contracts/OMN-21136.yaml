@@ -1,0 +1,82 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21136"
+title: "Retire node_context_bundle_generator_compute (TC.14, omnimarket slice)"
+summary: >-
+  The omnimarket slice of TC.14: node_context_bundle_generator_compute (L0-L4 context
+  bundles) is superseded by context-profile token budgets, which ModelContextProfile
+  carries since omnimarket#3973 (TA.3). A no-caller check on origin/dev found no
+  importer, subscriber or publisher of the node or its two topics outside the node
+  itself and its own tests, so the node package, its integration test, its onex.nodes
+  entry point, its imperative-contract allowlist row (with the recorded copy in the
+  OMN-21002 caller test) and its test-duration entry are removed together. The
+  dispatch worker's _assemble_kb_context repoint waits on the pack orchestrator (TA.8),
+  which is not on origin/dev, and stays open on this ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-no-caller-before-delete"
+    statement: "node_context_bundle_generator_compute had no caller outside itself before its deletion."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: at the merge base, git grep of node_context_bundle_generator_compute and its
+          topics outside the node package and its own tests matches only the onex.nodes
+          entry point, the allowlist row, the recorded allowlist copy, the duration entry
+          and historical work-tracking records -- falsifier: an importer, subscriber or
+          publisher elsewhere.
+  - id: "req-delete-closure"
+    statement: "The deleted node leaves no reference in the source, test, config or packaging tree."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: after the deletion, git grep of the deleted names over src, tests, config,
+          pyproject.toml and imperative-contract-allowlist.yaml returns nothing, and the
+          allowlist shrinks by exactly the one deleted handler -- falsifier: a match, or the
+          OMN-21002 recorded-paths test failing.
+evidence_requirements:
+  - kind: "tests"
+    description: "The OMN-21002 allowlist test (recorded paths equal the shrunk allowlist) and the grep closure over the live tree."
+    command: "uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21136-ac1-no-caller"
+    description: "AC1: at the merge base, the only references to the node or its topics outside its own package and tests are its entry point, allowlist rows, duration entry and historical records; no node imports it, subscribes to context-bundle-requested or consumes context-bundle-completed. The check also requires the node package to be absent from the evaluated tree, so it fails at the merge base, where the package still exists."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'base=$(git merge-base HEAD origin/dev); test -z "$(git grep -n -e node_context_bundle_generator_compute -e context-bundle-requested -e context-bundle-completed "$base" -- src tests scripts | grep -v -e "^$base:src/omnimarket/nodes/node_context_bundle_generator_compute/" -e "^$base:tests/integration/node_context_bundle_generator_compute/" -e "^$base:tests/ci/test_imperative_contract_guard_caller_omn21002.py:")" && test ! -e src/omnimarket/nodes/node_context_bundle_generator_compute'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_retire_context_bundle_generator_omn21136.py -q -p no:randomly --no-cov -k 'no_caller or positive_control'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21136-ac2-delete-closure"
+    description: "AC2: no reference to the deleted node remains in src, tests, config, pyproject.toml or the allowlist, and the OMN-21002 test confirms the allowlist equals the recorded paths with the one handler removed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -c '! git grep -n -e node_context_bundle_generator_compute -e context-bundle-requested -e context-bundle-completed -e handler_context_bundle -- src tests config pyproject.toml imperative-contract-allowlist.yaml'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py::test_own_allowlist_matches_the_recorded_paths -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21136-deploy-node-absent"
+    description: "Hosted deploy probe: read the node's contract from GitHub at the evaluated commit and require HTTP 404. On the parent revision the contract exists and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'code=$(curl --silent --location --max-time 30 --output /dev/null --write-out "%{http_code}" "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_context_bundle_generator_compute/contract.yaml"); test "$code" = 404'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_retire_context_bundle_generator_omn21136.py -q -p no:randomly --no-cov -k 'absent'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

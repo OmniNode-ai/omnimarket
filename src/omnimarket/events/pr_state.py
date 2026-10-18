@@ -147,9 +147,6 @@ class ModelPrStateObservedEventV2(ModelPrStateObservedEvent, ModelPrStateCheckFa
     pass
 
 
-PR_STATE_V2_FIELDS = frozenset(ModelPrStateCheckFacts.model_fields)
-
-
 def pr_state_event_from_wire(
     value: Mapping[str, object],
 ) -> ModelPrStateObservedEvent:

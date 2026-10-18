@@ -35,6 +35,15 @@ A TENANT-declared relation is never flagged for any of the three: that is the
 positive control, and it is asserted as such by the gate's own test
 (``tests/test_omn18774_internal_relation_tenant_posture_gate.py``).
 
+## Second invariant: no relation ends RLS-enabled with zero policies
+
+OMN-17298. The same replay also refuses ANY relation (tenant, internal or
+undeclared) whose final posture is row-level security ENABLEd with no policy at
+all. That denies every non-owner statement, so a projection writer's insert
+fails ``InsufficientPrivilege`` and the message goes to the DLQ: the outcome is
+durable nowhere. It is the shape OMN-17288 found in migration 0032 and
+OMN-17298 found on a second tenant projection relation.
+
 ## Why the FINAL posture and not the diff
 
 A diff-scoped gate answers "did this change add the shape", which leaves every
@@ -207,6 +216,7 @@ class RelationPosture:
     relation: str
     rls_enabled: bool = False
     guc_policies: dict[str, str] = field(default_factory=dict)
+    policies: set[str] = field(default_factory=set)
     tenant_id_column: bool = False
     sources: list[str] = field(default_factory=list)
 
@@ -292,6 +302,7 @@ def replay_migrations(paths: Iterable[Path]) -> dict[str, RelationPosture]:
             elif kind == "disable":
                 posture(relation, source).rls_enabled = False
             elif kind == "create_policy":
+                posture(relation, source).policies.add(match.group("policy"))
                 if _GUC_READ.search(match.group("body")):
                     posture(relation, source).guc_policies[match.group("policy")] = (
                         source
@@ -301,6 +312,7 @@ def replay_migrations(paths: Iterable[Path]) -> dict[str, RelationPosture]:
                         match.group("policy"), None
                     )
             elif kind == "drop_policy":
+                posture(relation, source).policies.discard(match.group("policy"))
                 posture(relation, source).guc_policies.pop(match.group("policy"), None)
             elif kind == "add_tenant":
                 posture(relation, source).tenant_id_column = True
@@ -319,6 +331,22 @@ def node_migration_paths(nodes_dir: Path) -> list[Path]:
         nodes_dir.glob("*/migrations/*.sql"),
         key=lambda path: (path.parent.parent.name, path.name),
     )
+
+
+def rls_without_policy(postures: dict[str, RelationPosture]) -> list[RelationPosture]:
+    """Relations whose final posture is RLS ENABLEd with no policy at all.
+
+    OMN-17298. Such a relation denies every non-owner statement (and the owner
+    too once FORCE is set), so the projection writer's insert fails
+    ``InsufficientPrivilege`` and the message goes to the DLQ. Checked over
+    every relation the migrations touch, declared or not, tenant or internal:
+    the failure does not depend on the relation's domain.
+    """
+    return [
+        posture
+        for _, posture in sorted(postures.items())
+        if posture.rls_enabled and not posture.policies
+    ]
 
 
 def evaluate(
@@ -368,6 +396,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     findings, conflicted, declarations = evaluate(args.nodes_dir)
+    policyless = rls_without_policy(
+        replay_migrations(node_migration_paths(args.nodes_dir))
+    )
+
+    if policyless:
+        print(
+            "check_internal_relation_tenant_posture: REFUSED -- "
+            f"{len(policyless)} relation(s) end the migration tree with "
+            "row-level security ENABLEd and zero policies (OMN-17298), which "
+            "denies every projection write with InsufficientPrivilege:",
+            file=sys.stderr,
+        )
+        for posture in policyless:
+            print(
+                f"  {posture.relation}\n    migrations: {', '.join(posture.sources)}",
+                file=sys.stderr,
+            )
+        print(
+            "\nAdd a CREATE POLICY for the writer in the same migration that "
+            "ENABLEs row-level security, or DISABLE it.",
+            file=sys.stderr,
+        )
 
     if conflicted:
         print(
@@ -399,7 +449,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
-    if conflicted:
+    if conflicted or policyless:
         return 1
 
     internal = sum(
@@ -408,7 +458,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         "check_internal_relation_tenant_posture: OK -- "
         f"{internal} internal/catalog-declared relation(s) carry no "
-        f"GUC-predicated tenant posture ({len(declarations)} declared in total)."
+        f"GUC-predicated tenant posture ({len(declarations)} declared in total), "
+        "and no relation is RLS-enabled with zero policies."
     )
     return 0
 

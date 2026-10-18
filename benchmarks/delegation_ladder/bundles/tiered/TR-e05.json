@@ -1,0 +1,21 @@
+{
+  "task_id": "TR-e05",
+  "title": "find the altered line (omnimarket@46ba134783)",
+  "task_type": "review",
+  "difficulty": "easy",
+  "provenance": "Merged commit omnimarket@46ba1347835be66ba96fef8421d707859b4929a8. One added source line had the literal 'omnimarket.fixer-dispatch-start' altered to 'omnimarket.fixer-dispatch-starx'; everything else is the merged diff.",
+  "prompt": "You are reviewing a merged pull request. Its description:\n\nfix(OMN-9403): align fixer dispatch event type (#781)\n\nThe diff below was altered after the merge: exactly one added line outside the test files was edited so that it no longer agrees with the tests added in the same diff. Every added line carries a label such as [12]. Name the label of the altered line, then one sentence saying which test line it contradicts.\n\nDIFF:\n--- a/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py\n+++ b/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py\n@@ -75,6 +75,7 @@ TOPIC_COMPLETED = \"onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1\"\n TOPIC_FIXER_DISPATCH_START = (\n     \"onex.cmd.omnimarket.fixer-dispatch-start.v1\"  # onex-topic-allow: OMN-9806\n )\n[1]+EVENT_TYPE_FIXER_DISPATCH_START = \"omnimarket.fixer-dispatch-starx\"\n TOPIC_PR_LIFECYCLE_START = \"onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1\"  # onex-topic-allow: OMN-9806\n TOPIC_PR_LIFECYCLE_COMPLETED = \"onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1\"  # onex-topic-allow: OMN-9806\n TOPIC_PR_LIFECYCLE_FAILED = \"onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1\"  # onex-topic-allow: OMN-9806\n@@ -1480,12 +1481,12 @@ class HandlerPrLifecycleOrchestrator:\n                 correlation_id=correlation_id,\n                 source_tool=\"pr_lifecycle_orchestrator\",\n                 target_tool=\"node_fixer_dispatcher\",\n-                event_type=self._topic_fixer_dispatch_start,\n[2]+                event_type=EVENT_TYPE_FIXER_DISPATCH_START,\n             )\n             encoded = json.dumps(\n                 {\n                     **envelope.model_dump(mode=\"json\"),\n-                    \"event_type\": self._topic_fixer_dispatch_start,\n[3]+                    \"event_type\": EVENT_TYPE_FIXER_DISPATCH_START,\n                 }\n             ).encode()\n             await self._event_bus.publish(\n--- a/tests/test_omn9403_publisher_wiring.py\n+++ b/tests/test_omn9403_publisher_wiring.py\n@@ -41,6 +41,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand\n )\n \n TOPIC_FIXER_DISPATCH_START = \"onex.cmd.omnimarket.fixer-dispatch-start.v1\"\n[4]+EVENT_TYPE_FIXER_DISPATCH_START = \"omnimarket.fixer-dispatch-start\"\n \n \n # ---------------------------------------------------------------------------\n@@ -174,7 +175,7 @@ class TestFixerDispatchStartPublished:\n             assert envelope.correlation_id == correlation_id\n             assert envelope.source_tool == \"pr_lifecycle_orchestrator\"\n             assert envelope.target_tool == \"node_fixer_dispatcher\"\n-            assert envelope.event_type == TOPIC_FIXER_DISPATCH_START\n[5]+            assert envelope.event_type == EVENT_TYPE_FIXER_DISPATCH_START\n             assert payload[\"correlation_id\"] == str(correlation_id)\n             assert \"stall_category\" in payload\n             assert \"repo\" in payload\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "[1]"
+    ],
+    "forbidden": [
+      "[2]",
+      "[3]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

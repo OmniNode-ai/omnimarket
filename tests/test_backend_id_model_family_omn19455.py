@@ -3,8 +3,8 @@
 """A backend id must not name a model family its declared model is not (OMN-19455).
 
 A backend id is what receipts, projections and operators read. When it names a
-model the backend does not serve (``openrouter-qwen3-coder-480b`` serving a
-nemotron slug, ``cloud-gemini-pro`` serving ``gemini-2.5-flash``) every reader
+model the backend does not serve (a qwen id serving a nemotron slug,
+``cloud-gemini-pro`` serving ``gemini-2.5-flash``) every reader
 is told the wrong thing. The fact table (backend id, declared ``model_name``)
 is built from the delegation contract; the id may not carry a family token, or
 the ``pro`` variant token, that the declared model lacks. Backends with no
@@ -20,6 +20,10 @@ from typing import Final, NamedTuple
 
 import yaml
 
+from omnimarket.models.delegation.llm_cost_routing.model_llm_model_registry import (
+    ModelLlmModelRegistryLoader,
+)
+
 _BIFROST_CONTRACT_PATH: Final[Path] = (
     Path(__file__).resolve().parents[1]
     / "src"
@@ -34,6 +38,14 @@ FAMILY_TOKENS: Final[frozenset[str]] = frozenset(
 )
 #: Variant tokens that, when named by the id, the model must name too.
 VARIANT_TOKENS: Final[frozenset[str]] = frozenset({"pro"})
+
+
+#: Ids the rungs were renamed away from; the registry's mapping is their one spelling.
+_LEGACY_QWEN_ID: Final[str] = next(
+    earlier
+    for earlier in ModelLlmModelRegistryLoader().load().legacy_model_ids
+    if "qwen" in earlier
+)
 
 
 class BackendFact(NamedTuple):
@@ -79,9 +91,7 @@ def test_committed_contract_has_no_misdescribing_backend_id() -> None:
 
 def test_ticket_examples_are_caught() -> None:
     facts = [
-        BackendFact(
-            "openrouter-qwen3-coder-480b", "nvidia/nemotron-3-ultra-550b-a55b:free"
-        ),
+        BackendFact(_LEGACY_QWEN_ID, "nvidia/nemotron-3-ultra-550b-a55b:free"),
         BackendFact("cloud-gemini-pro", "gemini-2.5-flash"),
         BackendFact("cloud-glm-judge", "gemini-2.5-flash"),
     ]
@@ -112,7 +122,7 @@ def test_renamed_ids_are_the_ids_in_the_contract() -> None:
         "cloud-gemini-judge",
     } <= ids
     assert not ids & {
-        "openrouter-qwen3-coder-480b",
+        _LEGACY_QWEN_ID,
         "cloud-gemini-pro",
         "cloud-glm-judge",
     }

@@ -74,14 +74,14 @@ def _isolate_occ_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point receipt resolution at ``tmp_path`` and nowhere else.
 
     ``_resolve_contract_repo_dir`` consults ``CONTRACT_REPO_DIR`` then
-    ``ONEX_CC_REPO_PATH`` BEFORE ``$OMNI_HOME/onex_change_control``; this
-    workspace exports both, and an ambient value silently redirects the lookup
+    ``ONEX_CC_REPO_PATH``; this workspace exports both, so both are pinned
+    here: an ambient value silently redirects the lookup
     away from the fixture, turning every assertion below into a vacuous green
     locally while passing in hosted CI (OMN-15390).
     """
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
-    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path / "onex_change_control"))
     return tmp_path / "onex_change_control"
 
 

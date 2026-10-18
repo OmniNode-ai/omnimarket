@@ -21,6 +21,13 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: the collect-and-verify steps live in the typecheck job and not in integration-guard -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -k "typecheck_job_proves or integration_guard_does_not_collect"
+  - id: "req-committed-record-names-the-tree"
+    statement: |-
+      The committed per-file duration record names (almost) every test file on the tree. A file absent from the record is planned at the record's median weight, so a stale record passes the planner's own balance test while the live shards spread about 2x (463 of 3049 files unrecorded; slowest over fastest Tests (Split n/20) pytest step 2.14x, 2.21x and 2.16x on first-attempt PR runs 39058366864, 39057687691 and 39050930650).
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: at most 5% of the test files pytest discovers are missing from config/test_file_durations.json, and at most 5% of the recorded files no longer exist -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -k "names_nearly_every", red on the 463-unrecorded record at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "The planner and workflow-shape tests pass at the head and fail at the merge base."
@@ -46,3 +53,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -k \"typecheck_job_proves or integration_guard_does_not_collect\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-record-names-the-tree-ac3"
+    description: "The committed record names the tree's test files, so no shard is planned from median guesses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -k \"names_nearly_every\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

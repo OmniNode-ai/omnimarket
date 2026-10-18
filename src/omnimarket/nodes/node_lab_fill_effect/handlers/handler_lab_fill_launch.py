@@ -14,7 +14,13 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.handlers.handler_internal_release_path_guard import (
+    HandlerInternalReleasePathGuard,
+)
 from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
+from omnimarket.models.model_internal_release_path_guard import (
+    ModelInternalReleasePathGuardRequest,
+)
 
 from ..models import (
     ModelLabFillLaunchRequest,
@@ -33,6 +39,10 @@ from .helpers_lab_fill_effect import default_clock, iso_utc
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
 _DELEGATION_MARK = "3a.9 Delegation"
 _RECEIPT = re.compile(r"receipt=(\S+)")
+# The runner's own check of the brief, before anything is placed: a lab lane that mints a
+# ticket, a time limit past the default with no reason line. The brief, not the host, is
+# what is wrong, so the same brief is refused again.
+_BRIEF_CHECK = re.compile(r"REMOTE-LANE-(?:MINT|TIMEOUT)-REFUSED\b.*")
 _TIMED_OUT = 124
 
 
@@ -196,6 +206,19 @@ class HandlerLabFillLaunch:
                     skipped="approved-row-unresolved",
                     detail=str(exc)[:300],
                 )
+        guard = HandlerInternalReleasePathGuard().handle(
+            ModelInternalReleasePathGuardRequest(
+                proposed_actions=brief,
+                consumer_scope=request.dependency_consumer_scope,
+                dependency_strategy=request.dependency_strategy,
+            )
+        )
+        if not guard.allowed:
+            return result(
+                detached=False,
+                skipped="internal-release-path",
+                detail=guard.remediation,
+            )
         try:
             Path(request.brief_dir).mkdir(parents=True, exist_ok=True)
             Path(brief_path).write_text(brief, encoding="utf-8")
@@ -244,6 +267,21 @@ class HandlerLabFillLaunch:
                 receipt=match.group(1),
                 brief_has_delegation=has_delegation,
                 detail=detached_line[:300],
+            )
+        refused = next(
+            (
+                m.group(0)
+                for ln in (*lines, *outcome.stderr.splitlines())
+                if (m := _BRIEF_CHECK.search(ln))
+            ),
+            "",
+        )
+        if refused:
+            return result(
+                detached=False,
+                skipped="brief-check-refused",
+                brief_has_delegation=has_delegation,
+                detail=refused[:300],
             )
         tail_lines = lines[-2:] or [outcome.stderr.strip()[-200:]]
         return result(

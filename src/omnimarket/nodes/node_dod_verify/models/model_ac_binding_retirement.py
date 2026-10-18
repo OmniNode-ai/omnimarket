@@ -74,6 +74,11 @@ class ModelAcBindingRetirementResolution(BaseModel):
 
     applied: tuple[ModelAcBindingRetirement, ...] = ()
     refused: tuple[str, ...] = ()
+    # OMN-18406: refused here for an independently accepted binding, and honoured
+    # by the criteria-drift check only when the live ticket no longer carries the
+    # label. A merged item cannot be edited, so for a deleted criterion this
+    # appended entry is the one legal way to withdraw an accepted binding.
+    retired_if_absent: tuple[ModelAcBindingRetirement, ...] = ()
 
     @property
     def pairs(self) -> frozenset[tuple[str, str]]:

@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-e03",
+  "path": "pinned",
+  "sha256": "d1fb8a00ed25b48539fa3945aa12d51a4418f0d6ed2f2802aa71fcf9ce7cb556",
+  "response": "[18] — The line sets `extra=\"ignorx\"` (a typo) in `ModelHandlerContract.model_config`, but the test at line 30 asserts `assert not hasattr(contract, \"unknown_field\")`, which only passes when `extra=\"ignore\"` silently drops unknown fields."
+}

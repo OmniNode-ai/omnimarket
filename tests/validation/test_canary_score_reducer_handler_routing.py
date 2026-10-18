@@ -85,9 +85,6 @@ def test_handler_routing_scan_finds_no_bare_handler_reducer_missing_routing() ->
     Implements the precise DoD check from OMN-13691: any node contract that declares
     a bare `handler: {module, class, ...}` block AND subscribes to event topics
     MUST also declare `handler_routing:`. The canonical schema requires handler_routing.
-
-    Note: node_e2e_orchestrator uses a standalone consumer.py (no handler: block) and
-    therefore falls outside this check. It is tracked separately for full canonicalization.
     """
     violations: list[str] = []
     for contract_path in sorted(NODES_ROOT.glob("*/contract.yaml")):

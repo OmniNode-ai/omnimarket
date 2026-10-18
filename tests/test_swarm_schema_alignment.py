@@ -191,7 +191,7 @@ class TestSwarmDispatchOrchestratorStateCoverage:
     """Runtime FSM coverage for node_swarm_dispatch_orchestrator."""
 
     def test_runtime_transition_sequence_covers_declared_states(self) -> None:
-        handler = HandlerSwarmDispatchOrchestrator()
+        handler = HandlerSwarmDispatchOrchestrator(event_bus=None)
         received = ModelOrchestratorState(
             fsm_state=EnumSwarmOrchestratorState.RECEIVED,
             run_id="run-state-coverage",

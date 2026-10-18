@@ -1,0 +1,327 @@
+schema_version: 1.0.0
+ticket_id: OMN-18531
+title: 'Claude Code mod: the adapter node, its generated binding, the render compute and the install effect (plan task T0.3)'
+summary: 'Plan task T0.3 of the context and delegation adapter plan, built in omnimarket: node_claude_code_hook_adapter_effect (contract with client_bindings.claude_code, generic handler, console entry
+  onex-claude-code-hook), node_claude_code_binding_render_compute (deterministic render of the mod module) and node_claude_code_binding_install_effect (write, read back, register). The hook-inventory gate
+  that reads client_bindings (AC8) lives in omniclaude and is carried by that repository''s thin-shim PR; the omnibase_infra half (skill mapping entry, receipt-mode library call) is a separate PR in that
+  repository. The compaction savings source (savings_estimates rows of task_type context_compaction written from PostCompact) also lands under this ticket.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn18531-ta4-parser-fields
+  statement: parse_ledger_row types prompt_id, covers, prompt_match, confirms, confirmed_by and reviewed on a ruling, the same link fields on an operator consent, and operator_span on a correction, and
+    the typed events round-trip through JSON.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a linked RULING, an ambiguous RULING, a linked OPERATOR-CONSENT and a CORRECTION with operator_span each parse to an event carrying every field and round-trip through the event union
+      -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q`'
+- id: req-omn18531-t03-adapter-binding
+  statement: Claude Code hooks reach the bus through one generic adapter and a generated, untracked binding that holds no logic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the exact rendered command, run with recorded hook JSON piped on stdin (one fixture per hook event the bindings name), publishes one command whose payload is built from that JSON, hosts
+      no handler (the receipt-mode run reports `host_handlers=False`, and no node module is imported in the adapter process), and prints only the hook''s output shape (`{result}`, `{deny}`, `{messages}`,
+      `hookSpecificOutput.additionalContext`, or nothing) -- falsifier: a payload not drawn from stdin, a hosted handler, or a `ModelSkillResult` on stdout.'
+  - id: AC2
+    statement: 'AC2: the rendered failure table for a host whose client-section maximum is `required` maps "adapter never started" to `{deny}`, and for `observe` or `selective` to `next(e)`; a change of
+      that maximum changes only the rendered table literal -- falsifier: a required-host render whose missing-executable branch calls `next(e)`.'
+  - id: AC3
+    statement: 'AC3: the same contract renders a byte-identical module; changing one deadline in the contract changes only that literal in the output -- falsifier: golden diff beyond the literal.'
+  - id: AC4
+    statement: 'AC4: the rendered module contains no branching other than the verdict-table lookup and the fixed failure table, measured by an allowlist of AST node kinds over the rendered output, and a
+      contract data field containing code is rendered as a string literal -- falsifier: a fixture whose rendered output contains a conditional on request content, or executes a data field.'
+  - id: AC5
+    statement: 'AC5: the binding passes the adapter nothing but the hook input and the binding name -- falsifier: a rendered argument carrying a mode or any value not drawn from the hook input.'
+  - id: AC6
+    statement: 'AC6: `claude_code_binding_install` writes the rendered module and records its sha256, and the installed file''s sha256 equals the render''s -- falsifier: a mismatch, or an installed file
+      differing from a fresh render.'
+  - id: AC7
+    statement: 'AC7: no rendered module is tracked in any repository -- falsifier: `git ls-files` in omniclaude or omnimarket lists one.'
+  - id: AC9
+    statement: 'AC9: the PR''s `canonical-file-shape` check passes with `.onex_ratchets/canonical_file_shape_baseline.txt` unchanged -- falsifier: a baseline line added or the check red.'
+  - id: AC10
+    statement: 'AC10: a reply split into chunks is reassembled by content-record id and its sha256 checked against the echoed hash -- falsifier: a fixture reply delivered out of order, or with one chunk
+      missing, returned as anything but `native` or `{deny}`.'
+  - id: AC11
+    statement: 'AC11: an `additive` row renders a command-hook registration whose command is exactly `onex-claude-code-hook --binding <name>` (v6; v5 named `onex skill`), byte-identical across renders,
+      and the adapter maps `inject` to `hookSpecificOutput.additionalContext` only when the package''s sha256 equals the echoed hash, and every other outcome to no output -- falsifier: a rendered registration
+      carrying any other argument, or a hash-mismatch fixture that produces `additionalContext`.'
+  - id: AC12
+    statement: 'AC12: `claude_code_binding_install` writes additive registrations into the user settings only, renders only rows whose probe rows (P16-P19) the capability report marks supported, and a re-install
+      with a row removed removes its registration -- falsifier: a registration surviving its row''s removal, an unsupported row installed, or `git ls-files` listing a rendered registration.'
+
+- id: req-omn18531-compaction-savings
+  statement: HandlerCompactionSavings computes a compaction's tokens and dollars saved at the session model's manifest price, and SavingsProjectionRunner upserts a mod-answered PostCompact as a savings_estimates row under the registry tenant UUID while a native PostCompact and every other hook event write nothing.
+  acceptance:
+    - id: AC1
+      statement: 'AC1: a mod-answered compaction of 100,000 context tokens on a model priced 0.002 per 1k input yields a row of task_type context_compaction saving 0.200000 USD, a shortened one saves the difference, a native one writes no row, and the runner lands the mod-answered PostCompact under the house registry UUID -- falsifier: `uv run pytest tests/test_omn18531_compaction_savings.py -q`'
+- id: req-checkpoint-projection-kind
+  statement: The session-content projection stores a checkpoint content record as a checkpoint row.
+  acceptance:
+    - id: AC2
+      statement: "A checkpoint larger than one chunk is stored as one row per chunk whose reassembled content hashes to the written file's sha256 -- falsifier: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k 'reassembles or writer_upserts or single_chunk' fails with a missing row or a hash mismatch"
+    - id: AC3
+      statement: "The operator capture reader leaves a checkpoint record alone -- falsifier: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k operator_capture_reader fails when a checkpoint record reads as an operator prompt"
+- id: req-omn18531-capture-composite-ops
+  statement: node_capture_item_identity_effect answers one call per capture hook, stamp_lineage_event, stamp_content_records and session_barrier, each doing the event id hand-over, the producer sequence and the stamping of fields the owner redaction contract keeps verbatim.
+  acceptance:
+    - id: AC13
+      statement: 'AC13: the lineage and content composites settle one content_record_id for a hook call in either order, rebinding the lineage references when the content hook came first, and each stamps its stream''s gap-free sequence -- falsifier: `uv run pytest tests/test_capture_item_identity_effect.py -q --no-cov -k "join_on_one_record_id or stamps_its_streams_sequence or minted_id or composite"`'
+    - id: AC14
+      statement: 'AC14: every field the composites stamp is declared capture_verbatim on its topic and survives redact_capture unchanged, while an undeclared sibling is hashed -- falsifier: `uv run pytest tests/test_capture_item_identity_effect.py -q --no-cov -k "owner_redaction or barrier_call"`'
+evidence_requirements:
+- kind: tests
+  description: The prompt-link parser tests pass, and six of them fail on the parser without the fields.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q
+- kind: tests
+  description: Adapter, render, install and contract tests
+  command: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q --no-cov
+
+- kind: tests
+  description: The compaction savings tests pass, and fail at the merge base, which has no compaction source and does not subscribe the hook-event stream.
+  command: uv run pytest tests/test_omn18531_compaction_savings.py -q
+- kind: tests
+  description: "The checkpoint kind tests pass beside the existing session content projection tests"
+  command: "uv run pytest tests/unit/nodes/node_projection_session_content -q"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn-18531-ta4-ac1
+  description: The typed events carry the prompt-link fields after parse_ledger_row and after a JSON round trip, with the adapter node contracts resolving their handlers and entry points.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_contracts.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_prompt_link_fields_omn18531.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-18531-deploy-container-parse
+  description: Deploy probe. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev and calls the product parse_ledger_row
+    on a linked RULING row and a CORRECTION row, then round-trips the ruling through the ModelLedgerRowEvent union. It asserts prompt_id, covers and operator_span survive both steps, so it fails at the
+    merge base, whose parser drops those cells. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'env docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+      uv run --frozen --no-dev python -c ''import json; from pydantic import TypeAdapter; from omnimarket.events.model_ledger_row_event import ModelLedgerRowEvent; from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser
+      import parse_ledger_row; p = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"; r = parse_ledger_row("2026-10-15T06:00:00Z | RULING | lane=probe | question=q | prompt_id=" + p + " | covers=12:41 | \"ship it\"
+      | recorded"); c = parse_ledger_row("2026-10-15T06:05:00Z | CORRECTION | lane=probe | corrects=2026-10-15T06:00:00Z | operator_span=0:4 | wrong"); a = TypeAdapter(ModelLedgerRowEvent); back = a.validate_json(a.dump_json(r));
+      assert (back.prompt_id, back.covers) == (p, "12:41"), back; assert c.operator_span == "0:4", c; print(json.dumps({"prompt_id": back.prompt_id, "covers": back.covers, "operator_span": c.operator_span}))'''
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn-18531-t03-ac1
+  description: 'The rendered command is run through the adapter''s real console entry with recorded hook JSON on stdin: the payload is built only from that JSON, no other node module is imported in the
+    adapter process, and stdout is only the hook''s output shape. Scope of this PR: the omnibase_infra receipt-mode library call (host_handlers=False in a receipt-mode run) is not built here; the adapter
+    publishes through ProtocolReceiptModeClient.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py -k ac1 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn-18531-t03-ac2
+  description: 'Rendering for required, observe and selective maximums: never-started is a literal deny only on required, next(e) on the others, and only the failure-table lines change.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -k ac2 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn-18531-t03-ac3
+  description: Two renders are byte-identical; changing one deadline changes exactly one line.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -k ac3 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn-18531-t03-ac4
+  description: An allowlist scan over the rendered text finds no branching token; hostile data fields render as string literals and leave the code residue unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -k ac4 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn-18531-t03-ac5
+  description: A binding argument whose source is not a $.path into the hook input fails the render; the rendered argv is exactly the adapter command, --binding and the name.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -k ac5 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
+- id: dod-omn-18531-t03-ac6
+  description: The install writes the module, reads it back and compares sha256 with the fresh render, and records it in install_record.json.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_install.py -k ac6 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC6
+- id: dod-omn-18531-t03-ac7
+  description: The install refuses a target inside a git work tree; git ls-files lists no rendered module.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_install.py -k ac7 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC7
+- id: dod-omn-18531-t03-ac9
+  description: The three adapter nodes resolve their declared handlers, topics and entry points; the canonical-file-shape validator passes over the PR's diff with .onex_ratchets/canonical_file_shape_baseline.txt unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_contracts.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: uv run python -m omnibase_core.validators.canonical_file_shape --base origin/dev --head HEAD
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: git diff --quiet origin/dev...HEAD -- .onex_ratchets/canonical_file_shape_baseline.txt
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC9
+- id: dod-omn-18531-t03-ac10
+  description: Chunked replies are reassembled by record id in index order and checked against the echoed sha256; a missing chunk or a hash mismatch is native or deny.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py -k ac10 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC10
+- id: dod-omn-18531-t03-ac11
+  description: 'An additive row renders the exact registration command, byte-identical across renders; inject becomes additionalContext only on a sha256 match. Scope: the omnibase_infra skill mapping is
+    not in this PR.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -k ac11 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC11
+- id: dod-omn-18531-t03-ac12
+  description: 'Install writes additive registrations into the user settings.json only, skips rows whose probe rows are unsupported, and a re-install without a row removes its registration. Scope: the claude_code_binding_install
+    skill_mapping.yaml entry (omnibase_infra) is not in this PR.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_install.py -k ac12 -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC12
+- id: dod-omn-18531-t03-deploy-probe
+  description: 'Deploy smoke on the runtime after the deploy agent rolls this change: from the running container, the adapter''s console entry module imports and exposes main, and the three node contracts
+    resolve their handlers. The command exits nonzero on an image that predates the three nodes. It reads deployed code, not this contract or a receipt. Hosted CI has no runtime; the local Done gate executes
+    this unbound deployment check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -c 'docker exec "${RUNTIME_CONTAINER:-omninode-runtime}" python -c "import omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli as m, omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render
+      as r, omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install as i; assert callable(m.main)"'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn-18531-compaction-savings-ac1
+  description: The compaction savings measure and the writer's PostCompact branch behave as AC1 states.
+  source: manual
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn18531_compaction_savings.py -q
+      cwd: "${OMNI_HOME}/omnimarket"
+  binds_ac:
+    - AC1
+- id: dod-omn-18531-deploy-container-compaction-savings
+  description: Deploy probe. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev, reads a mod-answered PostCompact record through the product compaction_source_from_post_compact and computes its row with HandlerCompactionSavings. It asserts the row is task_type context_compaction with savings 0.200000, so it fails at the merge base, which has no such module. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+  source: manual
+  checks:
+    - check_type: command
+      check_value: |-
+        env docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import HandlerCompactionSavings, compaction_source_from_post_compact; s = compaction_source_from_post_compact({"event_id": "e-1", "hook_event_name": "PostCompact", "emitted_at": "2026-10-15T04:01:16+00:00", "lineage": {"session_id": "s-1"}, "payload": {"hook_event_name": "PostCompact", "trigger": "manual", "context_tokens": 100000, "model": "claude-sonnet-5-5", "compact_summary_ref": {"length": 0}}}); r = HandlerCompactionSavings().handle(s); assert r.row is not None and r.row["task_type"] == "context_compaction", r; assert str(r.row["savings_usd"]) == "0.200000", r.row; print(r.tokens_saved, r.row["savings_usd"])'
+      cwd: "${OMNI_HOME}/omnimarket"
+
+- id: dod-omn-18531-t03-deploy-container-adapter
+  description: Hosted deploy probe. A disposable Linux container installs this checkout without development dependencies and reads back the adapter console entry and all three handler classes from the installed package. The command fails on a package without the adapter, renderer or installer; hosted Ubuntu with Docker and public registry access can run it.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      env docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-adapter-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli import main; from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import HandlerClaudeCodeHookAdapter; from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import HandlerClaudeCodeBindingRender; from omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install import HandlerClaudeCodeBindingInstall; assert callable(main); assert all(callable(cls.handle) for cls in (HandlerClaudeCodeHookAdapter, HandlerClaudeCodeBindingRender, HandlerClaudeCodeBindingInstall)); print("adapter console and three handlers resolved")'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-checkpoint-chunks-reassemble-to-file-hash
+  binds_ac:
+    - AC2
+  description: >
+    The projection stores each chunk of a multi-chunk checkpoint as a row and
+    the reassembled content hashes to the written file.
+  source: manual
+  status: verified
+  checks:
+    - check_type: test_passes
+      check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k 'reassembles or writer_upserts or single_chunk'"
+- id: dod-checkpoint-not-an-operator-prompt
+  binds_ac:
+    - AC3
+  description: >
+    A checkpoint record is not read as an operator prompt by the operator
+    capture reader.
+  source: manual
+  status: verified
+  checks:
+    - check_type: test_passes
+      check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py -q -k operator_capture_reader"
+- id: dod-omn-18531-deploy-container-checkpoint-fold
+  binds_ac:
+    - AC2
+  description: Deploy probe for the checkpoint content kind. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev, folds a four-chunk checkpoint record through the product fold_session_content and ModelSessionContentRecord, and asserts every row keeps content_kind checkpoint and the reassembled rows hash to the written text's sha256. It fails when the fold drops, reorders or truncates a chunk or rewrites the kind. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+  source: manual
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py::test_a_checkpoint_larger_than_one_chunk_reassembles_to_the_files_sha256 -q
+    - check_type: command
+      check_value: |-
+        docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'import hashlib, json; from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import fold_session_content; from omnimarket.nodes.node_projection_session_content.models.model_session_content import ModelSessionContentRecord as R; t = json.dumps({"schema": "omni.session-checkpoint/1", "notes": ["n" * 90 for _ in range(20)]}) + "\n"; d = hashlib.sha256(t.encode()).hexdigest(); ps = [t[i : i + 500] for i in range(0, len(t), 500)]; rows = [fold_session_content(R.model_validate({"session_id": "11111111-2222-3333-4444-555555555555", "turn_id": None, "correlation_id": "11111111-2222-3333-4444-555555555555", "emitted_at": "2026-10-15T06:00:01.000000+00:00", "hook_source": "checkpoint", "actor": "claude", "content_kind": "checkpoint", "tool_name": None, "tool_use_id": None, "chunk_index": i, "chunk_count": len(ps), "content_sha256": d, "original_chars": len(t), "truncated": False, "producer_redaction": {}, "content": p, "redaction_state": "passthrough"})) for i, p in enumerate(ps)]; assert len(ps) > 1 and len(rows) == len(ps), rows; assert {r.content_kind for r in rows} == {"checkpoint"}, rows; got = hashlib.sha256("".join(r.content for r in sorted(rows, key=lambda r: r.chunk_index)).encode()).hexdigest(); assert got == d, (got, d); print(json.dumps({"rows": len(rows), "content_kind": "checkpoint", "sha256": got}))'
+      cwd: "${OMNI_HOME}/omnimarket"
+- id: dod-omn-18531-composite-ops-ac13
+  description: The lineage and content composites join on one record id in either order and stamp gap-free per-stream sequences; the handler answers each composite and refuses a request missing its fields.
+  source: manual
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_capture_item_identity_effect.py -q --no-cov -k "join_on_one_record_id or stamps_its_streams_sequence or minted_id or composite"
+      cwd: "${OMNI_HOME}/omnimarket"
+  binds_ac:
+    - AC13
+- id: dod-omn-18531-composite-ops-ac14
+  description: The fields the composites stamp pass the owner redaction contract verbatim, the barrier call reads every stream's high-water, and an undeclared control field is hashed.
+  source: manual
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_capture_item_identity_effect.py -q --no-cov -k "owner_redaction or barrier_call"
+      cwd: "${OMNI_HOME}/omnimarket"
+  binds_ac:
+    - AC14
+- id: dod-omn-18531-deploy-container-composite-ops
+  binds_ac:
+    - AC13
+  description: Deploy probe for the composite operations. A disposable Linux container from the public ghcr.io/astral-sh/uv:python3.12-bookworm-slim image installs this checkout with uv run --frozen --no-dev, runs the product HandlerCaptureItemIdentity with stamp_content_records and then stamp_lineage_event for one PreToolUse call, and asserts the lineage reference is rebound to the content record's id and both sequences are 1. It fails at the merge base, whose operation enum has no composite. Hosted Ubuntu with Docker and registry access can run it; no lab route is required.
+  source: manual
+  checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_capture_item_identity_effect.py::test_the_two_hooks_join_on_one_record_id_in_either_order -q --no-cov
+      cwd: "${OMNI_HOME}/omnimarket"
+    - check_type: command
+      check_value: |-
+        env docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly --workdir /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/omn18531-venv ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv run --frozen --no-dev python -c 'import json, tempfile, uuid; from omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity import HandlerCaptureItemIdentity, content_record_id; from omnimarket.nodes.node_capture_item_identity_effect.models import EnumCaptureItemOperation as O, ModelCaptureItemIdentityRequest as Q; h = HandlerCaptureItemIdentity(); j = tempfile.mkdtemp() + "/journal"; i = {"session_id": "s-1", "tool_use_id": "toolu-1"}; m = uuid.uuid4(); ref = {"field": "tool_input", "value": "x", "length": 1, "content_record_id": str(content_record_id(m, "tool_input"))}; c = h.handle(Q(operation=O.STAMP_CONTENT_RECORDS, journal_dir=j, session_id="s-1", hook_input=i, records=[{"content_kind": "tool_input"}])).records[0]; p = h.handle(Q(operation=O.STAMP_LINEAGE_EVENT, journal_dir=j, hook_input=i, payload={"event_id": str(m), "hook_event_name": "PreToolUse", "lineage": {"session_id": "s-1"}, "content_refs": [ref]})).payload; assert p["content_refs"][0]["content_record_id"] == c["content_record_id"], (p, c); assert (p["producer_seq"], c["producer_seq"]) == (1, 1); print(json.dumps({"content_record_id": c["content_record_id"], "lineage_seq": p["producer_seq"], "content_seq": c["producer_seq"]}))'
+      cwd: "${OMNI_HOME}/omnimarket"

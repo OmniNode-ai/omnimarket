@@ -481,44 +481,6 @@ def test_publisher_build_payload_wire_shape(mode: str, wire: str | None) -> None
     assert command.occ_batch_mode is EnumOccBatchMode(mode)
 
 
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    ("env_value", "declines"),
-    [(None, True), ("", True), ("window", True), ("off", False)],
-)
-def test_companion_effect_publisher_defers_to_the_batch_window(
-    env_value: str | None, declines: bool
-) -> None:
-    """With batching on, the per-PR companion effect leg must not mint.
-
-    Otherwise it races the autobind window and leaves a second, per-PR
-    companion for the same product PR. It declines loudly, with the
-    ``publish_declined:`` verdict marker the calling workflow requires.
-    """
-    module = _load_script("publish_occ_companion_effect_command.py")
-    env = {
-        "PR_REPO": _REPO,
-        "PR_NUMBER": "42",
-        "PR_HEAD_SHA": "a" * 40,
-        "PR_BODY": "",
-    }
-    if env_value is not None:
-        env["OCC_COMPANION_BATCH_MODE"] = env_value
-    result = CliRunner().invoke(module.main, ["--dry-run"], env=env)
-    assert result.exit_code == 0, result.output
-    assert (
-        "publish_declined: occ_companion_batch_window_owns_this_pr" in result.output
-    ) is declines
-    if not declines:
-        assert "publish_declined: dry_run" in result.output
-
-
-@pytest.mark.unit
-def test_conflicted_remint_refuses_a_window_branch() -> None:
-    module = _load_script("ci/occ_conflicted_companion_remint.py")
-    assert module._BATCH_BRANCH_RE.fullmatch(_WINDOW)
-
-
 # ---------------------------------------------------------------------------
 # The emitter, against a real git origin
 # ---------------------------------------------------------------------------

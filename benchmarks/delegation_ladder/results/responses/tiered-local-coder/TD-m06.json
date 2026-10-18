@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-m06",
+  "path": "pinned",
+  "sha256": "fc1aad3a42ed1dc69c6902d3d53aa7c65af9c161a707489bf6e32e8f54908ad8",
+  "response": "Release notes for 5 merged changes:\n\n#206 (omnibase_spi): Ports change-aware test selection from omnibase_core. When ENABLE_SMART_TESTS=true, CI maps changed modules to reverse-dep test directories instead of running the full suite. Adds detection scripts and adjacency YAML covering top-level modules.\n\n#3702 (omnimarket): Adds node_pr_title_check_compute, a COMPUTE node hosting the PR title check decision. It ports the logic from the check-title bash step in onex_change_control and registers under onex.nodes.\n\n#3651 (omnimarket): Adds node_merge_sweep_orchestrator. Defines the orchestrator contract with command/terminal event topics and an execution graph for workflow coordination (load_facts, plan_lanes, etc.).\n\n#1920 (omnibase_core): Replaces hand-picked key extraction in UtilContractLoader with full Pydantic validation using ModelContractContent.model_validate. Adds subcontract models and removes the dependency validator that dropped malformed inputs.\n\n#2923 (omnimarket): Fixes Postgres claim store to write the contract-declared schema. Resolves UndefinedTable errors caused by missing search_path, allowing lanes to bind the projection runtime overlay."
+}

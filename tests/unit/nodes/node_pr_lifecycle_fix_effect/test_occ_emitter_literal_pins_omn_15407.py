@@ -52,6 +52,7 @@ instead of by placeholder.
 from __future__ import annotations
 
 import difflib
+import importlib
 import importlib.util
 import os
 import re
@@ -408,31 +409,31 @@ def _omni_home_sibling(repo: str) -> Path | None:
     return Path(omni_home) / repo if omni_home else None
 
 
-def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
-    """Import an onex_change_control gate script from a sibling checkout.
+# OMN-17427: the onex_change_control gate scripts these tests drove are ported
+# into omnibase_core, which holds the ports to the originals with a recorded
+# parity corpus (tests/unit/handlers/test_occ_contract_checks_parity.py there).
+# Each script path maps to its core port, so no onex_change_control checkout is
+# needed and nothing skips.
+_CORE_PORTS = {
+    "scripts/lint_contract_check_values.py": (
+        "omnibase_core.handlers.handler_contract_check_values_lint"
+    ),
+    "scripts/validation/check_contract_substance_floor.py": (
+        "omnibase_core.handlers.handler_contract_substance_floor"
+    ),
+    "src/onex_change_control/scripts/contract_compliance_check.py": (
+        "omnibase_core.handlers.handler_contract_compliance_check"
+    ),
+    "src/onex_change_control/validation/evidence_admissibility.py": (
+        "omnibase_core.handlers.handler_evidence_admissibility"
+    ),
+}
 
-    CLAUDE.md OMN-14208: the seam has to be driven for real, not modelled. The
-    golden-gate workflow clones onex_change_control so this runs in CI;
-    :func:`sibling_repo_root` also finds the canonical clone from a worktree
-    (OMN-16894). It skips only when no checkout is reachable at all.
-    """
-    root = sibling_repo_root("OCC_REPO_DIR", "onex_change_control")
-    if root is None:
-        return None
-    target = root / relpath
-    if not target.is_file():
-        return None
-    src = root / "src"
-    if str(src) not in sys.path:
-        sys.path.insert(0, str(src))
-    spec = importlib.util.spec_from_file_location(name, target)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    with _sibling_occ_package(src):
-        spec.loader.exec_module(module)
-    return module
+
+def _load_occ_module(relpath: str, name: str) -> ModuleType:
+    """Import the omnibase_core port of an onex_change_control gate script."""
+    del name  # the core module carries its own name
+    return importlib.import_module(_CORE_PORTS[relpath])
 
 
 @pytest.mark.unit
@@ -454,8 +455,6 @@ class TestConsumerGateParityOnTheDeployBearingContract:
         module = _load_occ_module(
             "scripts/lint_contract_check_values.py", "occ_lint_check_values_15407"
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         violations = module.lint_contract(deploy_bearing_contract)
         assert violations == [], f"lint-contract-check-values rejects: {violations}"
 
@@ -485,8 +484,6 @@ class TestConsumerGateParityOnTheDeployBearingContract:
             "scripts/validation/check_contract_substance_floor.py",
             "occ_substance_floor_15407",
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         value = deploy_assessment_check_value(pr_number=_PR, repo=_REPO)
         tier = module.derive_proof_tier("command", value)
         assert tier.satisfies(module.SUBSTANCE_FLOOR), (
@@ -508,8 +505,6 @@ class TestConsumerGateParityOnTheDeployBearingContract:
             "src/onex_change_control/scripts/contract_compliance_check.py",
             "occ_compliance_check_15407",
         )
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         rewritten = []
         for item_id, value in _generated_checks(
             deploy_bearing_contract.read_text(encoding="utf-8")
@@ -665,8 +660,14 @@ class TestComputeReceiptIsYamlfmtIdempotent:
 
 
 def _occ_yamlfmt_config() -> Path | None:
-    root = Path(os.environ.get("OCC_REPO_DIR", "../onex_change_control")).resolve()
-    conf = root / ".yamlfmt"
+    # OMN-17427: the vendored copy of onex_change_control's .yamlfmt (byte-equal
+    # to the file at the pinned 6adc28168d02), not a sibling checkout.
+    conf = (
+        Path(__file__).resolve().parents[3]
+        / "fixtures"
+        / "occ_companion_golden"
+        / "occ.yamlfmt"
+    )
     return conf if conf.is_file() else None
 
 

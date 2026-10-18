@@ -52,6 +52,10 @@ import yaml
 from omnimarket.inference.task_class_authority import (
     EnumGatewayExposure,
     load_task_class_authority,
+    resolve_task_class_execution_required,
+)
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityRuleEvaluation,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
@@ -229,6 +233,18 @@ def _drive_to_completed_terminals(
                 quality_score=1.0,
                 failure_reasons=(),
                 fallback_recommended=False,
+                # OMN-21077: supply executed evidence for the code route probes.
+                rule_evaluations=(
+                    (
+                        ModelQualityRuleEvaluation(
+                            rule="passes_existing_tests",
+                            enforcement="blocking",
+                            passed=True,
+                        ),
+                    )
+                    if resolve_task_class_execution_required(request.task_type)
+                    else ()
+                ),
             )
         )
     )

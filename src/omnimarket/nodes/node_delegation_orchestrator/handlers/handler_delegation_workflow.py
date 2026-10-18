@@ -20,6 +20,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -62,6 +63,8 @@ from omnibase_core.models.delegation.wire import (
     EnumQualityScoreComparison,
     ModelDelegationContractEvidence,
     ModelDelegationDeliverableEvidence,
+    ModelDelegationNamedTestRun,
+    ModelDelegationNamedTests,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
@@ -149,6 +152,9 @@ from omnimarket.inference.provider_quota_state import (
 from omnimarket.inference.provider_response_error import (
     provider_failure_class_from_error_message,
 )
+from omnimarket.inference.task_class_authority import (
+    resolve_task_class_execution_required,
+)
 from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -156,10 +162,17 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
-from omnimarket.models.delegation.wire.model_quality_gate import (
-    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    EnumNamedTestRunStatus,
+    ModelNamedTestFile,
+    ModelNamedTestRunRequest,
+    ModelNamedTestRunResult,
+    ModelNamedTestSpec,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_test_run import (
+    HandlerNamedTestRun,
+)
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
 )
@@ -208,7 +221,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
+    is_quality_accepted,
     resolve_required_bar_authority,
+    with_executed_check_verdict,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
@@ -227,6 +242,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_response_contract,
     sibling_backend_available_in_tier,
     tier_max_retries,
+    tiers_declaring_backend,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -244,6 +260,9 @@ from omnimarket.routing.backend_placement import (
 from omnimarket.routing.byok_provider_backends import (
     byok_backend_max_retries,
     resolve_byok_backend_by_id,
+)
+from omnimarket.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
 )
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
@@ -1004,6 +1023,30 @@ def _route_identity(
 INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE: Final[
     Literal["ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"]
 ] = "ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"
+
+
+def _boundary_failure_credential_source(
+    workflow: DelegationWorkflowState,
+    terminal: ModelBoundaryFailureTerminal,
+    *,
+    routing_leg: bool,
+) -> EnumCredentialSource | None:
+    """The credential fact a boundary-failure terminal can state.
+
+    OMN-18196 criterion 2: a delegation refused for want of a credential records
+    ``none``. The refusal is raised in the routing reducer, before the effect
+    boundary resolves anything, so the routing leg is the one place this
+    orchestrator learns of it, and ``CustomerKeyRefusedError`` carries the wire
+    code ``CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE`` for every refusal reason. No
+    call reached a provider, so ``none`` is the true credential source. A fact
+    the effect boundary already recorded on an earlier rung is kept as it is, and
+    any other routing failure claims nothing.
+    """
+    if workflow.inference_credential_source is not None:
+        return workflow.inference_credential_source
+    if routing_leg and terminal.failure_code == CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE:
+        return EnumCredentialSource.NONE
+    return None
 
 
 class InferenceIntentCredentialLostError(Exception):
@@ -1937,12 +1980,14 @@ def _unconstructible_terminal(
     its answer, and a reason naming the validation error and the workflow this
     happened to.
 
-    **This is a degraded record and it says so.** It is emitted as FAILED even
-    when the run had been decided COMPLETED, because a terminal whose evidence
-    fields could not be constructed cannot honestly claim it was graded and
-    passed. The answer itself is not thrown away -- ``content`` is carried --
-    so a caller reading the receipt still has the text, with the reason it
-    arrived stripped of its evidence.
+    **This is a degraded record and it says so.** It is emitted on the FAILED
+    topic even when the run had been decided COMPLETED, and the typed pair
+    ``TERMINAL_CONSTRUCTION_FAILED`` / ``UNDETERMINED`` says the content was
+    never graded by a terminal that survived construction (OMN-19013). The
+    gate's own ``quality_passed`` is kept as it was decided, not rewritten by the
+    delivery failure. The answer itself is not thrown away -- ``content`` is
+    carried -- so a caller reading the receipt still has the text, with the
+    reason it arrived stripped of its evidence.
 
     **It never invents a cause.** ``terminal_failure_cause`` stays ``None``
     rather than borrowing one of the three provider-side enum members, none of
@@ -1969,9 +2014,11 @@ def _unconstructible_terminal(
         model_used=inputs.model_used,
         endpoint_url=inputs.endpoint_url,
         content=inputs.content,
-        # A terminal that could not be built is not a pass, and the FAILED
-        # class refuses any other answer here.
-        quality_passed=False,
+        # OMN-19013: this is the original gate fact. The failed topic states that
+        # delivery failed; it must not rewrite a gate decision already made. Core
+        # admits quality_passed=True on a failed terminal only for the
+        # construction pair below.
+        quality_passed=inputs.quality_passed,
         # OMN-18928 (K1): the one pair Core reserves for this case. The content
         # was never graded by a terminal that survived construction, so the
         # verdict is undetermined and the score, whose evidence fields are what
@@ -2304,6 +2351,13 @@ class DelegationWorkflowState:
     # probes exclude the accumulated set. A renamed/reordered tier can therefore
     # never turn one exhausted quota/failure domain into apparent new capacity.
     transport_failed_backend_refs: tuple[str, ...] = ()
+    # OMN-18831: the concrete backends whose answer the quality gate rejected on
+    # a rung the workflow then escalated off. A later tier label that declares
+    # the same backend serves the same model, so climbing to it re-asks the
+    # question just failed at a higher rate; routing intents and next-tier
+    # probes exclude the set, kept apart from the transport memory above because
+    # a same-tier sibling hop and the local re-draft read that one.
+    quality_rejected_backend_refs: tuple[str, ...] = ()
     # OMN-20154: what the provider answered on the attempt in flight, stamped
     # onto that attempt's escalation_history row when it is recorded.
     current_attempt_provider: _AttemptProviderFacts | None = None
@@ -2330,6 +2384,31 @@ class DelegationWorkflowState:
     # for this correlation_id (mirrors the context_pack_hash acceptance-pin
     # pattern above). The durable per-tenant identity design is OMN-14107.
     tenant_id: str | None = None
+
+
+def _pinned_backend_ref(workflow: DelegationWorkflowState) -> str | None:
+    """The backend the caller pinned this run to, or ``None`` (OMN-20844)."""
+    if workflow.request is None:
+        return None
+    backend_id = workflow.request.backend_id
+    return backend_id if isinstance(backend_id, str) and backend_id else None
+
+
+def _escalation_excluded_refs(
+    workflow: DelegationWorkflowState, *, rejected_ref: str = ""
+) -> frozenset[str]:
+    """Backends a next-tier probe or routing intent must not resolve (OMN-18831).
+
+    The transport-failed backends, the backends whose answer the gate already
+    rejected on an earlier rung, and ``rejected_ref`` for the rung being left
+    now: two tier labels that declare one backend are one failure domain, not
+    a second chance.
+    """
+    refs = {*workflow.transport_failed_backend_refs}
+    refs.update(workflow.quality_rejected_backend_refs)
+    if rejected_ref:
+        refs.add(rejected_ref)
+    return frozenset(refs)
 
 
 class HandlerDelegationWorkflow:
@@ -2366,7 +2445,20 @@ class HandlerDelegationWorkflow:
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
         *,
         quota_reader: ProtocolProviderQuotaReader | None = None,
+        named_test_runner: Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
+        | None = None,
     ) -> None:
+        # OMN-17427: runs the tests a code-class request names against the
+        # answer, before its gate intent leaves this node. None takes the
+        # sandboxed runner the in-process port uses, so the deployed lane
+        # grades code on the same evidence.
+        self._named_test_runner: Callable[
+            [ModelNamedTestRunRequest], ModelNamedTestRunResult
+        ] = (
+            named_test_runner
+            if named_test_runner is not None
+            else HandlerNamedTestRun().handle
+        )
         # OMN-20154: the escalation decision reads provider quota state from
         # the durable projection (the orchestrator owns the routing-contract
         # I/O). Resolved lazily so construction does no I/O.
@@ -2499,12 +2591,16 @@ class HandlerDelegationWorkflow:
         """
         next_tier: str | None = None
         no_higher_tier_reason: str | None = None
+        # OMN-20844: a caller pin holds for the whole run. The COMPUTE refuses
+        # to escalate a pinned run, so no next tier is resolved for one.
+        pinned_backend_ref = _pinned_backend_ref(workflow)
 
         # Only resolve a next tier when the cheap pure preconditions allow it; the
         # COMPUTE re-checks them, but resolving the tier here would be wasted I/O
         # (and, for current_tier_name=None, impossible).
         if (
-            error_retryable
+            pinned_backend_ref is None
+            and error_retryable
             and workflow.escalation_count < max_escalation_attempts
             and workflow.current_tier_name is not None
         ):
@@ -2540,6 +2636,7 @@ class HandlerDelegationWorkflow:
                 next_tier_name=next_tier,
                 non_retryable_reason=non_retryable_reason,
                 no_higher_tier_reason=no_higher_tier_reason,
+                pinned_backend_ref=pinned_backend_ref,
             )
         )
 
@@ -3005,7 +3102,9 @@ class HandlerDelegationWorkflow:
             # terminal claims nothing — the pre-existing behaviour, unchanged.
             route=workflow.inference_route,
             provider=workflow.inference_provider,
-            credential_source=workflow.inference_credential_source,
+            credential_source=_boundary_failure_credential_source(
+                workflow, terminal, routing_leg=not leg.routing_decision_present
+            ),
             # OMN-17802: the leg declares whether a decision was in hand, and
             # that declaration -- not a guess from the failure text -- is what
             # names this run's routing disposition. On the ROUTING leg the FSM
@@ -3342,7 +3441,7 @@ class HandlerDelegationWorkflow:
                 error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
-                excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
+                excluded_backend_refs=_escalation_excluded_refs(workflow),
             )
             terminal_failure_reason = decision.terminal_failure_reason
             next_tier = decision.next_tier_name
@@ -3386,7 +3485,7 @@ class HandlerDelegationWorkflow:
                         payload=workflow.request,
                         min_tier_name=next_tier,
                         excluded_backend_refs=tuple(
-                            sorted(workflow.transport_failed_backend_refs)
+                            sorted(_escalation_excluded_refs(workflow))
                         ),
                     ),
                     escalation_event,
@@ -3643,40 +3742,40 @@ class HandlerDelegationWorkflow:
             self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
 
+        # OMN-21077: a code answer the gate passed with no executed test run is
+        # refused here exactly as the gate refuses it, before anything decides.
+        # A response contract replaces the class DoD at the gate (OMN-15193), so
+        # the check set in force is then empty and the schema alone decides.
+        declared_deterministic = (
+            ()
+            if workflow.effective_response_contract is not None
+            else workflow.routing_decision.dod_deterministic
+        )
+        result = with_executed_check_verdict(
+            result,
+            required_bar_authority,
+            declared_deterministic=declared_deterministic,
+        )
+        workflow.gate_result = result
         actual_score = result.quality_score
-        score_below_required_bar = actual_score < required_bar_authority.required_bar
+        # OMN-21077: a code class is accepted on its executed checks, so its bar
+        # is reported and never compared; every other class keeps its bar.
+        bar_decides = not required_bar_authority.acceptance_by_executed_tests
+        score_below_required_bar = (
+            bar_decides and actual_score < required_bar_authority.required_bar
+        )
         pre_filter_rejected = result.fail_category == "fail_deterministic"
-        # OMN-13959 — judge-unavailable degraded acceptance (parity with the
-        # bus-less local port ``_is_quality_accepted``). A VERIFIABLE class records
-        # ``score_source=deterministic_acceptance`` (not ``combined``) ONLY when the
-        # deterministic acceptance FLOOR passed but the LLM-judge adequacy score was
-        # NOT combined — i.e. the judge failed / was unreachable (``JUDGE_FAILED``:
-        # e.g. the cloud judge is 429-throttled). In that state the combined-score
-        # ``required_bar`` (0.85) is structurally un-meetable (the judge's 0.4
-        # adequacy band is absent, so the deterministic-only graded score tops out
-        # ~0.733), so a valid artifact that cleared the real DoD floor must fall
-        # back to the deterministic-floor verdict instead of escalating to ladder
-        # exhaustion during a cloud-judge outage. This does NOT weaken the bar: when
-        # the judge IS reachable the score is combined and the full bar applies.
-        judge_unavailable_floor = (
-            result.passed
-            and result.score_source == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        # OMN-21077: the predicate the bus-less port shares. A code class needs
+        # every deterministic check passed and its tests run and passed; any
+        # other class needs its declared bar, deterministic acceptance included.
+        # OMN-13409: honour result.passed so heuristic refusals remain rejected
+        # even when their score meets the bar.
+        quality_accepted = is_quality_accepted(
+            result,
+            required_bar_authority,
+            declared_deterministic=declared_deterministic,
         )
-        # OMN-13409: quality_accepted requires result.passed in addition to the
-        # score-threshold and deterministic-rejection checks. Before this fix the
-        # orchestrator recomputed acceptance from fail_category + score alone and
-        # ignored result.passed, so a heuristic refusal (e.g. "No.", "NO") with a
-        # score at or above the required_bar was accepted and delegation-completed
-        # was emitted with quality_passed=True. result.passed is the quality gate's
-        # authoritative verdict — it is False whenever any heuristic with adequacy
-        # authority fails (including the extended no_refusal pre-pass) — and the
-        # orchestrator must honour it.
-        quality_accepted = (
-            not pre_filter_rejected
-            and result.passed
-            and (judge_unavailable_floor or not score_below_required_bar)
-        )
-        # OMN-16932: the same four booleans, as a typed decision + reason that is
+        # OMN-16932: the same booleans, as a typed decision + reason that is
         # recorded rather than inferred. Derived here so the ACCEPT and CLIMB
         # branches below cannot disagree about what was decided.
         # OMN-19016: the gate's own verdict that no costlier rung can satisfy
@@ -3715,8 +3814,9 @@ class HandlerDelegationWorkflow:
         no_rung_can_satisfy = result.no_rung_can_satisfy or repeated_deterministic_floor
         acceptance_decision, acceptance_reason = self._acceptance_decision(
             pre_filter_rejected=pre_filter_rejected,
-            gate_passed=result.passed,
-            judge_unavailable_floor=judge_unavailable_floor,
+            # OMN-21077: for a code class the acceptance criteria are the
+            # executed checks, so a gate pass with no test evidence is not met.
+            gate_passed=result.passed if bar_decides else quality_accepted,
             score_below_required_bar=score_below_required_bar,
             no_rung_can_satisfy=no_rung_can_satisfy,
         )
@@ -3777,7 +3877,13 @@ class HandlerDelegationWorkflow:
                 failure_reason="",
                 terminal_failure_reason=None,
                 required_bar_authority=required_bar_authority,
-                required_bar_applied=not judge_unavailable_floor,
+                # OMN-21077: a code answer accepted on its tests below the
+                # advisory bar carries no bar, because a completed terminal may
+                # not state a passed result below its bar. The comparison
+                # decided nothing, so it is omitted as one typed pair.
+                required_bar_applied=(
+                    bar_decides or actual_score >= required_bar_authority.required_bar
+                ),
             )
 
             self._advance(workflow, EnumDelegationState.COMPLETED)
@@ -3810,6 +3916,14 @@ class HandlerDelegationWorkflow:
         # (below), the spend is banked into the cumulative totals; if this is the
         # terminal attempt, ``_emit_terminal`` re-prices it from the same
         # current-tier tokens, so it is NOT double-counted.
+        # OMN-18831: only a backend that more than one tier label declares is a
+        # repeat the ladder must not climb to; a backend one tier owns is left to
+        # the routing authority's own selection.
+        rejected_backend_ref = (
+            workflow.routing_decision.selected_backend_ref or ""
+        ).strip()
+        if len(tiers_declaring_backend(rejected_backend_ref)) < 2:
+            rejected_backend_ref = ""
         rejected_attempt_cost_usd = self._record_escalation_attempt(
             workflow,
             ModelDelegationEscalationAttempt(
@@ -3898,13 +4012,22 @@ class HandlerDelegationWorkflow:
                 else "non_retryable_quality_result"
             ),
             task_type=workflow.request.task_type,
-            excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
+            excluded_backend_refs=_escalation_excluded_refs(
+                workflow, rejected_ref=rejected_backend_ref
+            ),
         )
         terminal_failure_reason = decision.terminal_failure_reason
         next_tier = decision.next_tier_name
 
         if decision.can_escalate:
             assert next_tier is not None
+            if rejected_backend_ref and (
+                rejected_backend_ref not in workflow.quality_rejected_backend_refs
+            ):
+                workflow.quality_rejected_backend_refs = (
+                    *workflow.quality_rejected_backend_refs,
+                    rejected_backend_ref,
+                )
             # OMN-13140: build the terminal escalation proof BEFORE the inference
             # state reset below clears inference_model_used. The quality gate
             # recommended fallback and a routable next tier exists — this is the
@@ -3952,7 +4075,7 @@ class HandlerDelegationWorkflow:
                     payload=workflow.request,
                     min_tier_name=next_tier,
                     excluded_backend_refs=tuple(
-                        sorted(workflow.transport_failed_backend_refs)
+                        sorted(_escalation_excluded_refs(workflow))
                     ),
                 ),
                 escalation_event,
@@ -4040,6 +4163,10 @@ class HandlerDelegationWorkflow:
         other non-terminal branch.
         """
         tier = workflow.current_tier_name
+        # OMN-20844: a sibling answers a pinned run under the pin's name. A
+        # pinned run takes no sibling hop; the escalation decision ends it.
+        if _pinned_backend_ref(workflow) is not None:
+            return None
         # Fail closed on an unidentified failed backend (e.g. a routing decision
         # from before OMN-14402, or a replayed/legacy row whose
         # selected_backend_ref defaulted to ""): without a concrete ref to
@@ -4415,7 +4542,7 @@ class HandlerDelegationWorkflow:
         *,
         pre_filter_rejected: bool,
         gate_passed: bool,
-        judge_unavailable_floor: bool,
+        judge_unavailable_floor: bool = False,
         score_below_required_bar: bool,
         no_rung_can_satisfy: bool = False,
     ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason]:
@@ -4426,7 +4553,7 @@ class HandlerDelegationWorkflow:
             quality_accepted = (
                 not pre_filter_rejected
                 and result.passed
-                and (judge_unavailable_floor or not score_below_required_bar)
+                and not score_below_required_bar
             )
 
         The orchestrator has always evaluated it and never recorded it. A reader
@@ -4435,7 +4562,7 @@ class HandlerDelegationWorkflow:
         times in a row stayed invisible until it surfaced as two metered 429s
         (dev lane, 2026-08-30, correlation cf245cad).
 
-        This derives the decision and its reason from the SAME four booleans the
+        This derives the decision and its reason from the SAME booleans the
         expression uses, so the recorded reason cannot drift from the branch that
         was actually taken — there is no second place where a reason is composed
         by hand. Precedence matches the expression: the deterministic floor
@@ -4492,7 +4619,7 @@ class HandlerDelegationWorkflow:
             quality_accepted = (
                 not pre_filter_rejected            # (1) deterministic floor
                 and result.passed                  # (2) acceptance criteria
-                and (judge_unavailable_floor or not score_below_required_bar)
+                and not score_below_required_bar
             )                                      # (3) numeric bar
 
         This function previously emitted a BINARY label — ``pre_filter_rejected``
@@ -4524,11 +4651,14 @@ class HandlerDelegationWorkflow:
         rejection is reported first because it short-circuits the other two.
         """
         score_below_bar = result.quality_score < required_bar_authority.required_bar
+        # OMN-21077: a code class's bar decides nothing, so a low score is never
+        # the label; the comparison token below still states the fact.
+        bar_decides = not required_bar_authority.acceptance_by_executed_tests
         if result.fail_category == "rubric_failed":
             prefix = "rubric_failed"
         elif pre_filter_rejected:
             prefix = "pre_filter_rejected"
-        elif score_below_bar:
+        elif score_below_bar and bar_decides:
             prefix = "score_below_required_bar"
         else:
             # Score cleared the bar; the gate rejected on an acceptance
@@ -4544,6 +4674,7 @@ class HandlerDelegationWorkflow:
             # in prose so harmless gate diagnostics survive that redactor.
             f"bar_source={required_bar_authority.authority_source} "
             f"score_source={required_bar_authority.score_source}"
+            + ("" if bar_decides else " acceptance=executed_tests")
         )
         # OMN-18295. When the score CLEARED the bar and the run failed anyway,
         # the reader's first question is "then what decided?" -- and the answer
@@ -5474,7 +5605,77 @@ class HandlerDelegationWorkflow:
         if handler is None:
             msg = f"Unsupported delegation workflow payload: {type(request).__name__}"
             raise ValueError(msg)
-        return list(handler(request))
+        events = list(handler(request))
+        if isinstance(request, ModelInferenceResponseData):
+            events = await self._with_named_test_run(request.correlation_id, events)
+        return events
+
+    async def _with_named_test_run(
+        self, correlation_id: UUID, events: list[BaseModel]
+    ) -> list[BaseModel]:
+        """Run the request's named tests against the answer a gate intent carries.
+
+        OMN-17427: the deployed lane graded code with no tests, because the bus
+        request had nowhere to carry them and no run reached the gate. The
+        request now carries them inline; this runs them in the sandbox, off the
+        event loop, and folds the run into the gate intent the workflow just
+        emitted, so the gate reducer judges the answer on tests that ran. A
+        refused run leaves the intent with no run and ``named_tests_requested``
+        set, which the gate refuses as INSUFFICIENT; it is never a pass.
+        """
+        workflow = self._workflows.get(correlation_id)
+        request = None if workflow is None else workflow.request
+        named_tests = None if request is None else request.named_tests
+        if named_tests is None:
+            return events
+        out: list[BaseModel] = []
+        for event in events:
+            if isinstance(event, ModelQualityGateIntent):
+                event = await self._gate_intent_with_named_tests(event, named_tests)
+            out.append(event)
+        return out
+
+    async def _gate_intent_with_named_tests(
+        self, intent: ModelQualityGateIntent, named_tests: ModelDelegationNamedTests
+    ) -> ModelQualityGateIntent:
+        payload = intent.payload
+        if not resolve_task_class_execution_required(payload.task_type):
+            return intent
+        run: ModelDelegationNamedTestRun | None = None
+        if payload.llm_response_content.strip():
+            spec = ModelNamedTestSpec.model_validate(
+                {
+                    "answer_path": named_tests.answer_path,
+                    "test_ids": named_tests.test_ids,
+                    "test_files": tuple(
+                        ModelNamedTestFile(path=f.path, content=f.content)
+                        for f in named_tests.test_files
+                    ),
+                }
+            )
+            outcome = await asyncio.to_thread(
+                self._named_test_runner,
+                ModelNamedTestRunRequest(
+                    spec=spec, answer_content=payload.llm_response_content
+                ),
+            )
+            _logger.info(
+                "HandlerDelegationWorkflow: named test run status=%s correlation=%s %s",
+                outcome.status.value,
+                payload.correlation_id,
+                outcome.detail.splitlines()[0] if outcome.detail else "",
+            )
+            if outcome.status is EnumNamedTestRunStatus.COMPLETED and outcome.run:
+                run = ModelDelegationNamedTestRun.model_validate(
+                    outcome.run.model_dump()
+                )
+        return intent.model_copy(
+            update={
+                "payload": payload.model_copy(
+                    update={"named_test_run": run, "named_tests_requested": True}
+                )
+            }
+        )
 
     def _resolve_per_step_handler(
         self, payload_type: type

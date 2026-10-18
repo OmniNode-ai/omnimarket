@@ -30,11 +30,18 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import yaml
 
+from omnimarket.handlers.handler_lane_intake import (
+    LaneIntakeGate,
+    declared_lane,
+    resolve_label_id,
+    stamp_description,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command import (
@@ -50,6 +57,9 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # Label applied to all content-key-indexed tickets for search-by-key
 _CONTENT_KEY_LABEL_PREFIX = "onex-repair-key:"
+#: The identity this node stamps on an item when no lane declared one: it is a
+#: node, and the stamp names whoever opened the item (OMN-17942).
+_NODE_IDENTITY = "node_repo_health_repair_effect"
 
 
 def _contract_linear_graphql_url(contract_path: Path) -> str:
@@ -88,7 +98,14 @@ class LinearRepairClientProtocol(Protocol):
         """Return an existing ticket identifier for this key, or None if absent."""
         ...
 
-    def create_issue(self, *, title: str, description: str, parent_id: str) -> str:
+    def create_issue(
+        self,
+        *,
+        title: str,
+        description: str,
+        parent_id: str,
+        label_names: Sequence[str] = (),
+    ) -> str:
         """Create a new Linear issue under parent_id and return its identifier."""
         ...
 
@@ -168,7 +185,14 @@ class LinearRepairHttpClient:
             )
         return None
 
-    def create_issue(self, *, title: str, description: str, parent_id: str) -> str:
+    def create_issue(
+        self,
+        *,
+        title: str,
+        description: str,
+        parent_id: str,
+        label_names: Sequence[str] = (),
+    ) -> str:
         """Create a new Linear issue and return its identifier."""
         # First resolve the team ID for Omninode
         team_data = self._post(
@@ -198,12 +222,13 @@ class LinearRepairHttpClient:
         parent_uuid = parent_data.get("data", {}).get("issue", {}).get("id", "")
 
         mutation = """
-        mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String) {
+        mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $labelIds: [String!]) {
           issueCreate(input: {
             teamId: $teamId,
             title: $title,
             description: $description,
-            parentId: $parentId
+            parentId: $parentId,
+            labelIds: $labelIds
           }) {
             issue { identifier }
           }
@@ -216,6 +241,10 @@ class LinearRepairHttpClient:
         }
         if parent_uuid:
             variables["parentId"] = parent_uuid
+        if label_names:
+            variables["labelIds"] = [
+                resolve_label_id(self._post, name, team_id) for name in label_names
+            ]
 
         result = self._post(mutation, variables)
         identifier = str(
@@ -279,8 +308,10 @@ class HandlerRepoHealthRepairEffect:
     def __init__(
         self,
         linear_client: LinearRepairClientProtocol | None = None,
+        lane_intake: LaneIntakeGate | None = None,
     ) -> None:
         self._injectable_client = linear_client
+        self._lane_intake = lane_intake or LaneIntakeGate()
 
     def _get_client(self) -> LinearRepairClientProtocol:
         if self._injectable_client is not None:
@@ -368,10 +399,22 @@ class HandlerRepoHealthRepairEffect:
             parent_issue_id=command.parent_issue_id,
         )
 
+        # Every item this node opens is lane-created (OMN-17942): labelled,
+        # stamped with the lane (or this node) that opened it, and counted
+        # against the day's intake budget. A refusal raises before Linear is
+        # touched.
+        lane = declared_lane() or _NODE_IDENTITY
+        intake = self._lane_intake.policy()
+        description = stamp_description(description, intake, lane)
+        self._lane_intake.admit(
+            {"title": title, "description": description, "labels": [intake.label]},
+            lane,
+        )
         new_ref = client.create_issue(
             title=title,
             description=description,
             parent_id=command.parent_issue_id,
+            label_names=[intake.label],
         )
         logger.info(
             "repo-health-repair-effect: created ticket %s (key %s...)",

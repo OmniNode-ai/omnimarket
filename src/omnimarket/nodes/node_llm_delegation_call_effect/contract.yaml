@@ -23,11 +23,17 @@ description: |
   cost telemetry derived from the pricing manifest, and typed terminal event
   emission on success, escalation, or total failure.
 
+  The standalone HandlerAgentSession transport also invokes delegated coding
+  agents for lab work units. It accepts the caller's model and brief chunks,
+  joins the brief on stdin and passes agent output and exit status back to the
+  unit's receipt, retaining the agent's permission checks.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
 # === RUNTIME PROFILES ===
 descriptor:
+  agent_invocation: true
   runtime_profiles:
     - effects
 

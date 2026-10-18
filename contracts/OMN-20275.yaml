@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20275"
+title: "Work-ledger rows are attributed to the producing broker principal, with no per-row signing"
+summary: "Each writer principal holds WRITE on exactly one command topic, onex.cmd.omnimarket.work-ledger-append-from-<principal>.v1, declared by template in node_work_ledger_append_effect's contract. The serve process reads every configured writer topic and takes the row's writer from the topic the command arrived on; the shared append topic is unattributed and answered with a refusal. Row grammar validation is unchanged. Per-row Ed25519 signing, its request fields and its configuration are removed. An append over Kafka publishes on the writer topic of the broker login the lane bus connection authenticated as."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: ["public_api"]
+requirements:
+  - id: "req-broker-principal-attribution"
+    statement: "Rows are attributed to the broker principal of the producing connection, attested by the per-principal writer topic, and per-row signing is removed."
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: a command on a writer topic is appended with principal=<writer>; a command on the shared topic or from an unconfigured writer is refused with exit 65 and no row -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -k "unattributed_or_unknown_writer_refused or writer_topic_attribution_and_negative_controls or unknown_writer_topic_is_never_consumed"
+      - id: "AC7"
+        statement: |-
+          AC7: a row whose principal= cell names another principal is refused, and RULING and OPERATOR-CONSENT rows are refused unless the writer is the configured operator principal -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q -k "attributed_rows_cannot_forge_or_duplicate_principal or consent_only_from_operator_principal"
+      - id: "AC8"
+        statement: |-
+          AC8: an append over Kafka publishes on the writer topic of the bound broker login; with no bound login it exits 69, and --principal is refused unless the bus is in-memory -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_lane_principal.py tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q -k "bound_lane_principal or handoff_appender_uses_bound_writer_topic or without_bound_broker_login or rejects_payload_principal_for_kafka or requires_principal_for_inmemory"
+      - id: "AC9"
+        statement: |-
+          AC9: the append request carries no writer identity of its own, and a command whose payload carries one is refused -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -k "request_has_no_payload_writer_identity or rejects_obsolete_payload_attribution"
+  - id: "req-markdown-projection-node"
+    statement: "The rendered work-ledger markdown file is a projection of the row events: one node per file, identity ledger_seq, the file as its own watermark, offsets committed only over rendered seqs, gaps repaired from the ledger of record or blocking visibly (M6 deliverable 2, design in the ledger-projection TLA+ model)."
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: rows of one seq range split across topics and delivered out of order are rendered in ledger_seq order, offsets are committable only over the rendered prefix per topic, and a broker outage leaves a gap the head probe repairs from the ledger of record -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_partition.py -q
+      - id: "AC11"
+        statement: |-
+          AC11: a late event after its repair is dropped as a duplicate, a lost last row is found by the head probe, a row the source cannot supply blocks visibly with the seq and is retried until a repair or a late event lifts the block, and a row_id conflict at a held seq blocks -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_lag.py -q
+      - id: "AC12"
+        statement: |-
+          AC12: a crash between the row write and the offset commit costs a redelivery and no row, a torn last line is truncated before the watermark is read from the file, the pending set is rebuilt from redelivery, and a second node on the same file is refused -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_crash.py -q
+      - id: "AC13"
+        statement: |-
+          AC13: over the in-memory bus, out-of-order row events, a never-published last row and malformed payloads produce the right file, the right committable offsets, a rendered event, a blocked event and a dead-letter event, and the contract declares every topic with no runtime attachment -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
+    command: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect tests/unit/work_ledger_bus -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20275-ac6-writer-topic-attribution"
+    description: "AC6: writer topics attribute rows; the shared topic and unknown writers are refused."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -p no:randomly -k "unattributed_or_unknown_writer_refused or writer_topic_attribution_and_negative_controls or unknown_writer_topic_is_never_consumed"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac7-forged-principal-operator-rows"
+    description: "AC7: forged principal cells and non-operator RULING or OPERATOR-CONSENT rows are refused."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q -p no:randomly -k "attributed_rows_cannot_forge_or_duplicate_principal or consent_only_from_operator_principal"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac8-bound-broker-login"
+    description: "AC8: Kafka appends use the bound broker login's writer topic; no login exits 69; --principal is in-memory only."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/work_ledger_bus/test_lane_principal.py tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q -p no:randomly -k "bound_lane_principal or handoff_appender_uses_bound_writer_topic or without_bound_broker_login or rejects_payload_principal_for_kafka or requires_principal_for_inmemory"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac9-no-payload-identity"
+    description: "AC9: the request has no writer identity field and payload attribution is refused."
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q -p no:randomly -k "request_has_no_payload_writer_identity or rejects_obsolete_payload_attribution"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-probe-writer-topic-parts"
+    description: "Deploy probe. The work-ledger append node contract GitHub serves at the checked-out commit declares the writer topic's name prefix, the declaration this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_append_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^  name_prefix: \"work-ledger-append-from-\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac10-markdown-projection-partition"
+    description: "AC10: out-of-order rows across topics, committable prefix offsets, and a broker outage repaired by the head probe."
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_partition.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac11-markdown-projection-lag"
+    description: "AC11: late event dropped, lost last row found, unsuppliable row blocks and lifts, row_id conflict blocks."
+    source: "manual"
+    binds_ac: ["AC11"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_lag.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac12-markdown-projection-crash"
+    description: "AC12: crash between write and commit, torn tail, volatile pending set, one node per file."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_crash.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac13-markdown-projection-golden-chain"
+    description: "AC13: golden chain over the in-memory bus."
+    source: "manual"
+    binds_ac: ["AC13"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-probe-projection-contract"
+    description: "Deploy probe. The markdown projection node contract GitHub serves at the checked-out commit names the node, the declaration this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_render_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^name: work_ledger_render_effect'"
+        cwd: "${OMNI_HOME}/omnimarket"

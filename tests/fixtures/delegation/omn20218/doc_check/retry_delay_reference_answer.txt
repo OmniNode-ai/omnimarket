@@ -1,0 +1,37 @@
+def retry_delay(attempt: int, base: float = 0.5, cap: float = 30.0, jitter: float = 0.0) -> float:
+    """Return the delay in seconds to wait before retry number `attempt`.
+
+    The delay doubles with each attempt, starting from `base`, is capped at `cap`, and is then
+    reduced by the fraction `jitter`: min(cap, base * 2 ** (attempt - 1)) * (1 - jitter).
+
+    Args:
+        attempt (int): The retry number, starting at 1. Required. Must be >= 1.
+        base (float): The delay in seconds before the first retry. Default 0.5. Must be > 0.
+        cap (float): The largest delay in seconds before jitter is applied. Default 30.0. Must be > 0.
+        jitter (float): The fraction by which the delay is reduced. Default 0.0. Must be in [0, 1).
+
+    Returns:
+        float: The delay in seconds, min(cap, base * 2 ** (attempt - 1)) * (1 - jitter).
+
+    Raises:
+        ValueError: If `attempt` is less than 1, if `base` or `cap` is not positive, or if
+            `jitter` is outside [0, 1).
+
+    Examples:
+        >>> retry_delay(1)
+        0.5
+        >>> retry_delay(3)
+        2.0
+        >>> retry_delay(10)
+        30.0
+        >>> retry_delay(3, jitter=0.5)
+        1.0
+    """
+    if attempt < 1:
+        raise ValueError("attempt must be >= 1")
+    if base <= 0 or cap <= 0:
+        raise ValueError("base and cap must be positive")
+    if not 0.0 <= jitter < 1.0:
+        raise ValueError("jitter must be in [0, 1)")
+    delay = min(cap, base * 2 ** (attempt - 1))
+    return delay * (1 - jitter)

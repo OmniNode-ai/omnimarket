@@ -555,3 +555,32 @@ __all__ = [
     "shipped_byok_model_name",
     "use_local_store",
 ]
+
+
+def store_model_credential(
+    db_path: Path,
+    secret_ref: str,
+    *,
+    provider: str = "openrouter",
+    model: str | None = None,
+    model_chosen_by: str | None = None,
+) -> None:
+    """Put one credential row under ``secret_ref`` into the local store at ``db_path``.
+
+    OMN-21078. Whether a re-aim is allowed depends on who chose the credential's
+    model, so a test that exercises a re-aim states that fact here instead of
+    relying on a reference that has no row. The value is a fixed placeholder.
+    """
+    from omnimarket.inference import local_byok_credential_adapter as credentials
+
+    conn = credentials._connect(db_path)
+    try:
+        conn.execute(
+            f"INSERT OR REPLACE INTO {credentials.LOCAL_CREDENTIAL_TABLE} "
+            "(secret_ref, provider, secret_value, model, model_chosen_by) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (secret_ref, provider, "placeholder", model, model_chosen_by),
+        )
+        conn.commit()
+    finally:
+        conn.close()

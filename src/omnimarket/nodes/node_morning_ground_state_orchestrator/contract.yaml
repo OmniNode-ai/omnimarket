@@ -8,10 +8,14 @@ lifecycle: experimental
 description: >
   Operator morning process: ledger reconciliation, guarded precheck, decisions
   register, concurrent ground state and triage, reconciliation, integration,
-  unconditional dropped-work measurement and session goal. Phase execution
-  reuses the canonical delegation orchestrator and infra request-response
-  wiring. The deployment's briefs, report locations and defaults come from an
-  overlay; the node holds none of them.
+  unconditional dropped-work measurement and session goal. Each phase runs as
+  a lab work unit (node_lab_work_unit_effect, its topics read from that
+  contract): a headless agent session on a pool host placed by capacity, at the
+  repository and pushed commit the run names. The delegation request-response
+  instance below is kept for when agent_delegation becomes routable; while the
+  task-class contract declares it pending a capability, that path refuses up
+  front with a typed error. The deployment's briefs, report locations and
+  defaults come from an overlay; the node holds none of them.
 input_model:
   name: ModelMorningGroundStateRequest
   module: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state

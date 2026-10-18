@@ -109,6 +109,7 @@ def test_emit_contract_declares_observation_and_both_terminal_outcomes() -> None
         "onex.evt.omnimarket.pr-state-emit-completed.v1",
         "onex.evt.omnimarket.pr-state-emit-failed.v1",
         "onex.evt.omnimarket.ci-run-failed.v1",
+        "onex.evt.omnimarket.dev-head-red.v1",
     ]
     assert contract["runtime_dispatch"]["terminal_events"] == {
         "success": "onex.evt.omnimarket.pr-state-emit-completed.v1",

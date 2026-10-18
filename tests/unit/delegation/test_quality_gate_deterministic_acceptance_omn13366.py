@@ -10,6 +10,10 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
 )
@@ -93,21 +97,49 @@ def test_verifiable_fail_records_failure_cases_and_actual_score() -> None:
 
 
 @pytest.mark.unit
-def test_verifiable_heuristic_markers_do_not_override_deterministic_authority() -> None:
+@pytest.mark.parametrize("exit_code", [None, 0, 1], ids=["no-run", "passed", "failed"])
+def test_verifiable_heuristic_markers_do_not_override_deterministic_authority(
+    exit_code: int | None,
+) -> None:
+    # The named test must run; heuristic markers cannot substitute for it.
+    run = (
+        ModelNamedTestRun(
+            test_ids=("tests/test_normalize.py::test_normalize",), exit_code=exit_code
+        )
+        if exit_code is not None
+        else None
+    )
     result = quality_gate_delta(
         _gate_input(
             task_type="code_generation",
             content="def normalize(value):\n    return value.strip()\n",
             deterministic=("compiles_without_errors", "passes_existing_tests"),
             heuristic=("covers_edge_cases",),
-        )
+        ),
+        named_test_run=run,
+        named_tests_requested=True,
     )
 
-    assert result.passed is True
-    assert result.fail_category == "pass"
-    assert result.actual_score == pytest.approx(1.0)
-    assert result.failure_reasons == ()
-    assert result.failure_cases == ()
+    test_evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert test_evaluation.passed is (exit_code == 0)
+    if exit_code == 0:
+        assert result.passed is True
+        assert result.fail_category == "pass"
+        assert result.actual_score == pytest.approx(1.0)
+        assert result.failure_reasons == ()
+        assert result.failure_cases == ()
+        assert result.quality_score < 1.0
+    else:
+        assert result.passed is False
+        assert result.fail_category == "fail_deterministic"
+        assert result.actual_score == pytest.approx(0.5)
+        assert any("passes_existing_tests" in r for r in result.failure_reasons)
+        assert result.failure_cases == (test_evaluation.detail,)
+        assert result.no_rung_can_satisfy is (exit_code is None)
+        if exit_code is None:
+            assert NO_NAMED_TEST_RUN_REASON in result.failure_reasons
 
 
 @pytest.mark.unit

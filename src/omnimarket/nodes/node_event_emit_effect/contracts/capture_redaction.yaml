@@ -172,9 +172,9 @@ secret_patterns:
     # OMN-19550: "never auth headers" (RULING 2026-09-25T11:23:30Z). Inline
     # (curl -H "Authorization: ...") as well as at the start of a line; the
     # value runs to the end of the line or a closing quote.
-    pattern: '(?i)\b(?:proxy-)?authorization\s*:\s*[^\r\n"'']+'
+    pattern: '(?i)\b(?:proxy-)?authorization\s*:\s*(?P<value>[^\r\n"'']+)'
   - name: credential_header
-    pattern: '(?i)\b(?:x-api-key|api-key|x-auth-token|x-amz-security-token|set-cookie|cookie)\s*:\s*[^\r\n"'']+'
+    pattern: '(?i)\b(?:x-api-key|api-key|x-auth-token|x-amz-security-token|set-cookie|cookie)\s*:\s*(?P<value>[^\r\n"'']+)'
   - name: url_authority_credentials
     # OMN-19550: the quantifiers are BOUNDED. The unbounded form
     # ('[a-zA-Z][a-zA-Z0-9+.-]*://...') is quadratic on a long alphanumeric run
@@ -183,9 +183,9 @@ secret_patterns:
     # governed field was a short name or id; full content made it a stall.
     # A URI scheme is at most a few characters, and a userinfo field longer
     # than 256 is not one this pattern needs to find.
-    pattern: '[a-zA-Z][a-zA-Z0-9+.-]{0,31}://[^/\s:@]{1,256}:[^/\s@]{1,256}@'
+    pattern: '[a-zA-Z][a-zA-Z0-9+.-]{0,31}://[^/\s:@]{1,256}:(?P<value>[^/\s@]{1,256})@'
   - name: bearer_token
-    pattern: '(?i)\bbearer\s+[A-Za-z0-9._~+/-]{16,}'
+    pattern: '(?i)\bbearer\s+(?P<value>[A-Za-z0-9._~+/-]{16,})'
   - name: github_token
     pattern: '\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})'
   - name: provider_secret_key
@@ -212,11 +212,11 @@ secret_patterns:
     # content topic as JSON, so this is the shape they arrive in.
     # Bounded for the same reason as url_authority_credentials: a JSON key is
     # not 64 characters long, and an unbounded run is a backtracking hazard.
-    pattern: '(?i)"[A-Za-z0-9_.-]{0,64}(?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]{0,64}"\s*:\s*"[^"]*"'
+    pattern: '(?i)"[A-Za-z0-9_.-]{0,64}(?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]{0,64}"\s*:\s*"(?P<value>[^"]*)"'
   - name: camel_case_secret_key
-    pattern: '"(?:[a-z]{1,64})?(?:Secret|Token|Password|ApiKey|AccessKey|PrivateKey)"\s*:\s*"[^"]+"'
+    pattern: '"(?:[a-z]{1,64})?(?:Secret|Token|Password|ApiKey|AccessKey|PrivateKey)"\s*:\s*"(?P<value>[^"]+)"'
   - name: labelled_secret_assignment
-    pattern: '(?i)\b(pass(word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|requirepass|client[_-]?secret|auth)\b\s*[:=]\s*\S+'
+    pattern: '(?i)\b(pass(word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|requirepass|client[_-]?secret|auth)\b\s*[:=]\s*(?P<value>\S+)'
 
 # The text a capture_scrubbed field carries in place of each matched span.
 # `{name}` is the pattern's name, so a reader can count what was removed and
@@ -224,6 +224,45 @@ secret_patterns:
 # so scrubbing is idempotent: a second pass over scrubbed text changes nothing
 # (asserted by test, because the fan-out re-applies the contract per chunk).
 scrub_marker: "[REDACTED:{name}]"
+
+# ---------------------------------------------------------------------------
+# Secret references (OMN-20926)
+# ---------------------------------------------------------------------------
+# Operator ruling 2026-10-10 (RULING row 2026-10-10T22:38:48Z
+# lane=secret-refs-9f8a): when the scrub finds a secret in captured content,
+# the secret is stored in the secret store and the record carries a reference
+# in its place instead of dropping it. Anything that needs the value resolves
+# the reference through the store, which checks permission and logs access.
+# Ciphertext never goes on the bus.
+#
+# The PRODUCER (omniclaude hook_content_capture) is the only writer. It stores
+# the matched value -- the `value_group` span where a pattern names one, else
+# the whole match -- and emits `template` with `{digest}` filled. The digest is
+# an HMAC-SHA256 of the value under a per-deployment reference key held in the
+# private overlay, so equal values deduplicate to one stored secret and the bus
+# never carries an unsalted hash of a low-entropy value. When the store cannot
+# take the value (no identity, unreachable, a refused write) the producer falls
+# back to `scrub_marker` and says so on the record (`stored_refs` below).
+#
+# Every scrub, producer and fan-out alike, leaves a reference standing: a
+# match that lies inside a reference span, or whose value group IS a reference
+# span, is kept. Without that the fan-out would re-scrub its own references
+# (`labelled_secret_assignment` matches "secret:" followed by "//..."). A match
+# that merely overlaps a reference is still replaced: keeping a reference is
+# never allowed to keep a credential next to it.
+#
+# `pattern` is exact on purpose: the scheme, the one logical namespace, and 64
+# lowercase hex digits, nothing else, so a protected span cannot carry a
+# credential. The store path the namespace maps to is deployment config and
+# lives in the private overlay, never here and never on the bus.
+secret_reference:
+  ticket: OMN-20926
+  pattern: 'secret://onex/captured/[0-9a-f]{64}\b'
+  template: "secret://onex/captured/{digest}"
+  # The store key one reference names. Producer and resolver both read it.
+  store_key_template: "CAPTURED_{digest}"
+  # The named regex group that holds the secret within a label-style match.
+  value_group: value
 
 # ---------------------------------------------------------------------------
 # Governed topics
@@ -381,6 +420,10 @@ topics:
       claude_code_version: capture_verbatim
       # OMN-17427: the emitting machine's hostname, a name and never a path.
       host: capture_verbatim
+      # OMN-18531 (TA.21): the lineage stream's producer sequence number and
+      # the stream's name.
+      producer_seq: capture_verbatim
+      stream: capture_verbatim
       lineage.session_id: capture_verbatim
       lineage.agent_id: capture_verbatim
       lineage.agent_type: capture_verbatim
@@ -449,6 +492,20 @@ topics:
       payload.index: capture_verbatim
       payload.final: capture_verbatim
       payload.delta_length: capture_verbatim
+      # OMN-18946: GuardRefusal. The guard is a script name and the reason class
+      # a normalised slug (path-like and numeric segments dropped by the row
+      # node); neither is the refusal's text.
+      payload.guard: capture_verbatim
+      payload.reason_class: capture_verbatim
+      payload.refused_hook_event_name: capture_verbatim
+      # OMN-18946: AssistantUsage. Counts, a model id and a source-hook name.
+      payload.message_count: capture_verbatim
+      payload.input_tokens: capture_verbatim
+      payload.output_tokens: capture_verbatim
+      payload.cache_creation_input_tokens: capture_verbatim
+      payload.cache_read_input_tokens: capture_verbatim
+      payload.usage_source_hook: capture_verbatim
+      payload.partial_window: capture_verbatim
       payload.tool_input_ref: capture_verbatim
       payload.tool_response_ref: capture_verbatim
       payload.error_ref: capture_verbatim
@@ -640,9 +697,12 @@ topics:
       schema_version: capture_verbatim
       hook_source: capture_verbatim
       actor: capture_verbatim
-      # prompt | tool_input | tool_response | assistant_reply | operator_prompt
+      # prompt | tool_input | tool_response | tool_error | assistant_reply |
+      # operator_prompt
       # (OMN-20905: a prompt whose transcript origin is human, recorded at
       # Stop, which the operator decision capture consumes from this topic)
+      # (OMN-18946: tool_error is a failed call's error text, from
+      # PostToolUseFailure, stored under the same redaction as tool_response)
       content_kind: capture_verbatim
       # OMN-20905: an operator_prompt's transcript prompt id and the time the
       # operator said it. Identifiers and a timestamp, no content.
@@ -650,6 +710,22 @@ topics:
       said_at: capture_verbatim
       tool_name: capture_verbatim
       tool_use_id: capture_verbatim
+      # OMN-18531 (TA.21): the shared item identity and the producer's
+      # per-session, per-stream sequence. content_record_id is a uuid5 over the
+      # lineage event id and the field name, the same value the lineage
+      # event's reference carries, so a reader joins the two streams on it.
+      # Identifiers and counters, no content.
+      content_record_id: capture_verbatim
+      producer_seq: capture_verbatim
+      stream: capture_verbatim
+      # The barrier record (content_kind barrier, OMN-18531): the id of the barrier,
+      # the stream it speaks for, the sequence high-water the producer had
+      # issued on it, and whether content capture was enabled. Ids, a count
+      # and a flag.
+      record_type: capture_verbatim
+      barrier_id: capture_verbatim
+      high_water: capture_verbatim
+      content_capture: capture_verbatim
       # The size policy's bookkeeping: which chunk this is, of how many, the
       # sha256 of the chunks concatenated (so a reader can verify a
       # reassembly), the full length before the cap, and whether the cap cut
@@ -664,6 +740,11 @@ topics:
       # contract per chunk and restamps the state, which would otherwise lose
       # the fact that a producer-side span was removed. Names and counts only.
       producer_redaction: capture_verbatim
+      # OMN-20926: {stored, fallback, reason} from the producer's store-then-
+      # reference pass. Counts and one reason code, never a value or a path.
+      # fallback > 0 means those spans crossed as scrub_marker because the
+      # store did not take them; the reason names why.
+      stored_refs: capture_verbatim
       lane: capture_verbatim
       lane_source: capture_verbatim
       lane_ticket: capture_verbatim

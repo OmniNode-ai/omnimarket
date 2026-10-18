@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h03",
+  "path": "pinned",
+  "sha256": "23d69f0d9fefd5af7246be29f178654830caedfd826bda3e11e92a1edf141b5e",
+  "response": "[29] — it sets `window_size = 11` in `detect_repetition_loop`, contradicting the test at [418] (`test_window_boundary_no_false_positive`'s comment \"12 unique triples, window=10 so no window contains a repeat\"), which pins the sliding window at 10 as documented in the detector's docstring [25] and the PR description."
+}

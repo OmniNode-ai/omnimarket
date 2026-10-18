@@ -212,7 +212,7 @@ class LocalLedgerReader:
 
 
 class LocalApprovedWork:
-    """The declared approved-work list (version 1): its depth, and one row by id."""
+    """The declared approved-work list (version 1): its depth, every row, and one row by id."""
 
     @staticmethod
     def _load(path: str) -> dict[str, object]:
@@ -238,6 +238,12 @@ class LocalApprovedWork:
         except LabFillPortError:
             return None
         return len(rows) if isinstance(rows, list) else None
+
+    def list_rows(self, path: str) -> Sequence[Mapping[str, object]]:
+        rows = self._load(path)["rows"]
+        return [
+            r for r in (rows if isinstance(rows, list) else []) if isinstance(r, dict)
+        ]
 
     def row(self, path: str, row_id: str) -> Mapping[str, object]:
         rows = self._load(path)["rows"]
@@ -476,13 +482,16 @@ class BusLaneLedgerAppender:
     async def append(
         self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float
     ) -> ModelWorkLedgerAppendReceipt | None:
-        from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
+        from omnimarket.delegated_test_loop.lane_bus import (
+            bound_lane_principal,
+            open_lab_run_bus,
+        )
         from omnimarket.work_ledger_bus.bus import WorkLedgerAppendCaller
 
         async with open_lab_run_bus(
             bus="kafka", lane=self._lane, kafka_bootstrap=None, omni_home=self._root
         ) as bus:
-            caller = WorkLedgerAppendCaller(bus)
+            caller = WorkLedgerAppendCaller(bus, principal=bound_lane_principal())
             try:
                 return await caller.append(request, timeout_s=timeout_s)
             except TimeoutError:

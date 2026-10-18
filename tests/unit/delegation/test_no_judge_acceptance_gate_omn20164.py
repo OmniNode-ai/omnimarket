@@ -19,7 +19,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
-from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TESTS_UNTESTED_REASON,
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -108,16 +111,24 @@ async def test_vetoed_fixtures_refused_deterministic_controls(
 
 
 @pytest.mark.parametrize("path", ["bus", "local"])
-async def test_vetoed_fixtures_refused_known_gap_stub(
+async def test_untested_known_gap_stub_passes_contract_without_judge(
     path: str, tmp_path: Path
 ) -> None:
-    """Known gap: propose an AST check rejecting pass-only function bodies.
-
-    This pins the unrefused control so AC2 cannot be reported as fully proved.
-    """
+    """No tests named: the stub passes contract checks without a test pass."""
     judge = RecordingJudge()
     result = await decide(
         path, "code_generation", "def add(a, b):\n    pass", tmp_path, judge
     )
     assert result.passed is True
+    assert result.fail_category == "pass"
+    assert result.failure_reasons == ()
+    assert result.no_rung_can_satisfy is False
+    assert "passes_existing_tests" in result.skipped_checks
+    evaluation = next(
+        e for e in result.rule_evaluations if e.rule == "passes_existing_tests"
+    )
+    assert evaluation.enforcement == "scored"
+    assert evaluation.passed is False
+    assert evaluation.detail == NO_NAMED_TESTS_UNTESTED_REASON
+    assert result.score_verified is False
     assert judge.calls == []

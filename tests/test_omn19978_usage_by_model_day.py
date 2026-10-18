@@ -350,17 +350,20 @@ def test_a_store_written_by_the_previous_release_opens_and_keeps_its_relabel(
 
 def test_each_insert_and_recount_takes_the_next_cursor(tmp_path: Path) -> None:
     """The served exposure walks by projection_cursor, so a local store must
-    stamp one, and re-stamp a recounted row the way the Postgres BIGSERIAL does."""
+    stamp one, and re-stamp a recounted row the way the Postgres BIGSERIAL does.
+
+    OMN-21015: a row's served call_share is its share of its tenant's calls that
+    day, so a call on another model of the same day moves it, and re-stamps it."""
     db = SqliteDatabaseAdapter(tmp_path / "usage.sqlite")
     fold = HandlerProjectionUsageByModelDay()
     apply_usage_call(fold.handle(_sourced("a", 1.0, "measured")), db)
     other = _sourced("b", 1.0, "measured").model_copy(update={"model_name": "n"})
     apply_usage_call(fold.handle(other), db)
     cursors = {r["model_id"]: r["projection_cursor"] for r in db.query(AGGREGATE_TABLE)}
-    assert cursors == {"m": 1, "n": 2}
+    assert cursors == {"n": 2, "m": 3}
     apply_usage_call(fold.handle(_sourced("c", 1.0, "measured")), db)
     cursors = {r["model_id"]: r["projection_cursor"] for r in db.query(AGGREGATE_TABLE)}
-    assert cursors == {"m": 3, "n": 2}
+    assert cursors == {"m": 4, "n": 5}
 
 
 def test_the_measured_cost_migration_is_additive() -> None:
@@ -416,7 +419,13 @@ def test_exposure_is_bus_backed_at_the_model_day_grain() -> None:
     assert exposure.topic == "onex.snapshot.projection.usage-by-model-day.v1"
     assert exposure.bus_backed is True
     assert exposure.cursor_column == "projection_cursor"
-    assert exposure.key_columns == ("tenant_id", "usage_day", "model_id")
+    # OMN-21015: the tier joins the key, so the grain is model, tier and day.
+    assert exposure.key_columns == (
+        "tenant_id",
+        "usage_day",
+        "model_id",
+        "cost_tier_name",
+    )
     for column in (
         "input_tokens",
         "output_tokens",

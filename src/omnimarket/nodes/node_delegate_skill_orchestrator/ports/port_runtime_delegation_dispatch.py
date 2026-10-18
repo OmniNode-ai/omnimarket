@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,12 +28,20 @@ from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
 )
 from omnimarket.events.delegation import ModelDelegationRequest
+from omnimarket.models.delegation.wire.model_named_test_run_request import (
+    ModelNamedTestSpec,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     dispatch_stage,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
+    RunStepRecorder,
+)
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _CONFIG_KEY = "delegation_runtime_dispatch"
@@ -121,7 +131,18 @@ class RuntimeDelegationDispatchPort:
         no_escalation: bool = False,
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
     ) -> dict[str, object]:
+        # OMN-21077: tests run where the workspace is, and a deployed lane has no
+        # access to the caller's workspace. Refused rather than dropped, so a
+        # caller who named tests is told where they run instead of reading an
+        # INSUFFICIENT refusal for tests that never ran.
+        if named_tests is not None:
+            raise ValueError(
+                "named tests are not run by this dispatch port; a code answer is "
+                "tested against its named tests only on the in-process path, "
+                "by the named-test runner that port is given"
+            )
         # OMN-20844: the canonical delegation request this port publishes has
         # no model field at the Core floor this package locks, so a model the
         # caller named cannot reach the consumer. Refused rather than dropped,
@@ -182,6 +203,11 @@ class RuntimeDelegationDispatchPort:
             response_format=response_format,
         )
 
+        # OMN-19972: the run began here. Its steps are numbered once the chain
+        # answers, from this moment, and published over this port's own bus.
+        run_started_at = datetime.now(UTC)
+        run_started = time.monotonic()
+
         if not wait:
             with dispatch_stage("publish"):
                 await self._publish_request(request)
@@ -210,6 +236,15 @@ class RuntimeDelegationDispatchPort:
             with dispatch_stage("terminal_wait"):
                 terminal = await asyncio.wait_for(queue.get(), timeout=timeout_seconds)
         except TimeoutError as exc:
+            await self._publish_run_steps(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                tenant_id=tenant_id,
+                started_at=run_started_at,
+                started=run_started,
+                status="timeout",
+                payload=None,
+            )
             return {
                 "status": "timeout",
                 "error_message": (
@@ -223,6 +258,15 @@ class RuntimeDelegationDispatchPort:
             with dispatch_stage("terminal_cleanup"):
                 await _unsubscribe(unsubscribe)
 
+        await self._publish_run_steps(
+            correlation_id=correlation_id,
+            task_type=task_type,
+            tenant_id=tenant_id,
+            started_at=run_started_at,
+            started=run_started,
+            status=terminal.status,
+            payload=terminal.payload,
+        )
         result: dict[str, object] = {
             "status": terminal.status,
             "correlation_id": str(correlation_id),
@@ -232,6 +276,80 @@ class RuntimeDelegationDispatchPort:
         if terminal.payload:
             result.update(_flatten_terminal_payload(terminal.payload))
         return result
+
+    async def _publish_run_steps(
+        self,
+        *,
+        correlation_id: UUID,
+        task_type: str,
+        tenant_id: str | None,
+        started_at: datetime,
+        started: float,
+        status: str,
+        payload: dict[str, object] | None,
+    ) -> None:
+        """Number the run's steps from its terminal and publish them in order.
+
+        OMN-19972: the downstream chain takes the steps; this node numbers them,
+        as its contract declares for ``run_step_event``, so a deployed run
+        reaches the run-trace writer the way a local one does. Best-effort, like
+        the recorder: a step that cannot be delivered is a gap on the page,
+        never a failed delegation.
+        """
+        flat = {} if payload is None else _flatten_terminal_payload(payload)
+        tenant = _text(flat.get("tenant_id")) or _text(tenant_id)
+        if tenant is None:
+            logger.warning(
+                "run steps of correlation_id=%s not published: no tenant on the "
+                "request or the terminal",
+                correlation_id,
+            )
+            return
+        buffer = _BufferedRunStepPublisher()
+        try:
+            recorder = RunStepRecorder(
+                tenant_id=tenant,
+                correlation_id=correlation_id,
+                publisher=buffer,
+                store=None,
+                started_at=started_at,
+                started_monotonic=started,
+            )
+            _record_bus_run(
+                recorder,
+                task_type=task_type,
+                status=status,
+                flat=flat if payload is not None else None,
+                started_at=started_at,
+            )
+        except Exception:
+            logger.warning(
+                "run steps of correlation_id=%s could not be derived",
+                correlation_id,
+                exc_info=True,
+            )
+        for step in buffer.pending:
+            try:
+                envelope = ModelEventEnvelope[dict[str, object]](
+                    payload=step.payload,
+                    correlation_id=correlation_id,
+                    envelope_timestamp=datetime.now(UTC),
+                    event_type=step.event_type,
+                    source_tool=self._config.source_tool,
+                )
+                await self._event_bus.publish(
+                    step.topic,
+                    step.partition_key.encode("utf-8") if step.partition_key else None,
+                    envelope.model_dump_json(exclude_none=True).encode("utf-8"),
+                    None,
+                )
+            except Exception:
+                logger.warning(
+                    "run step %s of correlation_id=%s was not published",
+                    step.event_id,
+                    correlation_id,
+                    exc_info=True,
+                )
 
     async def _publish_request(self, request: ModelDelegationRequest) -> None:
         envelope = ModelEventEnvelope[ModelDelegationRequest](
@@ -291,6 +409,157 @@ class RuntimeDelegationDispatchPort:
                 await unsubscribe_topic()
 
         return unsubscribe, queue
+
+
+class _BufferedStep:
+    __slots__ = ("event_id", "event_type", "partition_key", "payload", "topic")
+
+    def __init__(
+        self,
+        *,
+        topic: str,
+        event_type: str,
+        payload: dict[str, object],
+        event_id: str,
+        partition_key: str | None,
+    ) -> None:
+        self.topic = topic
+        self.event_type = event_type
+        self.payload = payload
+        self.event_id = event_id
+        self.partition_key = partition_key
+
+
+class _BufferedRunStepPublisher:
+    """Holds the recorder's steps, in its order, until the port awaits the bus."""
+
+    def __init__(self) -> None:
+        self.pending: list[_BufferedStep] = []
+
+    def publish(
+        self,
+        *,
+        topic: str,
+        event_type: str,
+        payload: Mapping[str, object],
+        event_id: str,
+        correlation_id: str | None = None,
+        partition_key: str | None = None,
+    ) -> bool:
+        self.pending.append(
+            _BufferedStep(
+                topic=topic,
+                event_type=event_type,
+                payload=dict(payload),
+                event_id=event_id,
+                partition_key=partition_key,
+            )
+        )
+        return True
+
+
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _bus_attempts(
+    flat: Mapping[str, object], *, status: str
+) -> list[Mapping[str, object]]:
+    """The chain's attempts, from its escalation ladder or, failing that, the terminal."""
+    history = flat.get("escalation_history")
+    if isinstance(history, list | tuple):
+        ladder = [entry for entry in history if isinstance(entry, Mapping)]
+        if ladder:
+            return ladder
+    cause = flat.get("routed_failure_cause")
+    provider_failed = isinstance(cause, Mapping) and cause.get("kind") == "provider"
+    failure = _text(flat.get("terminal_failure_reason")) or _text(
+        flat.get("failure_reason")
+    )
+    attempt: dict[str, object] = {
+        "backend_ref": flat.get("backend_ref") or flat.get("route"),
+        "model_used": flat.get("model_used"),
+        "tier": flat.get("cost_tier_name"),
+        "latency_ms": flat.get("latency_ms"),
+    }
+    if status == "completed":
+        attempt["acceptance_decision"] = "accept"
+    elif provider_failed:
+        attempt["acceptance_decision"] = "terminate"
+        attempt["acceptance_reason"] = "provider_call_failed"
+        attempt["failure_reasons"] = [failure] if failure else []
+    else:
+        attempt["acceptance_decision"] = "terminate"
+        attempt["acceptance_reason"] = (
+            _text(cause.get("kind")) if isinstance(cause, Mapping) else None
+        ) or "quality_gate_rejection"
+        attempt["failure_reasons"] = [failure] if failure else []
+    return [attempt]
+
+
+def _record_bus_run(
+    recorder: RunStepRecorder,
+    *,
+    task_type: str,
+    status: str,
+    flat: Mapping[str, object] | None,
+    started_at: datetime,
+) -> None:
+    """Take a deployed run's steps in the order the chain took them."""
+    recorder.request(task_type=task_type)
+    if flat is None:
+        recorder.terminal(succeeded=False, failure_cause=status)
+        return
+    model = _text(flat.get("model_used"))
+    backend = _text(flat.get("backend_ref")) or _text(flat.get("route"))
+    if backend is None and flat.get("routing_disposition") == "unrouted":
+        recorder.terminal(
+            succeeded=False,
+            model_id=model,
+            failure_cause=_text(flat.get("unrouted_reason")) or "unrouted",
+        )
+        return
+    tier = _text(flat.get("cost_tier_name")) or "unknown"
+    attempts = _bus_attempts(flat, status=status)
+    for index, attempt in enumerate(attempts):
+        attempt_backend = _text(attempt.get("backend_ref")) or backend or "unknown"
+        attempt_model = _text(attempt.get("model_used")) or model
+        recorder.routing(
+            backend_id=attempt_backend,
+            model_id=attempt_model or "",
+            tier=_text(attempt.get("tier")) or tier,
+        )
+        last = index == len(attempts) - 1
+        latency = attempt.get("latency_ms")
+        if last and not isinstance(latency, int):
+            latency = flat.get("latency_ms")
+        reason_code = _text(attempt.get("acceptance_reason"))
+        reasons = attempt.get("failure_reasons")
+        detail = (
+            "; ".join(str(r) for r in reasons)
+            if isinstance(reasons, list | tuple) and reasons
+            else None
+        )
+        provider_failed = reason_code == "provider_call_failed"
+        recorder.provider_call(
+            started_at=started_at,
+            duration_ms=latency if isinstance(latency, int) and latency >= 0 else None,
+            backend_id=attempt_backend,
+            model_id=attempt_model,
+            failure_cause=reason_code if provider_failed else None,
+            reason=detail if provider_failed else None,
+        )
+        if provider_failed:
+            continue
+        accepted = attempt.get("acceptance_decision") == "accept"
+        recorder.quality_gate(
+            backend_id=attempt_backend,
+            failure_cause=None if accepted else (reason_code or "rejected"),
+            reason=None if accepted else detail,
+        )
+    recorder.terminal(
+        succeeded=status == "completed", backend_id=backend, model_id=model
+    )
 
 
 def _message_value(message: object) -> bytes | str | None:

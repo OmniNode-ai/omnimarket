@@ -13,10 +13,11 @@ import base64
 import hashlib
 import http.client
 import io
+import json
 import urllib.request
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from omnimarket.github_landing.github_landing_requests import (
     GithubLandingRequestError,
@@ -26,15 +27,18 @@ from omnimarket.github_landing.github_landing_transport import (
     _AuthStrippingRedirectHandler,
     _read_capped,
 )
+from omnimarket.nodes.node_github_repo_gateway_effect import __main__ as gateway_cli
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
     MAX_TEXT_CHARS,
     EnumArtifactFetchRefusal,
     EnumGithubGatewayOperation,
     ModelArtifactsResult,
+    ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
     ModelJobLogTailResult,
+    ModelMergedPrResult,
     ModelPrHeadsResult,
     ModelPrTextResult,
     ModelReleasesResult,
@@ -64,7 +68,7 @@ pytestmark = pytest.mark.unit
 _RUN = 30433642
 _BASE = f"/repos/{REPO}"
 
-# The six OMN-20912 operations and the typed result each must return; the
+# The SCM read operations and the typed result each must return; the
 # protocol tests' every-operation coverage check unions this map with its own.
 SCM_READ_RESULT_MODELS: dict[EnumGithubGatewayOperation, type[BaseModel]] = {
     EnumGithubGatewayOperation.WORKFLOW_RUNS: ModelWorkflowRunsResult,
@@ -74,6 +78,8 @@ SCM_READ_RESULT_MODELS: dict[EnumGithubGatewayOperation, type[BaseModel]] = {
     EnumGithubGatewayOperation.PR_TEXT: ModelPrTextResult,
     EnumGithubGatewayOperation.RELEASES: ModelReleasesResult,
     EnumGithubGatewayOperation.PR_HEADS: ModelPrHeadsResult,
+    EnumGithubGatewayOperation.COMMIT_CHECK_RUNS: ModelCommitCheckRunsResult,
+    EnumGithubGatewayOperation.MERGED_PR: ModelMergedPrResult,
 }
 
 
@@ -195,6 +201,46 @@ def test_run_jobs_returns_every_attempt_with_steps() -> None:
     assert result.jobs[0].steps[1].name == "Run pytest"
     assert result.jobs[0].steps[1].conclusion == "failure"
     assert result.truncated is False
+
+
+def test_run_jobs_steps_carry_when_each_started_and_completed() -> None:
+    """The published-board reader dates a publish by its upload step's ``completed_at``."""
+    path = f"{_BASE}/actions/runs/{_RUN}/jobs?filter=all&per_page=100&page=1"
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.RUN_JOBS, run_id=_RUN),
+        [
+            JsonExchange(
+                get(path),
+                json_response(
+                    {
+                        "total_count": 1,
+                        "jobs": [run_job(1, attempt=1, conclusion="success")],
+                    }
+                ),
+            )
+        ],
+    )
+    assert isinstance(result, ModelRunJobsResult)
+    steps = result.jobs[0].steps
+    assert [(s.started_at, s.completed_at) for s in steps] == [
+        ("2026-10-10T18:01:00Z", "2026-10-10T18:01:02Z"),
+        ("2026-10-10T18:01:02Z", "2026-10-10T18:09:00Z"),
+    ]
+
+
+def test_run_jobs_step_that_has_not_run_has_no_timestamps() -> None:
+    path = f"{_BASE}/actions/runs/{_RUN}/jobs?filter=all&per_page=100&page=1"
+    job = run_job(1, attempt=1, conclusion=None)
+    job["steps"] = [
+        {"name": "Queued step", "status": "queued", "conclusion": None, "number": 1}
+    ]
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.RUN_JOBS, run_id=_RUN),
+        [JsonExchange(get(path), json_response({"total_count": 1, "jobs": [job]}))],
+    )
+    assert isinstance(result, ModelRunJobsResult)
+    step = result.jobs[0].steps[0]
+    assert (step.started_at, step.completed_at) == (None, None)
 
 
 # --- job_log_tail -----------------------------------------------------------------
@@ -524,6 +570,216 @@ def test_pr_heads_narrows_to_a_branch_or_a_head() -> None:
     assert [pr.number for pr in by_head.prs] == [10]
 
 
+# --- commit_check_runs and merged_pr (OMN-21146) ---------------------------------
+
+
+def _check_run(run_id: int) -> dict[str, object]:
+    return {
+        "id": run_id,
+        "name": "verify / required",
+        "app": {"slug": "github-actions", "id": 123},
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {"head_branch": "jonah/omn-21146", "id": 456},
+        "started_at": "2026-10-15T12:00:00Z",
+        "completed_at": "2026-10-15T12:01:00Z",
+        "html_url": "https://github.com/example/check",
+    }
+
+
+def test_commit_check_runs_pages_filters_and_reports_truncation() -> None:
+    first = (
+        f"{_BASE}/commits/{HEAD}/check-runs"
+        "?check_name=verify+%2F+required&filter=latest&per_page=100"
+    )
+    second = f"{first}&page=2"
+    result, transport = _run(
+        _req(
+            EnumGithubGatewayOperation.COMMIT_CHECK_RUNS,
+            head_sha=HEAD,
+            check_name="verify / required",
+            limit=150,
+        ),
+        [
+            JsonExchange(
+                get(first),
+                json_response(
+                    {
+                        "total_count": 200,
+                        "check_runs": [_check_run(i) for i in range(100)],
+                    },
+                    next_path=second,
+                ),
+            ),
+            JsonExchange(
+                get(second),
+                json_response(
+                    {
+                        "total_count": 200,
+                        "check_runs": [_check_run(i) for i in range(100, 200)],
+                    }
+                ),
+            ),
+        ],
+    )
+    assert isinstance(result, ModelCommitCheckRunsResult)
+    assert (result.repo, result.head_sha, result.check_name) == (
+        REPO,
+        HEAD,
+        "verify / required",
+    )
+    assert (result.total_count, result.truncated) == (200, True)
+    assert [run.id for run in result.check_runs] == list(range(150))
+    assert result.check_runs[0].model_dump() == {
+        "id": 0,
+        "name": "verify / required",
+        "app_slug": "github-actions",
+        "status": "completed",
+        "conclusion": "success",
+        "head_branch": "jonah/omn-21146",
+        "started_at": "2026-10-15T12:00:00Z",
+        "completed_at": "2026-10-15T12:01:00Z",
+    }
+    assert len(transport.sent) == 2
+
+
+def test_commit_check_runs_without_filter_maps_nullable_fields() -> None:
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.COMMIT_CHECK_RUNS, head_sha=HEAD, limit=1),
+        [
+            JsonExchange(
+                get(f"{_BASE}/commits/{HEAD}/check-runs?filter=latest&per_page=1"),
+                json_response(
+                    {
+                        "total_count": 1,
+                        "check_runs": [
+                            {
+                                "id": 7,
+                                "name": "queued",
+                                "status": "queued",
+                                "app": None,
+                                "check_suite": {"head_branch": None},
+                            }
+                        ],
+                    }
+                ),
+            )
+        ],
+    )
+    assert isinstance(result, ModelCommitCheckRunsResult)
+    assert result.check_name is None
+    assert result.truncated is False
+    run = result.check_runs[0]
+    assert (run.app_slug, run.head_branch, run.conclusion) == (None, None, None)
+    assert (run.started_at, run.completed_at) == (None, None)
+
+
+def test_commit_check_runs_rejects_an_empty_check_name() -> None:
+    with pytest.raises(ValidationError, match="check_name"):
+        _req(EnumGithubGatewayOperation.COMMIT_CHECK_RUNS, head_sha=HEAD, check_name="")
+
+
+@pytest.mark.parametrize(
+    ("merged", "rest_state", "expected_state"),
+    [(True, "closed", "MERGED"), (False, "open", "OPEN"), (False, "closed", "CLOSED")],
+)
+def test_merged_pr_maps_state_refs_and_actual_merge_sha(
+    merged: bool, rest_state: str, expected_state: str
+) -> None:
+    merged_at = "2026-10-15T12:02:00Z" if merged else None
+    result, transport = _run(
+        _req(EnumGithubGatewayOperation.MERGED_PR, pr_number=2962),
+        [
+            JsonExchange(
+                get(f"{_BASE}/pulls/2962"),
+                json_response(
+                    {
+                        **pull_request(2962, body=""),
+                        "merged": merged,
+                        "state": rest_state,
+                        "merge_commit_sha": _MERGE_SHA,
+                        "merged_at": merged_at,
+                    }
+                ),
+            )
+        ],
+    )
+    assert isinstance(result, ModelMergedPrResult)
+    assert (result.repo, result.pr_number) == (REPO, 2962)
+    assert (result.state, result.merged) == (expected_state, merged)
+    assert result.merge_commit_sha == (_MERGE_SHA if merged else None)
+    assert result.merged_at == merged_at
+    assert (result.head_sha, result.head_ref, result.base_ref) == (
+        HEAD,
+        "jonah/omn-20912-example",
+        "dev",
+    )
+    assert len(transport.sent) == 1
+
+
+def test_cli_passes_check_name_to_the_commit_read(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    transport = RecordedGatewayTransport(
+        [
+            JsonExchange(
+                get(
+                    f"{_BASE}/commits/{HEAD}/check-runs?check_name=verify&filter=latest&per_page=30"
+                ),
+                json_response({"total_count": 0, "check_runs": []}),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        gateway_cli, "resolve_github_token", lambda: SecretStr("test-token")
+    )
+    monkeypatch.setattr(
+        gateway_cli, "RealGitHubReadTransport", lambda _token: transport
+    )
+    assert (
+        gateway_cli.main(
+            [
+                "--operation",
+                "commit_check_runs",
+                "--repo",
+                REPO,
+                "--head-sha",
+                HEAD,
+                "--check-name",
+                "verify",
+            ]
+        )
+        == 0
+    )
+    transport.assert_drained()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["operation"] == "commit_check_runs"
+    assert payload["check_name"] == "verify"
+
+
+@pytest.mark.parametrize("operation", ["commit_check_runs", "merged_pr"])
+def test_new_reads_round_trip_through_result_discriminator(operation: str) -> None:
+    result: dict[str, object] = {"operation": operation, "repo": REPO, "head_sha": HEAD}
+    if operation == "commit_check_runs":
+        result.update(check_runs=[], truncated=False)
+        expected = ModelCommitCheckRunsResult
+    else:
+        result.update(
+            pr_number=2962,
+            state="OPEN",
+            merged=False,
+            head_ref="jonah/omn-21146",
+            base_ref="dev",
+        )
+        expected = ModelMergedPrResult
+    wrapped = ModelGithubGatewayResponse.model_validate(
+        {"correlation_id": "00000000-0000-4000-8000-000000021146", "result": result}
+    )
+    reparsed = ModelGithubGatewayResponse.model_validate_json(wrapped.model_dump_json())
+    assert isinstance(reparsed.result, expected)
+    assert reparsed == wrapped
+
+
 # --- protocol A for the new operations, and the wire round trip ------------------
 
 
@@ -562,12 +818,16 @@ def test_response_wrapper_carries_an_scm_read_result() -> None:
         (EnumGithubGatewayOperation.ARTIFACTS, "run_id"),
         (EnumGithubGatewayOperation.JOB_LOG_TAIL, "job_id"),
         (EnumGithubGatewayOperation.PR_TEXT, "pr_number"),
+        (EnumGithubGatewayOperation.COMMIT_CHECK_RUNS, "head_sha"),
+        (EnumGithubGatewayOperation.MERGED_PR, "pr_number"),
     ],
 )
 def test_scoped_operations_require_their_id(
     op: EnumGithubGatewayOperation, missing: str
 ) -> None:
-    with pytest.raises(ValidationError, match=missing):
+    with pytest.raises(
+        ValidationError, match=f"operation {op.value!r} requires {missing} to be set\\."
+    ):
         _req(op)
 
 

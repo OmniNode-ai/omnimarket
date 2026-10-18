@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# OMN-19888: clear two reds whose cause has already gone away.
+# OMN-19888, OMN-18010: clear three reds whose cause has already gone away.
 #
 # Modelled on occ-companion-merge-heal.yml (OMN-18812): a scheduled, read-first
 # heal whose pure decision functions are pinned by
@@ -9,7 +9,7 @@
 # in scripts/ci/pr_stale_red_heal.py's module docstring; this header states only
 # what the workflow itself decides.
 #
-# THE TWO REDS
+# THE REDS
 # 1. Release Identity Gate, failed inside a release window. Releases are cut on
 #    an explicit trigger (OMN-18010, release-cut.yml, replacing the retired
 #    release-on-merge.yml), not on every dev merge, so this window now opens at
@@ -26,6 +26,12 @@
 #    and CI Summary's job when that is its only red, once every migration the
 #    gate named is byte-identical on infra dev AND was vendored after the gate
 #    failed. A failure after the vendor landed is a real red and is left alone.
+# 3. Release Staleness (OMN-18010), failed before the release it waited on was cut.
+#    It rides the schedule: the measurement reads dev and tags live, so
+#    re-running the failed jobs clears it once a newer tag exists. When the
+#    gate and CI Summary are the run's only reds, both re-run together; other
+#    reds leave CI Summary alone and re-run only the gate. A re-run's own
+#    failure names the new tag as its base: once per release per head.
 #
 # TRIGGERS
 # The schedule is the floor. `push` to dev on pyproject.toml fires when the
@@ -83,7 +89,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, release-window, vendor-parity]
+        options: [all, release-window, vendor-parity, release-staleness]
       dry-run:
         description: Report the decisions without updating or re-running anything.
         required: false
@@ -109,9 +115,9 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
-    # OMNI_RUNNER_SELECTOR_V1 - trusted CI defaults to self-hosted omnibase-ci.
+    # OMNI_RUNNER_SELECTOR_V1 - trusted CI defaults to ubuntu-latest.
     runs-on: >-
-      ${{ fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]') }}
+      ${{ fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

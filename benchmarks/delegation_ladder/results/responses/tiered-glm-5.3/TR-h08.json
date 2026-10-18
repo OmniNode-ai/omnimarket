@@ -1,0 +1,6 @@
+{
+  "task_id": "TR-h08",
+  "path": "pinned",
+  "sha256": "43eaa3b2b761b1cfb7b3bc9df725743725d505870beb6ad99434b899466435e4",
+  "response": "**[298]** — `data = yaml.safe_load(path.read_text(encoding=\"utf-x\"))`: the invalid encoding name makes `read_text` raise an uncaught `LookupError` instead of returning findings, contradicting line [497] (`assert validate_file(contract) == []` in `test_passing_contract_has_no_findings`), which (like every other test in the file that writes a utf-8 contract and calls `validate_file`/`validate_paths`/`main`) requires the function to return normally."
+}

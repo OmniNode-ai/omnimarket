@@ -1,0 +1,6 @@
+{
+  "task_id": "TD-e07",
+  "path": "pinned",
+  "sha256": "9a1aacbfaecee87d7e3f3c8be8c07c2336ae194275f97d7d5d18ce6cace0dafd",
+  "response": "Pull request #987 adds EnumFileZone (StrEnum) with six directory-role values, a classify_path function for priority-based zone classification, and ModelZonePolicy for per-zone QA gate configuration (ticket OMN-10351). This enables tiered QA gates based on directory role rather than file extension/format."
+}

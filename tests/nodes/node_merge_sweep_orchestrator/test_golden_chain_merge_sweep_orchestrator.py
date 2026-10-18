@@ -155,8 +155,9 @@ def test_without_a_supplement_the_unread_facts_are_named_and_the_sweep_is_incomp
     assert result.ok, result.why
     assert result.complete is False
     fields = {u.field for u in result.unread}
-    assert "merge-files" in fields
     assert any(f.startswith("files:") for f in fields)
+    # A merge with no changed-file list is counted once, under product.excluded.files_unread.
+    assert "merge-files" not in fields
 
 
 def test_the_runner_is_never_started_when_dispatch_is_off(tmp_path: Path) -> None:

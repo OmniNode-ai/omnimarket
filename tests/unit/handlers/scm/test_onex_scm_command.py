@@ -27,6 +27,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 from omnibase_infra.errors import InfraConnectionError
+from pydantic import BaseModel, ConfigDict, create_model
 
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_scm_dispatch import (
@@ -35,10 +36,15 @@ from omnimarket.handlers.scm.handler_scm_dispatch import (
     contract_operations,
     load_topics,
 )
+from omnimarket.models.pr_claim import EnumPrClaimOperation, ModelPrClaimRegistryRequest
 from omnimarket.models.scm import EnumScmNode
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
+)
+from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
+    carried_claim_refusal,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     EnumRepoWriteMode,
@@ -46,6 +52,13 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+)
+from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
+    JsonExchange,
+    RecordedGatewayTransport,
+    get,
+    json_response,
+    run_job,
 )
 
 pytestmark = pytest.mark.unit
@@ -248,6 +261,34 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
         "repo": r.repo,
         "truncated": False,
     },
+    "commit_check_runs": lambda r: {
+        "operation": "commit_check_runs",
+        "repo": r.repo,
+        "head_sha": r.head_sha,
+        "check_name": r.check_name,
+        "truncated": False,
+        "check_runs": [
+            {
+                "id": 9,
+                "name": r.check_name or "ci",
+                "app_slug": "github-actions",
+                "status": "completed",
+                "conclusion": "success",
+            }
+        ],
+    },
+    "merged_pr": lambda r: {
+        "operation": "merged_pr",
+        "repo": r.repo,
+        "pr_number": r.pr_number,
+        "state": "MERGED",
+        "merged": True,
+        "head_sha": HEAD,
+        "head_ref": "omn-1-x",
+        "base_ref": "dev",
+        "merge_commit_sha": MOVED,
+        "merged_at": "2026-10-10T18:00:00Z",
+    },
 }
 
 
@@ -378,6 +419,14 @@ _READ_ARGS: dict[str, list[str]] = {
     "run-download": [REPO, "--run-id", "11"],
     "release-list": [REPO],
     "pr-heads": [REPO, "--source", "bus"],
+    "commit-check-runs": [
+        REPO,
+        "--head-sha",
+        "a" * 40,
+        "--check-name",
+        "repo-evidence / dod-verify",
+    ],
+    "pr-merged": [f"{REPO}#77"],
 }
 _WRITE_ARGS: dict[str, list[str]] = {
     "pr-create": [
@@ -405,6 +454,21 @@ _WRITE_ARGS: dict[str, list[str]] = {
     ],
     "pr-comment": [f"{REPO}#77", "--body", "hello"],
     "workflow-run": [REPO, "--workflow", "ci.yml", "--ref", "dev", "--input", "a=b"],
+    "check-run-create": [
+        REPO,
+        "--name",
+        "lab/check",
+        "--head-sha",
+        HEAD,
+        "--status",
+        "completed",
+        "--conclusion",
+        "success",
+        "--output-title",
+        "Lab check",
+        "--output-summary",
+        "Passed.",
+    ],
 }
 
 
@@ -439,6 +503,60 @@ def test_read_verb_publishes_typed_command_and_returns_terminal(
     assert answer["bus"]["correlation_id"] == str(sent.correlation_id)
 
 
+def test_run_view_returns_step_timestamps_without_an_additional_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = f"/repos/{REPO}/actions/runs/11/jobs?filter=all&per_page=100&page=1"
+    transport = RecordedGatewayTransport(
+        [
+            JsonExchange(
+                get(path),
+                json_response(
+                    {
+                        "total_count": 1,
+                        "jobs": [run_job(1, attempt=1, conclusion="success")],
+                    }
+                ),
+            )
+        ]
+    )
+
+    class GatewayBus(FakeBus):
+        def _respond(
+            self, topic: str, payload: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            assert topic == GATEWAY.command
+            request = ModelGithubGatewayRequest.model_validate(payload)
+            response = ModelGithubGatewayResponse(
+                correlation_id=request.correlation_id,
+                result=dispatch(request, transport),
+            )
+            return GATEWAY.success, response.model_dump(mode="json")
+
+    bus = GatewayBus()
+    _install(monkeypatch, bus)
+    result = _run(["run-view", REPO, "--run-id", "11"])
+
+    assert result.exit_code == 0, result.output
+    answer = _answer(result)
+    assert answer["outcome"] == "completed"
+    assert answer["result"]["operation"] == "run_jobs"
+    steps = answer["result"]["jobs"][0]["steps"]
+    assert [(step["started_at"], step["completed_at"]) for step in steps] == [
+        ("2026-10-10T18:01:00Z", "2026-10-10T18:01:02Z"),
+        ("2026-10-10T18:01:02Z", "2026-10-10T18:09:00Z"),
+    ]
+    assert len(bus.published) == 1
+    assert bus.published[0][1]["payload"]["operation"] == "run_jobs"
+    transport.assert_drained()
+    assert transport.sent == [get(path)]
+    declared = sorted(contract_operations(EnumScmNode.GATEWAY))
+    assert len(declared) == 16
+    assert declared == sorted(
+        spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
+    )
+
+
 @pytest.mark.parametrize("verb_name", sorted(_WRITE_ARGS))
 def test_write_verb_publishes_typed_command_and_returns_terminal(
     monkeypatch: pytest.MonkeyPatch, verb_name: str
@@ -461,6 +579,72 @@ def test_write_verb_publishes_typed_command_and_returns_terminal(
     assert answer["result"]["operation"] == spec.operation
 
 
+# The request fields the runtime deployed before check_run_create accepts
+# (node_github_repo_write_effect contract 1.2.0). Its request model forbids
+# extra inputs, so a write envelope that names any other field is refused with
+# ONEX_CORE_345 before the handler runs, whatever its value. A client that is
+# newer than the runtime must still send only these for every older operation.
+_CONTRACT_1_2_0_FIELDS = frozenset(
+    {
+        "correlation_id",
+        "operation",
+        "repo",
+        "idempotency_key",
+        "requested_by_lane",
+        "requested_by_run",
+        "claim",
+        "pr_number",
+        "expected_head_sha",
+        "title",
+        "body",
+        "head",
+        "base",
+        "draft",
+        "workflow",
+        "ref",
+        "inputs",
+        "claims_dir",
+        "dry_run",
+    }
+)
+
+
+def _contract_1_2_0_request() -> type[BaseModel]:
+    fields: dict[str, Any] = {
+        name: (info.annotation, info)
+        for name, info in ModelRepoWriteRequest.model_fields.items()
+        if name in _CONTRACT_1_2_0_FIELDS
+    }
+    assert set(fields) == _CONTRACT_1_2_0_FIELDS
+    model: type[BaseModel] = create_model(
+        "ModelRepoWriteRequestContract120",
+        __config__=ConfigDict(frozen=True, extra="forbid"),
+        **fields,
+    )
+    return model
+
+
+@pytest.mark.parametrize("verb_name", sorted(set(_WRITE_ARGS) - {"check-run-create"}))
+def test_older_write_envelopes_validate_against_the_deployed_contract(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+
+    result = _run([verb_name, *_WRITE_ARGS[verb_name], "--lane", "lane-x"])
+
+    assert result.exit_code == 0, result.output
+    _, envelope = bus.published[0]
+    payload = envelope["payload"]
+    assert set(payload) <= _CONTRACT_1_2_0_FIELDS, sorted(
+        set(payload) - _CONTRACT_1_2_0_FIELDS
+    )
+    _contract_1_2_0_request().model_validate(payload)
+    assert (
+        ModelRepoWriteRequest.model_validate(payload).model_dump(mode="json") == payload
+    )
+
+
 def test_write_idempotency_key_is_stable_across_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -474,6 +658,144 @@ def test_write_idempotency_key_is_stable_across_retries(
     assert (
         bus.published[0][1]["correlation_id"] != bus.published[1][1]["correlation_id"]
     )
+
+
+# ------------------------------------------- pr-close carries the claim (OMN-21067)
+
+
+def _take_claim(claims: Path, *, lane: str, run: str, number: int = 77) -> None:
+    """Take a claim in ``claims`` the way pr_claim_registry_cli.py does.
+
+    The CLI files the claim under the key as typed, so ``OmniNode-ai/...``
+    lands in ``OmniNode-ai--...json``, not the lowercase canonical name.
+    """
+    from omnimarket.nodes.node_pr_claim_registry_effect.handlers.handler_pr_claim_registry import (
+        HandlerPrClaimRegistry,
+    )
+
+    taken = HandlerPrClaimRegistry().handle(
+        ModelPrClaimRegistryRequest(
+            operation=EnumPrClaimOperation.ACQUIRE,
+            claims_dir=str(claims),
+            now=(datetime.now(UTC) - timedelta(seconds=30)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            instance_id_path=str(claims / "instance-id"),
+            host="caller-host",
+            pr_key=f"{REPO}#{number}",
+            run_id=run,
+            action="close",
+            lane_id=lane,
+        )
+    )
+    assert taken.succeeded
+
+
+def _close_args(claims: Path, *extra: str) -> list[str]:
+    return [
+        "pr-close",
+        f"{REPO}#77",
+        "--head-sha",
+        HEAD,
+        "--run",
+        "run-1",
+        "--claims-dir",
+        str(claims),
+        "--lane",
+        "lane-x",
+        *extra,
+    ]
+
+
+def _published_close(bus: FakeBus) -> ModelRepoWriteRequest:
+    (topic, envelope), *rest = bus.published
+    assert topic == WRITE.command
+    assert rest == []
+    return ModelRepoWriteRequest.model_validate(envelope["payload"])
+
+
+def test_pr_close_sends_the_claim_the_caller_took(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # AC1: the claim is in the caller's registry; the command carries it, and
+    # not the caller's directory, which the effect's runtime cannot read.
+    _take_claim(tmp_path, lane="lane-x", run="run-1")
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+
+    result = _run(_close_args(tmp_path))
+
+    assert result.exit_code == 0, result.output
+    sent = _published_close(bus)
+    assert sent.claims_dir is None
+    assert sent.claim is not None
+    assert (sent.claim.lane_id, sent.claim.claimed_by_run, sent.claim.action) == (
+        "lane-x",
+        "run-1",
+        "close",
+    )
+    assert sent.claim.pr_key == f"{REPO.lower()}#77"
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # the effect accepts exactly what the CLI sent
+    assert carried_claim_refusal(sent.claim, sent, now) is None
+
+
+def test_pr_close_reads_the_claim_from_the_default_registry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    claims = tmp_path / "pr-queue" / "claims"
+    _take_claim(claims, lane="lane-x", run="run-1")
+    monkeypatch.delenv("ONEX_PR_CLAIMS_DIR", raising=False)
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+
+    args = _close_args(tmp_path)
+    del args[args.index("--claims-dir") : args.index("--claims-dir") + 2]
+    result = _run(args)
+
+    assert result.exit_code == 0, result.output
+    assert _published_close(bus).claim is not None
+
+
+def test_pr_close_with_no_claim_sends_none_and_says_so(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # AC2: no claim in the caller's registry: nothing is carried, so the
+    # effect refuses it; the CLI never invents one.
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+
+    result = _run(_close_args(tmp_path))
+
+    sent = _published_close(bus)
+    assert sent.claim is None
+    assert sent.claims_dir is None
+    assert f"no live claim on {REPO.lower()}#77" in result.output
+
+
+def test_pr_close_does_not_carry_a_claim_on_another_pr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _take_claim(tmp_path, lane="lane-x", run="run-1", number=78)
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    _run(_close_args(tmp_path))
+    assert _published_close(bus).claim is None
+
+
+def test_the_claim_does_not_change_the_idempotency_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # a retry after a heartbeat must stay the same write
+    _take_claim(tmp_path, lane="lane-x", run="run-1")
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    _run(_close_args(tmp_path))
+    (tmp_path / f"{REPO.replace('/', '--')}--77.json").unlink()
+    _run(_close_args(tmp_path))
+    keys = [envelope["payload"]["idempotency_key"] for _, envelope in bus.published]
+    assert keys[0] == keys[1]
 
 
 def test_failed_write_terminal_exits_one_on_the_failure_topic(
@@ -814,6 +1136,7 @@ def test_pr_heads_without_a_clone_is_unanswered_locally(
     bus = FakeBus()
     _install(monkeypatch, bus)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    monkeypatch.delenv("ONEX_SCM_CLONE_ROOT", raising=False)
     result = CliRunner().invoke(
         scm_cli.scm_group,
         [
@@ -853,3 +1176,90 @@ def test_verbs_table_lists_served_and_refused() -> None:
     table = json.loads(result.stdout)
     assert {v["verb"] for v in table["served"]} == {s.verb for s in SCM_VERBS}
     assert {v["verb"] for v in table["refused"]} == {r.verb for r in SCM_REFUSED_VERBS}
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("completed", "success"), ("queued", None), ("in_progress", None)],
+)
+def test_check_run_create_cli_maps_head_and_output(
+    monkeypatch: pytest.MonkeyPatch, status: str, conclusion: str | None
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = [
+        "check-run-create",
+        REPO,
+        "--name",
+        "lab/check",
+        "--head-sha",
+        HEAD,
+        "--status",
+        status,
+        "--output-title",
+        "Lab check",
+        "--output-summary",
+        "Passed.",
+        "--lane",
+        "lane-x",
+    ]
+    if conclusion is not None:
+        args += ["--conclusion", conclusion]
+    result = _run(args)
+    assert result.exit_code == 0, result.output
+    assert len(bus.published) == 1
+    topic, envelope = bus.published[0]
+    assert topic == WRITE.command
+    sent = ModelRepoWriteRequest.model_validate(envelope["payload"])
+    assert sent.operation.value == "check_run_create"
+    assert sent.head_sha == HEAD
+    assert sent.expected_head_sha is None
+    assert sent.name == "lab/check"
+    assert sent.status == status
+    assert sent.conclusion == conclusion
+    assert sent.output is not None
+    assert sent.output.title == "Lab check"
+    assert sent.output.summary == "Passed."
+
+
+@pytest.mark.parametrize(
+    ("extra", "missing"),
+    [
+        (["--status", "queued"], "head_sha"),
+        (
+            ["--head-sha", HEAD, "--status", "queued", "--output-title", "Lab"],
+            "summary",
+        ),
+        (["--head-sha", HEAD, "--status", "completed"], "conclusion"),
+    ],
+)
+def test_invalid_check_run_cli_does_not_open_bus(
+    monkeypatch: pytest.MonkeyPatch, extra: list[str], missing: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["check-run-create", REPO, "--name", "lab/check", "--lane", "lane-x", *extra]
+    )
+    assert result.exit_code == 2, result.output
+    assert missing in result.output
+    assert bus.published == []
+
+
+def test_check_run_retry_key_includes_head_and_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = ["check-run-create", *_WRITE_ARGS["check-run-create"], "--lane", "lane-x"]
+    for command in (
+        args,
+        args,
+        [MOVED if value == HEAD else value for value in args],
+        ["Changed." if value == "Passed." else value for value in args],
+    ):
+        result = _run(command)
+        assert result.exit_code == 0, result.output
+    keys = [envelope["payload"]["idempotency_key"] for _, envelope in bus.published]
+    assert keys[0] == keys[1]
+    assert len(set(keys)) == 3

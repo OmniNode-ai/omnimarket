@@ -242,6 +242,7 @@ class TestModelCanaryCommandPayload:
         assert payload.resume_run_id is None
         assert payload.max_cost_usd is None
         assert payload.allow_external_providers is False
+        assert payload.grader_model_key is None
 
     def test_model_subset_specified(self) -> None:
         payload = ModelCanaryCommandPayload(
@@ -482,7 +483,7 @@ class TestHandlerCanaryOrchestrator:
             workspace_root=str(tmp_path),
             dry_run=True,
         )
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
         assert isinstance(result, ModelCanaryReport)
         assert result.dry_run is True
         assert result.entries_total == 1
@@ -495,7 +496,7 @@ class TestHandlerCanaryOrchestrator:
             output_dir=str(tmp_path / "runs"),
             dry_run=True,
         )
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
         assert result.success is False
         assert result.error_message is not None
 
@@ -516,7 +517,7 @@ class TestHandlerCanaryOrchestrator:
             mock_draft_result,
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(minimal_manifest),
@@ -552,13 +553,15 @@ class TestHandlerCanaryOrchestrator:
             manifest_path=str(minimal_manifest),
             output_dir=str(tmp_path / "runs"),
             workspace_root=str(tmp_path),
+            grader_model_key="qwen3-coder",
         )
 
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
 
         assert isinstance(result, ModelCanaryReport)
         assert result.entries_total == 1
         assert result.success is True
+        assert result.scorecard_path is not None
         assert result.scorecard_path.endswith("scorecard.md")
         assert Path(result.scorecard_path).exists()
 
@@ -638,7 +641,7 @@ class TestHandlerCanaryOrchestrator:
             )
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
@@ -686,36 +689,105 @@ class TestHandlerCanaryOrchestrator:
         manifest_path.write_text(yaml.dump(manifest), encoding="utf-8")
 
         mock_ingest = AsyncMock()
-        mock_ingest_result = ModelAdrIngestionResult(documents=[], root_paths=[])
-        mock_ingest.ingest = AsyncMock(return_value=mock_ingest_result)
+        mock_ingest.ingest = AsyncMock(
+            return_value=ModelAdrIngestionResult(documents=[], root_paths=[])
+        )
+        segmentation = AsyncMock()
+        extraction = AsyncMock()
+        grading = AsyncMock()
 
         handler = HandlerCanaryOrchestrator(
             FakeContainer(
                 {
                     "ingestion": mock_ingest,
-                    "segmentation": AsyncMock(),
-                    "extraction": AsyncMock(),
-                    "grading": AsyncMock(),
+                    "segmentation": segmentation,
+                    "extraction": extraction,
+                    "grading": grading,
                     "draft_gen": AsyncMock(),
                 }
             )
         )
         handler._allow_external_providers = False  # noqa: SLF001
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
                     output_dir=str(tmp_path / "runs"),
                     workspace_root=str(tmp_path),
+                    grader_model_key="qwen3-coder",
                 )
             )
         )
 
         assert isinstance(result, ModelCanaryReport)
         assert result.success is False
-        assert result.entries_failed == 1
-        assert result.model_scores[0].entries_evaluated == 0
+        assert result.error_message is not None
+        assert "claude-opus" in result.error_message
+        assert result.entries_total == 1
+        assert result.model_scores == []
+        assert result.scorecard_path is None
+        assert not Path(result.evidence_dir).exists()
+        for stage in (mock_ingest, segmentation, extraction, grading):
+            assert stage.mock_calls == []
+
+    def test_external_model_is_skipped_while_a_lab_model_still_runs(
+        self,
+        tmp_path: Path,
+        mock_ingestion_result: Any,
+        mock_extraction_result: Any,
+        mock_grading_result: Any,
+        mock_draft_result: Any,
+    ) -> None:
+        manifest = {
+            "entries": [
+                {
+                    "id": "mixed-entry",
+                    "root_paths": [str(tmp_path)],
+                    "ground_truth_adr": "# ADR",
+                    "models": [
+                        {
+                            "key": "qwen3-coder",
+                            "provider": "local",
+                            "model_id": "m-local",
+                            "external": False,
+                        },
+                        {
+                            "key": "claude-opus",
+                            "provider": "anthropic",
+                            "model_id": "claude-opus-4",
+                            "external": True,
+                        },
+                    ],
+                }
+            ]
+        }
+        manifest_path = tmp_path / "mixed_manifest.yaml"
+        manifest_path.write_text(yaml.dump(manifest), encoding="utf-8")
+        handler = _make_handler(
+            tmp_path,
+            mock_ingestion_result,
+            mock_extraction_result,
+            mock_grading_result,
+            mock_draft_result,
+        )
+
+        result = asyncio.run(
+            handler.handle(
+                ModelCanaryCommandPayload(
+                    manifest_path=str(manifest_path),
+                    output_dir=str(tmp_path / "runs"),
+                    workspace_root=str(tmp_path),
+                    grader_model_key="qwen3-coder",
+                )
+            )
+        )
+
+        by_model = {score.model_key: score for score in result.model_scores}
+        assert by_model["qwen3-coder"].entries_extracted == 1
+        assert by_model["claude-opus"].entries_extracted == 0
+        assert result.scorecard_path is not None
+        assert Path(result.scorecard_path).exists()
 
     def test_model_subset_filter(self, tmp_path: Path) -> None:
         manifest = {
@@ -789,13 +861,14 @@ class TestHandlerCanaryOrchestrator:
             )
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             handler.handle(
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
                     output_dir=str(tmp_path / "runs"),
                     workspace_root=str(tmp_path),
                     model_subset=["model-a"],
+                    grader_model_key="qwen3-coder",
                 )
             )
         )
@@ -861,9 +934,10 @@ class TestHandlerCanaryOrchestrator:
             manifest_path=str(minimal_manifest),
             output_dir=str(tmp_path / "runs"),
             workspace_root=str(tmp_path),
+            grader_model_key="qwen3-coder",
         )
 
-        result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
+        result = asyncio.run(handler.handle(payload))
 
         evidence_dir = Path(result.evidence_dir)
         entry_dir = evidence_dir / "test-entry-1"
@@ -949,7 +1023,7 @@ class TestAdrBusProtocolAdapters:
             FakeContainer({ProtocolEventBusPublisher: bus})
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             adapter.ingest(root_paths=["/tmp/source"], workspace_root="/tmp")
         )
 

@@ -1,0 +1,23 @@
+{
+  "task_id": "TR-e04",
+  "title": "find the altered line (omnibase_core@4d65c6865f)",
+  "task_type": "review",
+  "difficulty": "easy",
+  "provenance": "Merged commit omnibase_core@4d65c6865f2abe28a012af45f333a0ff9d76d70f. One added source line had the literal 'semantic_grading' altered to 'semantic_gradinx'; everything else is the merged diff.",
+  "prompt": "You are reviewing a merged pull request. Its description:\n\nfeat(OMN-10859): add SEMANTIC_GRADING to EnumDodCheckType (#1066)\n\n* feat(OMN-10859): add SEMANTIC_GRADING to EnumDodCheckType\n\nPhase 1 of the semantic ticket verification gate. Adds a new check_type\nvalue to EnumDodCheckType so ModelDodEvidenceCheck can declare semantic\ngrading receipts as DoD evidence. Phase 1: advisory-only (ADVISORY status\npasses); Phase 2 adds hard-fail after calibration.\n\n* chore(OMN-10859): re-trigger CI after adding Evidence-Source to PR #1066 body\n\nThe diff below was altered after the merge: exactly one added line outside the test files was edited so that it no longer agrees with the tests added in the same diff. Every added line carries a label such as [12]. Name the label of the altered line, then one sentence saying which test line it contradicts.\n\nDIFF:\n--- a/src/omnibase_core/enums/ticket/enum_dod_check_type.py\n+++ b/src/omnibase_core/enums/ticket/enum_dod_check_type.py\n@@ -35,6 +35,10 @@ class EnumDodCheckType(StrEnum):\n         Assert that a deployed binary SHA matches the expected contract SHA.\n     COMMAND_EXIT_0\n         Assert that a shell command exits with code 0 (explicit exit-code variant).\n[1]+    SEMANTIC_GRADING\n[2]+        Assert that a semantic grading receipt exists at the canonical path, produced\n[3]+        by node_pr_semantic_grader_llm_effect. Phase 1: ADVISORY status passes.\n[4]+        Phase 2 (after calibration): hard fail when anti_pattern_present >= 0.7.\n     \"\"\"\n \n     TEST_EXISTS = \"test_exists\"\n@@ -47,6 +51,7 @@ class EnumDodCheckType(StrEnum):\n     RENDERED_OUTPUT = \"rendered_output\"\n     RUNTIME_SHA_MATCH = \"runtime_sha_match\"\n     COMMAND_EXIT_0 = \"command_exit_0\"\n[5]+    SEMANTIC_GRADING = \"semantic_gradinx\"\n \n \n __all__ = [\"EnumDodCheckType\"]\n--- a/tests/unit/models/ticket/test_model_contract_dod_item.py\n+++ b/tests/unit/models/ticket/test_model_contract_dod_item.py\n@@ -160,3 +160,18 @@ class TestModelContractDodItemExtendedChecks:\n             checks=[check],\n         )\n         assert item.checks[0].cwd is None\n[6]+\n[7]+    def test_semantic_grading_check_type_accepted(self) -> None:\n[8]+        \"\"\"OMN-10859: SEMANTIC_GRADING check type accepted by ModelDodEvidenceCheck.\"\"\"\n[9]+        check = ModelDodEvidenceCheck(\n[10]+            check_type=EnumDodCheckType.SEMANTIC_GRADING,\n[11]+            check_value=\"drift/dod_receipts/OMN-10859/dod-001/semantic_grading.yaml\",\n[12]+        )\n[13]+        item = ModelContractDodItem(\n[14]+            id=\"dod-013\",\n[15]+            description=\"Acceptance criteria semantically satisfied (advisory Phase 1)\",\n[16]+            source=\"generated\",\n[17]+            checks=[check],\n[18]+        )\n[19]+        assert item.checks[0].check_type == EnumDodCheckType.SEMANTIC_GRADING\n[20]+        assert item.checks[0].check_type == \"semantic_grading\"\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "[5]"
+    ],
+    "forbidden": [
+      "[1]",
+      "[2]",
+      "[3]",
+      "[4]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

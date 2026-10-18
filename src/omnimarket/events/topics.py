@@ -61,6 +61,12 @@ ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-update
 # GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
 PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
 
+# Repository merge event (OMN-20496). Published by `clone-refresh publish`, which the
+# landing controller runs after its merge readback and the PR watcher runs for a merge
+# it observed and did not make; consumed by node_canonical_clone_refresh_effect and,
+# as a second source of pr_merged_events (OMN-19998), by node_pr_merged_projection.
+REPO_MERGED_TOPIC_V1 = "onex.evt.omnimarket.repo-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics and node_canonical_clone_refresh_effect runtime_dispatch (OMN-19998)
+
 # Merge-flow state-transition telemetry (OMN-14648 / WS6). Emitted per PR state
 # transition through the merge flow; consumed by node_merge_state_projection,
 # which materializes the merge_state_transitions projection so the merge-flow
@@ -171,6 +177,9 @@ PR_LANDING_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-transitioned.
 PR_LANDING_AGENT_NEEDED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-agent-needed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
 PR_LANDING_MERGED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-merged.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
 PR_LANDING_CLOSED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-closed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
+# OMN-20604 M2: M3 publishes each reducer transition with its CAS-assigned seq.
+LAB_JOB_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.lab-job-transitioned.v1"  # onex-topic-allow: canonical topic registry; consumed by node_projection_lab_job, externally produced until node_lab_job_orchestrator M3 lands
+
 # OMN-19826: the PR landing workflow's GitHub effect (node_pr_landing_github_effect).
 # The orchestrator publishes the request and consumes both results.
 PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
@@ -188,10 +197,17 @@ PR_HANDOFF_LEDGER_APPEND_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-handoff-le
 PR_HANDOFF_LEDGER_APPENDED_TOPIC_V1 = "onex.evt.omnimarket.pr-handoff-ledger-appended.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_handoff_ledger_effect contract.yaml publish_topics (OMN-20636)
 PR_STATE_OBSERVED_TOPIC_V1 = "onex.evt.omnimarket.pr-state-observed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_state_emit_effect, consumed by node_projection_pr_state and node_pr_handoff_orchestrator (OMN-19999, OMN-20636)
 CI_RUN_FAILED_TOPIC_V1 = "onex.evt.omnimarket.ci-run-failed.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle triage and orchestrator contracts
-GITHUB_CHECK_RUN_TOPIC_V1 = "onex.evt.github.check-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect detect_ci_red_check_run
-GITHUB_WORKFLOW_RUN_TOPIC_V1 = "onex.evt.github.workflow-run.v1"  # onex-topic-allow: canonical topic registry; published by omnibase_infra node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect record_workflow_run
+GITHUB_CHECK_RUN_TOPIC_V1 = "onex.evt.github.check-run.v1"  # onex-topic-allow: canonical topic registry; published by node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect detect_ci_red_check_run
+GITHUB_WORKFLOW_RUN_TOPIC_V1 = "onex.evt.github.workflow-run.v1"  # onex-topic-allow: canonical topic registry; published by node_github_webhook_ingress_effect, consumed by node_pr_state_emit_effect record_workflow_run
+GITHUB_PR_STATUS_TOPIC_V1 = "onex.evt.github.pr-status.v1"  # onex-topic-allow: canonical topic registry; declared in node_github_pr_poller_effect and node_github_webhook_ingress_effect contract.yaml publish_topics
+GITHUB_BRANCH_HEAD_TOPIC_V1 = "onex.evt.github.branch-head.v1"  # onex-topic-allow: canonical topic registry; declared in node_github_webhook_ingress_effect contract.yaml publish_topics
 CI_RED_TRIAGE_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.ci-red-triage-decided.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator and reducer contracts
 PR_LIFECYCLE_ORCHESTRATOR_START_TOPIC_V1 = "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"  # onex-topic-allow: canonical topic registry; declared in lifecycle orchestrator contract
+DEV_HEAD_RED_TOPIC_V1 = "onex.evt.omnimarket.dev-head-red.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_state_emit_effect detect_dev_head_red, consumed by node_pr_lifecycle_orchestrator dev_head_red_dispatch (OMN-20730)
+DEV_HEAD_RED_DECIDED_TOPIC_V1 = "onex.evt.omnimarket.dev-head-red-decided.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_orchestrator contract.yaml publish_topics (OMN-20730)
+DEV_CAUSE_LANE_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.dev-cause-lane-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_orchestrator contract.yaml publish_topics (OMN-20730)
 
 PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-routing-feedback-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml terminal_event
 PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics
+REVIEW_FINDING_DISPOSITION_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-finding-disposition-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)
+REVIEW_PASS_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-pass-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)

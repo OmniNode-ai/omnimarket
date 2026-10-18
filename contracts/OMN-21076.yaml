@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21076"
+title: "The code_generation acceptance check passes_existing_tests runs the delegated code against tests, or the class stops declaring it"
+summary: "The delegation quality gate evaluates passes_existing_tests from a ModelNamedTestRun, the outcome of named tests run upstream against the delegated code. A failed named test or a nonzero exit refuses the answer with the check in failure_reasons; a passing run is an executed verifying pass; with no run supplied the check is recorded as skipped, as names_resolve is without a grounding source. The gate reducer stays pure and runs nothing itself. The always-skipped set is deleted, and a contract test runs every class's declared checks through the gate and fails on any check the gate skips under every evidence set."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-failing-named-test-refuses"
+    statement: "A failing named test makes the gate refuse a code answer, naming passes_existing_tests in failure_reasons."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a failing named test makes the gate refuse the answer, with the check in failure_reasons, not skipped_checks -- falsifier: a quality-gate test feeding a code_generation answer whose named test fails asserts a refusal listing passes_existing_tests in failure_reasons"
+  - id: "req-no-always-skipped-declared-check"
+    statement: "No task class declares a check the gate always skips."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: no class declares a check that the gate always skips -- falsifier: a contract test comparing every class's declared checks with the gate's evaluated set fails on any always-skipped check"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the gate refuses a code_generation and a validator_generation answer whose named test failed, and every declared check of every class is evaluated under at least one evidence set."
+    command: "uv run pytest tests/unit/delegation/test_quality_gate_passes_existing_tests_runs_omn21076.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21076-ac1-failing-named-test-refuses"
+    description: "AC1: a code_generation answer whose named test failed is refused with passes_existing_tests in failure_reasons and not in skipped_checks. Fails at the merge base, where the gate takes no named-test run and skips the check on every call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_quality_gate_passes_existing_tests_runs_omn21076.py -q -n 0 -p no:randomly --no-cov -k 'refuses or nonzero_exit or executed_verifying_pass'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21076-ac2-no-always-skipped-declared-check"
+    description: "AC2: every check each class declares in task_class_contracts.v1.yaml is evaluated alone by the gate under a code and a prose evidence set; a check skipped under both fails the test. Fails at the merge base on code_generation and validator_generation, which declare passes_existing_tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_quality_gate_passes_existing_tests_runs_omn21076.py -q -n 0 -p no:randomly --no-cov -k 'always_skipped or declares_some_checks'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21076-gate-regressions"
+    description: "The gate's existing passes_existing_tests, check-inventory and score-verification suites still pass: with no run supplied the check is skipped and confers no authority, and the gate check inventory still holds 35 names."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_quality_gate_passes_existing_tests_honest_omn13850.py tests/unit/delegation/test_unpassable_criterion_omn19005.py tests/unit/delegation/test_quality_gate_score_verification.py tests/test_omn19320_check_register.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21076-deploy-probe"
+    description: "Deploy probe. The named-test run model the gate reads exists in omnimarket at the checked-out commit, which is what the deploy agent rolls onto the dev lane; the probe reads it from GitHub at that commit and exits nonzero at the merge base, where the file does not exist."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_named_test_run.py?ref=$(git rev-parse HEAD)\" --jq .path"
+        cwd: "${OMNI_HOME}/omnimarket"

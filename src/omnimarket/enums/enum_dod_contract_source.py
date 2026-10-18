@@ -13,6 +13,7 @@ class EnumDodContractSource(StrEnum):
     """Where the evaluated contract came from."""
 
     PRODUCT_REPOSITORY = "product_repository"
+    # Stored verdict rows may carry this value; no new subject is bound to it.
     ONEX_CHANGE_CONTROL = "onex_change_control"
     INLINE_GOAL = "inline_goal"
     UNBOUND = "unbound"

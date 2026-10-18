@@ -74,6 +74,7 @@ outputs:
       # OMN-20117: the runtime shut down (redeploy, restart, stop) while the
       # run was in flight; the handler answers its cancellation with this.
       - runtime_shutdown
+      - refused_before_dispatch
     description: Stable machine-readable terminal failure cause when known.
   credential_refusal:
     type: dict
@@ -90,10 +91,11 @@ outputs:
     type: int
     required: false
     default: 1
-    minimum: 1
+    minimum: 0
     description: >
       Authoritative total inference calls, including compliance repairs,
-      same-tier retries, and the terminal attempt.
+      same-tier retries, and the terminal attempt. Zero is reserved for a
+      request refused before dispatch; an omitted count retains one.
   queue_wait_ms:
     type: int
     required: false
@@ -216,6 +218,19 @@ inputs:
       measure queue wait (publish -> pickup), because a definition-B handler
       receives the typed request and never the broker record. Omit it and the
       terminal reports queue wait as NOT MEASURED rather than as zero.
+  trace_id:
+    type: uuid
+    required: false
+    description: >
+      OMN-19437. Trace the command belongs to, stamped by the producer. The
+      handler copies it onto every terminal it builds; a command that carries
+      none yields a terminal that carries none.
+  span_id:
+    type: uuid
+    required: false
+    description: >
+      OMN-19437. Span of the command within trace_id, stamped by the producer
+      and copied onto the terminal the same way.
   metadata:
     type: object
     required: false
@@ -278,6 +293,15 @@ inputs:
       rather than silently dropped. Omit to send no response_format at all.
       Distinct from response_contract, which drives ONEX-side structural
       validation and is never sent to the provider.
+  declared_outputs:
+    type: object
+    required: false
+    description: >
+      Optional files the delegation should produce (OMN-19599): a files list
+      of relative path, kind, media type and size cap each, plus a total size
+      bound. The orchestrator derives the response contract from it, so it is
+      mutually exclusive with response_contract, and stamps output_manifest and
+      output_files on the completed terminal. Omit for an ordinary delegation.
 
 db_io:
   # OMN-18887: the durable claim that stops a redelivered delegate-skill
@@ -306,6 +330,8 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.delegate-skill-completed.v1
     failure: onex.evt.omnimarket.delegate-skill-failed.v1
+  # One event per step of a run, numbered by this node from one counter per run.
+  run_step_event: onex.evt.omnimarket.delegation-run-step.v1
   default_timeout_ms: 300000
   max_timeout_ms: 900000
 
@@ -446,6 +472,9 @@ event_bus:
     # delivers the observation through node_event_emit_effect; appended so the
     # terminal pair above keeps its position.
     - onex.evt.omnimarket.provider-quota-observed.v1
+    # One event per step of a run, numbered by this node; appended so the
+    # entries above keep their positions.
+    - onex.evt.omnimarket.delegation-run-step.v1
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 
@@ -456,6 +485,9 @@ published_events:
   - event_type: DelegateSkillFailed
     topic: onex.evt.omnimarket.delegate-skill-failed.v1
     description: Delegation failed with typed error.
+  - event_type: DelegationRunStep
+    topic: onex.evt.omnimarket.delegation-run-step.v1
+    description: One numbered step of one delegation run, in the order this node took it.
 
 cross_repo_dependencies:
   - repo: omnimarket
@@ -527,13 +559,6 @@ handler_routing:
       description: Recover a failed inner result after its outer runtime restarted.
 
 error_handling:
-  retry_policy:
-    max_retries: 1
-    initial_delay_ms: 1000
-    max_delay_ms: 5000
-    exponential_base: 2
-    retry_on:
-      - RuntimeDispatchTimeoutError
   error_types:
     - name: RuntimeDispatchTimeoutError
       description: Runtime did not respond within timeout
