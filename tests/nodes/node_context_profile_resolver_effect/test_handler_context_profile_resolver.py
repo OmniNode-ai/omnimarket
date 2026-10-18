@@ -28,6 +28,28 @@ _PROFILES_DIR = (
 )
 
 
+@pytest.fixture
+def promoted_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Profile-data tests run with explicitly promoted fixture task classes."""
+    path = tmp_path / "routing.yaml"
+    entry = {
+        "gateway_exposure": "internal",
+        "selection": {"priority": 0, "phrases": []},
+    }
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "task_classes": {
+                    "extraction_proposer": entry,
+                    "context_compaction": entry,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(path))
+
+
 def _resolve(
     name: str, profiles_dir: Path | None = None
 ) -> ModelContextProfileResolveResult:
@@ -59,7 +81,9 @@ def test_name_that_is_not_a_bare_profile_name_is_not_found(name: str) -> None:
     assert result.failure_class is EnumContextPackFailure.PROFILE_NOT_FOUND
 
 
-def test_same_name_resolves_equal_object_and_equal_hash() -> None:
+def test_same_name_resolves_equal_object_and_equal_hash(
+    promoted_contract: None,
+) -> None:
     first = _resolve("compaction_orchestrator")
     second = _resolve("compaction_orchestrator")
     assert first.status is EnumContextProfileResolveStatus.OK
@@ -70,7 +94,7 @@ def test_same_name_resolves_equal_object_and_equal_hash() -> None:
     assert len(first.profile_content_hash or "") == 64
 
 
-def test_compaction_orchestrator_profile_data() -> None:
+def test_compaction_orchestrator_profile_data(promoted_contract: None) -> None:
     result = _resolve("compaction_orchestrator")
     profile = result.profile
     assert isinstance(profile, ModelContextProfile)
@@ -94,7 +118,9 @@ def test_compaction_orchestrator_profile_data() -> None:
     assert profile.latency_budget_ms is None
 
 
-def test_every_shipped_profile_file_resolves_by_its_stem() -> None:
+def test_every_shipped_profile_file_resolves_by_its_stem(
+    promoted_contract: None,
+) -> None:
     files = sorted(_PROFILES_DIR.glob("*.yaml"))
     assert files, "no shipped profile data"
     for path in files:
