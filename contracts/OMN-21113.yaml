@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21113"
+title: "TA.11 node_context_compaction_orchestrator and the context_compaction task class"
+summary: "First slice of TA.11: node_context_compaction_orchestrator in the canonical shape (contract, declarative orchestrator node, handler handle(ModelContextCompactionRequested) -> ModelContextCompactionResult) with the shared command, reply and receipt models and the ProtocolContextCompactionPackBuild port. A failed build, typed or raised, replies native and publishes fallback with the failure class and the command's invocation_id; a built package is published as prepared, gets a fresh activation_id on its identity trailer and replies install with activated. The default port reports pack_builder_unavailable until the context-pack orchestrator is wired."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-compaction-fallback"
+    statement: "A compaction that cannot be built falls back to native compaction with a typed receipt and never replies a partial package."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a failed build replies `native` and publishes `fallback` with the class and the command's `invocation_id` -- falsifier: a package reply."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 in the handler tests and the contract tests of node_context_compaction_orchestrator."
+    command: "uv run pytest tests/nodes/node_context_compaction_orchestrator -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21113-ac1"
+    description: "AC1: typed failures, a raised build and the unwired default each reply native with no messages and publish fallback carrying the failure class and the command's invocation_id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py -q -p no:randomly --no-cov -k 'failed_build or raising_build or unwired_default'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21113-contracts"
+    description: "The node contract declares its command, package reply and receipt topics, resolves its handler and models, is an onex.nodes entry point and imports no event envelope."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_contracts.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21113-deploy-container-fallback"
+    description: "Hosted deploy probe. A labelled ephemeral Python 3.13 container, the interpreter the hosted verifier syncs with, mounts the checkout read-only and the uv cache the verifier already synced from uv.lock so its wheels are reused, uses uv sync --frozen --no-dev to install it into /tmp without dev dependencies and without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the handler does not import, and sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it inside the 30s check budget; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --user "$(id -u):$(id -g)" \
+          --label onex.deploy-probe=OMN-21113 \
+          --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          from uuid import UUID
+          from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
+          from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import HandlerContextCompactionOrchestrator as H
+          i = UUID("11111111-1111-4111-8111-111111111111")
+          r = H().handle(Q(invocation_id=i, session_id="s", cwd="/w", trigger="manual", input_messages_hash="0" * 64))
+          assert r.reply.action.value == "native" and r.reply.messages == () and r.reply.invocation_id == i, r
+          assert r.fallback is not None and r.fallback.invocation_id == i and r.fallback.failure_class.value == "pack_builder_unavailable", r
+          print(r.fallback.model_dump_json())'
