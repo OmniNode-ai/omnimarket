@@ -113,6 +113,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
+    # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
+    # pool it is (the remote-lane runner at lane start, the operator adding a
+    # token); it publishes nothing and subscribes to no topic, so it has no
+    # onex.nodes entry point.
+    "node_claude_token_pool_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
