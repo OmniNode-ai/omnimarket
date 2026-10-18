@@ -150,8 +150,11 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
         ):
             assert types[column] == "timestamp with time zone"
 
+        original_delta = published[0]
         published.clear()
         assert await writer.project_event(topic, first, meta)
+        assert published == [original_delta]
+        published.clear()
         assert await writer.project_event(topic, report("postgres", -10), meta)
         assert await rows() == initial
         assert published == []
@@ -171,6 +174,12 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
             "local-runtime",
             "postgres",
         ]
+        original_deltas = {p["row"]["service"]: p for p in published}
+        published.clear()
+        assert await writer.project_event(topic, report("local-runtime", 75), meta)
+        assert await rows() == final
+        assert len(published) == 2
+        assert {p["row"]["service"]: p for p in published} == original_deltas
         published.clear()
         assert await writer.project_event(topic, report("postgres", -1), meta)
         assert await rows() == final

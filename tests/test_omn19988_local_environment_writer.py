@@ -13,7 +13,7 @@ Failure modes each test is written against:
   by the install's tenant uuid, so the row would never be served (the run-trace
   writer's failure on OMN-19972). Producers resolve the tenant; the writer
   refuses anything else, so the runtime dead-letters it;
-* F2 a replayed or late report writes a row, moves a time, or publishes;
+* F2 a replay writes a row or loses a committed delta; a late report publishes;
 * F3 the siblings a report re-judges (a silent service turned STALE) are not
   written or not published, so the page keeps a stale verdict;
 * F4 the transaction's tenant setting and the row's tenant disagree, so row
@@ -99,11 +99,16 @@ class _Conn:
         self.table = table
         self.statements: list[tuple[str, tuple[Any, ...]]] = []
         self.tenant_setting: str | None = None
+        self.in_transaction = False
         self._cursor = max((r["projection_cursor"] for r in table.values()), default=0)
 
     @asynccontextmanager
     async def transaction(self) -> Any:
-        yield
+        self.in_transaction = True
+        try:
+            yield
+        finally:
+            self.in_transaction = False
 
     async def execute(self, sql: str, *args: Any) -> str:
         self.statements.append((sql, args))
@@ -213,19 +218,55 @@ def test_a_report_with_a_canonical_uuid_tenant_is_stored_under_it() -> None:
 # ---- F2: replays and late reports ---------------------------------------------
 
 
-def test_a_replayed_report_writes_nothing_and_publishes_nothing() -> None:
+def test_a_replayed_report_writes_nothing_and_republishes_the_stored_row() -> None:
     table: dict[tuple[str, str, str], dict[str, Any]] = {}
     writer, conn, published = _writer(table)
     _project(writer, _report("redpanda", "running", T0))
     stored = _snapshot(table)
+    original_delta = published[0]
     published.clear()
 
-    _project(writer, _report("redpanda", "running", T0))
+    replay = _report("redpanda", "running", T0)
+    replay["reason"] = "redelivery must not replace stored content"
+    _project(writer, replay)
 
     assert _snapshot(table) == stored
-    assert published == []
+    assert published == [original_delta]
     inserts = [s for s, _ in conn.statements if s.lstrip().upper().startswith("INSERT")]
     assert len(inserts) == 1
+
+
+def test_redelivery_repairs_a_publish_failure_after_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table: dict[tuple[str, str, str], dict[str, Any]] = {}
+    writer, conn, published = _writer(table)
+    capture = writer.publish_snapshot_delta
+    attempts: list[dict[str, Any]] = []
+
+    async def fail_publish(exposure: Any, **kwargs: Any) -> bool:
+        assert table
+        assert not conn.in_transaction
+        attempts.append(kwargs)
+        raise RuntimeError("publish unavailable")
+
+    monkeypatch.setattr(writer, "publish_snapshot_delta", fail_publish)
+    report = _report("redpanda", "running", T0)
+    with pytest.raises(RuntimeError, match="publish unavailable"):
+        _project(writer, report)
+    stored = _snapshot(table)
+    assert len(attempts) == 1
+    assert published == []
+    conn.statements.clear()
+    monkeypatch.setattr(writer, "publish_snapshot_delta", capture)
+
+    _project(writer, report)
+
+    assert _snapshot(table) == stored
+    assert published == [{"topic": EXPOSURE_TOPIC, **attempts[0]}]
+    assert not any(
+        sql.lstrip().upper().startswith("INSERT") for sql, _ in conn.statements
+    )
 
 
 def test_a_report_older_than_the_stored_one_writes_nothing() -> None:
@@ -260,6 +301,12 @@ def test_a_report_after_the_deadline_turns_a_silent_sibling_stale_and_publishes_
     assert table[(TENANT, "compose", "redpanda")]["verdict"] == "running"
     assert sorted(p["row"]["service"] for p in published) == ["postgres", "redpanda"]
     assert {p["topic"] for p in published} == {EXPOSURE_TOPIC}
+    stored = _snapshot(table)
+    original_deltas = {p["row"]["service"]: p for p in published}
+    published.clear()
+    _project(writer, _report("redpanda", "running", T0 + timedelta(seconds=75)))
+    assert _snapshot(table) == stored
+    assert {p["row"]["service"]: p for p in published} == original_deltas
 
 
 def test_a_stopped_service_opens_one_service_down_alert_in_the_stored_row() -> None:

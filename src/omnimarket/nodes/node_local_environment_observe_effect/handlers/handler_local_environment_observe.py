@@ -106,6 +106,7 @@ class RealNetworkProber:
                 )
 
         url = urlunsplit((target.scheme, destination, target.path, target.query, ""))
+        reason_url = urlunsplit((target.scheme, destination, target.path, "", ""))
         try:
             async with asyncio.timeout(timeout):
                 async with httpx.AsyncClient(
@@ -132,12 +133,12 @@ class RealNetworkProber:
                     detail = f"; JSON status reported {body['status']}"
             return ModelProbeResult(
                 observed_state=state,
-                reason=f"GET {url} returned HTTP {response.status_code}{detail}.",
+                reason=f"GET {reason_url} returned HTTP {response.status_code}{detail}.",
             )
         except (httpx.RequestError, OSError, TimeoutError) as exc:
             return ModelProbeResult(
                 observed_state=EnumLocalServiceState.DOWN,
-                reason=f"GET {url} failed ({type(exc).__name__}).",
+                reason=f"GET {reason_url} failed ({type(exc).__name__}).",
             )
 
 

@@ -203,6 +203,7 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
         report = ModelLocalEnvironmentStatus.model_validate(payload)
         tenant = require_tenant_uuid(report.tenant_id)
         written: list[dict[str, Any]] = []
+        replayed: list[dict[str, Any]] = []
         async with self.db.pool.acquire() as conn, conn.transaction():
             await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant)
             # One writer per tenant's mode at a time: the plan judges every row
@@ -212,15 +213,24 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
                 f"local_environment:{tenant}:{report.mode.value}",
             )
             stored = await conn.fetch(_SELECT_MODE_ROWS, tenant, report.mode.value)
-            for row in self._plan.handle(
-                report, [dict(r) for r in stored], self._rules
+            stored_rows = [dict(r) for r in stored]
+            planned = self._plan.handle(report, stored_rows, self._rules)
+            if not planned and any(
+                str(row["service"]) == report.service
+                and str(row["report_id"]) == str(report.report_id)
+                for row in stored_rows
             ):
+                # A publish can fail after commit. On replay, publish stored
+                # facts again without writing. Include the mode's siblings:
+                # their verdict deltas may also have failed in that commit.
+                replayed = [_wire_row(row) for row in stored_rows]
+            for row in planned:
                 returned = await conn.fetch(
                     _UPSERT_ROW, *(_parameter(name, row.get(name)) for name in _COLUMNS)
                 )
                 written.append(_wire_row(dict(returned[0])))
         if self._snapshot_exposure is not None:
-            for row in written:
+            for row in written or replayed:
                 await self.publish_snapshot_delta(
                     self._snapshot_exposure,
                     op="upsert",

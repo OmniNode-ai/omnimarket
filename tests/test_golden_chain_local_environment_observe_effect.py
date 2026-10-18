@@ -254,10 +254,11 @@ def test_observer_produces_the_topic_consumed_by_the_projection(tmp_path: Path) 
 
 class HealthServer(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        code = 503 if self.path == "/failure" else 200
-        body = (
-            b'{"status":"degraded"}' if self.path == "/degraded" else b'{"status":"ok"}'
-        )
+        path, _, query = self.path.partition("?")
+        code = 503 if path == "/failure" else 200
+        if query != "token=SECRET":
+            code = 400
+        body = b'{"status":"degraded"}' if path == "/degraded" else b'{"status":"ok"}'
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -294,10 +295,13 @@ async def test_real_prober_with_real_http_tcp_and_closed_port() -> None:
                     port=server.server_port,
                     scheme="http",
                     path=path,
+                    query="token=SECRET",
                 ),
                 1,
             )
             assert result.observed_state.value == expected
+            assert "SECRET" not in result.reason
+            assert "token=" not in result.reason
             assert path in result.reason
             assert str(503 if path == "/failure" else 200) in result.reason
         for port, expected in (
@@ -311,11 +315,16 @@ async def test_real_prober_with_real_http_tcp_and_closed_port() -> None:
             assert str(port) in result.reason
         result = await prober.probe(
             observer.ModelProbeTarget(
-                service="127.0.0.1", port=closed_port, scheme="http", path="/health"
+                service="127.0.0.1",
+                port=closed_port,
+                scheme="http",
+                path="/health",
+                query="token=SECRET",
             ),
             1,
         )
         assert result.observed_state.value == "down"
+        assert "SECRET" not in result.reason
     finally:
         tcp.close()
         await asyncio.to_thread(server.shutdown)
