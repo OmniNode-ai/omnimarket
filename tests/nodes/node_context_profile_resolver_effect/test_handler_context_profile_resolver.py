@@ -28,29 +28,6 @@ _PROFILES_DIR = (
 )
 
 
-@pytest.fixture
-def promoted_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Profile-data tests run with explicitly promoted fixture task classes."""
-    path = tmp_path / "routing.yaml"
-    entry = {
-        "gateway_exposure": "internal",
-        "selection": {"priority": 0, "phrases": []},
-    }
-    path.write_text(
-        yaml.safe_dump(
-            {
-                "task_classes": {
-                    "extraction_proposer": entry,
-                    "context_compaction": entry,
-                    "context_selection": entry,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(path))
-
-
 def _resolve(
     name: str, profiles_dir: Path | None = None
 ) -> ModelContextProfileResolveResult:
@@ -83,7 +60,7 @@ def test_name_that_is_not_a_bare_profile_name_is_not_found(name: str) -> None:
 
 
 def test_same_name_resolves_equal_object_and_equal_hash(
-    promoted_contract: None,
+    promoted_context_profile_routing: None,
 ) -> None:
     first = _resolve("compaction_orchestrator")
     second = _resolve("compaction_orchestrator")
@@ -95,7 +72,9 @@ def test_same_name_resolves_equal_object_and_equal_hash(
     assert len(first.profile_content_hash or "") == 64
 
 
-def test_compaction_orchestrator_profile_data(promoted_contract: None) -> None:
+def test_compaction_orchestrator_profile_data(
+    promoted_context_profile_routing: None,
+) -> None:
     result = _resolve("compaction_orchestrator")
     profile = result.profile
     assert isinstance(profile, ModelContextProfile)
@@ -120,7 +99,7 @@ def test_compaction_orchestrator_profile_data(promoted_contract: None) -> None:
 
 
 def test_every_shipped_profile_file_resolves_by_its_stem(
-    promoted_contract: None,
+    promoted_context_profile_routing: None,
 ) -> None:
     files = sorted(_PROFILES_DIR.glob("*.yaml"))
     assert files, "no shipped profile data"
@@ -193,7 +172,7 @@ def test_contract_declares_one_terminal_topic_and_the_resolve_outputs() -> None:
     }
 
 
-def test_session_resume_profile_data(promoted_contract: None) -> None:
+def test_session_resume_profile_data(promoted_context_profile_routing: None) -> None:
     # Plan section 4.4 row session_resume (OMN-21119).
     result = _resolve("session_resume")
     profile = result.profile
