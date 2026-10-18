@@ -2,13 +2,13 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-18698"
 title: "A golden chain and an error chain exist for every local-path goal row"
-summary: "Evidence for OMN-18698 in the repository that carries the work (omnimarket#2658, squash c7615cb9b). AC3 binds to the local chain-pair registry absence test. AC1 is not bound: at origin/dev 5457fa2aa rows L1, L2, L7, L8 and L9 still have no chain pair. AC2 and AC4 had no proposed check."
+summary: "Evidence for OMN-18698 in the repository that carries the work (omnimarket#2658, squash c7615cb9b). AC3 binds to the packaged local chain-pair registry absence reporter and its existing test. AC1 is not bound: at origin/dev 5457fa2aa rows L1, L2, L7, L8 and L9 still have no chain pair. AC2 and AC4 had no proposed check."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 evidence_requirements:
   - kind: "tests"
-    description: "The local chain-pair registry absence test passes."
+    description: "The packaged local chain-pair registry names absent rows with their owning tickets."
     command: "uv run pytest tests/chains/local/test_local_chain_pair_registry_omn18698.py -q"
 emergency_bypass:
   enabled: false
@@ -25,10 +25,19 @@ context:
         accepted_at: "2026-10-18T21:18:56Z"
 dod_evidence:
   - id: "dod-omn-18698-ac3-absent-rows-named"
-    description: "AC3 binding (accepted 2026-10-18T2045Z, proposed by lane=dod-closeout-bind-2026-10-18T2045Z-c3, accepted by lane=dod-closeout-accept-2026-10-18T2045Z-c3). The set of local rows with no chain pair is pinned, and the absence report names every such row as ABSENT with its ticket, so a row with no pair is reported absent rather than counted green. Re-run at origin/dev 5457fa2aa PASSED; the test file is added by c7615cb9b and is absent at its parent."
+    description: "AC3 binding (accepted 2026-10-18T2045Z, proposed by lane=dod-closeout-bind-2026-10-18T2045Z-c3, accepted by lane=dod-closeout-accept-2026-10-18T2045Z-c3). The set of local rows with no chain pair is pinned, and the absence report names every such row as ABSENT with its ticket, so a row with no pair is reported absent rather than counted green. The registry and absence reporter are packaged in omnimarket.models.model_local_chain_pair_report; the unchanged AC3 assertions exercise that implementation. At the merge base the packaged implementation is absent."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest \"tests/chains/local/test_local_chain_pair_registry_omn18698.py::test_rows_without_a_pair_are_named\" -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn-18698-ac3-package-probe"
+    description: "Hosted-runner package probe imports the packaged registry and checks every absent row is reported with its ticket; the merge base lacks the module."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python -c 'from omnimarket.models.model_local_chain_pair_report import LOCAL_ROWS, absence_report; rows = [row for row in LOCAL_ROWS if not row.has_pair]; report = absence_report(); assert rows; assert all(any(line.startswith(row.row_id + ": ABSENT") and row.ticket in line for line in report.splitlines()) for row in rows); print(report)'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
