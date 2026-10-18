@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,6 +43,18 @@ class ModelSessionContentRecord(BaseModel):
     redaction_state: str | None = None
     hook_source: str | None = None
     emitted_at: datetime
+    #: OMN-21123 (TA.21): the capture producer's item identity and sequence.
+    #: ``content_record_id`` is the lineage reference this record fulfils;
+    #: ``producer_seq`` is its per-session, per-stream number from 1. A barrier
+    #: record (``content_kind`` barrier) names the stream it speaks for, which
+    #: may be the lineage stream, and the high-water the producer had issued.
+    content_record_id: str | None = None
+    stream: Literal["lineage", "content"] | None = None
+    producer_seq: int | None = Field(default=None, ge=1, strict=True)
+    record_type: Literal["barrier"] | None = None
+    barrier_id: str | None = None
+    high_water: int | None = Field(default=None, ge=0, strict=True)
+    content_capture: Literal["enabled", "disabled"] | None = None
 
 
 class ModelSessionContentRow(BaseModel):

@@ -29,7 +29,11 @@ WORKFLOW = (
 # The merge commit of omniintelligence#1072 on its dev branch.
 RETRY_BUDGET_PIN = "3fcbf795087a79081c0ceeb676216bf64c5d49ae"
 # The later pin descends from omniintelligence#1072 (verified with git merge-base --is-ancestor).
-RETRY_BUDGET_PINS = (RETRY_BUDGET_PIN, "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0")
+RETRY_BUDGET_PINS = (
+    RETRY_BUDGET_PIN,
+    "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0",
+    "037af72c2a7f49fda953fed6a99edd5ec588dede",
+)
 # The pin before this change, which retries at the same 4096-token cap.
 PRE_RETRY_BUDGET_PIN = "64b950973a5686d33e0b439fb80749d66362d06d"
 _PIN = re.compile(
