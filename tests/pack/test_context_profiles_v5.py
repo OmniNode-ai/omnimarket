@@ -30,6 +30,9 @@ F = EnumContextFactor
 SRC = Path(__file__).resolve().parents[2] / "src" / "omnimarket"
 PROFILES_DIR = SRC / "pack" / "profiles"
 PROFILE_NAMES = sorted(path.stem for path in PROFILES_DIR.glob("*.yaml"))
+SECTION_4_4_PROFILES = frozenset(
+    {"compaction_orchestrator", "session_start", "agent_spawn", "per_prompt"}
+)
 
 
 def _resolve(name: str) -> ModelContextProfile:
@@ -42,12 +45,7 @@ def _resolve(name: str) -> ModelContextProfile:
 
 
 def test_the_section_4_4_profiles_are_present() -> None:
-    assert {
-        "compaction_orchestrator",
-        "session_start",
-        "agent_spawn",
-        "per_prompt",
-    } <= (set(PROFILE_NAMES))
+    assert set(PROFILE_NAMES) >= SECTION_4_4_PROFILES
 
 
 @pytest.mark.parametrize("name", PROFILE_NAMES)
@@ -154,7 +152,9 @@ def test_the_model_id_list_is_not_empty() -> None:
     assert len(_model_ids()) >= 3
 
 
-@pytest.mark.parametrize("name", PROFILE_NAMES)
+# The scan names the section 4.4 profiles as well as globbing the directory, so a
+# section 4.4 profile that is missing fails here instead of being skipped.
+@pytest.mark.parametrize("name", sorted(SECTION_4_4_PROFILES | set(PROFILE_NAMES)))
 def test_no_profile_names_a_private_repository_a_host_or_a_model_id(
     name: str,
 ) -> None:
