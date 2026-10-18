@@ -1,0 +1,245 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The Claude token pool rotates per token, not per host, and never shows a token (OMN-17427).
+
+Every token here is fake, assembled at run time so no scanner reads one in the
+source. The store is a temporary local secret store, the same class ``onex
+secret`` writes.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import stat
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from pydantic import SecretStr
+
+from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_claude_token_pool_effect import __main__ as cli
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
+    SECRET_REF_PREFIX,
+    ClaudeTokenPoolRefusedError,
+    HandlerClaudeTokenPool,
+    extract_token,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
+    ModelClaudeTokenPoolRequest,
+)
+
+pytestmark = pytest.mark.unit
+
+T0 = datetime(2026, 10, 18, 2, 0, tzinfo=UTC)
+
+
+def fake_token(seed: str) -> str:
+    return "sk-ant-" + "oat01-" + (seed * 64)[:96]
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.at = T0
+
+    def __call__(self) -> datetime:
+        return self.at
+
+
+Rig = tuple[HandlerClaudeTokenPool, Clock, Path]
+
+
+@pytest.fixture
+def rig(tmp_path: Path) -> Rig:
+    clock = Clock()
+    handler = HandlerClaudeTokenPool(
+        store=LocalByokCredentialStore(db_path=tmp_path / "store" / "evidence.sqlite"),
+        status_path=tmp_path / "cache" / "claude-token-pool.json",
+        host="h202",
+        now=clock,
+    )
+    return handler, clock, tmp_path
+
+
+def add(handler: HandlerClaudeTokenPool, label: str, pasted: str) -> None:
+    handler.handle(
+        ModelClaudeTokenPoolRequest(
+            operation="add", label=label, setup_token_output=SecretStr(pasted)
+        )
+    )
+
+
+def op(handler: HandlerClaudeTokenPool, operation: str, **kw: object):
+    return handler.handle(ModelClaudeTokenPoolRequest(operation=operation, **kw))
+
+
+def test_extract_token_from_setup_token_output_wrapped_by_the_terminal() -> None:
+    token = fake_token("Ab9_")
+    pasted = (
+        "\x1b[32m✓ Long-lived authentication token created successfully!\x1b[0m\n\n"
+        f"Your OAuth token (valid for 1 year):\n\n{token[:50]}\n{token[50:]}\n\n"
+        "Store this token securely. You won't be able to see it again.\n"
+    )
+    assert extract_token(pasted) == token
+    assert extract_token(token + "\n") == token
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    ["nothing here", fake_token("a")[:30], f"{fake_token('a')}\n{fake_token('b')}\n"],
+)
+def test_extract_token_refuses_none_short_or_two(pasted: str) -> None:
+    with pytest.raises(ClaudeTokenPoolRefusedError) as refused:
+        extract_token(pasted)
+    assert "sk-ant-oat01-a" not in str(refused.value)
+
+
+def test_resolve_rotates_per_token_and_the_host_stays_placeable(rig) -> None:
+    handler, clock, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    first = op(handler, "resolve")
+    assert first.chosen == "acct-a"
+    assert first.token is not None
+    assert first.token.get_secret_value() == fake_token("a")
+    marked = op(handler, "mark_limited", label="acct-a", seconds=3600)
+    assert not marked.all_limited
+    assert marked.limited == 1
+    second = op(handler, "resolve")
+    assert second.chosen == "acct-b"
+    assert second.token is not None
+    assert second.token.get_secret_value() == fake_token("b")
+    assert (
+        second.status_line
+        == "claude-pool host=h202 tokens=2 limited=1 next_reset=2026-10-18T03:00:00Z"
+    )
+    clock.at = T0 + timedelta(hours=1, seconds=1)
+    assert op(handler, "resolve").chosen == "acct-a", (
+        "a token whose reset passed is chosen again, first"
+    )
+
+
+def test_all_limited_resolves_nothing_and_raises_the_alarm(rig) -> None:
+    handler, _, tmp = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    op(handler, "mark_limited", label="acct-a", seconds=7200)
+    last = op(handler, "mark_limited", label="acct-b", seconds=3600)
+    assert last.all_limited
+    assert last.limited == 2
+    assert last.next_reset == "2026-10-18T03:00:00Z"
+    assert last.status_line.startswith(
+        "ALARM claude-pool host=h202 tokens=2 limited=2 "
+    )
+    assert last.status_line.endswith("every token limited")
+    resolved = op(handler, "resolve")
+    assert resolved.chosen is None
+    assert resolved.token is None
+    assert resolved.all_limited
+    mirror = json.loads((tmp / "cache" / "claude-token-pool.json").read_text())
+    assert mirror["host"] == "h202"
+    assert [t["until"] for t in mirror["tokens"]] == [
+        "2026-10-18T04:00:00Z",
+        "2026-10-18T03:00:00Z",
+    ]
+
+
+def test_a_limit_never_shortens(rig) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    op(handler, "mark_limited", label="acct-a", seconds=7200)
+    assert (
+        op(handler, "mark_limited", label="acct-a", seconds=60).next_reset
+        == "2026-10-18T04:00:00Z"
+    )
+
+
+def test_empty_pool_status_has_no_alarm(rig) -> None:
+    handler, _, _ = rig
+    status = op(handler, "status")
+    assert (
+        status.status_line == "claude-pool host=h202 tokens=0 limited=0 next_reset=none"
+    )
+    assert not status.all_limited
+    assert op(handler, "resolve").token is None
+
+
+def test_nothing_written_or_returned_carries_a_token(rig) -> None:
+    handler, _, tmp = rig
+    add(handler, "acct-a", fake_token("a"))
+    result = op(handler, "resolve")
+    assert fake_token("a") not in result.model_dump_json()
+    assert fake_token("a") not in repr(result)
+    pool = tmp / "store" / "claude_token_pool.json"
+    for path in (pool, tmp / "cache" / "claude-token-pool.json"):
+        assert fake_token("a") not in path.read_text()
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    import asyncio
+
+    stored = asyncio.run(
+        LocalByokCredentialStore(db_path=tmp / "store" / "evidence.sqlite").get_secret(
+            SECRET_REF_PREFIX + "acct-a"
+        )
+    )
+    assert stored == fake_token("a")
+
+
+def test_add_refuses_a_second_label_for_the_same_token_and_a_silent_replace(
+    rig,
+) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    with pytest.raises(
+        ClaudeTokenPoolRefusedError, match="already in the pool as acct-a"
+    ):
+        add(handler, "acct-b", fake_token("a"))
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="pass --force"):
+        add(handler, "acct-a", fake_token("c"))
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="lower case"):
+        add(handler, "Acct A", fake_token("d"))
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="not in this host's pool"):
+        op(handler, "mark_limited", label="acct-z", seconds=60)
+
+
+class _Pipe(io.StringIO):
+    def isatty(self) -> bool:
+        return False
+
+
+class _Tty(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+def test_cli_add_and_resolve_never_echo_the_token(rig, monkeypatch, capsys) -> None:
+    handler, _, _ = rig
+    monkeypatch.setattr("sys.stdin", _Pipe(f"Your OAuth token:\n{fake_token('a')}\n"))
+    assert cli.main(["add", "--label", "acct-a"], handler) == 0
+    out = capsys.readouterr()
+    assert "claude-pool added label=acct-a fingerprint=" in out.out
+    assert fake_token("a") not in out.out + out.err
+    monkeypatch.setattr("sys.stdout", _Tty())
+    assert cli.main(["resolve"], handler) == cli.EXIT_REFUSED
+    assert "refusing to write a token to a terminal" in capsys.readouterr().err
+    pipe = _Pipe()
+    monkeypatch.setattr("sys.stdout", pipe)
+    assert cli.main(["resolve"], handler) == 0
+    assert pipe.getvalue() == fake_token("a")
+    err = capsys.readouterr().err
+    assert "label=acct-a" in err
+    assert fake_token("a") not in err
+
+
+def test_cli_exit_codes_for_empty_and_all_limited(rig, monkeypatch, capsys) -> None:
+    handler, _, _ = rig
+    monkeypatch.setattr("sys.stdout", _Pipe())
+    assert cli.main(["resolve"], handler) == cli.EXIT_EMPTY
+    monkeypatch.setattr("sys.stdin", _Pipe(fake_token("a")))
+    assert cli.main(["add", "--label", "acct-a"], handler) == 0
+    assert (
+        cli.main(["mark-limited", "--label", "acct-a", "--seconds", "600"], handler)
+        == cli.EXIT_ALL_LIMITED
+    )
+    assert cli.main(["resolve"], handler) == cli.EXIT_ALL_LIMITED
+    assert "ALARM claude-pool" in capsys.readouterr().err
