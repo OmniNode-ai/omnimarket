@@ -54,4 +54,3 @@ dod_evidence:
         check_value: |-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_redeploy_deploy_effect/handlers/handler_deploy_publish_monitor.py" | grep -c "def _pending_depth_metric"'
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
