@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21132"
+title: "TC.9 retrieval metrics compute (port item AP-E1)"
+summary: "First slice of plan task TC.9: a pure, definition-B compute node node_retrieval_eval_compute scores ranked retrieval results with recall and precision at k, average precision and reciprocal rank, per query, overall and per slice. Recall divides by the relevant set, so fewer than k retrieved is not zero; a failed query scores zero and stays in every denominator; the k values, the target and the interval parameters come from the node contract; every mean carries a fixed-seed bootstrap interval. The other TC.9 criteria (the per-profile manifests and report, the supersession set, the context-ROI writer, the by-source breakdown and the fidelity verdicts) are not in this slice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-retrieval-metrics"
+    statement: "The retrieval metrics use the AP-E1 definitions with the plan's fixes and take their target from the contract."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: recall at k divides by the relevant set, so a fixture with fewer than k retrieved does not score zero recall -- falsifier: a fixture with fewer than k retrieved that scores zero recall."
+      - id: "AC2"
+        statement: "AC2: a failed query counts in the denominator of every mean -- falsifier: a failed query dropped from the denominator."
+      - id: "AC3"
+        statement: "AC3: the target, the k values and the interval parameters come from the node contract, not the request -- falsifier: a request field that sets the target, or a verdict that does not change when the contract target changes."
+      - id: "AC4"
+        statement: "AC4: every aggregate mean carries a deterministic interval (fixed-seed bootstrap); the same queries in any order give a byte-identical report -- falsifier: an interval that varies between runs or with input order."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4 in the retrieval-eval tests and the contract tests."
+    command: "uv run pytest tests/nodes/node_retrieval_eval_compute -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21132-ac1"
+    description: "AC1: relevant {a,b}, retrieved (a,) scores recall@10 0.5, not the archive's 0.0; recall divides by the relevant set."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute/test_retrieval_eval.py -q -p no:randomly --no-cov -k 'fewer_than_k_retrieved or divides_by_the_relevant_set or precision_divisor_is_k'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21132-ac2"
+    description: "AC2: one perfect query and one failed query give query_count 2, failed_count 1 and mean recall@1 0.5."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute/test_retrieval_eval.py -q -p no:randomly --no-cov -k 'failed_query_counts_in_the_denominator or retains_failures'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21132-ac3"
+    description: "AC3: the request model has no target field; the same request judged under two contract targets gives PASS and FAIL; the contract config block is the handler default."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute -q -p no:randomly --no-cov -k 'target_comes_from_the_contract or contract_config_validates or custom_contract_policy'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21132-ac4"
+    description: "AC4: the same queries in two orders give an identical report JSON, and the bootstrap follows the fixed-seed percentile rule."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute/test_retrieval_eval.py -q -p no:randomly --no-cov -k 'deterministic_and_order_independent or fixed_seed_percentile_rule'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21132-contracts"
+    description: "The node contract declares its topics, resolves its handler, is an onex.nodes entry point and imports no event envelope."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_retrieval_eval_compute/test_contracts.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21132-deploy-container-eval"
+    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev, scores one partial-retrieval query and one failed query through the product handler with the contract's own config, and asserts recall@10 of the partial query is 0.5, the failed query stays in the overall count and the overall mean recall@10 is 0.25. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          uv run --frozen --no-dev python -c '
+          from omnimarket.models.retrieval_eval import ModelRetrievalEvalQuery as Q, ModelRetrievalEvalRequest as R
+          from omnimarket.nodes.node_retrieval_eval_compute.handlers.handler_retrieval_eval import HandlerRetrievalEval as H
+          r = H().handle(R(eval_id="probe", queries=(Q(query_id="q1", relevant_ids=("a", "b"), retrieved_ids=("a",)), Q(query_id="q2", relevant_ids=("c",), failed=True, failure_reason="retriever timeout"))))
+          q1 = {m.k: m.value for m in r.queries[0].recall_at_k}
+          mean = {(m.metric.value, m.k): m.mean for m in r.overall.metrics}
+          assert q1[10] == 0.5, q1
+          assert r.overall.query_count == 2 and r.overall.failed_count == 1, r.overall
+          assert mean[("recall_at_k", 10)] == 0.25, mean
+          assert r.target.verdict.value == "fail", r.target
+          print(r.target.model_dump_json())'
