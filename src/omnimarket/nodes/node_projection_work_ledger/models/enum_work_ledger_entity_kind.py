@@ -25,4 +25,21 @@ class EnumWorkLedgerStateOp(StrEnum):
     CLOSE = "close"
 
 
-__all__: list[str] = ["EnumWorkLedgerEntityKind", "EnumWorkLedgerStateOp"]
+class EnumWorkLedgerRelation(StrEnum):
+    """How a row relates to an earlier row's entity (OMN-21107, TA.5).
+
+    ``SUPERSEDES`` closes the target; ``AMENDS`` and ``EXTENDS`` link without
+    closing; ``CORRECTS`` links a CORRECTION to its target of any kind.
+    """
+
+    SUPERSEDES = "supersedes"
+    AMENDS = "amends"
+    EXTENDS = "extends"
+    CORRECTS = "corrects"
+
+
+__all__: list[str] = [
+    "EnumWorkLedgerEntityKind",
+    "EnumWorkLedgerRelation",
+    "EnumWorkLedgerStateOp",
+]
