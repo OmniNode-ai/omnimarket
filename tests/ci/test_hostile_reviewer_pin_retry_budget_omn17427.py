@@ -26,8 +26,8 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# OMN-20910: the Claude API voter revision descends from the prior fix.
-RETRY_BUDGET_PIN = "7f686d4bbca251dd3db49c1222ff8d6f738abd6c"
+# OMN-20910: the chunk-scaled review deadline revision descends from the prior fix.
+RETRY_BUDGET_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
 # The pin before this change, which retries at the same 4096-token cap.
 PRE_RETRY_BUDGET_PIN = "64b950973a5686d33e0b439fb80749d66362d06d"
 _PIN = re.compile(
