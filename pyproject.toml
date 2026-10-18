@@ -240,7 +240,12 @@ dependencies = [
     # vendors the savings_estimates 095 house-tenant rebackfill node migration
     # byte-identical, so the Sibling Release Compatibility Gate finds it in the
     # pinned release.
-    "omnibase-infra>=0.38.74,<0.39.0",
+    # OMN-17427: floor raised to 0.38.75, the first registry release that carries
+    # omnibase_infra#5097 (the publisher contract fixture reads every publisher
+    # declaration shape the contract topic graph reads), so omnimarket's golden
+    # chains resolve a topic through the one fixture in omnibase_infra. 0.38.75
+    # also carries migration 0003 (infra#5036), so the dev-tag git source is gone.
+    "omnibase-infra>=0.38.75,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -1027,12 +1032,6 @@ code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:Plugi
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-# OMN-19998: infra#5036 vendors the PR merge dedupe migration. Pin its
-# first dev tag so the runtime receives the same unique key as the handler.
-# uv.lock resolves the tag to commit 0f7bee98bd8f and installs that commit, so
-# the install is content-addressed; drop this override once a registry release
-# after 0.38.74 carries migration 0003.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261016204728-0f7bee98bd8f" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
@@ -1224,7 +1223,12 @@ override-dependencies = [
     # vendors the savings_estimates 095 house-tenant rebackfill node migration
     # byte-identical, so the Sibling Release Compatibility Gate finds it in the
     # pinned release.
-    "omnibase-infra>=0.38.74,<0.39.0",
+    # OMN-17427: floor raised to 0.38.75, the first registry release that carries
+    # omnibase_infra#5097 (the publisher contract fixture reads every publisher
+    # declaration shape the contract topic graph reads), so omnimarket's golden
+    # chains resolve a topic through the one fixture in omnibase_infra. 0.38.75
+    # also carries migration 0003 (infra#5036), so the dev-tag git source is gone.
+    "omnibase-infra>=0.38.75,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 
