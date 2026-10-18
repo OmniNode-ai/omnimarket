@@ -35,7 +35,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_contracts.py -q -p no:randomly --no-cov"
   - id: "dod-omn21113-deploy-container-fallback"
-    description: "Hosted deploy probe. A labelled ephemeral Python 3.13 container, the interpreter the hosted verifier syncs with, mounts the checkout read-only and the uv cache the verifier already synced from uv.lock so its wheels are reused, uses uv run --frozen --no-dev to install it into /tmp without dev dependencies and sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it inside the 30s check budget; no lab route is required."
+    description: "Hosted deploy probe. A labelled ephemeral Python 3.13 container, the interpreter the hosted verifier syncs with, mounts the checkout read-only and the uv cache the verifier already synced from uv.lock so its wheels are reused, uses uv sync --frozen --no-dev to install it into /tmp without dev dependencies and without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the handler does not import, and sends one compaction command through the product handler with its default port and asserts a native reply with no messages and a fallback carrying pack_builder_unavailable and the command's invocation_id. It fails at the merge base, which has no such handler. The hosted runner can run it inside the 30s check budget; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
@@ -47,7 +47,7 @@ dod_evidence:
           --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
           --env PYTHONDONTWRITEBYTECODE=1 \
           ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
-          uv run --frozen --no-dev python -c '
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
           from uuid import UUID
           from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
           from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import HandlerContextCompactionOrchestrator as H
