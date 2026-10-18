@@ -59,7 +59,9 @@ def test_name_that_is_not_a_bare_profile_name_is_not_found(name: str) -> None:
     assert result.failure_class is EnumContextPackFailure.PROFILE_NOT_FOUND
 
 
-def test_same_name_resolves_equal_object_and_equal_hash() -> None:
+def test_same_name_resolves_equal_object_and_equal_hash(
+    promoted_context_profile_routing: None,
+) -> None:
     first = _resolve("compaction_orchestrator")
     second = _resolve("compaction_orchestrator")
     assert first.status is EnumContextProfileResolveStatus.OK
@@ -70,7 +72,9 @@ def test_same_name_resolves_equal_object_and_equal_hash() -> None:
     assert len(first.profile_content_hash or "") == 64
 
 
-def test_compaction_orchestrator_profile_data() -> None:
+def test_compaction_orchestrator_profile_data(
+    promoted_context_profile_routing: None,
+) -> None:
     result = _resolve("compaction_orchestrator")
     profile = result.profile
     assert isinstance(profile, ModelContextProfile)
@@ -94,7 +98,9 @@ def test_compaction_orchestrator_profile_data() -> None:
     assert profile.latency_budget_ms is None
 
 
-def test_every_shipped_profile_file_resolves_by_its_stem() -> None:
+def test_every_shipped_profile_file_resolves_by_its_stem(
+    promoted_context_profile_routing: None,
+) -> None:
     files = sorted(_PROFILES_DIR.glob("*.yaml"))
     assert files, "no shipped profile data"
     for path in files:
@@ -164,3 +170,50 @@ def test_contract_declares_one_terminal_topic_and_the_resolve_outputs() -> None:
         "failure_class",
         "errors",
     }
+
+
+def test_session_resume_profile_data(promoted_context_profile_routing: None) -> None:
+    # Plan section 4.4 row session_resume (OMN-21119).
+    result = _resolve("session_resume")
+    profile = result.profile
+    assert isinstance(profile, ModelContextProfile)
+    assert set(profile.required_factors) == {
+        F.OPEN_WORK,
+        F.OPERATOR_RULINGS,
+        F.ORCHESTRATION_STATE,
+    }
+    assert set(profile.optional_factors) == {
+        F.TRANSCRIPT_EXTRACTS,
+        F.TAIL_SUMMARY,
+        F.PLAN_EXCERPTS,
+    }
+    assert profile.binding_kind is EnumContextBindingKind.INLINE
+    assert profile.factor_precedence[0] is F.OPERATOR_RULINGS
+    assert profile.factor_precedence[-1] is F.TAIL_SUMMARY
+    assert profile.extraction_task_class is not None
+    assert profile.summary_task_class is not None
+    assert profile.conversation_tail_messages is None
+    assert profile.latency_budget_ms is None
+
+
+def test_delegation_payload_local_profile_data() -> None:
+    # Plan section 4.4 row delegation_payload_local (OMN-21119): nothing is
+    # required, so a source outage never blocks a delegation.
+    result = _resolve("delegation_payload_local")
+    profile = result.profile
+    assert isinstance(profile, ModelContextProfile)
+    assert profile.required_factors == ()
+    assert profile.optional_factors == (
+        F.INVARIANTS,
+        F.CANONICAL_SHAPES,
+        F.EXEMPLAR,
+        F.ARCHITECTURE_PATTERNS,
+    )
+    assert set(profile.stable_factors) == set(profile.optional_factors)
+    assert profile.scopes == ("delegation",)
+    assert profile.binding_kind is EnumContextBindingKind.INLINE
+    assert profile.token_budget == 8000
+    # No model role in v5.
+    assert profile.selection_task_class is None
+    assert profile.extraction_task_class is None
+    assert profile.summary_task_class is None

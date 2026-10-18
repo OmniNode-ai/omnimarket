@@ -10,6 +10,7 @@ Shape preserved verbatim from the deleted node_hostile_reviewer shell
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,10 +27,27 @@ class ModelHostileReviewerStartCommand(BaseModel):
     file_path: str | None = Field(
         default=None, description="File path to review (alternative to PR)."
     )
+    diff_content: str | None = Field(
+        default=None,
+        description=(
+            "Review target supplied inline (a unified diff or file text). "
+            "Alternative to pr_number + repo and to file_path; no GitHub or "
+            "file read is made when it is set."
+        ),
+    )
     models: list[str] = Field(
         ...,
         min_length=1,
         description="Caller-provided logical model route keys to use for review.",
+    )
+    route: Literal["bridge", "delegation"] = Field(
+        default="bridge",
+        description=(
+            "How the model calls go out. 'bridge' resolves each key in models "
+            "from the route config; 'delegation' sends each call through the "
+            "delegation node's review task class with the key as the pinned "
+            "backend id."
+        ),
     )
     max_passes: int = Field(default=10, ge=1, description="Max review passes.")
     dry_run: bool = Field(default=False)

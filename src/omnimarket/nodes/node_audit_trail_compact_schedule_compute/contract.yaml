@@ -18,9 +18,7 @@ description: >
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
-    - routing_key: platform.runtime-tick
-      handler_key: audit_trail_compact_schedule
-      handler:
+    - handler:
         name: HandlerAuditTrailCompactSchedule
         module: omnimarket.nodes.node_audit_trail_compact_schedule_compute.handlers.handler_audit_trail_compact_schedule
       event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick

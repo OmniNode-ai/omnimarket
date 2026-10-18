@@ -26,6 +26,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.review_finding_disposition.model_review_finding_disposition_event import (
+    ModelReviewFindingDispositionEntry,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingCi,
     EnumLandingEngine,
@@ -281,6 +284,13 @@ class ModelLandingWorkerResult(BaseModel):
         default=None, pattern=SHA_PATTERN, description="cause_fix_submitted: its head."
     )
     reason: str | None = Field(default=None, description="cause_not_shared: why.")
+    finding_dispositions: tuple[ModelReviewFindingDispositionEntry, ...] = Field(
+        default=(),
+        description=(
+            "How the worker answered each hostile-reviewer finding it handled; "
+            "the controller publishes one disposition event per entry."
+        ),
+    )
 
 
 class ModelLandingCauseOwner(BaseModel):

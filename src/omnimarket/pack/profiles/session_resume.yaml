@@ -1,0 +1,32 @@
+# Context profile for the session-resume skill (plan task TA.18, section 4.4).
+# Inline: the skill calls the pack orchestrator itself; no hook is involved.
+# The budget is a first value; TC.9 and TC.10 measure it, and a profile changes
+# only through a data PR that cites that evidence.
+model_id: claude-code-session
+profile_version: 1.0.0
+binding_kind: inline
+required_factors:
+  - open_work
+  - operator_rulings
+  - orchestration_state
+optional_factors:
+  - plan_excerpts
+  - transcript_extracts
+  - tail_summary
+# Authority order, section 4.2: rulings, state, plans, extracts, model-written last.
+factor_precedence:
+  - operator_rulings
+  - open_work
+  - orchestration_state
+  - plan_excerpts
+  - transcript_extracts
+  - tail_summary
+stable_factors: []
+token_budget: 8000
+extraction_task_class: extraction_proposer
+summary_task_class: context_compaction
+# Window data (port item AP-B5): the same consumer as the session_start profile (the
+# claude-code-session main session), so the same first values; TC.12 measures them.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 95771
