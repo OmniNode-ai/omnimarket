@@ -122,6 +122,7 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "model_option",
         "expires",
         "host",
+        "workspace_id",
         "store_choice",
     }
     assert all(not getattr(parameter, "envvar", None) for parameter in command.params)

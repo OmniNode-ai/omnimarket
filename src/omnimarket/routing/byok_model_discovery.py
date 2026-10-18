@@ -154,14 +154,22 @@ def _model_ids(body: Any) -> tuple[str, ...]:
 
 
 def models_request_headers(
-    backend: ModelByokProviderBackend, secret: str
+    backend: ModelByokProviderBackend,
+    secret: str,
+    *,
+    workspace_id: str | None = None,
 ) -> dict[str, str]:
     """The headers of one list-models read for ``backend`` with ``secret``.
 
     OMN-20990. The row's non-secret ``models_headers``, plus the key in the one
     header its ``models_auth`` names. The key is in no other header.
+
+    OMN-20967. A key that belongs to a provider workspace names it in the
+    row's ``workspace_header``; the provider answers the key only with it.
     """
     headers = dict(backend.models_headers)
+    if workspace_id is not None and backend.workspace_header is not None:
+        headers[backend.workspace_header] = workspace_id
     if backend.models_auth == "x_api_key":
         headers["x-api-key"] = secret
     else:
@@ -176,6 +184,7 @@ def discover_byok_model_sync(
     exclude: Iterable[str] = (),
     exclude_families_of: Iterable[str] = (),
     chosen: str | None = None,
+    workspace_id: str | None = None,
     get: GetJson | None = None,
 ) -> ModelByokModelDiscovery:
     """Read ``backend.models_url`` with ``api_key`` and pick the preferred model.
@@ -196,7 +205,9 @@ def discover_byok_model_sync(
         response = fetch(
             url=backend.models_url,
             timeout_seconds=DISCOVERY_TIMEOUT_SECONDS,
-            extra_headers=models_request_headers(backend, secret),
+            extra_headers=models_request_headers(
+                backend, secret, workspace_id=workspace_id
+            ),
         )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
@@ -254,6 +265,7 @@ async def discover_byok_model(
     exclude: Iterable[str] = (),
     exclude_families_of: Iterable[str] = (),
     chosen: str | None = None,
+    workspace_id: str | None = None,
     get: GetJson | None = None,
 ) -> ModelByokModelDiscovery:
     """Async form of :func:`discover_byok_model_sync` (runs it in a thread)."""
@@ -264,6 +276,7 @@ async def discover_byok_model(
         exclude=tuple(exclude),
         exclude_families_of=tuple(exclude_families_of),
         chosen=chosen,
+        workspace_id=workspace_id,
         get=get,
     )
 

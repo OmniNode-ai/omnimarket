@@ -1,47 +1,76 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20967"
-title: "No Anthropic key value can enter a workflow; Per-key budget of the Claude review voter: a compute node that keeps a 10 USD reserve per key"
-summary: "A pytest ratchet reads every file under .github/workflows/, hostile-reviewer.yml included, and fails when one spells the Anthropic key prefix. The positive control assembles its key-shaped string at test time. The ratchet is a pre-commit hook and runs in CI. Operator rulings 2026-10-12T04:56:59Z (Sonnet for the Claude API review voter) and 2026-10-12T04:57:20Z (keep 10 USD per key unspent). node_claude_review_budget_compute is a pure definition-B compute: given each key's cycle anchor and recorded calls and the call about to be made (counted prompt tokens and max_tokens), it prices each key's spend this cycle and the call's worst case from the pricing manifest's claude-sonnet-5-5 row and returns the first key, in the order given, that keeps its reserve after the worst case, or no key and a reason. The 200 USD allowance, the 10 USD reserve, the model, the monthly cycle and the cache multiples are the contract's budget block. The spend record that writes each call's usage is not in this change. The gateway criterion (a 503 when no key qualifies) is proven over the gateway handler in the later change that wires this compute into the gateway (omnimarket#3800)."
+title: "A Claude API key carries its Anthropic workspace id: register-tenant-key --workspace-id stores it with the key and the review gateway sends it on every request made with that key"
+summary: "Each company Claude API key belongs to one Anthropic workspace and is answered only when the request names it in the anthropic-workspace-id header. register-tenant-key gains --workspace-id (anthropic keys only, a closed header-safe charset). workspace_id rides the registration request, the response, the credential-registered event and the catalog row (migration 0008, nullable, COALESCE on re-delivery). The review gateway reads it from the catalog row and puts it in the delegation call's extra headers; the model-list reads at registration and at a model-not-found re-resolution carry it too."
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "public_api"
 requirements:
-  - id: req-workflow-key-prefix-scan
-    statement: No workflow in this repository spells the Anthropic key prefix, and a seeded key-shaped string fails the scan.
+  - id: "req-omn20967-registration"
+    statement: |-
+      A key registered with a workspace id records it on the response, the event and the catalog row, and the registration-time model read names it.
     acceptance:
-      - id: AC1
-        statement: 'AC1: no Anthropic key value appears in any workflow file under .github/workflows/ -- falsifier: tests/ci/test_anthropic_key_prefix_workflows_omn20967.py scans every workflow including hostile-reviewer.yml and fails when a key-shaped string assembled at test time is planted in an env value, a comment or a run line (uv run pytest on that file)'
-  - id: "req-omn20967-key-budget-decision"
-    statement: "The per-key budget decision is a definition-B compute whose allowance and reserve come from its contract: a key at its reserve floor is not chosen, fill-first picks the lowest-index key that can afford the call's worst case, a cycle rollover resets the spend, and the Sonnet prices come from the pricing manifest. The gateway criterion (a 503 when no key qualifies) is proven over the gateway handler in the change that wires this compute into it, not here."
+      - id: "AC1"
+        statement: |-
+          AC1: register-tenant-key --workspace-id records workspace_id on the response, the credential-registered event and this machine's catalog row, sends it in the model-list read, and refuses it for a non-anthropic key or a value that cannot ride in a header, storing nothing -- falsifier: uv run pytest tests/unit/cli -k workspace_id
+  - id: "req-omn20967-gateway"
+    statement: |-
+      The review gateway names the key's workspace in every Anthropic request it makes with that key.
     acceptance:
       - id: "AC2"
-        statement: "AC2: the budget compute chooses no key when every key is at its reserve floor, chooses the lowest-index key that keeps its reserve after the call's worst case, resets a key's spend at its cycle rollover, and prices claude-sonnet-5-5 from the pricing manifest -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py"
+        statement: |-
+          AC2: the review gateway's delegation call carries anthropic-workspace-id for a key with a workspace id and no such header for a key without one, and a model-list read during that call keeps the header -- falsifier: uv run pytest tests/unit/cli -k workspace
+  - id: "req-omn20967-catalog"
+    statement: |-
+      The catalog projection writes the workspace id and a key without one projects as null.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the catalog projection writes workspace_id with COALESCE, the SQLite store writes and keeps it, an unset key projects null, migration 0008 is one nullable column and the exposure lists it -- falsifier: uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k workspace_id
 evidence_requirements:
-  - kind: tests
-    description: The workflow scan over the real tree, three seeded placements that fail it and a clean workflow that passes it.
-    command: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q
   - kind: "tests"
-    description: "The budget compute: the floor returns no key, fill-first, cycle rollover, Sonnet pricing arithmetic and contract-sourced allowance and reserve."
-    command: "uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py -q"
+    description: "The workspace tests pass at the head and fail on the base, where register-tenant-key has no --workspace-id option and migration 0008 does not exist."
+    command: "uv run pytest tests/unit/cli/test_omn20967_workspace_id_key_registration.py tests/test_omn16316_tenant_credentials_projection.py -k 'workspace' -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: dod-omn20967-ac1-workflow-key-scan
-    description: The real workflow tree is clean and each seeded placement of a key-shaped string fails the scan.
-    source: manual
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q
-    binds_ac:
-      - AC1
-  - id: "dod-omn20967-key-budget-compute"
-    description: "The budget compute tests pass at the head; at the merge base the node does not exist and the module fails to import."
+  - id: "dod-omn20967-ac1-registration"
+    description: "--workspace-id is printed, published on the event and stored in the catalog row; a non-anthropic key and a header-breaking value are refused with nothing stored or published."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py -q"
+        check_value: "uv run pytest tests/unit/cli/test_omn20967_workspace_id_key_registration.py -k 'register_tenant_key or request or event or models_read or discovery' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20967-ac2-gateway"
+    description: "The gateway key carries the catalogued workspace id, the delegation call names it in extra_headers, and the model-list re-resolution inside the call keeps it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20967_workspace_id_key_registration.py -k 'gateway or delegation_call or model_list' -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20967-ac3-catalog"
+    description: "The Postgres projection writes workspace_id with COALESCE, the SQLite store writes and keeps it, an unset key projects null, migration 0008 is one nullable column, and the exposure lists it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k workspace_id -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20967-deploy-probe-migration"
+    description: "Deploy probe: the migration GitHub serves at the checked-out commit adds the workspace_id column; the file does not exist at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_tenant_credentials_projection.py -k workspace_id_migration -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/migrations/0008_tenant_credentials_workspace_id.sql?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"ADD COLUMN IF NOT EXISTS workspace_id TEXT\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

@@ -65,6 +65,7 @@ from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_revi
     ModelReviewGatewayKey,
     ModelReviewGatewayPlan,
 )
+from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,22 @@ def _not_expired(value: object, now: datetime) -> bool:
     return expires_at > now
 
 
+def workspace_header() -> str:
+    """The header the catalogue declares for the gateway provider's workspace (OMN-20967)."""
+    backend = resolve_byok_provider_backend(GATEWAY_PROVIDER)
+    if backend is None or backend.workspace_header is None:
+        raise RuntimeError(
+            f"the BYOK catalogue declares no workspace header for {GATEWAY_PROVIDER}"
+        )
+    return backend.workspace_header
+
+
+def _workspace_id(row: Mapping[str, object]) -> str | None:
+    """The Anthropic workspace a catalogued key belongs to, or none (OMN-20967)."""
+    value = row.get("workspace_id")
+    return value.strip() or None if isinstance(value, str) else None
+
+
 def select_host_keys(
     rows: Sequence[Mapping[str, object]],
     *,
@@ -190,6 +207,7 @@ def select_host_keys(
             api_key_ref=str(row["api_key_ref"]),
             name=str(row.get("name") or row["api_key_ref"]),
             bound_host=host,
+            workspace_id=_workspace_id(row),
         )
         for row in rows
         if row.get("api_key_ref")
@@ -221,11 +239,15 @@ def translate_chat_request(
     endpoint_url: str,
     secret_ref: str,
     timeout_seconds: float,
+    workspace_id: str | None = None,
 ) -> ModelLlmDelegationCallRequest:
     """The voter's chat call as one delegation call on this host's key.
 
     System messages become the system prompt and the rest the prompt, in
     order. The model is the gateway's own; the voter's sampling is dropped.
+    A key that belongs to an Anthropic workspace names it in the call's
+    ``anthropic-workspace-id`` header (OMN-20967): the provider answers the
+    key only with it.
     """
     messages = payload.get("messages")
     system_parts: list[str] = []
@@ -263,6 +285,9 @@ def translate_chat_request(
         model_tier="cloud",
         provider=GATEWAY_PROVIDER,
         secret_ref=secret_ref,
+        extra_headers=(
+            {workspace_header(): workspace_id} if workspace_id is not None else {}
+        ),
     )
 
 
@@ -273,6 +298,7 @@ def describe_call(request: ModelLlmDelegationCallRequest) -> dict[str, Any]:
         "model_id": request.model_id,
         "provider": request.provider,
         "secret_ref": request.secret_ref,
+        "workspace_id": request.extra_headers.get(workspace_header()),
         "task_type": request.task_type,
         "max_tokens": request.max_tokens,
         "temperature": request.temperature,
@@ -385,6 +411,7 @@ class ClaudeReviewGateway:
             endpoint_url=self._endpoint_url,
             secret_ref=key.api_key_ref,
             timeout_seconds=self._request.upstream_timeout_seconds,
+            workspace_id=key.workspace_id,
         )
 
     def _repository_refusal(self, payload: Mapping[str, Any]) -> tuple[str, str] | None:

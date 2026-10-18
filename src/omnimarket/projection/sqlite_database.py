@@ -454,7 +454,8 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     fingerprint TEXT,
     set_at      TEXT,
     expires_at  TEXT,
-    bound_host  TEXT
+    bound_host  TEXT,
+    workspace_id TEXT
 )
 """
 
@@ -467,6 +468,8 @@ _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
     "expires_at": None,
     # 0007 (OMN-21012): the lab host the key is bound to.
     "bound_host": None,
+    # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
+    "workspace_id": None,
 }
 
 _DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """

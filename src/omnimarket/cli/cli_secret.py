@@ -686,6 +686,17 @@ def _resolve_bound_host(declared: str | None) -> str | None:
     ),
 )
 @click.option(
+    "--workspace-id",
+    "workspace_id",
+    default=None,
+    help=(
+        "The Anthropic workspace the key belongs to (anthropic keys only). A "
+        "company Claude API key is answered only when each request names its "
+        "workspace, so the id is stored with the key and sent with every "
+        "request made on it. It is an id, not a secret."
+    ),
+)
+@click.option(
     "--store",
     "store_choice",
     type=click.Choice(["local", "central"]),
@@ -705,6 +716,7 @@ def register_tenant_key(
     model_option: str | None,
     expires: str | None,
     host: str | None,
+    workspace_id: str | None,
     store_choice: str,
 ) -> None:
     """Register a tenant's provider key from stdin and publish its reference."""
@@ -725,6 +737,7 @@ def register_tenant_key(
             model=model_option,
             expires_at=expires_at,
             bound_host=bound_host,
+            workspace_id=workspace_id,
         )
         secret_store = (
             _CentralTenantKeyStore(_central_secret_handler())
@@ -778,6 +791,8 @@ def register_tenant_key(
         shown["expiry_warning"] = response.expiry_warning.value
     if response.bound_host is not None:
         shown["bound_host"] = response.bound_host
+    if response.workspace_id is not None:
+        shown["workspace_id"] = response.workspace_id
     if not central:
         _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
@@ -803,6 +818,7 @@ def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
         if response.expires_at is None
         else response.expires_at.astimezone(UTC).isoformat(),
         "bound_host": response.bound_host,
+        "workspace_id": response.workspace_id,
     }
     try:
         apply_credential_registered(payload, SqliteDatabaseAdapter(store.db_path))

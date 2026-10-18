@@ -265,9 +265,9 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             f"""
             INSERT INTO {self._table_credentials} (
               api_key_ref, tenant_id, name, provider, created_at,
-              fingerprint, set_at, expires_at, bound_host
+              fingerprint, set_at, expires_at, bound_host, workspace_id
             ) VALUES (
-              $1, $2, $3, $4, NOW(), $5, $6, $7, $8
+              $1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9
             )
             ON CONFLICT (api_key_ref) DO UPDATE SET
               tenant_id = EXCLUDED.tenant_id,
@@ -276,9 +276,10 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
               fingerprint = COALESCE(EXCLUDED.fingerprint, {self._table_credentials}.fingerprint),
               set_at = COALESCE(EXCLUDED.set_at, {self._table_credentials}.set_at),
               expires_at = COALESCE(EXCLUDED.expires_at, {self._table_credentials}.expires_at),
-              bound_host = COALESCE(EXCLUDED.bound_host, {self._table_credentials}.bound_host)
+              bound_host = COALESCE(EXCLUDED.bound_host, {self._table_credentials}.bound_host),
+              workspace_id = COALESCE(EXCLUDED.workspace_id, {self._table_credentials}.workspace_id)
             RETURNING api_key_ref, tenant_id, name, provider, created_at, revoked_at,
-              expires_at, bound_host
+              expires_at, bound_host, workspace_id
             """,
             str(api_key_ref),
             str(tenant_id),
@@ -292,6 +293,8 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             _optional_timestamp(data.get("expires_at")),
             # OMN-21012: the lab host whose Claude account owns the key.
             _optional_text(data.get("bound_host")),
+            # OMN-20967: the Anthropic workspace the key belongs to.
+            _optional_text(data.get("workspace_id")),
             # OMN-15919: bind app.tenant_id to the tenant this statement
             # actually names. The adapter previously derived the GUC on its
             # own from resolve_read_tenant(None) -- a second resolver that

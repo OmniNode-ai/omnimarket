@@ -50,8 +50,14 @@ class ProtocolCredentialStore(
 
 _SECRET_SHAPED_KEYS = ("value", "key_value", "secret", "api_key")
 # OMN-20991 adds expires_at: an event without it never erases a stored date.
-# OMN-21012 adds bound_host on the same terms.
-_REGISTERED_OPTIONAL_COLUMNS = ("fingerprint", "set_at", "expires_at", "bound_host")
+# OMN-21012 adds bound_host and OMN-20967 adds workspace_id on the same terms.
+_REGISTERED_OPTIONAL_COLUMNS = (
+    "fingerprint",
+    "set_at",
+    "expires_at",
+    "bound_host",
+    "workspace_id",
+)
 _NOW = "NOW()"
 
 

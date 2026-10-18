@@ -544,6 +544,9 @@ providers:
     models_auth: x_api_key
     models_headers:
       anthropic-version: "2023-06-01"
+    # OMN-20967: a company key belongs to one workspace and is answered only
+    # when the request names it in this header.
+    workspace_header: "anthropic-workspace-id"
     model_preference:
       - pattern: 'claude-haiku-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
         tags: [cheapest, haiku]

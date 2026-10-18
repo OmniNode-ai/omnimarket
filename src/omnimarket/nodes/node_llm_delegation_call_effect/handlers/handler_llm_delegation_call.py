@@ -723,8 +723,19 @@ class HandlerLlmDelegationCall:
                 EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
                 detail_text="",
             )
+        # OMN-20967: the model list is read with the key and with the workspace
+        # the call already names, so a workspace key's list is not refused.
+        workspace_id = (
+            request.extra_headers.get(byok.workspace_header)
+            if byok.workspace_header is not None
+            else None
+        )
         discovery = discover_byok_model_sync(
-            byok, api_key, exclude=exclude, exclude_families_of=exclude_families_of
+            byok,
+            api_key,
+            exclude=exclude,
+            exclude_families_of=exclude_families_of,
+            workspace_id=workspace_id,
         )
         if discovery.model is not None:
             logger.info(
