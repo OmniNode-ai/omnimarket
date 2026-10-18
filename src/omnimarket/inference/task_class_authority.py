@@ -851,6 +851,16 @@ class ModelTaskClassAuthorityEntry(BaseModel):
             "routable class declares one; the lab-first check reads it."
         ),
     )
+    context_profile: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description=(
+            "The context profile (a file stem under ``pack/profiles``) whose pack "
+            "the delegation orchestrator requests before dispatching a task of "
+            "this class (OMN-21119). Absent means the request carries no pack. "
+            "No production class names one until the profile is promoted."
+        ),
+    )
 
 
 class ModelTaskClassAuthority(BaseModel):
@@ -1363,6 +1373,18 @@ def resolve_task_class_execution_required(task_class: str) -> bool:
     return entry.complexity_contract.execution_required
 
 
+def resolve_task_class_context_profile(task_class: str) -> str | None:
+    """The context profile ``task_class`` names, or ``None`` (OMN-21119).
+
+    ``None`` is a real answer: an unknown class, or one naming no profile,
+    is dispatched without a context pack.
+    """
+    entry = _delegation_task_class_authority().task_classes.get(task_class)
+    if entry is None:
+        return None
+    return entry.context_profile
+
+
 def resolve_task_class_verification(task_class: str) -> str | None:
     """How ``task_class`` declares its answer is verified, or ``None``.
 
@@ -1407,6 +1429,7 @@ __all__ = [
     "resolve_quality_rule",
     "resolve_reasoning_preamble_policy",
     "resolve_size_band_thresholds",
+    "resolve_task_class_context_profile",
     "resolve_task_class_execution_budget",
     "resolve_task_class_execution_required",
     "resolve_task_class_output_contract",

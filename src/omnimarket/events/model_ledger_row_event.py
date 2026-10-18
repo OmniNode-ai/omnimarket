@@ -173,6 +173,8 @@ class ModelLedgerRulingEvent(ModelLedgerLinkedWordsEvent):
     row_type: Literal[EnumLedgerRowType.RULING] = EnumLedgerRowType.RULING
     amends: tuple[str, ...] = ()
     supersedes: tuple[str, ...] = ()
+    # Continues the named row without amending it (OMN-21107, TA.5).
+    extends: tuple[str, ...] = ()
     approved_by: str | None = None
     # ``<first prompt uuid>..<last prompt uuid>``: prompts the operator reviewed
     # with nothing further to record (decision D10).
@@ -186,6 +188,10 @@ class ModelLedgerOperatorConsentEvent(ModelLedgerLinkedWordsEvent):
     approved_scope: str | None = None
     out_of_scope: str | None = None
     approved_by: str | None = None
+    # The same relationships a ruling carries (OMN-21107, TA.5).
+    amends: tuple[str, ...] = ()
+    supersedes: tuple[str, ...] = ()
+    extends: tuple[str, ...] = ()
 
 
 class ModelLedgerFrictionEvent(ModelLedgerRowEventBase):
