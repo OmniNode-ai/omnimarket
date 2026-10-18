@@ -134,7 +134,7 @@ class ModelCiRunFailedEvent(BaseModel):
     source_digest: str
     peers: tuple[ModelCiRedPeer, ...] = ()
     # Per-check facts (PR-state schema version 2 and webhook check runs). Empty when the source
-    # observation predates them; the triage then reads the checks from GitHub.
+    # observation predates them; triage records facts-unavailable without a GitHub read.
     failing_runs: tuple[ModelPrCheckFact, ...] = ()
     base_red_checks: tuple[str, ...] = ()
     base_read: bool = False
