@@ -11,7 +11,10 @@ protocol (the OMN-15905 defect class). So this file proves what nothing else can
 2. ``is_open`` is GENERATED from the two column groups and nothing can write it;
 3. the ``ON CONFLICT ... WHERE (at, row_id) <= EXCLUDED`` guard refuses an
    out-of-order redelivery IN SQL;
-4. a redelivered row only fills a previously NULL ledger sequence on the log.
+4. a redelivered row only fills a previously NULL ledger sequence on the log;
+5. (OMN-21107) the relationship closure read back from the tables, links
+   re-derived from the stored ``raw_row``, closes a superseded ruling and lists
+   its correction when both arrive before their target, twice.
 
 It SKIPS (never ERRORs) without a reachable database and provisions a throwaway
 schema so concurrent runs never collide. Signal: ``INTEGRATION_POSTGRES``.
@@ -340,3 +343,43 @@ async def test_ledger_seq_window_presence_includes_rows_outside_window(
         assert report.rows_without_seq == 1
         assert report.max_seq_row_ts == datetime(2026, 10, 8, 2, tzinfo=UTC)
         assert report.newest_row_ts == datetime(2026, 10, 8, 3, tzinfo=UTC)
+
+
+RULING = '2026-10-01T09:00:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision | "use the lab" | first answer'
+SUPERSEDING = '2026-10-01T10:00:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision | supersedes=2026-10-01T09:00:00Z | "use the pool" | replaces it'
+CORRECTION = "2026-10-01T09:10:00Z | CORRECTION | lane=orch | ticket=OMN-1 | corrects=2026-10-01T09:00:00Z | operator_span=0:11 | the quoted cell holds framing"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_closure_read_back_from_the_tables_is_order_independent() -> None:
+    from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
+        close_relationships,
+        links_for_rows,
+    )
+
+    async with _migrated() as (writer, connection, schema):
+        # The superseding and correcting rows arrive before their target, twice.
+        for _ in range(2):
+            await _project(writer, EnumLedgerRowType.RULING, SUPERSEDING)
+            await _project(writer, EnumLedgerRowType.CORRECTION, CORRECTION)
+        await _project(writer, EnumLedgerRowType.RULING, RULING)
+        raw = [
+            r["raw_row"]
+            for r in await connection.fetch(
+                f"SELECT raw_row FROM {schema}.work_ledger_rows "
+                "WHERE row_type IN ('RULING', 'OPERATOR-CONSENT', 'CORRECTION')"
+            )
+        ]
+        assert sorted(raw) == sorted([RULING, SUPERSEDING, CORRECTION])
+        state = {
+            r["entity_key"]: dict(r)
+            for r in await connection.fetch(f"SELECT * FROM {schema}.work_ledger_state")
+        }
+        closure, unresolved = close_relationships(state, links_for_rows(raw))
+        assert unresolved == ()
+        ruling = closure["ruling:2026-10-01T09:00:00Z:orch"]
+        assert ruling["is_open"] is False
+        assert len(ruling["superseded_by"]) == 1
+        assert len(ruling["corrected_by"]) == 1
+        assert closure["ruling:2026-10-01T10:00:00Z:orch"]["is_open"] is True

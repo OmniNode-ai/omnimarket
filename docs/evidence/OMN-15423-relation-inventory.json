@@ -1081,6 +1081,7 @@
     {
       "accessor_nodes": [
         "node_projection_claude_hook_events",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -1092,7 +1093,8 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml"
+        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -3338,6 +3340,7 @@
     {
       "accessor_nodes": [
         "node_projection_claude_hook_events",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -3352,7 +3355,8 @@
       ],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml"
+        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -3400,6 +3404,7 @@
       "producer": "node_projection_claude_hook_events",
       "readers": [
         "node_projection_claude_hook_events",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -8802,6 +8807,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_freshness_alert_effect",
         "node_projection_work_events",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8814,6 +8820,7 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_events/contract.yaml"
       ],
       "current_schema": [
@@ -8853,6 +8860,7 @@
       "producer": "node_projection_work_events",
       "readers": [
         "node_consumer_flow_stall_alert_effect",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

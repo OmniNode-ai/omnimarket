@@ -65,6 +65,9 @@ class ModelContextProfile(BaseModel):
     extraction_task_class: str | None = None
     summary_task_class: str | None = None
     latency_budget_ms: int | None = Field(default=None, gt=0)
+    context_window_tokens: int | None = Field(default=None, gt=0)
+    reserved_output_tokens: int | None = Field(default=None, ge=0)
+    reserved_system_tokens: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _validate_factor_policy(self) -> ModelContextProfile:
@@ -130,6 +133,71 @@ class ModelContextProfile(BaseModel):
         ):
             raise ValueError("latency_budget_ms is declared only by additive profiles")
         return self
+
+    @model_validator(mode="after")
+    def _validate_task_kind_rules(self) -> ModelContextProfile:
+        rule_ids = [rule.rule_id for rule in self.task_kind_rules]
+        duplicates = sorted({r for r in rule_ids if rule_ids.count(r) > 1})
+        if duplicates:
+            raise ValueError(f"task_kind_rules repeat rule ids: {duplicates}")
+        optional = set(self.optional_factors)
+        for rule in self.task_kind_rules:
+            outside = sorted(f.value for f in rule.factors if f not in optional)
+            if outside:
+                raise ValueError(
+                    f"task_kind_rules[{rule.rule_id}] admits factors that are not "
+                    f"optional_factors: {outside}; a required factor is unconditional"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> ModelContextProfile:
+        window = (
+            self.context_window_tokens,
+            self.reserved_output_tokens,
+            self.reserved_system_tokens,
+        )
+        if all(value is None for value in window):
+            return self
+        if any(value is None for value in window):
+            raise ValueError(
+                "context_window_tokens, reserved_output_tokens and "
+                "reserved_system_tokens are declared together: a window is its "
+                "declared size minus its reserved output and system shares"
+            )
+        effective = self.effective_window_tokens()
+        if effective is None or effective < self.token_budget:
+            raise ValueError(
+                f"effective window {effective} (context_window_tokens minus the "
+                f"reserved output and system shares) is below token_budget "
+                f"{self.token_budget}"
+            )
+        return self
+
+    def effective_window_tokens(self) -> int | None:
+        """The declared window minus its reserved output and system shares (port item AP-B5)."""
+        if (
+            self.context_window_tokens is None
+            or self.reserved_output_tokens is None
+            or self.reserved_system_tokens is None
+        ):
+            return None
+        return (
+            self.context_window_tokens
+            - self.reserved_output_tokens
+            - self.reserved_system_tokens
+        )
+
+    def conditional_factors(self) -> frozenset[EnumContextFactor]:
+        """Optional factors loaded only when a task-kind rule that names them matches."""
+        return frozenset(f for rule in self.task_kind_rules for f in rule.factors)
+
+    def unconditional_factors(self) -> tuple[EnumContextFactor, ...]:
+        """Required factors, then optional factors no task-kind rule names."""
+        conditional = self.conditional_factors()
+        return self.required_factors + tuple(
+            f for f in self.optional_factors if f not in conditional
+        )
 
     def content_hash(self) -> str:
         """sha256 over the profile's canonical JSON; equal profiles hash equal."""
