@@ -342,7 +342,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-20275's node_work_ledger_render_effect is hosted by the process that
     # owns its rendered markdown file, not by a runtime, so it is experimental
     # with no handler_routing: 21 -> 22.
-    assert summary["skipped"] == 22
+    # node_work_ledger_landing_mirror is hosted by the same ledger serve
+    # process and has no handler_routing either: 22 -> 23.
+    assert summary["skipped"] == 23
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
