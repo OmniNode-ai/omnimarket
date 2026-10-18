@@ -116,14 +116,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov -k 'contract or entry_point or envelope or topic or json_schema'"
   - id: "dod-omn21139-deploy-container-verify"
-    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv run --frozen --no-dev and runs the product handler on one prompt: 'deploy' is admitted widened to 'Do not deploy without approval.' as a TRANSCRIPT_EXTRACTS artifact, and a fabricated quote is counted absent. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    description: "Hosted deploy probe. uv run --frozen --no-dev installs the checkout and runs the product handler on one prompt: 'deploy' is admitted widened to 'Do not deploy without approval.' as a TRANSCRIPT_EXTRACTS artifact, and a fabricated quote is counted absent. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
           uv run --frozen --no-dev python -c '
           import json
           from omnimarket.models.transcript_extraction import EnumCapturedPromptOrigin as O, ModelCapturedPrompt as P, ModelExtractionVerifyRequest as Q
