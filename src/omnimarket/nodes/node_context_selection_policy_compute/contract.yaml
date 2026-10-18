@@ -18,11 +18,14 @@ description: >
   measured effectiveness (ties broken deterministically by stable source id) and
   stamps every selection with the Context Authority 5-tuple {factor, source,
   selection_reason, effectiveness_score, experiment_cohort}. Rejects hidden
-  authority (profile-declared candidates with no score and no cohort) and forced
-  experiment arms with no matching active cohort. No LLM calls, no I/O, same
-  input = same output. The evaluate_context_selection operation scores pinned
-  Role C recordings against this ordering, with three repeats, withheld-item
-  controls, required-factor validation and conservative recall eligibility.
+  authority (optional candidates with no rule, score or cohort) and forced
+  experiment arms with no matching active cohort. POLICY_SCOPE_RULE admits
+  profile-declared rules with a rule reference and null score; a validated model
+  ranking fills optional slots before restoring precedence order, keeping every
+  required candidate. No LLM calls, no I/O, same input = same output. The
+  evaluate_context_selection operation scores pinned Role C recordings against
+  this ordering, with three repeats, withheld-item controls, required-factor
+  validation and conservative recall eligibility.
 
 handler:
   module: omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy
@@ -66,11 +69,20 @@ descriptor:
 inputs:
   candidates:
     type: array
-    description: "Candidate context factors with source id, effectiveness_score, is_required, and forced_experiment_cohort"
+    description: "Candidate context factors with source id, effectiveness_score, is_required, forced_experiment_cohort, and scope_rule_ref"
     required: true
   active_experiment_cohort:
     type: str
     description: "Active experiment cohort id for this run; required for any arm-fixed candidate"
+    required: false
+    nullable: true
+  model_ranking:
+    type: array
+    description: "Model ranking of eligible optional candidate source ids; invalid rankings are ignored and counted"
+    required: false
+  max_optional:
+    type: int
+    description: "Number of optional candidates to keep; null keeps all eligible"
     required: false
     nullable: true
   request_id:
@@ -85,6 +97,12 @@ outputs:
   selections:
     type: array
     description: "Ordered, reason-annotated selection; each entry carries the Authority 5-tuple"
+  selection_rejected:
+    type: int
+    description: "Count of model rankings ignored for ineligible or duplicate ids"
+  selection_rejected_ids:
+    type: array
+    description: "Offending model ranking ids, sorted and unique"
   request_id:
     type: str
   error:
@@ -117,6 +135,7 @@ metadata:
     - "OMN-12843"
     - "OMN-12837"
     - "OMN-12842"
+    - "OMN-21125"
 
 runtime_dispatch:
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
