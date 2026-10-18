@@ -44,9 +44,6 @@ descriptor:
     - writes a brief and starts one remote-lane run for each patch dispatched
     - moves a closed-out patch into its lane directory's closed/ with a closed.json record
     - appends STATUS rows to the ledger and writes the heartbeat last-run.json
-entry_points:
-  onex.nodes:
-    node_patch_apply_dispatch_effect: omnimarket.nodes.node_patch_apply_dispatch_effect
 metadata:
   ticket: OMN-17427
   transport_type: inmemory
