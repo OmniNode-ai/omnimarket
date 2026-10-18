@@ -507,7 +507,7 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
             "wrong_fact_cid",
             "missing_fact_cid",
             "missing_envelope_cid",
-            "customer_lane_is_not_compose_dev",
+            "unknown_lane",
         ],
     )
     async def test_proof_terminal_rejects_unbound_context(self, case: str) -> None:
@@ -536,8 +536,8 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
             fact["correlation_id"] = str(uuid4())
         elif case == "missing_fact_cid":
             fact.pop("correlation_id")
-        elif case == "customer_lane_is_not_compose_dev":
-            start["runtime_lane"] = "onex-dev"
+        elif case == "unknown_lane":
+            start["runtime_lane"] = "no-such-lane"
         envelope = ModelEventEnvelope(
             payload=payload,
             correlation_id=None if case == "missing_envelope_cid" else corr,
