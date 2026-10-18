@@ -8,8 +8,10 @@ Context Authority Rule 5-tuple so injection is auditable per run:
 
     {factor, source, selection_reason, effectiveness_score, experiment_cohort}
 
-The ``effectiveness_score is None`` XOR ``selection_reason == FALLBACK_NO_SCORE``
-invariant is enforced by a model validator: no silent defaults.
+Only ``FALLBACK_NO_SCORE`` and ``POLICY_SCOPE_RULE`` may carry a null
+effectiveness score, and both require it. ``POLICY_SCOPE_RULE`` additionally
+requires a profile rule reference; no other reason may carry one. These
+invariants are enforced by a model validator: no silent defaults.
 """
 
 from __future__ import annotations
@@ -19,6 +21,10 @@ from enum import StrEnum
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.enums.enum_selection_reason import EnumSelectionReason
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.nodes.node_context_selection_policy_compute.models.model_selection_rule_ref import (
+    ModelSelectionRuleRef,
+)
 
 
 class EnumSelectionStatus(StrEnum):
@@ -46,7 +52,7 @@ class ModelFactorSelection(BaseModel):
         le=1.0,
         description=(
             "M2-resolved measured effectiveness. None ONLY when "
-            "selection_reason == FALLBACK_NO_SCORE."
+            "selection_reason is FALLBACK_NO_SCORE or POLICY_SCOPE_RULE."
         ),
     )
     experiment_cohort: str | None = Field(
@@ -54,6 +60,12 @@ class ModelFactorSelection(BaseModel):
         min_length=1,
         description=(
             "Cohort id when selection_reason == EXPERIMENT_ASSIGNMENT; None otherwise."
+        ),
+    )
+    rule_ref: ModelSelectionRuleRef | None = Field(
+        default=None,
+        description=(
+            "Profile rule admitting a POLICY_SCOPE_RULE selection; None otherwise."
         ),
     )
     rank: int = Field(
@@ -65,16 +77,28 @@ class ModelFactorSelection(BaseModel):
     def _enforce_authority_invariants(self) -> ModelFactorSelection:
         """Enforce the Context Authority Rule invariants (no silent defaults)."""
         is_fallback = self.selection_reason == EnumSelectionReason.FALLBACK_NO_SCORE
+        is_scope_rule = self.selection_reason == EnumSelectionReason.POLICY_SCOPE_RULE
         has_score = self.effectiveness_score is not None
-        # effectiveness_score is None XOR selection_reason == FALLBACK_NO_SCORE.
+        # Only fallback and scope-rule selections may carry null scores.
         if is_fallback and has_score:
             raise ValueError(
                 "FALLBACK_NO_SCORE selection must not carry an effectiveness_score."
             )
-        if not is_fallback and not has_score:
+        if is_scope_rule and has_score:
+            raise ValueError(
+                "POLICY_SCOPE_RULE selection must not carry an effectiveness_score."
+            )
+        if not is_fallback and not is_scope_rule and not has_score:
             raise ValueError(
                 f"selection_reason {self.selection_reason.value!r} requires a "
                 "non-null effectiveness_score (no silent defaults)."
+            )
+        if is_scope_rule and self.rule_ref is None:
+            raise ValueError("POLICY_SCOPE_RULE selection requires a rule_ref.")
+        if not is_scope_rule and self.rule_ref is not None:
+            raise ValueError(
+                f"rule_ref is only valid for POLICY_SCOPE_RULE, not "
+                f"{self.selection_reason.value!r}."
             )
         # EXPERIMENT_ASSIGNMENT requires a cohort; no other reason may carry one.
         is_experiment = (
@@ -104,6 +128,18 @@ class ModelContextSelectionResult(BaseModel):
         description=(
             "Ordered, reason-annotated selection. Empty when status == error."
         ),
+    )
+    selection_rejected: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Count of model rankings ignored for ids outside the eligible optional "
+            "set or duplicate ids."
+        ),
+    )
+    selection_rejected_ids: tuple[str, ...] = Field(
+        default=(),
+        description="Offending model ranking ids, sorted and unique.",
     )
     request_id: str = Field(
         default="",
