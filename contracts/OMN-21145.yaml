@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21145"
+title: "TE.8 model-role routing admission in profile resolution"
+summary: >-
+  First slice: AC1 only. The existing context profile resolver checks each
+  named extraction, selection and summary task class against the existing
+  task-class routing authority on every resolution. Missing entries, declared
+  unavailable classes and unreadable authority data return INVALID_PROFILE
+  without a resolved profile or hash. Profiles without model roles remain
+  independent of the routing contract. AC2, AC3 and AC4 remain pending;
+  this slice does not execute model roles or assert their runtime evidence.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-model-role-routing-admission"
+    statement: "Profile resolution admits model roles only after routing-contract promotion."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a profile naming a model-role task class that has no routing-contract entry (TE.5 or TE.6 has not promoted a rung) fails resolution with `INVALID_PROFILE` -- falsifier: such a profile resolves.
+evidence_requirements:
+  - kind: "tests"
+    description: "Missing-role refusals, promoted-role controls, rollback and invalid authority data."
+    command: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21145-ac1-routing-admission"
+    description: >-
+      All three role fields reject a missing routing entry. Promoted internal
+      task classes resolve with a reproducible profile hash; removal of an
+      entry makes the next call on the same handler fail. A profile without
+      roles resolves even when the routing contract is absent.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py -q -p no:randomly --no-cov -n 0"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21145-deploy-routing-admission"
+    description: >-
+      Hosted deploy artifact probe: read the resolver at the checked-out head
+      from the product repository and require the role-admission branch before
+      the success result. The focused tests provide the behavior evidence;
+      this probe checks the published artifact, not a deployed bus session.
+      The required branch is absent before this change.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_profile_resolver_effect/handlers/handler_context_profile_resolver.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq "if errors := _model_role_errors(profile):"'

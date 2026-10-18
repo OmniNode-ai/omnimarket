@@ -74,6 +74,7 @@ sources:
       - src/omnimarket/configs/task_class_contracts.v1.yaml
     overlay: TASK_CLASS_CONTRACT_PATH pin of a complete file; there is no node overlay for this file
     resolution_sites:
+      - "src/omnimarket/nodes/node_context_profile_resolver_effect/handlers/handler_context_profile_resolver.py:resolve_path_config(TASK_CLASS_CONTRACT_PATH_ENV_KEY)"
       - "src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py:resolve_path_config(TASK_CLASS_CONTRACT_PATH_ENV_KEY)"
       - "src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py:resolve_path_config('TASK_CLASS_CONTRACT_PATH')"
     precedence:

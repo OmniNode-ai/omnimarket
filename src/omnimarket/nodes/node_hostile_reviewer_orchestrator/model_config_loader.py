@@ -27,9 +27,12 @@ from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceBridgeConfig,
 )
+from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 
 _CONTRACT_PATH = Path(__file__).parent / "contract.yaml"
 _DEFAULT_ROUTE_CONFIG_ENV = "HOSTILE_REVIEWER_MODEL_CONFIGS_JSON"
+_LAB_BACKEND_PROVIDER = "local"
+_CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
 
 
 def _load_contract_model_routing() -> dict[str, Any]:
@@ -78,6 +81,34 @@ def _load_runtime_model_configs(
             raise ValueError(msg)
         configs[key] = declaration
     return configs
+
+
+def _declared_lab_route_configs(
+    requested_keys: list[str],
+) -> dict[str, Mapping[str, Any]] | None:
+    """Resolve every requested key against the lab backends the repo declares.
+
+    A key resolves only when the bifrost delegation contract (plus the lane
+    overlay) declares it as a ``local`` backend with a complete chat-completions
+    endpoint and a served model name. Returns ``None`` when any key does not, so
+    the caller fails closed instead of mixing declared and invented routes.
+    """
+    declarations: dict[str, Mapping[str, Any]] = {}
+    for key in requested_keys:
+        backend = resolve_bifrost_backend(key)
+        if backend is None or backend.provider != _LAB_BACKEND_PROVIDER:
+            return None
+        endpoint = (backend.endpoint_url or "").strip()
+        model_id = (backend.model_name or "").strip()
+        if not endpoint.endswith(_CHAT_COMPLETIONS_SUFFIX) or not model_id:
+            return None
+        declarations[key] = {
+            "transport": "http",
+            # The inference adapter appends the chat-completions path itself.
+            "base_url": endpoint[: -len(_CHAT_COMPLETIONS_SUFFIX)],
+            "model_id": model_id,
+        }
+    return declarations
 
 
 def _require_requested_keys(requested_keys: list[str] | None) -> list[str]:
@@ -168,7 +199,9 @@ def build_model_configs(
 
     The contract declares the policy schema, not concrete model defaults.
     Runtime configs may be supplied directly for tests/callers, or via the
-    contract's route_config_env JSON object.
+    contract's route_config_env JSON object. When that env is unset, keys the
+    bifrost delegation contract declares as lab (``local``) backends resolve
+    from it.
 
     Args:
         requested_keys: Required logical route keys from the start command.
@@ -179,11 +212,20 @@ def build_model_configs(
     """
     keys = _require_requested_keys(requested_keys)
     routing_policy = _load_contract_model_routing()
-    route_configs = (
-        dict(runtime_model_configs)
-        if runtime_model_configs is not None
-        else _load_runtime_model_configs(routing_policy)
-    )
+    if runtime_model_configs is not None:
+        route_configs = dict(runtime_model_configs)
+    elif os.environ.get(_route_config_env_name(routing_policy), ""):
+        route_configs = _load_runtime_model_configs(routing_policy)
+    else:
+        # No route-config JSON on this runtime: the lab backends the repo
+        # already declares are the only other source. Anything they cannot
+        # answer for raises the route-config-required error below.
+        declared = _declared_lab_route_configs(keys)
+        route_configs = (
+            declared
+            if declared is not None
+            else _load_runtime_model_configs(routing_policy)
+        )
     configs: dict[str, dict[str, object]] = {}
 
     for key in keys:
