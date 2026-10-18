@@ -11,9 +11,10 @@ Flow per (task x arm x trial):
   1. Assemble the arm's context pack (off arm = empty string) by invoking the
      single canonical assembler, node_context_pack_builder_compute (OMN-13643).
      The builder owns factor precedence and the 16k token budget; the runner
-     never re-implements them. In production the content resolver populates real
-     artifact text via the request's artifact_content_map before this handler
-     is called.
+     never re-implements them. In production the artifact resolver
+     (node_context_artifact_resolver_compute) supplies real artifacts via the
+     request's ``artifacts``, which reach the builder whole (OMN-21137);
+     ``artifact_content_map`` remains for callers holding one text per factor.
   2. Use the builder's pack_hash as the injected pack's context_pack_hash.
   3. Publish a generation command on the generation command topic
      (read from contract via generation_pipeline.command_topic).
@@ -223,6 +224,7 @@ def _build_context_pack(
     factor_subset: tuple[str, ...],
     artifact_content_map: dict[str, str],
     contract_hash: str,
+    resolved_artifacts: tuple[ModelContextPackArtifact, ...] = (),
 ) -> tuple[str, str, list[str], EnumFailureStage]:
     """Assemble the arm's context pack via the single canonical assembler.
 
@@ -241,6 +243,11 @@ def _build_context_pack(
     - ``failure_stage`` is ``NONE`` on success; otherwise it preserves the
       builder's failure class so budget rejects remain ``BUDGET_FAIL``.
 
+    ``resolved_artifacts`` (the artifact resolver's output) are passed to the
+    builder unchanged for every factor the arm names: one factor may carry
+    several artifacts (one per guidance section), and the builder alone
+    selects, budgets and hashes them.
+
     Unknown factor labels are skipped with a warning. A selected factor without
     resolved content fails closed so upstream resolver gaps are not masked.
     """
@@ -251,6 +258,10 @@ def _build_context_pack(
         factor = _factor_str_to_enum(label)
         if factor is None:
             warnings.append(f"unknown factor label '{label}' -- skipped")
+            continue
+        factor_artifacts = [a for a in resolved_artifacts if a.factor is factor]
+        if factor_artifacts:
+            artifacts.extend(factor_artifacts)
             continue
         if label not in artifact_content_map:
             warnings.append(
@@ -619,6 +630,7 @@ class HandlerContextRoiRunner:
                     factor_subset=arm.factor_subset,
                     artifact_content_map=request.artifact_content_map,
                     contract_hash=factor_subset_hash,
+                    resolved_artifacts=request.artifacts,
                 )
                 warnings.extend(assemble_warnings)
 

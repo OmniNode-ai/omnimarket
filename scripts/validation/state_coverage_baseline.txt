@@ -41,7 +41,6 @@ node_chain_diff_compute onex.evt.omnimarket.chain-diff-completed.v1
 node_claim_resolver onex.evt.omnimarket.claim-resolver-completed.v1
 node_close_out onex.evt.omnimarket.close-out-skipped.v1
 node_codebase_intelligence_bridge_effect onex.evt.omnimarket.codebase-intelligence-query-response.v1
-node_context_artifact_resolver_compute total_token_estimate
 node_context_experiment_compute errors
 node_context_experiment_compute failure_class
 node_context_experiment_compute onex.evt.omnimarket.context-experiment-completed.v1

@@ -2,46 +2,27 @@
 # SPDX-License-Identifier: MIT
 """Request model for the context-artifact resolver (pure COMPUTE).
 
-One request resolves the real text for every context factor that has at least
-one source, materialising the ``artifact_content_map`` the ROI runner
-(OMN-12798) consumes.  Budget and factor precedence are NOT reimplemented here:
-the resolved artifacts are run through the existing
-``HandlerContextPackBuilder`` so the 16k token-budget hard-reject and the
-canonical precedence (golden_chain > exemplar > local_failures >
-architecture_patterns > claude_md) are enforced by the one authority that owns
-them.
+One request resolves every pre-read source into ``ModelContextPackArtifact``
+entries.  The resolver carries no budget, precedence or selection input:
+node_context_pack_builder_compute owns selection, the token budget, factor
+precedence and the pack hash, and the resolver's artifacts go to it whole
+(OMN-21137).
 """
 
 from __future__ import annotations
 
-from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_source import (
     ModelArtifactSource,
 )
 
-# Canonical factor precedence shared with the pack builder. Declared here as the
-# resolver's default so a request without an explicit precedence still produces
-# the same ordering the pack builder enforces.
-CANONICAL_FACTOR_PRECEDENCE: tuple[EnumContextFactor, ...] = (
-    EnumContextFactor.GOLDEN_CHAIN,
-    EnumContextFactor.EXEMPLAR,
-    EnumContextFactor.LOCAL_FAILURES,
-    EnumContextFactor.ARCHITECTURE_PATTERNS,
-    EnumContextFactor.CLAUDE_MD,
-)
-
 
 class ModelArtifactResolverRequest(BaseModel):
-    """All inputs to materialise the per-factor content map.
+    """All inputs to resolve pre-read sources into pack artifacts.
 
     ``sources`` are already-read artifact bodies (the EFFECT boundary did the
-    file I/O).  ``token_budget`` mirrors the pack-builder profile default of
-    16000.  ``per_factor_token_budget`` bounds how much of a sectioned markdown
-    source is selected for a single factor so that the union arm
-    (structured_plus_guidance_chunks: all five factors) still fits the overall
-    budget.
+    file I/O).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -57,31 +38,6 @@ class ModelArtifactResolverRequest(BaseModel):
     sources: tuple[ModelArtifactSource, ...] = Field(
         description="Pre-read artifact sources, one or more per factor."
     )
-    token_budget: int = Field(
-        default=16000,
-        gt=0,
-        description="Overall pack token budget; mirrors the pack-builder profile.",
-    )
-    per_factor_token_budget: int = Field(
-        default=3000,
-        gt=0,
-        description=(
-            "Maximum tokens selected for a single sectioned-markdown factor. "
-            "Five factors x this budget must not exceed token_budget."
-        ),
-    )
-    factor_precedence: tuple[EnumContextFactor, ...] = Field(
-        default=CANONICAL_FACTOR_PRECEDENCE,
-        description=(
-            "Factor ordering passed to the pack builder. Defaults to the "
-            "canonical precedence."
-        ),
-    )
-    model_id: str = Field(
-        default="resolver",
-        min_length=1,
-        description="Model id stamped on the pack-builder profile for provenance.",
-    )
 
 
-__all__ = ["CANONICAL_FACTOR_PRECEDENCE", "ModelArtifactResolverRequest"]
+__all__ = ["ModelArtifactResolverRequest"]
