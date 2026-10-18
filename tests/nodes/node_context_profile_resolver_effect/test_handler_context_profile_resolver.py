@@ -42,6 +42,7 @@ def promoted_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
                 "task_classes": {
                     "extraction_proposer": entry,
                     "context_compaction": entry,
+                    "context_selection": entry,
                 }
             }
         ),
@@ -192,7 +193,7 @@ def test_contract_declares_one_terminal_topic_and_the_resolve_outputs() -> None:
     }
 
 
-def test_session_resume_profile_data() -> None:
+def test_session_resume_profile_data(promoted_contract: None) -> None:
     # Plan section 4.4 row session_resume (OMN-21119).
     result = _resolve("session_resume")
     profile = result.profile

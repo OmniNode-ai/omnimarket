@@ -38,7 +38,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py -q -p no:randomly --no-cov -n 0"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py -q -p no:randomly --no-cov -n 0"
     binds_ac: ["AC1"]
   - id: "dod-omn21145-deploy-routing-admission"
     description: >-
