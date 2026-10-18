@@ -380,11 +380,16 @@ requirements:
     acceptance:
       - id: "AC72"
         statement: "AC72: the market node runtime dogfood inventory classifies node_claude_token_pool_effect as an expected-missing entry point and reports no node directory without an onex.nodes entry point that is not on the list -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q reports a node directory with no onex.nodes entry point that is not on the list"
+  - id: "req-gateway-pr-text-cross-repository"
+    statement: "The GitHub gateway's pr_text read reports the head repository and whether the head is cross-repository, so a caller that refuses fork heads reads it from the gateway and needs no gh CLI."
+    acceptance:
+      - id: "AC73"
+        statement: "AC73: the gateway pr_text result carries head_repo and is_cross_repository: True for a fork head and for a head repository that is gone, False for a same-repository head compared without regard to letter case."
   - id: "req-landing-decision-ledger-mirror"
     statement: "The landing controller's decisions reach the work ledger from the typed landing decision event, hosted by the ledger serve process."
     acceptance:
-      - id: "AC73"
-        statement: "AC73: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+      - id: "AC74"
+        statement: "AC74: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -528,7 +533,10 @@ evidence_requirements:
     description: "AC71: the delegation review route and the completed event's verdict and findings."
     command: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC73: the landing decision mapping writes one row per action, outcome, degraded reason and violation, none for an idle tick, and the host appends a redelivered event once."
+    description: "AC73: the gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
+  - kind: "tests"
+    description: "AC74: the landing decision mapping writes one row per action, outcome, degraded reason and violation, none for an idle tick, and the host appends a redelivered event once."
     command: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
@@ -1360,14 +1368,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("REVIEW_TASK_TYPE", "backend_id=model_key", "HandlerDelegateSkill")); print("hostile reviewer delegation route deploy probe: PASS")'
-  - id: "dod-omn17427-ac73-landing-decision-ledger-mirror"
+  - id: "dod-omn17427-ac70-gateway-pr-text-cross-repository"
+    description: "The gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC73"]
+  - id: "dod-omn17427-gateway-fork-deploy-probe"
+    description: "Deploy probe. GitHub serves the gateway read operations at the checked-out HEAD reporting is_cross_repository. The probe fails at the merge base, which has no such field, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/read_operations.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "is_cross_repository" in source; assert "head_repo" in source; print("gateway pr_text cross-repository deploy probe: PASS")'
+  - id: "dod-omn17427-ac74-landing-decision-ledger-mirror"
     description: "The landing decision mapping writes one STATUS row per action, recorded outcome, DEGRADED reason and violation, none for an idle tick or a withheld observe-only action, and the ledger host appends a redelivered event once."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC73"]
+    binds_ac: ["AC74"]
   - id: "dod-omn17427-landing-ledger-mirror-deploy-probe"
     description: "Deploy probe. GitHub serves the landing decision ledger mirror contract at the checked-out HEAD, subscribed to the landing decision completed topic. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
