@@ -34,7 +34,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: "Codex hook registration node tests pass"
-    command: "uv run pytest tests/nodes/node_codex_hook_registration_effect -q --no-cov"
+    command: "uv run pytest tests/nodes/node_codex_hook_registration_effect/test_handler_codex_hook_registration.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -46,7 +46,7 @@ dod_evidence:
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/nodes/node_codex_hook_registration_effect -q --no-cov -k 'real_registration or second_apply or backs_up or absent_target or partial_group'"
+        check_value: "uv run pytest tests/nodes/node_codex_hook_registration_effect/test_handler_codex_hook_registration.py -q --no-cov -k 'real_registration or second_apply or backs_up or absent_target or partial_group'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn18759-ac3-preserve
     description: 'Existing user hook groups keep their order and content and only missing commands are appended, so no emit script is registered twice; invalid input writes nothing. Fails at the merge base, which has no node_codex_hook_registration_effect.'
@@ -54,5 +54,13 @@ dod_evidence:
     binds_ac: [AC3]
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests/nodes/node_codex_hook_registration_effect -q --no-cov -k 'preserved_first or invalid_target or invalid_registration or does_not_mutate'"
+        check_value: "uv run pytest tests/nodes/node_codex_hook_registration_effect/test_handler_codex_hook_registration.py -q --no-cov -k 'preserved_first or invalid_target or invalid_registration or does_not_mutate'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn18759-deploy-probe
+    description: 'Hosted source readback of the registration handler at the checked-out revision. The API lookup fails at the merge base, which has no handler file, and the content assertions fail if the merge call or atomic replacement is absent. This checks published source; it does not claim the operator Mac has deployed it.'
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_codex_hook_registration_effect/handlers/handler_codex_hook_registration.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | (contains(\"merged, added = merge_registration(\") and contains(\"os.replace(temporary, hooks_file)\"))' | grep -qx true"
         cwd: "${OMNI_HOME}/omnimarket"
