@@ -1,0 +1,56 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-18592
+title: OCC compute-path companion template emits a summary line over yamlfmt's limit
+summary: The compute-path companion template emitted summary as a folded scalar that onex_change_control's yamlfmt reflowed for long repository names. omnimarket#2643 routes summary through the fold-proof renderer. This contract records the acceptance-criterion bindings a second lane accepted.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn-18592-criteria
+  statement: The ticket's labelled acceptance criteria.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the labelled criterion of the same name on the ticket; its text is pinned by criterion_hash in ac_bindings.'
+  - id: AC4
+    statement: 'AC4: the labelled criterion of the same name on the ticket; its text is pinned by criterion_hash in ac_bindings.'
+evidence_requirements:
+- kind: tests
+  description: 'AC1: the compute companion contract for the longest registry slug at a five-digit PR is a yamlfmt fixpoint under the vendored and the real OCC config. Fails at the parent of omnimarket#2643.'
+  command: uv run pytest 'tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_compute_summary_foldproof_omn_18592.py::TestTheCompanionContractSurvivesTheConsumingRepoFormatter::test_the_longest_repo_at_a_five_digit_pr_is_a_fixpoint' -q
+- kind: tests
+  description: 'AC4: the OMN-13317 F1 born-path summary keeps its exact short quoted form.'
+  command: uv run pytest 'tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_compute_summary_foldproof_omn_18592.py::TestNoBlastRadius::test_the_born_path_summary_is_untouched' -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn18592-ac1-accepted-20261018t2045z
+  description: 'AC1: the compute companion contract for the longest registry slug at a five-digit PR is a yamlfmt fixpoint under the vendored and the real OCC config. Fails at the parent of omnimarket#2643.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_compute_summary_foldproof_omn_18592.py::TestTheCompanionContractSurvivesTheConsumingRepoFormatter::test_the_longest_repo_at_a_five_digit_pr_is_a_fixpoint' -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+  ac_bindings:
+  - label: AC1
+    criterion_hash: e1491114fb9bbe230398b4fe7be72499f994a3215eac432c48288cffc11a2921
+    proposed_by: lane=dod-closeout-bind-2026-10-18T2045Z-c1
+    accepted_by: lane=dod-closeout-accept-2026-10-18T2045Z-c1
+- id: dod-omn18592-ac4-accepted-20261018t2045z
+  description: 'AC4: the OMN-13317 F1 born-path summary keeps its exact short quoted form.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_compute_summary_foldproof_omn_18592.py::TestNoBlastRadius::test_the_born_path_summary_is_untouched' -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+  ac_bindings:
+  - label: AC4
+    criterion_hash: 07556a346070cb9d741be88532be5547f139d4407b7f1e8ce4c8fe3971398571
+    proposed_by: lane=dod-closeout-bind-2026-10-18T2045Z-c1
+    accepted_by: lane=dod-closeout-accept-2026-10-18T2045Z-c1
