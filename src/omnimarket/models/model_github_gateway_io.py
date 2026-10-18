@@ -518,6 +518,12 @@ class ModelPrTextResult(_ModelBoundedList):
     head_ref: str
     head_sha: str
     base_ref: str
+    head_repo: str | None = None
+    # True when the head branch lives in another repository than ``repo``
+    # (a fork), and also when the head repository is gone. None: an older
+    # node that did not report it; a caller that must refuse forks treats
+    # None as unknown, never as same-repository.
+    is_cross_repository: bool | None = None
     comments: list[ModelPrComment] = Field(default_factory=list)
 
 
