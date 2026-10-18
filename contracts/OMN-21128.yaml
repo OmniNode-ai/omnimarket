@@ -1,0 +1,99 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21128"
+title: "Exemplar admission compute: the pure admission decision of the exemplar registry"
+summary: >-
+  First slice of exemplar admission. node_exemplar_admission_compute takes, for one
+  repository at one commit, the canonical-handler-shape classification of every contract
+  binding of each candidate node plus the facts a caller read (handler and node-package
+  source text, contract validity, unit-test directory, coverage, and the check-runs of the
+  commit), and returns one decision per candidate listing every violation, with admitted
+  candidates ranked per archetype by handler size then contract path and carrying the gate
+  receipt (gate, gate_version, baseline_sha256, result, commit, check-run ids). It reads no
+  files, no network and no clock. The omnibase_core classifier move, the admission
+  orchestrator, its decided event and the registry projection are later slices.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-exemplar-admission-refusals"
+    statement: "A candidate is refused, with every reason listed, when it is in its repository's baseline, comes from a repository where the gate does not run, fails the gate, or is one of the shape-valid negatives."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a candidate in its repository's baseline, a candidate from a repository where
+          the gate does not run (omnibase_spi, omnibase_compat, omnidash, onex_change_control,
+          or a private repository), and a candidate whose first binding fails the gate are each
+          refused with that reason -- falsifier: test_baseline_candidate_is_refused_for_exactly_in_baseline,
+          test_gate_absent_repository_is_refused, test_private_repository_is_refused or
+          test_first_noncanonical_binding_fails_gate in tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py fails
+      - id: "AC2"
+        statement: >-
+          AC2: a handle(**kwargs) stub, a zero-argument handle, a node whose second binding is
+          non-canonical, a compute handler that imports a database client, and a node at a
+          commit whose newest required check-run is not success are each refused with their
+          reason, and a refusal lists every violation, not the first -- falsifier: the kwargs,
+          zero-argument, second-binding, database-import, failed-run and all-violations tests
+          in tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py fail
+  - id: "req-exemplar-admission-receipt-and-data"
+    statement: "Admission rests on check-run records on the cited commit and declared deny data, never on a caller-asserted success."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: an admitted decision's receipt names the check-run ids chosen on the cited
+          commit; a missing required check, runs only on another commit, or node tests absent
+          from the collected set refuse the candidate; a caller-asserted passed or confidence
+          field is refused by the model -- falsifier: the receipt and
+          test_caller_asserted_success_fields_are_forbidden tests in tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py fail
+      - id: "AC4"
+        statement: >-
+          AC4: no coverage figure is recorded as coverage_state unknown with a null percentage,
+          not 0.5; a hardcoded password or api key, a bare eval or exec, or a pickle import is
+          refused by the deny data, and Path() arithmetic or a dict[str, Any] field annotation
+          is not -- falsifier: test_good_candidate_is_admitted_with_receipt_and_unknown_coverage,
+          the deny tests or test_path_arithmetic_and_model_dict_annotations_are_pure in tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py fail
+      - id: "AC5"
+        statement: >-
+          AC5: the node is dispatched through its contract on the RuntimeLocal in-memory bus,
+          its topics are declared in contract.yaml and its entry point resolves -- falsifier:
+          test_contract_declares_topics_models_handler_and_entry_point or the over-the-bus chain tests
+          in tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py fail
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1-AC5: the admission compute's focused tests."
+    command: "uv run pytest tests/nodes/node_exemplar_admission_compute -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21128-refusals"
+    description: "Baseline, gate-absent, gate-failed and shape-valid negative candidates are refused with every reason."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py -q -n 0 -k 'baseline or gate_absent or private_repository or noncanonical or kwargs or zero_argument or database_import or failed_run or all_violations'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn21128-receipt-and-data"
+    description: "The receipt is built from check-runs on the commit, coverage unknown stays unknown, and the deny data refuses only what it names."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py -q -n 0 -k 'receipt or required_check or collected or caller_asserted or coverage or secret or eval or pickle or path_arithmetic'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
+  - id: "dod-omn21128-bus"
+    description: "The node runs through its contract on the in-memory bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py -q -n 0 -k 'contract_declares or over_the_bus'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21128-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines HandlerExemplarAdmission. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_exemplar_admission_compute/handlers/handler_exemplar_admission.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerExemplarAdmission'"
+        cwd: "${OMNI_HOME}/omnimarket"
