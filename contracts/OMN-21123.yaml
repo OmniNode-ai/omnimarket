@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21123"
+title: "Shared item identity, session sequence and barrier across the two capture streams (consumer read model)"
+summary: "The capture producer already stamps content_record_id, stream and producer_seq and builds one barrier record per stream (node_capture_item_identity_effect). This slice adds the consumer side's barrier test: a shared pure handler that holds a session barrier met only when every producer_seq from 1 to each stream's barrier high-water has been applied, counted over distinct numbers. node_projection_session_content now types the stamp and the barrier fields on its inbound record instead of ignoring them, and keys a stamped record by its stamp, so the two streams' barriers of one call no longer derive one row. Storing the stamp in columns (a node migration vendored by omnibase_infra), the claude_hook_events side and the envelope tenant_id are later slices."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+requirements:
+  - id: "req-barrier-high-water"
+    statement: "A stream's applied high-water reaches its barrier only when every sequence number up to the barrier has been applied, whatever the arrival order across the two streams and with duplicated records."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: replaying both streams' records one at a time in lineage-first, content-first, both-reversed and shuffled orders, with and without duplicates, the barrier verdict is met only after the last distinct record arrives, and a missing lower number holds it not_met -- falsifier: uv run pytest tests/unit/handlers/test_session_stream_barrier_omn21123.py -q --no-cov fails, as it does when the high-water is computed as the maximum applied number"
+  - id: "req-projection-types-stamp"
+    statement: "node_projection_session_content types the item identity stamp and the barrier fields on its inbound record and keeps two stamped records apart in its row key, while an unstamped record keeps its key."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the lineage and content barriers of one barrier call fold to two different event ids, two records differing only in their stamp fold to two, an unstamped record derives its pre-change key, and a malformed stamp or a barrier without its high_water is refused -- falsifier: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_item_identity_omn21123.py -q --no-cov fails against the pre-change fold and model"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2, plus the existing session content projection suite."
+    command: "uv run pytest tests/unit/handlers/test_session_stream_barrier_omn21123.py tests/unit/nodes/node_projection_session_content/ -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21123-ac1-barrier-high-water"
+    description: "AC1: the shared barrier test holds a barrier met only when every number up to it has been applied, across reversed and shuffled arrival orders with duplicates."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_session_stream_barrier_omn21123.py -q --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21123-ac2-projection-stamp"
+    description: "AC2: the session content fold types the stamp and keys stamped records apart. Deploy probe: read the session content record model from GitHub at the checked-out commit and require the producer_seq field; it fails at the merge base, whose model ignores the key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_item_identity_omn21123.py -q --no-cov"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_session_content/models/model_session_content.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    producer_seq:\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
