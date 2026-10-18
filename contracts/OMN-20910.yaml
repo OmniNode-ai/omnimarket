@@ -73,3 +73,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20910-chunk-deadline-reviewer-pin"
+    description: "The workflow pins the omniintelligence revision that scales a voter's review deadline by chunk count, retaining the earlier structured-votes pin test and its known-bad control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
