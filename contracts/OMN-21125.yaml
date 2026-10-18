@@ -1,0 +1,69 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21125"
+title: "Context selection policy: POLICY_SCOPE_RULE, rule_ref invariant, validated model ranking"
+summary: >-
+  The selection-policy half of plan task TC.2. node_context_selection_policy_compute stamps a candidate admitted by a profile-declared rule POLICY_SCOPE_RULE with a rule_ref and a null score; ModelFactorSelection requires rule_ref and a null score for POLICY_SCOPE_RULE and refuses rule_ref on every other reason; a model ranking of optional candidate ids is accepted only as a subset of the eligible optional ids, otherwise ignored and counted in selection_rejected; optional candidates fill by rank, then precedence order is restored; the selection is identical under every permutation of the candidate input. The builder half (content dedup, excluded_by_budget) is not in this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-selection-scope-rule"
+    statement: "The context selection policy admits profile-declared rule candidates with a typed rule reference and validates a model ranking of optional candidates."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a candidate admitted by a profile-declared rule is stamped POLICY_SCOPE_RULE, required or optional; a candidate with no rule, no score and no cohort is still rejected as hidden authority -- falsifier: uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -k 'stamped_policy_scope_rule or still_hidden_authority'"
+      - id: "AC2"
+        statement: "AC2: ModelFactorSelection constructs for POLICY_SCOPE_RULE with a rule_ref and a null score, and fails for POLICY_SCOPE_RULE without rule_ref, for POLICY_SCOPE_RULE with a score, and for any other reason carrying a rule_ref; FALLBACK_NO_SCORE behaviour is unchanged -- falsifier: uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -k 'scope_rule_selection or rule_ref_on_any or fallback_no_score_unchanged'"
+      - id: "AC3"
+        statement: "AC3: a model ranking naming an id outside the eligible optional set is ignored, the deterministic order is used, and the result counts selection_rejected -- falsifier: uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -k 'fills_by_rank or outside_id or required_id or never_drops'"
+      - id: "AC4"
+        statement: "AC4: the selection is identical under every permutation of the candidate input order -- falsifier: uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -k every_input_permutation"
+evidence_requirements:
+  - kind: "tests"
+    description: "Selection-policy extensions for OMN-21125."
+    command: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py tests/nodes/node_context_selection_policy_compute/test_handler_context_selection_policy.py tests/test_golden_chain_context_selection_policy.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21125-ac1-scope-rule-stamp"
+    description: "A rule-admitted candidate, required or optional, is stamped POLICY_SCOPE_RULE with its rule_ref and a null score; a candidate with no rule, score or cohort still raises the hidden-authority error."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -n 0 -k 'stamped_policy_scope_rule or still_hidden_authority'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21125-ac2-rule-ref-invariant"
+    description: "ModelFactorSelection accepts POLICY_SCOPE_RULE with rule_ref and a null score and refuses the three reversed constructions; FALLBACK_NO_SCORE still refuses a score and still constructs with a null score."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -n 0 -k 'scope_rule_selection or rule_ref_on_any or fallback_no_score_unchanged'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21125-ac3-model-ranking"
+    description: "A ranking naming an id outside the eligible optional set, or a required id, is ignored, the deterministic order fills the optional slots, and selection_rejected is 1 with the offending ids; a valid ranking fills by rank and the output is restored to precedence order; a required candidate is never dropped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -n 0 -k 'fills_by_rank or outside_id or required_id or never_drops'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21125-ac4-permutation"
+    description: "Every one of the 720 permutations of a six-candidate pool with tied scores, a duplicate source id, a fallback and a scope-rule candidate yields the same serialized result."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -n 0 -k every_input_permutation"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21125-deploy-probe"
+    description: "Deploy probe: the selection result model read from GitHub at the checked-out commit declares the POLICY_SCOPE_RULE rule_ref invariant. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_selection_policy_compute/models/model_selection_result.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'POLICY_SCOPE_RULE selection requires a rule_ref'"
+        cwd: "${OMNI_HOME}/omnimarket"

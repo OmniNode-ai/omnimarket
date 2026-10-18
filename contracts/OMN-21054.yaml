@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21054"
+title: "The hostile reviewer start command carries an inline diff and resolves its lab routes from the bifrost contract"
+summary: >-
+  ModelHostileReviewerStartCommand takes an optional diff_content field, the orchestrator reviews that text with no GitHub or file read, a diff_content that is blank or combined with pr_number or file_path ends as a FAILED completed event, and with HOSTILE_REVIEWER_MODEL_CONFIGS_JSON unset each requested route key resolves against the bifrost delegation contract backends. The live one-command bus run on the dev lane is not covered by this contract's tests and is reported in the pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-hostile-reviewer-inline-diff"
+    statement: "A hostile-reviewer-start command can carry an inline diff and ends in exactly one completed event, FAILED when a route fails."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: one hostile-reviewer-start command carrying an inline synthetic diff, published on the lab dev lane bus, produces exactly one hostile-reviewer-completed event carrying the correlation id, a terminal phase and the findings -- falsifier: rpk topic consume on hostile-reviewer-completed.v1 filtered by the correlation id returns no record or more than one"
+      - id: "AC2"
+        statement: "AC2: every hop that drops or refuses the command on the lab has a failing test written first at the seam that drops it, and the test passes after the fix -- falsifier: uv run pytest tests/ -k hostile_reviewer -q"
+      - id: "AC3"
+        statement: "AC3: a model route that fails or returns unparseable output yields the FAILED terminal with the reason and no completed event, through the same entry point the runtime uses -- falsifier: uv run pytest tests/ -k \"hostile_reviewer and failed\" -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Inline diff command and declared lab route fallback for OMN-21054."
+    command: "uv run pytest tests/test_hostile_reviewer_inline_diff.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21054-ac1-inline-diff-handler"
+    description: "Handler level, not the live bus run: a start command carrying diff_content is accepted and wire-round-trips, the handler reviews that text and never calls the GitHub diff effect, and the same command through the bus adapter ends in one completed event. The dev lane bus run itself needs the deployed node to carry this change and the topic grants for the lane principal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_hostile_reviewer_inline_diff.py -q -n 0 -k 'TestInlineDiffCommand or TestInlineDiffHandler'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21054-ac2-seam-tests"
+    description: "The two seams that refused the command: the start command forbade the diff field, and the route config env var had no fallback. Each has a test that failed on the previous source and passes now; the hostile reviewer routing, golden chain and integration tests still pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_hostile_reviewer_inline_diff.py tests/test_hostile_reviewer_contract_routing.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21054-ac3-failed-terminal"
+    description: "A route that cannot be resolved ends as one FAILED completed event with the reason, through the bus adapter the runtime uses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_hostile_reviewer_inline_diff.py -q -n 0 -k 'failed or fails_loudly'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21054-deploy-probe"
+    description: "Deploy probe: the start command model read from GitHub at the checked-out commit declares diff_content. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/models/model_hostile_reviewer_start_command.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'diff_content'"
+        cwd: "${OMNI_HOME}/omnimarket"

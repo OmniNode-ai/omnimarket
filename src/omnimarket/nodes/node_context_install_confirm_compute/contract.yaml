@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeContextInstallConfirmCompute (OMN-21115, plan task TA.13)
+# The per-fact receipt topics (-installed, -install-mismatch, -install-uncertain) are written by
+# the receipts projection's effect-class writer, which folds this node's completed result.
+
+name: node_context_install_confirm_compute
+version: "1.0.0"
+contract_name: node_context_install_confirm_compute
+node_name: node_context_install_confirm_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure boundary algorithm over a session's captured transcript records: select the current
+  compaction boundary on the active chain, extract each boundary's replacement run (excluding
+  preserved messages and the records /compact appends), hash it the way the compaction
+  orchestrator hashes installed_messages_hash, derive one immutable installation fact per
+  activation (installed, install_mismatch, not_installed with native_compaction or not_selected,
+  uncertain with unparseable_record or capture_gap), and report the current context with the
+  activations retired at later boundaries. Deterministic; no I/O.
+
+input_model:
+  name: ModelInstallConfirmRequest
+  module: omnimarket.models.context_install_confirm
+
+output_model:
+  name: ModelInstallConfirmResult
+  module: omnimarket.models.context_install_confirm
+
+handler:
+  module: omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm
+  class: HandlerContextInstallConfirm
+  input_model: omnimarket.models.context_install_confirm.ModelInstallConfirmRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextInstallConfirm
+        module: omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm
+      event_model:
+        name: ModelInstallConfirmRequest
+        module: omnimarket.models.context_install_confirm
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.compaction.install_confirm
+    description: Derive compaction installation facts and the current context from captured records
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-install-confirm-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-install-confirm-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-install-confirm-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-install-confirm-completed.v1
+
+terminal_event: onex.evt.omnimarket.context-install-confirm-completed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21115
+  maturity: alpha
+  tags:
+    - context-compaction
+    - install-confirm
