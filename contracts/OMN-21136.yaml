@@ -52,6 +52,9 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'base=$(git merge-base HEAD origin/dev); test -z "$(git grep -n -e node_context_bundle_generator_compute -e context-bundle-requested -e context-bundle-completed "$base" -- src tests scripts | grep -v -e "^$base:src/omnimarket/nodes/node_context_bundle_generator_compute/" -e "^$base:tests/integration/node_context_bundle_generator_compute/" -e "^$base:tests/ci/test_imperative_contract_guard_caller_omn21002.py:")" && test ! -e src/omnimarket/nodes/node_context_bundle_generator_compute'
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_retire_context_bundle_generator_omn21136.py -q -p no:randomly --no-cov -k 'no_caller or positive_control'"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21136-ac2-delete-closure"
     description: "AC2: no reference to the deleted node remains in src, tests, config, pyproject.toml or the allowlist, and the OMN-21002 test confirms the allowlist equals the recorded paths with the one handler removed."
@@ -72,5 +75,8 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           bash -o pipefail -c 'code=$(curl --silent --location --max-time 30 --output /dev/null --write-out "%{http_code}" "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_context_bundle_generator_compute/contract.yaml"); test "$code" = 404'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_retire_context_bundle_generator_omn21136.py -q -p no:randomly --no-cov -k 'absent'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
