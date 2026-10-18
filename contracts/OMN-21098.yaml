@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21098"
+title: "Extend node_delegate_skill_orchestrator: the client verdict compute"
+summary: >-
+  First slice of task TB.3 of the context and delegation adapter plan. Adds
+  node_delegation_client_verdict_compute, a pure compute node whose contract.yaml holds the
+  section 7.2 client verdict table as data (verdict_table, 22 rows) and whose handler maps what
+  the Claude Code adapter observed (refused before publish, admission unknown, not admitted,
+  admission observe, a terminal, a terminal timeout), the client maximum and echoed effective
+  mode, the task type's allowlist membership and the terminal's identity echo to proceed_native,
+  answer or refuse. Cells the table marks n/a, an echoed mode above the client maximum and a
+  self-contradicting observation refuse. The client-call claim table, its migration and port,
+  the request and response wire fields, the admission event topic and the orchestrator handler
+  changes are later slices of the same task.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-client-verdict-compute"
+    statement: |-
+      The adapter's client verdict is a contract-data table in a pure compute node, and its action matches the plan's section 7.2 table for every outcome, mode column, allowlist membership and identity-echo case.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: client_verdict.action matches the 7.2 table for every row, mode column and identity-echo case -- falsifier: uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -k full_product_matches_independent_oracle
+      - id: "AC2"
+        statement: |-
+          AC2: answer appears only for an admitted terminal that completed, passed its quality gate, carries no failure cause and echoes the caller's client_call_key and request_fingerprint, and a required column never proceeds natively for an allowlisted task type -- falsifier: uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -k "answer_requires_terminal or required_allowlisted_never_proceeds_native or identity_mismatch or terminal_acceptance_condition"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2: the client verdict table test over the full product of outcome, client maximum, echoed mode, allowlist, echo and terminal acceptance."
+    command: "uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21098-ac1-verdict-table"
+    description: "AC1: the handler's action equals an independently written 7.2 oracle over every outcome x client maximum x echoed mode x allowlist x echo x terminal acceptance case."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -k full_product_matches_independent_oracle -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21098-ac2-answer-and-required"
+    description: "AC2: answer only on an accepted, identity-matched terminal; never native for an allowlisted task type in the required column."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -k \"answer_requires_terminal or required_allowlisted_never_proceeds_native or identity_mismatch or terminal_acceptance_condition\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21098-deploy-verdict-table"
+    description: "Deploy probe: read the node's contract.yaml at the checked-out commit from GitHub and require the verdict_table to hold the three inconsistent_observation rows. The base has no such file and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_client_verdict_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^  - \{row: inconsistent_observation, mode: (observe|selective|required), action: refuse' | grep -qx 3
