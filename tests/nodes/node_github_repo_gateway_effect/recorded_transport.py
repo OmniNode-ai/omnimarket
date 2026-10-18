@@ -257,7 +257,11 @@ def pull_request(number: int, *, body: str) -> dict[str, object]:
         "merged": False,
         "comments": 3,
         "user": {"login": "pr-author", "id": 2},
-        "head": {"ref": "jonah/omn-20912-example", "sha": HEAD},
+        "head": {
+            "ref": "jonah/omn-20912-example",
+            "sha": HEAD,
+            "repo": {"full_name": REPO},
+        },
         "base": {"ref": "dev", "sha": "0" * 40},
         "labels": [],
     }

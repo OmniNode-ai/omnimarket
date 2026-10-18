@@ -380,11 +380,28 @@ requirements:
     acceptance:
       - id: "AC72"
         statement: "AC72: the market node runtime dogfood inventory classifies node_claude_token_pool_effect as an expected-missing entry point and reports no node directory without an onex.nodes entry point that is not on the list -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q reports a node directory with no onex.nodes entry point that is not on the list"
-  - id: "req-external-default-deny"
-    statement: "CI Summary fails on any pull-request-event check-run on the head that no other layer accounts for unless it carries a dated, ticketed, expiring exclusion, so an unregistered context cannot go red while the umbrella reads green."
+  - id: "req-patch-apply-dispatch"
+    statement: "The patch apply dispatch workflow lives in the portable node package, with typed bus ingress and host-configured registry, runner and ledger writer."
+    acceptance:
+      - id: "AC74"
+        statement: "AC74: the node dispatches unapplied patches, closes applied or expired patches, holds live claims and recent dispatches, and returns a typed terminal through its declared bus contract using host-configured adapters -- falsifier: uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q fails when the node is absent"
+  - id: "req-gateway-pr-text-cross-repository"
+    statement: "The GitHub gateway's pr_text read reports the head repository and whether the head is cross-repository, so a caller that refuses fork heads reads it from the gateway and needs no gh CLI."
     acceptance:
       - id: "AC73"
-        statement: "AC73: CI Summary judges every check-run outside this run and the registered contexts and passes only success, holds a running row pending, exempts only a row whose run event is a known non-pull-request event, and refuses a malformed or spent exclusion registry -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q fails at the merge base"
+        statement: "AC73: the gateway pr_text result carries head_repo and is_cross_repository: True for a fork head and for a head repository that is gone, False for a same-repository head compared without regard to letter case."
+  - id: "req-ci-summary-external-default-deny"
+    statement: |-
+      CI Summary judges every head check-run that earlier layers do not account for with a success-only external sweep, known non-PR event exemptions and validated expiring exclusions.
+    acceptance:
+      - id: "AC74"
+        statement: |-
+          AC74: an unregistered pull_request-event failure reaches a non-zero main() verdict, success passes, running and replacement rows hold PENDING, unknown provenance is swept, known non-PR events are exempt, and malformed or expired exclusions cannot hide a red -- falsifier: the focused external sweep, exclusion and production poller tests fail at the merge base
+  - id: "req-ci-summary-sweep-provenance-and-unreadable-runs"
+    statement: "CI Summary's external sweep reads a check-run's Actions run id from its check suite when its URLs carry none, and an unreadable or malformed workflow-runs file exempts nothing instead of crashing the gate."
+    acceptance:
+      - id: "AC75"
+        statement: "AC75: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -528,8 +545,16 @@ evidence_requirements:
     description: "AC71: the delegation review route and the completed event's verdict and findings."
     command: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
   - kind: "tests"
-    description: "AC73: CI Summary sweeps every unregistered external check-run default-deny with a strict success bar, event scoping and an expiring exclusion registry."
-    command: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q"
+    description: "AC73: the gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
+  - kind: "tests"
+    description: "AC74: default-deny external sweep, bounded exclusions and the production poller refuse unregistered reds with passing controls."
+    command: >-
+      uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "TestExternalDefaultDenySweep or TestExternalSweepExclusions or TestSweepIsWiredIntoProductionPoller"
+  - kind: "tests"
+    description: "AC75: check-suite run provenance and unreadable workflow-runs files in the external sweep."
+    command: >-
+      uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -583,6 +608,21 @@ dod_evidence:
           assert {"main", "_pasted"} <= {node.name for node in cli.body if isinstance(node, ast.FunctionDef)}
           print("Claude token pool artifact probe: PASS")
           PY
+  - id: "dod-omn17427-ac74-patch-apply-dispatch"
+    description: "The portable patch dispatch behavior and host adapter boundaries pass the focused suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC74"]
+  - id: "dod-omn17427-patch-apply-dispatch-deploy-probe"
+    description: "Deploy probe. The checked-out package runs its host ingress through the declared event bus with fixture runner and ledger adapters and returns a typed terminal. It fails when the node is absent and requires no network service or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q -k test_bus_tick_dispatches_with_configured_host_adapters --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac65-ci-red-watcher-facts-only"
     description: "The default runtime handler and compatibility reader retain watcher facts and withhold incomplete observations without raw GitHub subprocesses."
     source: "manual"
@@ -1360,18 +1400,73 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("REVIEW_TASK_TYPE", "backend_id=model_key", "HandlerDelegateSkill")); print("hostile reviewer delegation route deploy probe: PASS")'
-  - id: "dod-omn17427-ac73-external-default-deny"
-    description: "CI Summary layer 5 sweeps every unregistered external check-run default-deny: only success passes, a running row holds the verdict, known non-pull-request events are exempt, and the exclusion registry is validated and expires. The tests fail at the merge base, where the layer does not exist."
+  - id: "dod-omn17427-ac70-gateway-pr-text-cross-repository"
+    description: "The gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC73"]
-  - id: "dod-omn17427-external-default-deny-deploy-probe"
-    description: "Deploy probe. GitHub serves the CI Summary gate at the checked-out HEAD with the layer-5 sweep. It fails at the merge base, which has no such function, and needs only GitHub access and Python on the hosted runner."
+  - id: "dod-omn17427-gateway-fork-deploy-probe"
+    description: "Deploy probe. GitHub serves the gateway read operations at the checked-out HEAD reporting is_cross_repository. The probe fails at the merge base, which has no such field, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/scripts/ci/ci_summary_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "def evaluate_external_sweep" in source; assert "EXTERNAL_SWEEP_EXCLUSIONS" in source; print("external default-deny deploy probe: PASS")'
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/read_operations.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "is_cross_repository" in source; assert "head_repo" in source; print("gateway pr_text cross-repository deploy probe: PASS")'
+  - id: "dod-omn17427-ac63-external-default-deny"
+    description: "The external sweep, exclusion validation and main() fixture tests pass with refusal and success controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "TestExternalDefaultDenySweep or TestExternalSweepExclusions or TestSweepIsWiredIntoProductionPoller"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC74"]
+  - id: "dod-omn17427-external-default-deny-deploy-probe"
+    description: "Deploy probe. The checked-out CI Summary sweep refuses an unregistered failed pull-request check and accepts its success control. The hosted runner needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import runpy
+          gate = runpy.run_path("scripts/ci/ci_summary_gate.py")
+          row = {"name": "Unregistered deploy probe", "status": "completed", "conclusion": "failure"}
+          sweep = gate["evaluate_external_sweep"]
+          code, report = sweep([row], expected=(), sweep_exclusions={}, event="pull_request")
+          assert code == gate["EXIT_FAILURE"], report
+          assert row["name"] in report, report
+          row["conclusion"] = "success"
+          code, report = sweep([row], expected=(), sweep_exclusions={}, event="pull_request")
+          assert code == gate["EXIT_SUCCESS"], report
+          print("external default-deny deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac75-sweep-provenance-unreadable-runs"
+    description: "The external sweep reads run provenance from the check suite and an unreadable or malformed workflow-runs file still sweeps an unregistered red. The tests fail against the dev gate, which reads only URLs and raises on a malformed payload."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC75"]
+  - id: "dod-omn17427-ac75-sweep-provenance-deploy-probe"
+    description: "Deploy probe. The checked-out CI Summary gate resolves a run id from the check suite alone and loads a malformed workflow-runs file as unavailable. The hosted runner needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import runpy, tempfile
+          gate = runpy.run_path("scripts/ci/ci_summary_gate.py")
+          assert gate["check_run_workflow_run_id"]({"check_suite": {"workflow_run": {"id": 42}}}) == 42
+          assert gate["check_run_workflow_run_id"]({"check_suite": {"workflow_run_id": "bad"}}) is None
+          with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+              handle.write('{"workflow_runs": "bad"}')
+          assert gate["_load_workflow_runs"](handle.name) is None
+          print("external sweep provenance deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
