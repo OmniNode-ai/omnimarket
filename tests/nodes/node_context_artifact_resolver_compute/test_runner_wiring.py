@@ -167,6 +167,36 @@ def test_every_section_reaches_the_builder() -> None:
     assert pack_hash != ""
 
 
+def test_wire_decoded_artifacts_match_arm_factor_labels() -> None:
+    # Artifacts arrive on the runner request as JSON; the factor is the string
+    # label on the wire and an enum member after validation. Each arm label
+    # selects exactly the artifacts of that factor.
+    wire = [
+        {
+            "factor": label,
+            "content": f"{label} body",
+            "token_estimate": 3,
+            "provenance": EnumContextPackProvenance.OBSERVED.value,
+            "source_artifact_hash": f"hash-{label}",
+            "source_contract_hash": _CONTRACT_HASH,
+        }
+        for label in ("claude_md", "golden_chain", "exemplar")
+    ]
+    decoded = tuple(
+        ModelContextPackArtifact.model_validate_json(json.dumps(item)) for item in wire
+    )
+    text, _pack_hash, warnings, failure_stage = _build_context_pack(
+        factor_subset=("claude_md", "exemplar"),
+        artifact_content_map={},
+        contract_hash=_CONTRACT_HASH,
+        resolved_artifacts=decoded,
+    )
+    assert failure_stage == EnumFailureStage.NONE, warnings
+    assert "[claude_md]\nclaude_md body" in text
+    assert "[exemplar]\nexemplar body" in text
+    assert "golden_chain body" not in text
+
+
 def test_pack_hash_is_the_builders() -> None:
     artifacts = _resolve(
         _source(EnumContextFactor.GOLDEN_CHAIN, "chain text", sectioned=False)

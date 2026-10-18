@@ -259,7 +259,7 @@ def _build_context_pack(
         if factor is None:
             warnings.append(f"unknown factor label '{label}' -- skipped")
             continue
-        factor_artifacts = [a for a in resolved_artifacts if a.factor is factor]
+        factor_artifacts = [a for a in resolved_artifacts if a.factor == factor]
         if factor_artifacts:
             artifacts.extend(factor_artifacts)
             continue
