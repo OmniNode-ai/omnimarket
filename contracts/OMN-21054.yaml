@@ -57,4 +57,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/models/model_hostile_reviewer_start_command.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'diff_content'"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
