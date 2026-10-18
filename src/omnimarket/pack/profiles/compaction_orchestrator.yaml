@@ -1,0 +1,38 @@
+# Context profile for Claude Code compaction (plan task TA.3, section 4.4).
+# Values are the plan's first values; a profile changes only through a data PR
+# that cites measured evidence (TA.9 tunes the budget and the tail count).
+model_id: claude-code-session
+profile_version: 1.0.0
+injection_point: session.compact
+binding_kind: replace
+required_factors:
+  - operator_rulings
+  - operator_words_unrecorded
+  - orchestration_state
+  - open_work
+optional_factors:
+  - repo_state
+  - conversation_tail
+  - transcript_extracts
+  - tail_summary
+# Authority order, section 4.2: rulings, state, conversation, model-written last.
+factor_precedence:
+  - operator_rulings
+  - open_work
+  - orchestration_state
+  - repo_state
+  - operator_words_unrecorded
+  - transcript_extracts
+  - conversation_tail
+  - tail_summary
+stable_factors: []
+token_budget: 16000
+# Window data (port item AP-B5): the consumer's window minus its reserved output and
+# system shares. reserved_system_tokens is the measured median main-session preamble
+# (plan section 4.4); the window and reserved output are first values, measured by TC.12.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 95771
+conversation_tail_messages: 20
+extraction_task_class: extraction_proposer
+summary_task_class: context_compaction

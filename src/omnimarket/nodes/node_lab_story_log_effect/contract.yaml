@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: "node_lab_story_log_effect"
+# Run by an operator or the weekly host tick through `onex lab-story-log`, which hands the
+# handler a typed request and prints the typed result. The command topic names the bus entry
+# a runtime would take; the result is the terminal event.
+lifecycle: experimental
+contract_name: node_lab_story_log_effect
+node_name: node_lab_story_log_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Writes one ISO week of the rolling work ledger as a sanitized story log for the lab-journey
+  article series: rulings with the pull requests that merged under their ticket, then incidents
+  and fixes grouped by theme, each with its timestamps and the figures the rows carry. Private
+  repository names, addresses, host names, lane ids and people's names are replaced by roles
+  using the public-repo hygiene gate's own vocabulary, read from its private home at run time and
+  never copied here. The operator's quoted words are left out. The log is checked for surviving
+  private names before anything is written; a survivor stops the write.
+
+input_model: omnimarket.nodes.node_lab_story_log_effect.models.model_lab_story_log.ModelLabStoryLogRequest
+
+output_model:
+  name: ModelLabStoryLogResult
+  module: omnimarket.nodes.node_lab_story_log_effect.models.model_lab_story_log
+  description: The week, the written path, the counts, the per-class replacement counts and the markdown.
+
+handler:
+  module: omnimarket.nodes.node_lab_story_log_effect.handlers.handler_lab_story_log
+  class: HandlerLabStoryLog
+  input_model: omnimarket.nodes.node_lab_story_log_effect.models.model_lab_story_log.ModelLabStoryLogRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_story_log.write_week
+      handler:
+        name: HandlerLabStoryLog
+        module: omnimarket.nodes.node_lab_story_log_effect.handlers.handler_lab_story_log
+      handler_module: omnimarket.nodes.node_lab_story_log_effect.handlers.handler_lab_story_log
+      event_model: omnimarket.nodes.node_lab_story_log_effect.models.model_lab_story_log.ModelLabStoryLogRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.lab-story-log-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.lab-story-log-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.lab-story-log-completed.v1"
+
+published_events:
+  - event_type: ModelLabStoryLogResult
+    topic: onex.evt.omnimarket.lab-story-log-completed.v1
+    description: "One written (or dry-run) weekly story log with its counts."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-story-log-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lab-story-log-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-story-log-completed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "fixture ledger rows, week resolution, sanitation and the survivor check"
+    command: "uv run pytest tests/unit/nodes/node_lab_story_log_effect -q"
+    pass_criteria: >
+      rows outside the ISO week are left out; no planted private name survives in the log;
+      a sanitizer that lets one through stops the write; the operator's quoted words are not
+      reproduced; rulings list the pull requests merged under their ticket; a vocabulary with
+      no private repository names is refused.
+
+metadata:
+  transport_type: filesystem

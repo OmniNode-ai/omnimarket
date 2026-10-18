@@ -1,0 +1,188 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21015"
+title: "The local dashboard shows the demo's in-scope figures on Overview, Runs and Usage, and meets four dashboard requirements not yet built"
+summary: >-
+  Three omnimarket halves of OMN-21015, each with its own evidence below. AC3: the modelled per-run saving and its labels, derived in the write transaction (merged from #4001). AC2: the delegation model-routing view lists, under each tier in by_tier, the models routed under it with their run count, share on the tier's own denominator, summed cost and unmeasured count (migration 0060 on Postgres; store step omn21015_model_routing_tier_models on the local store). AC4: the table half. Each usage-by-model-day row carries its tier and its share of its tenant's calls that day, as Jonah ruled on 2026-10-14: the usage call event carries a tier and the tier joins the row key (store step omn21015_usage_by_model_day_tier_share on the local store). On Postgres, migration 0003 expands only, as Jonah ruled on 2026-10-15: it adds the tier and a four-column unique index and keeps the three-column key, and the writer follows the key in force, one not_tier_routed row per model and day until the contract migration (OMN-21161) makes the index the key, then one row per tier. Every call of a run carries the run's tier, the one its delegation row records, so one run never splits across tiers. The page halves, and AC4's token series and Usage table, are omnidash's.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-transcribed-acceptance-criteria"
+    statement: |-
+      The acceptance criteria these changes serve, as declared on the OMN-21015 ticket body, read on 2026-10-15 (AC3) and 2026-10-14 (AC2 and AC4). The ticket body is the source and this block is the copy.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: The Runs list shows savings per run against the named baseline (requirement RU-1), and a typed not-measured state for an unmeasured run -- falsifier: a measured fixture row with no savings cell, or an unmeasured row that shows 0
+      - id: "AC2"
+        statement: |-
+          AC2: Overview's Tier mix lists each model under its tier with its share of runs and its cost -- falsifier: a fixture with two models in one tier renders one row, or model shares that do not sum to the tier's share
+      - id: "AC4"
+        statement: |-
+          AC4: Usage shows tokens in and tokens out per day as a stacked series split by model (requirement US-1), and its by-model table shows each model's share of calls and its tier beside the calls column it already has -- falsifier: the window sums differ from `onex metering --json`, or the shares do not sum to 100
+evidence_requirements:
+  - kind: tests
+    description: >-
+      Backend half only: real Postgres proves persisted nullable savings, exact numeric binding, transaction ordering, cross-connection visibility and refusal to publish a failed commit. SQLite proves the served figure and typed unmeasured states. The race tests prove ordering; the UPSERT row lock prevents the Postgres input guard from firing. These checks do not render the Runs cell.
+    command: uv run pytest tests/test_omn21015_run_savings_real_postgres.py tests/test_omn21015_delegation_decimal_binding_real_postgres.py tests/projection/test_omn21015_transactional_run_write.py tests/projection/test_omn21015_review_real_boundaries.py tests/projection/test_omn21015_run_savings_served.py -q -p no:randomly
+  - kind: "tests"
+    description: "Served through the real local dashboard app over a SQLite store: two models in one tier are two entries; model shares on the tier's denominator sum to the tier's share; a group with no cost serves null with its unmeasured count; a measured zero is zero; another tenant never enters; the existing tier keys are unchanged. Before the store step 5 of the 6 fail."
+    command: "uv run pytest tests/projection/test_omn21015_tier_models_served.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Migration 0060 applied with every node_projection_delegation migration on real Postgres: the same entries, shares and costs; with cost_usd made nullable in the test's own schema, as OMN-20717's 0061 does, a group with no cost serves null with its unmeasured count and a mixed group sums only its measured cost; another tenant never enters; existing keys and security_invoker unchanged. Without 0060, 5 of the 7 fail."
+    command: "uv run pytest tests/test_omn21015_tier_models_real_postgres.py -q -p no:randomly"
+  - kind: "tests"
+    description: "On the local store and through the real dashboard app: one model under two tiers on one day is two rows; each row's share is its calls over its tenant's calls that day and a day's shares sum to 1; a new call moves every share of the day; another day or tenant never enters; a call naming no tier is not_tier_routed; a replay changes nothing; a store from before keeps its rows and cursors; the deployed writer locks the tenant's day, recounts with the tier and republishes every row of the day. On dev's code all 9 fail."
+    command: "uv run pytest tests/projection/test_omn21015_usage_tier_share.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The real local dispatch port: an escalated run's two calls both stand under the run's tier, the one its delegation row records, and the day's shares cover both. On dev's code it fails."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn21015_local_dispatch_usage_tier.py -q -p no:randomly"
+  - kind: "tests"
+    description: "Migration 0003 on real Postgres over rows stored before it, run twice: rows and cursors kept under not_tier_routed, the three-column key kept beside a four-column unique index, DELETE granted to the writer role; the writer deployed today still writes after it. Under the three-column key two tiers of one model on one day fold into one row and never raise; after the key change the writer splits the day by tier, removes the folded row, and serves per-day shares summing to 1 with every moved row re-stamped, and another tenant or day changes none of them. Before this change, all four migration and writer cases fail."
+    command: "uv run pytest tests/test_omn21015_usage_tier_share_real_postgres.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21015-ac3-real-postgres-writer
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres, the deployed writer: the saving and its three labels persist nullable beside the stored inputs, and the republished row carries them.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py::test_deployed_writer_persists_and_republishes_canonical_run_savings -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-real-postgres-migration
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres: migration 0059 runs twice and never prices a row stored before it.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py::test_migration_is_repeatable_and_never_prices_an_old_row -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-real-postgres-two-writers
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres: two writers of one run keep the saving paired with the inputs it was computed from.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_run_savings_real_postgres.py::test_two_writers_keep_the_saving_paired_with_concurrent_inputs -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-decimal-binding
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Real Postgres: money binds as exact numeric, never through a float.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_delegation_decimal_binding_real_postgres.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-transactional-write
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. The async, sync and local write paths derive the figure from the row the upsert returns, in one transaction, under the six race schedules.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_transactional_run_write.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-commit-boundaries
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Writes stay invisible to a second connection until commit, and a refused commit publishes nothing.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_review_real_boundaries.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-served-per-run
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Served through the local store: each stored, served and republished run has its own figure and basis.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_run_savings_served.py::test_each_stored_served_and_republished_run_has_its_own_figure_and_basis -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-served-typed-states
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Served: an unresolved baseline, an unrecorded time and an unknown spend each serve a typed state with a null figure, never 0.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_run_savings_served.py::test_unresolved_baseline_serves_null_instead_of_the_legacy_saving tests/projection/test_omn21015_run_savings_served.py::test_an_unrecorded_time_has_a_typed_unknown_state tests/projection/test_omn21015_run_savings_served.py::test_a_stored_unknown_spend_is_not_priced_as_a_free_call -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-served-scope
+    description: >-
+      Backend half of AC3 only; page acceptance belongs to omnidash. Served: a sparse redelivery keeps the figure paired with its inputs, another tenant's saving never enters, and a run and the headline share one named baseline.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/projection/test_omn21015_run_savings_served.py::test_a_sparse_redelivery_keeps_the_figure_paired_with_the_preserved_inputs tests/projection/test_omn21015_run_savings_served.py::test_tenant_scoping_does_not_serve_another_tenants_saving tests/projection/test_omn21015_run_savings_served.py::test_run_and_headline_share_the_named_baseline_selection -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21015-ac3-market-deploy-probe
+    description: >-
+      Deploy probe. GitHub serves the checked-out commit with the run-savings handler's typed baseline_unresolved state. The source read or symbol match fails on a tree without this change, including origin/dev. This proves source identity only, not a running deployment or AC3 acceptance.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/handlers/handler_run_savings.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "baseline_unresolved"'
+  - id: "dod-omn21015-tier-models-local-store"
+    description: "On the local store, served through the dashboard app: for 3 qwen-a and 1 unpriced qwen-b runs on the local tier, 2 priced gemini runs on cheap_cloud and 1 not-tier-routed run, each tier lists its models with count, share on the tier's denominator (summing to the tier's share), summed cost (null with an unmeasured count when no run has one, 0 when measured as 0); another tenant's runs never enter; the existing tier keys are unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn21015_tier_models_served.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21015-tier-models-real-postgres"
+    description: "Migration 0060 applied with every node_projection_delegation migration to a scratch schema on real Postgres: the same model entries, shares and summed costs per tier; the view keeps security_invoker; another tenant never enters; and with cost_usd made nullable in the test's own schema, as OMN-20717's 0061 does, a run with no cost is counted as unmeasured, never summed as 0."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21015_tier_models_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21015-tier-models-deploy-probe"
+    description: "Deploy probe. GitHub serves the local store at the checked-out commit with the store step that re-creates the model-routing view with each tier's models (omn21015_model_routing_tier_models); the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/sqlite_database.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'omn21015_model_routing_tier_models'"
+  - id: "dod-omn21015-usage-tier-share-local-store"
+    description: "On the local store and through the dashboard app, usage-by-model-day serves each row's tier and its share of its tenant's calls that day: one model under two tiers is two rows, a day's shares sum to 1 and all move with each new call, another day or tenant never enters, a call naming no tier is not_tier_routed, a replay changes nothing, an older store keeps its rows and cursors; the deployed writer locks the tenant's day and republishes every row of it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn21015_usage_tier_share.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21015-usage-tier-share-dispatch"
+    description: "The local delegate path books every call of a run, an escalated run's first attempt included, under the run's tier, the one its delegation row records."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_omn21015_local_dispatch_usage_tier.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21015-usage-tier-share-real-postgres"
+    description: "Migration 0003 on real Postgres keeps rows stored before it under not_tier_routed with their cursors, is re-runnable, keeps the three-column key and adds the four-column unique index; the writer deployed today still writes; the new writer never raises under the old key and splits by tier under the new one, with per-day shares summing to 1 and every moved row's cursor re-stamped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21015_usage_tier_share_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21015-usage-tier-share-deploy-probe"
+    description: "Deploy probe. GitHub serves the usage writer at the checked-out commit with the check of which key is in force (_TIER_KEY_IN_FORCE); the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. This proves source identity only, not a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_usage_by_model_day/handlers/handler_usage_by_model_day_writer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '_TIER_KEY_IN_FORCE'"

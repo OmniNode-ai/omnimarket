@@ -1192,6 +1192,16 @@ database_objects:
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19988: cursor for the per-service environment rows. Declared ahead of
+  # the node's migrations: omnibase_infra vendors them first, and its SQL gate
+  # needs every sequence a vendored GRANT names to have one owner here.
+  - name: local_environment_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-18903: the sequence behind ci_attempt_outcome.projection_cursor.
   # Declared for the same reason as the one above -- the SQL gate treats a
   # sequence named by a GRANT as an application target in its own right and

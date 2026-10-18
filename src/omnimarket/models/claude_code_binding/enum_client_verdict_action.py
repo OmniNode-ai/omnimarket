@@ -1,17 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The typed client_verdict.action the adapter maps to a hook return (OMN-18531)."""
+"""The typed client_verdict.action — re-exports core (OMN-18531, moved by OMN-21093)."""
 
-from enum import StrEnum
+from omnibase_core.enums.enum_client_verdict_action import EnumClientVerdictAction
 
-
-class EnumClientVerdictAction(StrEnum):
-    """Delegation: answer/refuse/proceed_native. Compaction: install/native. Additive: inject/none."""
-
-    ANSWER = "answer"
-    REFUSE = "refuse"
-    PROCEED_NATIVE = "proceed_native"
-    INSTALL = "install"
-    NATIVE = "native"
-    INJECT = "inject"
-    NONE = "none"
+__all__ = ["EnumClientVerdictAction"]

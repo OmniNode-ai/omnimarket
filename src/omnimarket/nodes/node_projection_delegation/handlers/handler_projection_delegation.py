@@ -82,6 +82,11 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_run
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
     HandlerDelegationTicketFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_run_savings import (
+    RUN_SAVINGS_DERIVED_COLUMNS,
+    RUN_SAVINGS_INPUT_COLUMNS,
+    modelled_run_savings_columns,
+)
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
@@ -581,12 +586,15 @@ class HandlerProjectionDelegation:
         written = db.upsert_returning(
             TABLE,
             CONFLICT_KEY,
-            row,
+            _unpriced_cost_as_null(row),
             insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
             returning=tuple(
                 dict.fromkeys(c for e in self._row_exposures for c in e.columns)
             ),
+            derive=modelled_run_savings_columns,
+            input_columns=RUN_SAVINGS_INPUT_COLUMNS,
+            derived_columns=RUN_SAVINGS_DERIVED_COLUMNS,
         )
         self._publish_row_snapshot(written)
         self._publish_aggregate_snapshots(db, written)
@@ -1009,6 +1017,15 @@ class HandlerProjectionDelegation:
             if reduction.terminal_failure_cause is not None
             else None
         )
+        # OMN-19448: keep the disposition the terminal declared, just as the
+        # canonical terminal path does. Older terminals omit the pair, so do
+        # not erase an earlier terminal's evidence with missing values.
+        for column, terminal_disposition in (
+            ("operational_outcome", event.operational_outcome),
+            ("content_verdict", event.content_verdict),
+        ):
+            if terminal_disposition is not None:
+                row[column] = terminal_disposition.value
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
@@ -1657,6 +1674,12 @@ def _canonical_response_text(
 def _canonical_result_to_task_delegated_payload(
     payload: dict[str, object],
 ) -> dict[str, object]:
+    # OMN-19013: the one pair Core reserves for a terminal that failed to
+    # construct. Its content was never graded, so no score survives into the row.
+    construction_failed = (
+        payload.get("operational_outcome") == "terminal_construction_failed"
+        and payload.get("content_verdict") == "undetermined"
+    )
     quality_passed = bool(payload.get("quality_passed"))
     failure_reason = str(payload.get("failure_reason") or "")
     escalation_history = payload.get("escalation_history") or ()
@@ -1755,7 +1778,11 @@ def _canonical_result_to_task_delegated_payload(
         "tokens_to_compliance": payload.get("tokens_to_compliance") or 0,
         "compliance_attempts": payload.get("compliance_attempts") or 1,
         "required_bar": payload.get("required_bar"),
-        "actual_score": payload.get("actual_score") or payload.get("quality_score"),
+        "actual_score": (
+            None
+            if construction_failed
+            else payload.get("actual_score") or payload.get("quality_score")
+        ),
         "escalation_count": payload.get("escalation_count") or 0,
         # OMN-13408: the metered total + serving tier carried from the canonical
         # terminal. With cost_tier_name set, _measure_actual_cost re-prices/trusts
@@ -2270,6 +2297,23 @@ def _preserve_terminal_failure(
 
 def _is_blank(value: object) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _unpriced_cost_as_null(row: dict[str, object]) -> dict[str, object]:
+    """Store an unpriced call's cost as NULL, never as 0 (OMN-20717 AC2).
+
+    A call is unpriced when its own measurement says so: cost_measurement_source
+    is ``no_cost_model`` (no tier cost model priced it) and the cost it carries
+    is zero. Every other row is returned unchanged, including a zero with any
+    other source -- a free local model's measured zero stays zero. Applied at
+    the one write to ``delegation_events``, after the preserve step, so a cost
+    already stored as non-zero is never replaced by NULL.
+    """
+    if row.get("cost_measurement_source") == "no_cost_model" and _is_zero(
+        row.get("cost_usd")
+    ):
+        return {**row, "cost_usd": None}
+    return row
 
 
 def _is_zero(value: object) -> bool:

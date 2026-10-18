@@ -31,6 +31,11 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 FULL_SUITE_SPLITS = 20
 # A balanced plan leaves headroom below the 1.5x acceptance target for runner noise.
 MAX_PLANNED_SPREAD = 1.1
+# An unrecorded file is planned at the record's median weight, so a stale record
+# still "balances" on paper while live shards spread 2x (463 of 3049 files were
+# unrecorded when the live spread was measured at 2.0x on PR runs 39058366864,
+# 39057687691 and 39050930650).
+MAX_UNRECORDED_FRACTION = 0.05
 
 
 def _load_script() -> ModuleType:
@@ -171,6 +176,23 @@ def test_committed_record_balances_the_real_tree_within_target() -> None:
     assert heaviest <= sum(loads) / FULL_SUITE_SPLITS, (
         "a single test file is heavier than a shard's share, so file-level "
         "planning cannot balance it"
+    )
+
+
+def test_committed_record_names_nearly_every_test_file() -> None:
+    record: dict[str, float] = json.loads(RECORD.read_text(encoding="utf-8"))
+    files = planner.discover_test_files(REPO_ROOT)
+    _, unrecorded = planner.file_weights(files, record)
+    fraction = len(unrecorded) / len(files)
+    assert fraction <= MAX_UNRECORDED_FRACTION, (
+        f"{len(unrecorded)} of {len(files)} test files ({fraction:.1%}) are not in "
+        "config/test_file_durations.json; each is planned at the median weight and "
+        "the live shards drift apart -- refresh the record with "
+        "`merge_test_durations.py record` from recent full-suite runs"
+    )
+    stale = sorted(name for name in record if name not in set(files))
+    assert len(stale) <= MAX_UNRECORDED_FRACTION * len(files), (
+        f"{len(stale)} recorded files no longer exist on the tree; refresh the record"
     )
 
 

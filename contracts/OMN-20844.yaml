@@ -20,7 +20,7 @@ requirements:
           AC2: ModelDelegateSkillRequest declares an optional model field, omitted from the wire when unset; the delegate handler passes it to the dispatch port only when set; the in-process port runs the customer's own route on it and refuses it for any other route; the runtime port refuses it.
       - id: "AC3"
         statement: |-
-          AC3: with no model named for OpenRouter, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN; a credential with no model is refused at call time; a model the customer named is never re-aimed at a catalogue pick.
+          AC3: onboarding selects the default OpenRouter model declared in the onboarding overlay, with no model id in code, and the customer can change it with one documented command (`onex models add openrouter --model <id>`) -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly; with no model named and none declared, a terminal is asked for one and a script or the hosted intake is refused with BYOK_MODEL_NOT_CHOSEN, and a model the customer named is never re-aimed at a catalogue pick.
       - id: "AC4"
         statement: |-
           AC4: the delegation result names the chosen model, and onex models add fails its test when the answer names another model than the chosen one.
@@ -120,6 +120,20 @@ requirements:
       - id: "AC17"
         statement: |-
           AC17: no stored test answer that the scorer passed and that the rule accepted before the change is refused after it, and a fragment with no import of its own is not judged on the binding -- falsifier: a scorer-passed stored answer refused, or a no-import fragment refused.
+  - id: "req-omn20844-packaged-openrouter-default"
+    statement: |-
+      A developer who cannot read a private overlay still gets a default OpenRouter model on a first run.
+    acceptance:
+      - id: "AC31"
+        statement: |-
+          AC31: with no ONEX_OPENROUTER_DEFAULT_MODEL and no node_model_setup_effect overlay, onex models default-model openrouter returns the model_name of the model registry entry the node's contract names under config.openrouter_default_model.registry_model; the model id is declared only in model_registry_v1.yaml, not in contract.yaml or handler code; the environment variable and an overlay still win, an overlay that is present but broken is still refused, and the read stores nothing -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly -k "none_declared_the_contract_default or declared_in_the_registry_not_in_code" fails against the merge base.
+  - id: "req-omn20844-next-customer-key"
+    statement: |-
+      A customer with two registered provider keys reaches the second when the first fails and the ladder offers no new responder.
+    acceptance:
+      - id: "AC32"
+        statement: |-
+          AC32: on the local path with a Gemini and an OpenRouter key registered and no house credential, an unpinned document delegation whose OpenRouter route fails retryably (after its own retry budget) or fails the quality gate is answered next on the customer's Gemini route; an auth failure never moves to another key, and a run with both keys healthy is answered by OpenRouter alone -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly fails, or its fall-through tests pass against the merge base.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -161,6 +175,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn20844_openrouter_model_choice.py tests/test_omn20844_chosen_model_never_re_aimed.py tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5"]
+  - id: "dod-omn20844-onboarding-default-model-overlay"
+    description: "The OpenRouter default model onboarding registers is read from the node_model_setup_effect overlay (or ONEX_OPENROUTER_DEFAULT_MODEL), refused naming the overlay when none declares it, stored nowhere by the read, and replaced by the one documented command. Every model id in the tests is a fixture the test declares."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
   - id: "dod-omn20844-guard-tests-are-wired"
     description: "The customer-chooses-model tests run in a check-only pre-commit hook and in a named ci.yml job registered as a strict gate of CI Summary."
     source: "manual"
@@ -376,3 +398,19 @@ dod_evidence:
         check_value: "uv run pytest benchmarks/delegation_ladder/tests/test_rung_results.py::test_an_executing_task_of_each_scorer_rescores_on_every_rung -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
+  - id: "dod-omn20844-ac31-packaged-openrouter-default"
+    description: "AC31: with no variable and no overlay, the OpenRouter default is the model registry entry the node contract names, declared only in the registry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly --no-cov -k 'none_declared_the_contract_default or declared_in_the_registry_not_in_code'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
+  - id: "dod-omn20844-ac32-next-customer-key"
+    description: "AC32: a retryable failure or a quality-gate FAIL on the customer's first key falls through to their second registered key; an auth failure does not, and a healthy first key answers alone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]

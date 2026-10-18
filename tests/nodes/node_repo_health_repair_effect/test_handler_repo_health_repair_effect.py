@@ -18,6 +18,7 @@ DoD evidence required:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID
@@ -37,6 +38,9 @@ from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command
 from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_emitted_event import (
     ModelRepoHealthRepairEmittedEvent,
 )
+
+pytestmark = pytest.mark.usefixtures("lane_intake_gate")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -98,7 +102,14 @@ class _MockLinearClient:
         self.search_calls.append(content_key)
         return self._existing.get(content_key)
 
-    def create_issue(self, *, title: str, description: str, parent_id: str) -> str:
+    def create_issue(
+        self,
+        *,
+        title: str,
+        description: str,
+        parent_id: str,
+        label_names: Sequence[str] = (),
+    ) -> str:
         """Create a new ticket and return its identifier."""
         self.create_issue_calls.append(
             {"title": title, "description": description, "parent_id": parent_id}

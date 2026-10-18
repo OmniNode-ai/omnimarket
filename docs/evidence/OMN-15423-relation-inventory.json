@@ -1081,6 +1081,7 @@
     {
       "accessor_nodes": [
         "node_projection_claude_hook_events",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -1092,7 +1093,8 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml"
+        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -3337,6 +3339,7 @@
     {
       "accessor_nodes": [
         "node_projection_claude_hook_events",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -3351,7 +3354,8 @@
       ],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml"
+        "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -3399,6 +3403,7 @@
       "producer": "node_projection_claude_hook_events",
       "readers": [
         "node_projection_claude_hook_events",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -3463,6 +3468,7 @@
         "node_consumer_flow_prune_effect",
         "node_consumer_flow_stall_alert_effect",
         "node_projection_consumer_flow",
+        "node_retention_cleanup",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -8660,12 +8666,14 @@
       ],
       "indexes": [
         "idx_usage_by_model_day_day_model",
-        "idx_usage_by_model_day_projection_cursor"
+        "idx_usage_by_model_day_projection_cursor",
+        "usage_by_model_day_tier_key"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
         "PRIMARY KEY (tenant_id, usage_day, model_id)",
-        "UNIQUE INDEX idx_usage_by_model_day_projection_cursor"
+        "UNIQUE INDEX idx_usage_by_model_day_projection_cursor",
+        "UNIQUE INDEX usage_by_model_day_tier_key"
       ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
@@ -8714,7 +8722,8 @@
         "SELECT TO app_dashboard"
       ],
       "indexes": [
-        "idx_usage_by_model_day_calls_key"
+        "idx_usage_by_model_day_calls_key",
+        "idx_usage_by_model_day_calls_tier_key"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
@@ -8797,6 +8806,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_freshness_alert_effect",
         "node_projection_work_events",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8809,6 +8819,7 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_events/contract.yaml"
       ],
       "current_schema": [
@@ -8848,6 +8859,7 @@
       "producer": "node_projection_work_events",
       "readers": [
         "node_consumer_flow_stall_alert_effect",
+        "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -9133,7 +9145,8 @@
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0045_terminal_construction_outcome_metrics.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0055_model_routing_local_call_share.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0055_model_routing_local_call_share.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0060_model_routing_tier_models.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -9230,7 +9243,8 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/090_savings_aggregate_excludes_model_text.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/090_savings_aggregate_excludes_model_text.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/096_delegation_savings_unpriced_calls.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -9365,7 +9379,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0062_delegation_token_usage_unpriced_calls.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",

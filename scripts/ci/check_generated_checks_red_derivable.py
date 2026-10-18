@@ -23,25 +23,17 @@ three layers:
 
 Where this is wired (OMN-15317 — verify before trusting this paragraph)
 -----------------------------------------------------------------------
-Before OMN-15317 this script was invoked by **nothing**: the only reference to
-it in ``occ-emitter-golden-gate.yml`` was its *unit test* in the pytest arg
-list, and the only reference in ``.pre-commit-config.yaml`` was inside a
-``files:`` trigger regex, which decides *when* the pytest hook runs and never
-executes the script. A 222-line detector that no step invokes is advisory
-(CLAUDE.md rule 5), which is what OMN-15317 was filed for.
-
-It is now invoked by two executing steps in ``.github/workflows/
-occ-emitter-golden-gate.yml`` — the existing blocking gate, not a new workflow:
-
-* *static* over ``tests/fixtures/occ_red_derivable/companion/contracts/`` with
-  ``--min-checks``/``--min-content-bound``, so a vacuous run (zero files, zero
-  checks, or a producer that stopped emitting content-bound checks) FAILS
-  instead of passing silently;
-* *live* over the same corpus, executing both legs against real public
-  refs (the sidecar receipt under ``companion/drift/dod_receipts/`` carries
-  the RED ref). ``OMN-18922.yaml`` is the fixed-string (``grep -cF``) member,
-  pinned to omnibase_spi because omnimarket's own ``uv.lock`` exceeds the
-  1 MB contents-API limit and reads empty at every ref (OMN-18876).
+The ``occ-red-derivable-static`` pre-commit hook invokes this script *static*
+over ``tests/fixtures/occ_red_derivable/companion/contracts/`` with
+``--min-checks``/``--min-content-bound``, so a vacuous run (zero files, zero
+checks, or a producer that stopped emitting content-bound checks) FAILS
+instead of passing silently. The *live* mode, which executed both legs against
+real public refs (the sidecar receipt under ``companion/drift/dod_receipts/``
+carries the RED ref; ``OMN-18922.yaml`` is the fixed-string (``grep -cF``)
+member, pinned to omnibase_spi because omnimarket's own ``uv.lock`` exceeds the
+1 MB contents-API limit and reads empty at every ref, OMN-18876), had no caller
+but the workflow that was removed with the OCC companion producer's CI gate, so
+it now runs only when invoked by hand.
 
 ``tests/fixtures/occ_red_derivable/negative/`` holds the deliberately-bad
 counterparts (a pre-flip ``pr_existence`` revert mint; a content-bound check
@@ -118,8 +110,7 @@ _INERT_TAIL_RE = re.compile(r"\|\|\s*(?:true|exit\s+0)|2>\s*/dev/null\s*$")
 # --- Allowlisted generated forms (OMN-15247 R21b) ----------------------------
 #
 # This tuple is the complete vocabulary this repo's producer is permitted to
-# emit. The gate runs blocking in ``occ-emitter-golden-gate.yml`` plus
-# pre-commit, so emitting anything else fails.
+# emit. The gate runs in pre-commit, so emitting anything else fails.
 #
 # WHAT R21b CHANGED, and why the previous revision of this list was worse than
 # the problem it fixed. R21 narrowed this allowlist to a single new family --

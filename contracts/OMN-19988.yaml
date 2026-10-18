@@ -1,0 +1,32 @@
+schema_version: "1.0.0"
+ticket_id: OMN-19988
+title: Ownership of the local_environment cursor sequence, ahead of its vendoring
+summary: >-
+  Ownership half only: declares the local_environment table's cursor sequence in the application relation ownership manifest, ahead of omnibase_infra vendoring the node's migrations, whose application SQL gate needs every sequence a vendored GRANT names to have exactly one owner here. The migrations, the verdicts, the store and the Environment panel are other changes. This check proves the declaration, not acceptance of the criterion.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn19988-ac1-cursor-ownership
+    statement: >-
+      The local_environment cursor sequence has exactly one ownership declaration, in the tenant domain, owned by the projection migration runner, so omnibase_infra's application SQL gate accepts the vendored writer grant that names it.
+    acceptance:
+      - id: AC1
+        statement: "AC1: In mode 2 stopping one compose service turns its row `DOWN` and opens one `SERVICE_DOWN` alert with nobody running a status command; a failing health check turns `UNHEALTHY`; losing the observer or broker turns every row `STALE` after the deadline; a replay of the same health events changes no row -- falsifier: the omnimarket test run with uv run pytest fails any case"
+evidence_requirements:
+  - kind: tests
+    description: Ownership half only; the cursor sequence is declared once, with its domain and owner.
+    command: uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn19988-ac1-cursor-sequence-ownership
+    description: Ownership half only. The cursor sequence is declared exactly once, in the tenant domain, owned by the projection migration runner. It does not prove the verdicts, the store or the panel.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]

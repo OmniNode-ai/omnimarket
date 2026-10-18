@@ -9,6 +9,7 @@ fakes ``status="created"`` with an empty ``ticket_id``).
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -18,6 +19,9 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketRequest,
     ModelTicketGuardDecision,
 )
+
+pytestmark = pytest.mark.usefixtures("lane_create_context")
+
 
 CMD_TOPIC = "onex.cmd.omnimarket.create-ticket-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.create-ticket-completed.v1"
@@ -54,6 +58,7 @@ class _MockLinearTicketClient:
         team: str,
         parent: str | None,
         assignee_id: str | None = None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         self.create_ticket_calls.append(
             {
@@ -169,7 +174,10 @@ class TestCreateTicketGoldenChain:
         )
         result = handler.handle(request)
 
-        assert result.description_body == "Implement Redis caching for hot paths."
+        assert (
+            result.description_body
+            == "stamped-by: lane-under-test\n\nImplement Redis caching for hot paths."
+        )
 
     async def test_event_bus_wiring(self, event_bus: EventBusInmemory) -> None:
         """Handler can be wired to event bus and process command events."""

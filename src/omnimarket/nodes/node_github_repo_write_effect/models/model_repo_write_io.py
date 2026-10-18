@@ -10,6 +10,7 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 - pr_ready replaces ``gh pr ready`` with GraphQL markPullRequestReadyForReview.
 - pr_close replaces ``gh pr close`` with PATCH /pulls/{n} state=closed.
 - pr_comment replaces ``gh pr comment`` with POST /issues/{n}/comments.
+- check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
 """
@@ -18,10 +19,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
@@ -48,6 +56,22 @@ class EnumRepoWriteOperation(StrEnum):
     PR_CLOSE = "pr_close"
     PR_COMMENT = "pr_comment"
     WORKFLOW_DISPATCH = "workflow_dispatch"
+    CHECK_RUN_CREATE = "check_run_create"
+
+
+#: Fields only one operation reads. Every other operation's serialized request
+#: leaves them out, so a field added for a new operation never changes the
+#: envelope of an existing one: a runtime that predates the field forbids extra
+#: inputs and would refuse the whole envelope for naming it, even as null.
+_OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
+    EnumRepoWriteOperation.CHECK_RUN_CREATE: (
+        "name",
+        "head_sha",
+        "status",
+        "conclusion",
+        "output",
+    ),
+}
 
 
 class EnumRepoWriteMode(StrEnum):
@@ -135,6 +159,15 @@ class ModelRepoWriteClaim(BaseModel):
         return max(stamps)
 
 
+class ModelCheckRunOutput(BaseModel):
+    """GitHub check output; both title and Markdown summary are required."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1)
+    summary: str = Field(max_length=MAX_BODY_CHARS)
+
+
 class ModelRepoWriteRequest(BaseModel):
     """One write operation against one repository."""
 
@@ -187,6 +220,26 @@ class ModelRepoWriteRequest(BaseModel):
         default=None, pattern=_REF, description="workflow_dispatch: the ref to run."
     )
     inputs: dict[str, str] = Field(default_factory=dict)
+    name: str | None = Field(
+        default=None, min_length=1, description="check_run_create: check name."
+    )
+    head_sha: str | None = Field(
+        default=None, pattern=_SHA, description="check_run_create: commit to report on."
+    )
+    status: Literal["queued", "in_progress", "completed"] | None = None
+    conclusion: (
+        Literal[
+            "action_required",
+            "cancelled",
+            "failure",
+            "neutral",
+            "success",
+            "skipped",
+            "timed_out",
+        ]
+        | None
+    ) = None
+    output: ModelCheckRunOutput | None = None
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -226,6 +279,25 @@ class ModelRepoWriteRequest(BaseModel):
                 for n, v in (("workflow", self.workflow), ("ref", self.ref))
                 if v is None
             ]
+        if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
+            missing += [
+                n
+                for n, v in (
+                    ("name", self.name),
+                    ("head_sha", self.head_sha),
+                    ("status", self.status),
+                )
+                if v is None
+            ]
+            if self.status == "completed" and self.conclusion is None:
+                missing.append("conclusion")
+            if self.conclusion is not None and self.status != "completed":
+                raise ValueError(
+                    "check_run_create conclusion requires status completed"
+                )
+        for owner, names in _OPERATION_ONLY_FIELDS.items():
+            if op is not owner and any(getattr(self, n) is not None for n in names):
+                raise ValueError(f"{', '.join(names)} are read only by {owner.value}")
         if missing:
             raise ValueError(f"operation {op.value!r} requires {', '.join(missing)}")
         if op is EnumRepoWriteOperation.PR_EDIT and all(
@@ -239,6 +311,18 @@ class ModelRepoWriteRequest(BaseModel):
         if self.inputs and op is not EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             raise ValueError("inputs is read only by workflow_dispatch")
         return self
+
+    @model_serializer(mode="wrap")
+    def _leave_out_other_operations_fields(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Serialize only the fields this request's operation can carry."""
+        data: dict[str, Any] = handler(self)
+        for owner, names in _OPERATION_ONLY_FIELDS.items():
+            if owner is not self.operation:
+                for name in names:
+                    data.pop(name, None)
+        return data
 
     @property
     def pr_key(self) -> str:
@@ -277,6 +361,7 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     html_url: str | None = None
     head_sha: str | None = None
     comment_id: int | None = None
+    check_run_id: int | None = Field(default=None, gt=0)
 
 
 class ModelRepoWriteFailed(_ModelRepoWriteResultBase):
@@ -315,6 +400,7 @@ __all__: list[str] = [
     "EnumRepoWriteMode",
     "EnumRepoWriteOperation",
     "EnumRepoWriteRefusal",
+    "ModelCheckRunOutput",
     "ModelRepoWriteClaim",
     "ModelRepoWriteCompleted",
     "ModelRepoWriteFailed",

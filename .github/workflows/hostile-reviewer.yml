@@ -198,7 +198,8 @@ jobs:
             return 1
           }
 
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 3fcbf795087a79081c0ceeb676216bf64c5d49ae
+          # OMN-20910: merged Claude API voter support; existing overlay voters remain supported.
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 7f686d4bbca251dd3db49c1222ff8d6f738abd6c
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
@@ -441,7 +442,7 @@ jobs:
           # `bash -e {0}` by default -- that -e is already active before this
           # script's own `set -uo pipefail` runs, and `set -uo pipefail` does
           # NOT clear an inherited -e (see the identical warning on the
-          # occ-preflight job in this same repo's workflows). A bare
+          # repo-evidence-preflight job in this same repo's workflows). A bare
           # `OUTPUT=$(cmd); STATUS=$?` is a plain assignment, not part of an
           # if/while/until condition, so under inherited -e bash aborts the
           # WHOLE STEP the instant `cmd` exits non-zero -- `STATUS=$?`,
@@ -518,20 +519,27 @@ jobs:
           # stderr was previously discarded with `2>/dev/null`, so a
           # "Models succeeded: none" verdict gave no per-model reason in the log
           # (OMN-14176). Tee stderr to a log file AND back to fd 2 (the job log) so
-          # the reason is visible. stdout is still captured into REVIEW_JSON via the
-          # command substitution, and the command's exit code is still preserved via
-          # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
+          # the reason is visible. stdout is written to REVIEW_JSON_FILE, and the
+          # command's exit code is still preserved via `|| REVIEW_EXIT=$?` — this
+          # only stops swallowing stderr.
           # The voters, their endpoints, models, sampling and focus come from the
           # overlay (OMN-20910); the log names each voter and the model its
           # endpoint serves. A required voter that does not vote exits 2, named.
           # OMN-18479: a finding blocks only when at least two distinct voters
           # raise it; one voter's finding is reported without blocking.
-          REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
+          # OMN-19998: the result goes to a file, never into a variable that is
+          # later exported: it carries every finding's text, and Linux refuses
+          # any single argument or environment string over 128 KiB at exec
+          # ("Argument list too long", exit 126), which failed the gate with no
+          # verdict on PRs the reviewer had finished reading.
+          REVIEW_JSON_FILE="${RUNNER_TEMP:-.}/hostile-reviewer-result.json"
+          uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
             --head-sha "$HEAD_SHA" \
             --voters-overlay "$REVIEW_VOTERS_OVERLAY" \
-            2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
+            > "$REVIEW_JSON_FILE" \
+            2> >(tee hostile-reviewer-stderr.log >&2) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
           # to avoid blocking PRs due to infrastructure issues during pilot phase.
@@ -547,11 +555,13 @@ jobs:
           fi
 
           # Parse verdict from JSON using Python inline.
-          # JSON is passed via env var to avoid stdin/heredoc conflict (pipe clobbers heredoc stdin).
-          VERDICT_DATA=$(REVIEW_JSON="$REVIEW_JSON" python3 - <<'PYEOF'
+          # The JSON's path is passed via env var (stdin is the heredoc); the JSON
+          # itself is read from the file, whatever its size (OMN-19998).
+          VERDICT_DATA=$(REVIEW_JSON_FILE="$REVIEW_JSON_FILE" python3 - <<'PYEOF'
           import json, os
 
-          data = json.loads(os.environ["REVIEW_JSON"])
+          with open(os.environ["REVIEW_JSON_FILE"], encoding="utf-8") as fh:
+              data = json.load(fh)
           models_succeeded = list(data.get("models_succeeded", []))
           total_findings = int(data.get("total_findings", 0))
 
@@ -743,10 +753,10 @@ jobs:
           RESULT="${{ needs.hostile-review.result }}"
           echo "hostile-review: $RESULT"
 
-          # OMN-15057: the occ-preflight cross-check that used to live here was
-          # dropped along with `needs: occ-preflight` -- OCC eligibility is
-          # already independently enforced as its own required status check
-          # (`occ-preflight / eligibility`), so re-checking it here was
+          # OMN-15057: the preflight cross-check that used to live here was
+          # dropped along with its `needs:` edge -- PR admission is enforced as
+          # its own required status check (`repo-evidence / dod-verify`), so
+          # re-checking it here was
           # redundant AND was the exact skip-then-vacuous-green vector: when
           # the same-file poller job failed, this whole job (and its required
           # context) went `skipped`, which GitHub branch protection treats as

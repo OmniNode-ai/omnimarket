@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: prrp_snapshot_publish_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Runs the private-repo-runner-placement gate once per registry repository, merges its
+  Actions-variables snapshots dated by the oldest read, and copies the complete snapshot to
+  every available caller-supplied host. Remote copies must read back byte-identical. A failed
+  repository read publishes nothing; a failed host copy still lets the other hosts receive
+  the file. Only a complete run writes the heartbeat; a failed run writes a failure record.
+
+input_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_request.ModelPrrpSnapshotPublishRequest
+output_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_result.ModelPrrpSnapshotPublishResult
+handler:
+  module: omnimarket.nodes.node_prrp_snapshot_publish_effect.handlers.handler_prrp_snapshot_publish
+  class: HandlerPrrpSnapshotPublish
+  input_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_request.ModelPrrpSnapshotPublishRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: publish
+      handler:
+        name: HandlerPrrpSnapshotPublish
+        module: omnimarket.nodes.node_prrp_snapshot_publish_effect.handlers.handler_prrp_snapshot_publish
+      input_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_request.ModelPrrpSnapshotPublishRequest
+      output_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_result.ModelPrrpSnapshotPublishResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - runs the placement gate's --write-variables-snapshot once per registry repository (live GitHub reads)
+    - replaces the snapshot file in the local home and, over ssh, in each available lab host's home
+    - replaces heartbeat.json on a complete run and failure.json on a failed one in the state directory
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.prrp-snapshot-publish-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.prrp-snapshot-publish-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.prrp-snapshot-publish-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.prrp-snapshot-publish-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.prrp-snapshot-publish-completed.v1
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

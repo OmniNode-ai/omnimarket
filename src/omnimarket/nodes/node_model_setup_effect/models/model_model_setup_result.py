@@ -17,7 +17,7 @@ class ModelModelTestResult(BaseModel):
     """One test delegation pinned to a provider's backend.
 
     ``not_set_up`` means nothing was run: the provider has no key stored, or
-    (Ollama) no local routes point at it.
+    (Ollama) no local routes point at it, or (local) no URL is declared.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -45,12 +45,20 @@ class ModelModelStatus(BaseModel):
 class ModelModelSetupResult(BaseModel):
     """``tests`` for a ``test`` request, ``providers`` for ``status``, and the
     key's ordered ``models`` after an ``add_models``, ``reorder`` or
-    ``remove_model``."""
+    ``remove_model``; a ``default_model`` carries the one overlay-declared model."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: Literal[
-        "status", "test", "forget", "add_models", "reorder", "remove_model"
+        "status",
+        "test",
+        "forget",
+        "add_models",
+        "reorder",
+        "remove_model",
+        "default_model",
+        "add_local",
+        "remove_local",
     ]
     tests: tuple[ModelModelTestResult, ...] = ()
     providers: tuple[ModelModelStatus, ...] = ()

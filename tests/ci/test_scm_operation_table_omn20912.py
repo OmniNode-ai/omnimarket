@@ -47,6 +47,7 @@ LANE_WRITES: dict[str, str] = {
     "pr close": "pr_close",
     "pr comment": "pr_comment",
     "workflow run": "workflow_dispatch",
+    "api --method POST /repos/{o}/{r}/check-runs": "check_run_create",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 
@@ -162,6 +163,18 @@ _CONTRACT_PLANTS = [
         _zero_quota, "graphql", "quota_floor.min_remaining.graphql", id="quota-zero"
     ),
     pytest.param(_dry_run_owner, _REGISTRY_OWNER, "not enforce", id="owner-dry-run"),
+    pytest.param(
+        _drop_operation,
+        "check_run_create",
+        "no operation check_run_create",
+        id="check-run-dropped",
+    ),
+    pytest.param(
+        _reword_description,
+        "check_run_create",
+        "operation check_run_create does not say",
+        id="check-run-description-reworded",
+    ),
 ]
 
 

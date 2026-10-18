@@ -1,0 +1,85 @@
+name: node_delegation_experiment_record_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure check of the results records of the delegation experiment program (OMN-20422). The listed
+  experiments, their results records and the receipt run ids that exist in, and the experiments whose
+  record passes, with their counted runs, and a typed refusal for every defect of the rest: a listed
+  experiment with no record, a record missing hypothesis, metric, baseline, verdict or a per-arm
+  value, a void verdict with no cause, a counted run id with no receipt, a changed path that is the
+  dev-lane overlay or the bifrost contract path, a supported verdict with neither a follow-on nor a
+  declining ruling, and an arm on a retired model. Reads no file, calls no model and reads no clock.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_experiment_record
+      handler:
+        name: HandlerDelegationExperimentRecord
+        module: omnimarket.nodes.node_delegation_experiment_record_compute.handlers.handler_delegation_experiment_record
+
+handler:
+  module: omnimarket.nodes.node_delegation_experiment_record_compute.handlers.handler_delegation_experiment_record
+  class: HandlerDelegationExperimentRecord
+  input_model: omnimarket.models.delegation_experiment_record.model_experiment_record_request.ModelExperimentRecordRequest
+  output_model: omnimarket.models.delegation_experiment_record.model_experiment_record_result.ModelExperimentRecordResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [main]
+
+inputs:
+  listed_experiment_ids:
+    type: tuple
+    required: true
+    description: Every experiment the program lists; each needs a results record.
+  records:
+    type: tuple
+    required: true
+    description: The results records, one per experiment.
+  known_receipt_ids:
+    type: tuple
+    required: false
+    description: The run ids found in delegation_events or as harness receipts on disk.
+  protected_path_markers:
+    type: tuple
+    required: false
+    description: Substrings that mark the dev-lane overlay and the bifrost contract path.
+  retired_models:
+    type: tuple
+    required: false
+    description: Model names no experiment may measure.
+
+outputs:
+  accepted_experiment_ids:
+    type: tuple
+  run_counts:
+    type: tuple
+  issues:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.delegation-experiment-record-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-experiment-record-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-experiment-record-checked.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-experiment-record-checked.v1
+
+published_events:
+  - event_type: DelegationExperimentRecordChecked
+    topic: onex.evt.omnimarket.delegation-experiment-record-checked.v1
+    description: The experiments whose results record passed and the refusals of the rest.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-experiment-record-requested.v1

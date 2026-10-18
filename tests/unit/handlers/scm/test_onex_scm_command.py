@@ -27,6 +27,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 from omnibase_infra.errors import InfraConnectionError
+from pydantic import BaseModel, ConfigDict, create_model
 
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_scm_dispatch import (
@@ -260,6 +261,34 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
         "repo": r.repo,
         "truncated": False,
     },
+    "commit_check_runs": lambda r: {
+        "operation": "commit_check_runs",
+        "repo": r.repo,
+        "head_sha": r.head_sha,
+        "check_name": r.check_name,
+        "truncated": False,
+        "check_runs": [
+            {
+                "id": 9,
+                "name": r.check_name or "ci",
+                "app_slug": "github-actions",
+                "status": "completed",
+                "conclusion": "success",
+            }
+        ],
+    },
+    "merged_pr": lambda r: {
+        "operation": "merged_pr",
+        "repo": r.repo,
+        "pr_number": r.pr_number,
+        "state": "MERGED",
+        "merged": True,
+        "head_sha": HEAD,
+        "head_ref": "omn-1-x",
+        "base_ref": "dev",
+        "merge_commit_sha": MOVED,
+        "merged_at": "2026-10-10T18:00:00Z",
+    },
 }
 
 
@@ -390,6 +419,14 @@ _READ_ARGS: dict[str, list[str]] = {
     "run-download": [REPO, "--run-id", "11"],
     "release-list": [REPO],
     "pr-heads": [REPO, "--source", "bus"],
+    "commit-check-runs": [
+        REPO,
+        "--head-sha",
+        "a" * 40,
+        "--check-name",
+        "repo-evidence / dod-verify",
+    ],
+    "pr-merged": [f"{REPO}#77"],
 }
 _WRITE_ARGS: dict[str, list[str]] = {
     "pr-create": [
@@ -417,6 +454,21 @@ _WRITE_ARGS: dict[str, list[str]] = {
     ],
     "pr-comment": [f"{REPO}#77", "--body", "hello"],
     "workflow-run": [REPO, "--workflow", "ci.yml", "--ref", "dev", "--input", "a=b"],
+    "check-run-create": [
+        REPO,
+        "--name",
+        "lab/check",
+        "--head-sha",
+        HEAD,
+        "--status",
+        "completed",
+        "--conclusion",
+        "success",
+        "--output-title",
+        "Lab check",
+        "--output-summary",
+        "Passed.",
+    ],
 }
 
 
@@ -499,7 +551,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 14
+    assert len(declared) == 16
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )
@@ -525,6 +577,72 @@ def test_write_verb_publishes_typed_command_and_returns_terminal(
     assert answer["outcome"] == "completed"
     assert answer["bus"]["terminal_topic"] == WRITE.success
     assert answer["result"]["operation"] == spec.operation
+
+
+# The request fields the runtime deployed before check_run_create accepts
+# (node_github_repo_write_effect contract 1.2.0). Its request model forbids
+# extra inputs, so a write envelope that names any other field is refused with
+# ONEX_CORE_345 before the handler runs, whatever its value. A client that is
+# newer than the runtime must still send only these for every older operation.
+_CONTRACT_1_2_0_FIELDS = frozenset(
+    {
+        "correlation_id",
+        "operation",
+        "repo",
+        "idempotency_key",
+        "requested_by_lane",
+        "requested_by_run",
+        "claim",
+        "pr_number",
+        "expected_head_sha",
+        "title",
+        "body",
+        "head",
+        "base",
+        "draft",
+        "workflow",
+        "ref",
+        "inputs",
+        "claims_dir",
+        "dry_run",
+    }
+)
+
+
+def _contract_1_2_0_request() -> type[BaseModel]:
+    fields: dict[str, Any] = {
+        name: (info.annotation, info)
+        for name, info in ModelRepoWriteRequest.model_fields.items()
+        if name in _CONTRACT_1_2_0_FIELDS
+    }
+    assert set(fields) == _CONTRACT_1_2_0_FIELDS
+    model: type[BaseModel] = create_model(
+        "ModelRepoWriteRequestContract120",
+        __config__=ConfigDict(frozen=True, extra="forbid"),
+        **fields,
+    )
+    return model
+
+
+@pytest.mark.parametrize("verb_name", sorted(set(_WRITE_ARGS) - {"check-run-create"}))
+def test_older_write_envelopes_validate_against_the_deployed_contract(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+
+    result = _run([verb_name, *_WRITE_ARGS[verb_name], "--lane", "lane-x"])
+
+    assert result.exit_code == 0, result.output
+    _, envelope = bus.published[0]
+    payload = envelope["payload"]
+    assert set(payload) <= _CONTRACT_1_2_0_FIELDS, sorted(
+        set(payload) - _CONTRACT_1_2_0_FIELDS
+    )
+    _contract_1_2_0_request().model_validate(payload)
+    assert (
+        ModelRepoWriteRequest.model_validate(payload).model_dump(mode="json") == payload
+    )
 
 
 def test_write_idempotency_key_is_stable_across_retries(
@@ -1058,3 +1176,90 @@ def test_verbs_table_lists_served_and_refused() -> None:
     table = json.loads(result.stdout)
     assert {v["verb"] for v in table["served"]} == {s.verb for s in SCM_VERBS}
     assert {v["verb"] for v in table["refused"]} == {r.verb for r in SCM_REFUSED_VERBS}
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("completed", "success"), ("queued", None), ("in_progress", None)],
+)
+def test_check_run_create_cli_maps_head_and_output(
+    monkeypatch: pytest.MonkeyPatch, status: str, conclusion: str | None
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = [
+        "check-run-create",
+        REPO,
+        "--name",
+        "lab/check",
+        "--head-sha",
+        HEAD,
+        "--status",
+        status,
+        "--output-title",
+        "Lab check",
+        "--output-summary",
+        "Passed.",
+        "--lane",
+        "lane-x",
+    ]
+    if conclusion is not None:
+        args += ["--conclusion", conclusion]
+    result = _run(args)
+    assert result.exit_code == 0, result.output
+    assert len(bus.published) == 1
+    topic, envelope = bus.published[0]
+    assert topic == WRITE.command
+    sent = ModelRepoWriteRequest.model_validate(envelope["payload"])
+    assert sent.operation.value == "check_run_create"
+    assert sent.head_sha == HEAD
+    assert sent.expected_head_sha is None
+    assert sent.name == "lab/check"
+    assert sent.status == status
+    assert sent.conclusion == conclusion
+    assert sent.output is not None
+    assert sent.output.title == "Lab check"
+    assert sent.output.summary == "Passed."
+
+
+@pytest.mark.parametrize(
+    ("extra", "missing"),
+    [
+        (["--status", "queued"], "head_sha"),
+        (
+            ["--head-sha", HEAD, "--status", "queued", "--output-title", "Lab"],
+            "summary",
+        ),
+        (["--head-sha", HEAD, "--status", "completed"], "conclusion"),
+    ],
+)
+def test_invalid_check_run_cli_does_not_open_bus(
+    monkeypatch: pytest.MonkeyPatch, extra: list[str], missing: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["check-run-create", REPO, "--name", "lab/check", "--lane", "lane-x", *extra]
+    )
+    assert result.exit_code == 2, result.output
+    assert missing in result.output
+    assert bus.published == []
+
+
+def test_check_run_retry_key_includes_head_and_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = ["check-run-create", *_WRITE_ARGS["check-run-create"], "--lane", "lane-x"]
+    for command in (
+        args,
+        args,
+        [MOVED if value == HEAD else value for value in args],
+        ["Changed." if value == "Passed." else value for value in args],
+    ):
+        result = _run(command)
+        assert result.exit_code == 0, result.output
+    keys = [envelope["payload"]["idempotency_key"] for _, envelope in bus.published]
+    assert keys[0] == keys[1]
+    assert len(set(keys)) == 3

@@ -28,17 +28,17 @@ description: >
 
 input_model:
   name: ModelSecretStoreRequest
-  module: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request
+  module: omnimarket.models.secret_store.model_secret_store_request
 
 output_model:
   name: ModelSecretStoreResult
-  module: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_result
+  module: omnimarket.models.secret_store.model_secret_store_result
 
 handler:
   module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store
   class: HandlerSecretStore
-  input_model: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request.ModelSecretStoreRequest
-  output_model: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_result.ModelSecretStoreResult
+  input_model: omnimarket.models.secret_store.model_secret_store_request.ModelSecretStoreRequest
+  output_model: omnimarket.models.secret_store.model_secret_store_result.ModelSecretStoreResult
 
 handler_routing:
   routing_strategy: operation_match
@@ -49,21 +49,21 @@ handler_routing:
         module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store
       event_model:
         name: ModelSecretStoreRequest
-        module: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request
+        module: omnimarket.models.secret_store.model_secret_store_request
     - operation: create
       handler:
         name: HandlerSecretStore
         module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store
       event_model:
         name: ModelSecretStoreRequest
-        module: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request
+        module: omnimarket.models.secret_store.model_secret_store_request
     - operation: list
       handler:
         name: HandlerSecretStore
         module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store
       event_model:
         name: ModelSecretStoreRequest
-        module: omnimarket.nodes.node_secret_store_effect.models.model_secret_store_request
+        module: omnimarket.models.secret_store.model_secret_store_request
 
 # A reference's first segment, when it names one of these, maps through it:
 # secret://onex/captured/<digest> is key CAPTURED_<digest> in folder /captured

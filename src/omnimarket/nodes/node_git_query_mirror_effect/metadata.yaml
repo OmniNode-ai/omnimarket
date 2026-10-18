@@ -1,6 +1,6 @@
 name: node_git_query_mirror_effect
 version: "0.1.0"
-description: "Clone query layer: a fetch-only git mirror per repository answers PR head sha, changed files, diff, merge-tree conflicts, already-on-base and commit log without GitHub API quota; every answer names its source and watermark age."
+description: "Fetch-only git mirror with a durable merge-event outbox; pending merges are published with the event emit node's Kafka adapter and marked published after broker acknowledgement."
 pack: pr-lifecycle
 node_role: effect
 display_name: "Git Query Mirror Effect"
@@ -10,13 +10,14 @@ entry_points:
     node_git_query_mirror_effect: "omnimarket.nodes.node_git_query_mirror_effect"
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_only
-dependencies: []
+  side_effect_class: write
+dependencies:
+  - "omnibase-infra>=0.38.3,<0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "git", "github-quota", "read-only"]
+tags: ["effect", "git", "github-quota", "outbox", "kafka"]

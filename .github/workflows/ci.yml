@@ -120,9 +120,11 @@ jobs:
       CROSS_REPO_PAT: ${{ secrets.CROSS_REPO_PAT }}
 
   # OMN-20073: repo-owned evidence admits runner-heavy PR validation.
-  # The legacy job key keeps downstream needs edges intact. OCC companion
-  # and queue gates remain enforced until the OR.2 cutover proof is complete.
-  occ-preflight:
+  # OMN-20074: the job key names the evidence it waits for. It keeps
+  # "preflight" in it because omnibase_core's shape-gate independence guard
+  # (job "Shape-Gate Independence (OMN-20298)" below) finds the preflight job
+  # by that word in its key; a key without it would hide this job from the guard.
+  repo-evidence-preflight:
     name: Repo Evidence Dependency
     runs-on: ubuntu-latest
     permissions:
@@ -230,7 +232,7 @@ jobs:
   # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
     with:
@@ -260,7 +262,7 @@ jobs:
   # required-check skip-vector guard analyse it as a required context (vector 2)
   # for no benefit — its verdict is only ever read by the poller.
   docs-only-marker:
-    needs: [occ-preflight, zone-filter]
+    needs: [repo-evidence-preflight, zone-filter]
     if: always() && needs.zone-filter.outputs.docs_only == 'true'
     name: Docs-Only Marker (OMN-16662)
     runs-on: ubuntu-latest
@@ -279,8 +281,45 @@ jobs:
             echo "gates still run and must still be green."
           } >> "$GITHUB_STEP_SUMMARY"
 
+
+  # OMN-19998: RE-TEST WAIVER MARKER. Operator RULING 2026-10-18T00:50:42Z
+  # (ledger, lane orchestrator-bb1a): tests run once, on the pull request. The
+  # pull request head already ran the heavy tier (test splits, coverage census,
+  # integration, golden and event chains, e2e); a merge_group run, or the push
+  # to dev after the squash merge, does not run it again. Every job carrying
+  # the OMN-19998 waiver clause skips on those two events, and this marker is
+  # what lets `CI Summary` (scripts/ci/ci_summary_gate.py,
+  # RETEST_WAIVER_MARKER_JOB) accept the skip, so every required context still
+  # reports. The light gates (lint, typecheck, runtime sweep, contract and
+  # topic gates, install gates) still run on both events. A dev break is
+  # accepted and fixed forward; the nightly full suite still runs every test.
+  # Pull request runs and main/hotfix pushes are unchanged.
+  #
+  # EXPIRY: short term only, until the merge queue clears and test
+  # deduplication works. Remove this job, the waiver clause on the heavy jobs
+  # and RETEST_WAIVER_MARKER_JOB when the long-term run-once design
+  # (tests-once-merge-queue, inherited from omnibase_core CI) lands here.
+  queue-retest-waiver:
+    if: github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    name: Queue Re-test Waiver (OMN-19998)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record the re-test waiver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          echo "event=${EVENT_NAME} ref=${REF}: the heavy tier ran on the pull request head and is not re-run here (OMN-19998)."
+          {
+            echo "### Re-test waiver (OMN-19998)"
+            echo ""
+            echo "Event \`${EVENT_NAME}\` on \`${REF}\`: tests ran once, on the pull request."
+            echo "The heavy tier is skipped; the light gates still run and must be green."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -381,17 +420,6 @@ jobs:
       # 'one-occ-producer'.
       - name: One OCC producer per contract
         run: uv run python scripts/ci/check_one_occ_producer.py
-      # OMN-18304: one self-bind SHAPE, per-entry bound. The sibling gate above
-      # keeps a second producer from appearing; this one keeps the single
-      # producer from emitting a whole-file-only self-bind, which is stale by
-      # construction on any ticket with more than one companion. The positive
-      # control runs first and deliberately: a clean pass from a check that
-      # cannot fail is not evidence. SYNC with pre-commit hook
-      # 'occ-self-bind-entry-binding'.
-      - name: OCC self-bind entry-binding gate (positive control)
-        run: uv run python scripts/ci/check_self_bind_entry_binding.py --self-test
-      - name: OCC self-bind entry-binding gate
-        run: uv run python scripts/ci/check_self_bind_entry_binding.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)
@@ -419,6 +447,22 @@ jobs:
       # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
       - name: Validate no silent env fallbacks
         run: uv run python scripts/validation/validate_no_env_fallbacks.py
+      # OMN-20201 (M47): a contract.yaml changed by the PR carries no model id,
+      # model key, model-env default or endpoint literal. Contracts the PR does
+      # not touch are not scanned, so the findings that predate the gate stay
+      # visible in a full scan without blocking unrelated PRs.
+      # SYNC with pre-commit hook 'contract-overlay-boundary'.
+      - name: Contract overlay boundary gate (changed contracts)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          uv run python scripts/validation/validate_contract_overlay_boundary.py --changed-since "$REF"
       # SYNC: OMN-10926 — delegation env read scanner in enforce mode (Wave 2)
       # Fails CI if any delegation/LLM/bifrost module adds a new os.environ/os.getenv read.
       - name: Delegation env read scanner (enforce)
@@ -491,6 +535,15 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # OMN-17427 (operator ruling 2026-10-08T23:48:01Z): lab models first for
+      # appropriate tasks. Refuses a class routed to a cloud model first (tier
+      # order, entry share or model pin) unless the task-class contract records a
+      # measurement below the bar for it. SYNC with pre-commit hook 'lab-first-routing'.
+      - name: Lab-first routing gate (OMN-17427)
+        run: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -n 0 -p no:randomly --no-cov
+      # OMN-17104: SYNC with pre-commit hook 'delegation-wire-public-models'.
+      - name: Delegation public models match loader and inference contract
+        run: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
       # SYNC with pre-commit hook 'typed-decision-shadow-calibration'.
       - name: Typed decision shadow calibration (OMN-19136)
         run: uv run pytest tests/unit/nodes/test_golden_chain_typed_decision_effect.py -q
@@ -590,6 +643,10 @@ jobs:
       # 'omniclaude-release-notice'.
       - name: Omniclaude release notice (OMN-20001)
         run: uv run pytest tests/ci/test_omniclaude_release_notice_omn20001.py -q -p no:randomly --no-cov
+      # OMN-17427: incomplete watcher observations stay facts-unavailable.
+      # SYNC with pre-commit hook 'ci-red-watcher-facts-only'.
+      - name: CI red watcher facts only (OMN-17427)
+        run: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py -q -n 0 -p no:randomly --no-cov
       # OMN-20730: the red CI triage model (formal/ci_red_triage) passes its design
       # config, each property fails on a one-knob mutation, the results match the
       # committed model, configs and outputs, and the verdict approves the model's
@@ -611,6 +668,11 @@ jobs:
       # OMN-18932: keep the release bar paired with its pre-commit hook.
       - name: D1 output-only release acceptance (OMN-18932)
         run: uv run --frozen pytest tests/unit/delegation/test_output_only_acceptance_omn18932.py -q
+      # OMN-18925 AC-2: a terminal structurally invalid against its declared response contract is never
+      # quality-passing. Paired with the schema-invalid-terminal-never-passes pre-commit hook; the wiring
+      # test also runs in the sharded test job, so removing this step is a red build there.
+      - name: Schema-invalid terminal never quality-passing (OMN-18925)
+        run: uv run --frozen pytest tests/unit/delegation/test_schema_invalid_terminal_never_passes_omn18925.py tests/ci/test_schema_invalid_terminal_gate_wiring_omn18925.py -q -p no:randomly --no-cov
       # OMN-20780: RULING 2026-10-14T18:17:30Z, a delegated answer is gated by an independent judge for the
       # text classes and by its own named tests for the code classes (OMN-20489). Paired with the
       # delegation-answer-gate pre-commit hook; named by repo path so the ruling audit finds the gate.
@@ -936,8 +998,8 @@ jobs:
             --commit-range "${BASE_SHA}..${HEAD_SHA}"
 
   typecheck:
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    if: needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -978,8 +1040,9 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -1045,7 +1108,7 @@ jobs:
 
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
-    needs: [occ-preflight, detect-changes]
+    needs: [repo-evidence-preflight, detect-changes]
     runs-on: ubuntu-latest
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
@@ -1528,8 +1591,9 @@ jobs:
   # ============================================================================
   integration-guard:
     name: Integration Silent-Skip Guard (OMN-14172)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     # Same Postgres service block as the Tests job (OMN-14167): a real broker so
     # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
@@ -1674,7 +1738,7 @@ jobs:
           retention-days: 7
 
   topic-naming-lint:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Topic Naming Lint
     runs-on: ubuntu-latest
@@ -1714,7 +1778,7 @@ jobs:
   # # onex-topic-allow annotation). Orphaned constants are drift violations.
   # ============================================================================
   topic-enum-drift:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Topic Enum Drift Check
     runs-on: ubuntu-latest
@@ -1744,7 +1808,7 @@ jobs:
   # --warn-only behaviour of the equivalent omnibase_infra check (OMN-5248).
   # ============================================================================
   topic-drift-check:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Topic Drift Check
     runs-on: ubuntu-latest
@@ -1793,7 +1857,7 @@ jobs:
 
   # OMN-20298: a shape-gate detector runs on every PR, whatever the change-control
   # preflight says. This job has no `needs:` and no `if:`, and it refuses any
-  # detector job that comes back behind occ-preflight or reads its result.
+  # detector job that comes back behind the preflight job or reads its result.
   # The guard lives in omnibase_core (PR 1833) and is pinned by commit; there is
   # no baseline, allowlist or suppression for it. STRICT CI Summary gate
   # (scripts/ci/ci_summary_gate.py STRICT_GATE_JOBS). SYNC with the pre-commit
@@ -1984,15 +2048,30 @@ jobs:
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
         run: uv sync --locked
-      - name: Every changed wire payload must decode on the last release (OMN-18868)
+      - name: Every changed wire payload must decode on omniclaude's pinned omnimarket commit (OMN-18868, OMN-19998)
+        # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): omniclaude consumes
+        # omnimarket by a git pin on a dev commit, not by a release, so the
+        # deployed consumer is the commit omniclaude's uv.lock pins on its dev
+        # branch. That commit is graded instead of the last release tag. An
+        # unreadable pin fails closed; it never falls back to a tag.
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
         run: |
           set -euo pipefail
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
+          lock="$(curl -fsSL --retry 3 https://raw.githubusercontent.com/OmniNode-ai/omniclaude/dev/uv.lock)"
+          pin="$(printf '%s\n' "$lock" | grep -oE 'omnimarket\.git\?rev=[0-9a-f]{40}' | head -1 | sed 's/.*rev=//')"
+          if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::WIRE_COMPAT_RELEASE_UNRESOLVABLE: no omnimarket commit pin found in omniclaude dev's uv.lock; the deployed consumer is unknown, so wire compatibility is unproven"
+            exit 1
+          fi
+          git cat-file -e "${pin}^{commit}" || git fetch --quiet origin "$pin"
+          echo "Consumer: omniclaude dev pins omnimarket at $pin"
           uv run python scripts/ci/check_wire_compatibility.py \
-            --base "origin/${BASE}"
+            --base "origin/${BASE}" \
+            --consumer-ref "$pin" \
+            --consumer-label "omniclaude's pinned omnimarket"
       - name: The two real-history controls must EXECUTE here (OMN-18868)
         # These two replay the OMN-18852 incident against this repository's
         # own tags, and they need what only this job's checkout has. The
@@ -2033,7 +2112,7 @@ jobs:
           PY
 
   event-registry-drift:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Event Registry Drift
     runs-on: ubuntu-latest
@@ -2072,7 +2151,7 @@ jobs:
   # PR merges (the PR fixing 96 broken entry points).
   # ============================================================================
   runtime-sweep:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Runtime Sweep
     runs-on: ubuntu-latest
@@ -2105,7 +2184,7 @@ jobs:
   # scope can never be reported clean (the class defect this gate closes).
   # ============================================================================
   compliance-sweep:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Compliance Sweep
     runs-on: ubuntu-latest
@@ -2143,7 +2222,7 @@ jobs:
   # Required via the ci-summary aggregator (Rule 5: enforcement, not detection).
   # ============================================================================
   core-only-install:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Core-Only Install Gate
     runs-on: ubuntu-latest
@@ -2192,7 +2271,7 @@ jobs:
   # (rule 5: enforcement, not detection).
   # ============================================================================
   customer-clean-install:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Customer Clean-Install Delegate Gate
     runs-on: ubuntu-latest
@@ -2224,12 +2303,19 @@ jobs:
   # Twice a merge needed unreleased infra: node_projection_delegation/0052
   # columns were written before their migration shipped, and dev changes broke
   # `onex delegate` for a new developer installing released packages. Test THIS
-  # head against its uv.lock releases, never a sibling's live dev. Refuse with
+  # head against its uv.lock pins, never a sibling's live dev. Refuse with
   # the missing release named; no breaking change without downstream notice.
+  # A pin is a PyPI release, or (OMN-19998, RULING 2026-10-16T09:35:49Z: in the
+  # lab, tags replace releases) a uv.lock git source pinned to one of the
+  # sibling's dev-<UTC>-<sha12> tags (each sibling's dev-merge-tag.yml tags every
+  # dev push). The tag must exist on the sibling and name the pinned commit.
+  # Any other uv.lock git source of the sibling locked to one commit is a pin
+  # too (OMN-19998, RULING 2026-10-16T07:34:18Z), checked out at that commit;
+  # another repository, a fork or a non-git source is refused as before.
   # Required via the ci-summary aggregator.
   # ============================================================================
   sibling-release-compat:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Sibling Release Compatibility Gate (OMN-20381)
     runs-on: ubuntu-latest
@@ -2251,39 +2337,128 @@ jobs:
           set -euo pipefail
           uv python install 3.12
       - id: pins
-        name: Read the sibling release pins from this head's uv.lock
+        name: Read the sibling pins from this head's uv.lock
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import os
+          import re
           import tomllib
+
+          SIBLINGS = (
+              ("omnibase-infra", "infra", "OmniNode-ai/omnibase_infra"),
+              ("omnibase-core", "core", "OmniNode-ai/omnibase_core"),
+          )
+          PYPI = {"registry": "https://pypi.org/simple"}
+          DEV_TAG = re.compile(r"^dev-[0-9]{14}-(?P<sha12>[0-9a-f]{12})$")
+          GIT_SOURCE = re.compile(
+              r"^https://github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?"
+              r"\?tag=(?P<tag>[^#&?]+)#(?P<sha>[0-9a-f]{40})$"
+          )
 
           with open("uv.lock", "rb") as lock_file:
               packages = tomllib.load(lock_file).get("package", [])
           pins = {}
           failed = False
-          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+          for name, key, repo in SIBLINGS:
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+              if len(entries) != 1:
+                  print(f"::error::{name}: entries={len(entries)}, sources={sources!r}; exactly one pin is required.")
                   failed = True
                   continue
-              pins[output] = entries[0]["version"]
+              source = sources[0]
+              version = entries[0]["version"]
+              if source == PYPI:
+                  pins.update({
+                      f"{key}_version": version,
+                      f"{key}_ref": f"v{version}",
+                      f"{key}_ref_name": f"v{version}",
+                      f"{key}_dev_tag": "",
+                      f"{key}_spec": f"{name}=={version}",
+                  })
+                  continue
+              git = source.get("git") if isinstance(source, dict) and set(source) == {"git"} else None
+              source_match = GIT_SOURCE.match(git) if isinstance(git, str) else None
+              tag_match = DEV_TAG.match(source_match["tag"]) if source_match else None
+              dev_tag = ""
+              commit = None
+              if (
+                  source_match is not None
+                  and source_match["repo"] == repo
+                  and tag_match is not None
+                  and source_match["sha"].startswith(tag_match["sha12"])
+              ):
+                  dev_tag = source_match["tag"]
+                  commit = source_match["sha"]
+              # OMN-19998 (RULING 2026-10-16T07:34:18Z): any other git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(git, str) and not (source_match and source_match["tag"].startswith("dev-")):
+                  repository, _, locked = git.partition("#")
+                  if repository.split("?", 1)[0] == f"https://github.com/{repo}.git" and re.fullmatch(r"[0-9a-f]{40}", locked):
+                      commit = locked
+              if commit is None:
+                  print(f"::error::{name}: source={source!r}, entries={len(entries)}; a released or commit-pinned source is required: a PyPI release, a git source of https://github.com/{repo}.git locked to one commit, or a dev-<UTC>-<sha12> tag of {repo} whose sha12 is the pinned commit (a sibling's moving dev branch is never an integration target).")
+                  failed = True
+                  continue
+              pins.update({
+                  f"{key}_version": version,
+                  f"{key}_ref": commit,
+                  f"{key}_ref_name": dev_tag or commit,
+                  f"{key}_dev_tag": dev_tag,
+                  f"{key}_spec": f"{name} @ git+https://github.com/{repo}.git@{commit}",
+              })
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
-              for key, version in pins.items():
-                  line = f"{key}={version}"
+              for key, value in pins.items():
+                  line = f"{key}={value}"
                   print(line)
                   print(line, file=output_file)
           PY
-      - name: Checkout the pinned omnibase_infra release
+      - id: tags
+        name: Every dev-tag pin names the commit it pins
+        shell: bash
+        env:
+          INFRA_TAG: ${{ steps.pins.outputs.infra_dev_tag }}
+          INFRA_SHA: ${{ steps.pins.outputs.infra_ref }}
+          CORE_TAG: ${{ steps.pins.outputs.core_dev_tag }}
+          CORE_SHA: ${{ steps.pins.outputs.core_ref }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for sibling in infra:omnibase_infra core:omnibase_core; do
+            key=${sibling%%:*}
+            repo=${sibling#*:}
+            tag_var=${key^^}_TAG
+            sha_var=${key^^}_SHA
+            tag=${!tag_var}
+            sha=${!sha_var}
+            if [[ -z "$tag" ]]; then
+              echo "OK: $repo is pinned to a PyPI release or a commit; no dev tag to verify."
+              continue
+            fi
+            remote=$(git ls-remote --tags "https://github.com/OmniNode-ai/$repo.git" "refs/tags/$tag" "refs/tags/$tag^{}")
+            resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<< "$remote")
+            if [[ -z "$resolved" ]]; then
+              resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<< "$remote")
+            fi
+            if [[ -z "$resolved" ]]; then
+              echo "::error::uv.lock pins $repo to the dev tag $tag, and $repo has no such tag (missing sibling tag: $repo dev-merge-tag.yml tags every dev push; pin a tag that exists)."
+              failed=1
+            elif [[ "$resolved" != "$sha" ]]; then
+              echo "::error::uv.lock pins $repo to the dev tag $tag at $sha, but the tag names $resolved; re-lock against the tag."
+              failed=1
+            else
+              echo "OK: $repo dev tag $tag names the pinned commit $sha"
+            fi
+          done
+          exit "$failed"
+      - name: Checkout the pinned omnibase_infra revision (release tag or dev-tag commit)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v${{ steps.pins.outputs.infra_version }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: .sibling/omnibase_infra
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           fetch-depth: 0
@@ -2297,6 +2472,8 @@ jobs:
         env:
           INFRA_DIR: .sibling/omnibase_infra
           INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
+          INFRA_REF: ${{ steps.pins.outputs.infra_ref }}
+          INFRA_REF_NAME: ${{ steps.pins.outputs.infra_ref_name }}
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
@@ -2314,7 +2491,7 @@ jobs:
           fi
           tags=$(git -C "$INFRA_DIR" tag --list 'v[0-9]*' --sort=v:refname)
           {
-            echo "| file | pinned v$INFRA_VERSION | first release carrying it |"
+            echo "| file | pinned $INFRA_REF_NAME | first release carrying it |"
             echo "| --- | --- | --- |"
           } >> "$GITHUB_STEP_SUMMARY"
           failed=0
@@ -2324,15 +2501,15 @@ jobs:
             name=${file##*/}
             vendored="docker/migrations/forward/nodes/$node/$name"
             want=$(git show "$HEAD_SHA:$file" | git hash-object --stdin)
-            have=$(git -C "$INFRA_DIR" ls-tree "v$INFRA_VERSION" -- "$vendored" | awk '{print $3}')
+            have=$(git -C "$INFRA_DIR" ls-tree "$INFRA_REF" -- "$vendored" | awk '{print $3}')
             if [[ "$have" == "$want" ]]; then
-              echo "OK: $file is byte-identical in omnibase_infra v$INFRA_VERSION"
-              echo "| $file | byte-identical | v$INFRA_VERSION (already pinned) |" >> "$GITHUB_STEP_SUMMARY"
+              echo "OK: $file is byte-identical in omnibase_infra $INFRA_REF_NAME"
+              echo "| $file | byte-identical | $INFRA_REF_NAME (already pinned) |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
             first_release=""
             while IFS= read -r tag; do
-              [[ -n "$tag" && "$tag" != "v$INFRA_VERSION" ]] || continue
+              [[ -n "$tag" && "$tag" != "$INFRA_REF_NAME" ]] || continue
               oldest=$(printf '%s\n' "v$INFRA_VERSION" "$tag" | sort -V | head -n 1)
               [[ "$oldest" == "v$INFRA_VERSION" ]] || continue
               blob=$(git -C "$INFRA_DIR" ls-tree "$tag" -- "$vendored" | awk '{print $3}')
@@ -2348,9 +2525,9 @@ jobs:
               status="different bytes"
             fi
             if [[ -n "$first_release" ]]; then
-              echo "::error::$file $relation the pinned omnibase_infra release v$INFRA_VERSION (omnibase-infra==$INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."
+              echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."
             else
-              echo "::error::$file $relation the pinned omnibase_infra release v$INFRA_VERSION (omnibase-infra==$INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."
+              echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."
             fi
             echo "| $file | $status | ${first_release:-not released} |" >> "$GITHUB_STEP_SUMMARY"
             failed=1
@@ -2359,18 +2536,26 @@ jobs:
       # The checks below still run when the migration check refuses, so one
       # red names every missing sibling release at once.
       - name: Build this head's wheel
-        if: ${{ !cancelled() && steps.pins.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.pins.outcome == 'success' && steps.tags.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           uv build --wheel --out-dir "$RUNNER_TEMP/dist"
       - id: install
-        name: Install the wheel against the pinned sibling releases
-        if: ${{ !cancelled() && steps.pins.outcome == 'success' }}
+        name: Install the wheel against the pinned sibling releases and dev-tag commits
+        if: ${{ !cancelled() && steps.pins.outcome == 'success' && steps.tags.outcome == 'success' }}
         shell: bash
         env:
           INFRA_VERSION: ${{ steps.pins.outputs.infra_version }}
           CORE_VERSION: ${{ steps.pins.outputs.core_version }}
+          INFRA_SPEC: ${{ steps.pins.outputs.infra_spec }}
+          CORE_SPEC: ${{ steps.pins.outputs.core_spec }}
+          INFRA_REF_NAME: ${{ steps.pins.outputs.infra_ref_name }}
+          CORE_REF_NAME: ${{ steps.pins.outputs.core_ref_name }}
+          INFRA_DEV_TAG: ${{ steps.pins.outputs.infra_dev_tag }}
+          CORE_DEV_TAG: ${{ steps.pins.outputs.core_dev_tag }}
+          INFRA_SHA: ${{ steps.pins.outputs.infra_ref }}
+          CORE_SHA: ${{ steps.pins.outputs.core_ref }}
         run: |
           set -euo pipefail
           # Outside the checkout and with --no-config: this repo's [tool.uv]
@@ -2380,22 +2565,32 @@ jobs:
           cd "$RUNNER_TEMP"
           uv venv --no-config --python 3.12 "$RUNNER_TEMP/pinned-venv"
           if ! uv pip install --no-config --python "$RUNNER_TEMP/pinned-venv/bin/python" \
-            "$wheel" "omnibase-infra==$INFRA_VERSION" "omnibase-core==$CORE_VERSION"; then
-            echo "::error::this head does not install against the released omnibase-infra==$INFRA_VERSION and omnibase-core==$CORE_VERSION its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"
+            "$wheel" "$INFRA_SPEC" "$CORE_SPEC"; then
+            echo "::error::this head does not install against the omnibase-infra $INFRA_REF_NAME and omnibase-core $CORE_REF_NAME its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"
             exit 1
           fi
           "$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'
           import importlib.metadata
+          import json
           import os
           from pathlib import Path
           import sysconfig
 
           import omnimarket
 
-          for package, key in (("omnibase-infra", "INFRA_VERSION"), ("omnibase-core", "CORE_VERSION")):
+          for package, key, tag_key, sha_key in (
+              ("omnibase-infra", "INFRA_VERSION", "INFRA_DEV_TAG", "INFRA_SHA"),
+              ("omnibase-core", "CORE_VERSION", "CORE_DEV_TAG", "CORE_SHA"),
+          ):
               installed = importlib.metadata.version(package)
               assert installed == os.environ[key], f"{package}: installed {installed}, pinned {os.environ[key]}"
-              print(f"OK: {package}=={installed}")
+              if os.environ[sha_key] != f"v{installed}":
+                  direct_url = json.loads(importlib.metadata.distribution(package).read_text("direct_url.json"))
+                  commit = direct_url.get("vcs_info", {}).get("commit_id")
+                  assert commit == os.environ[sha_key], f"{package}: installed commit {commit}, pinned {os.environ[sha_key]} ({os.environ[tag_key]})"
+                  print(f"OK: {package}=={installed} at {os.environ[tag_key] or 'commit'} ({commit})")
+              else:
+                  print(f"OK: {package}=={installed}")
           location = Path(omnimarket.__file__).resolve()
           site_packages = Path(sysconfig.get_path("purelib")).resolve()
           venv = (Path(os.environ["RUNNER_TEMP"]) / "pinned-venv").resolve()
@@ -2486,8 +2681,9 @@ jobs:
 
   e2e-workflow-runner:
     name: E2E Workflow Runner (inmemory bus)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -2580,8 +2776,9 @@ jobs:
 
   golden-chains:
     name: Golden Chain Suite (inmemory bus)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2616,8 +2813,9 @@ jobs:
   # ============================================================================
   event-chain-generation:
     name: Generated Event Chains (walker paths)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2648,8 +2846,9 @@ jobs:
 
   sea-e2e-chains:
     name: SEA E2E Acceptance + Error Chains (OMN-12660)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2694,8 +2893,9 @@ jobs:
 
   generated-node-golden-chain:
     name: Generated-Node Golden Chain Gate (OMN-13624)
-    needs: [occ-preflight, zone-filter]
-    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    needs: [repo-evidence-preflight, zone-filter]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (needs.repo-evidence-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')) && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -2754,7 +2954,7 @@ jobs:
   # on nothing else -- CI is the only place it can tell the truth (OMN-14447).
   # ============================================================================
   uv-lock-pin-reachability:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: uv.lock Pin Reachability
     runs-on: ubuntu-latest
@@ -2792,7 +2992,7 @@ jobs:
             --clones-root "${RUNNER_TEMP}/clones"
 
   dep-health:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Dependency Health Gate
     runs-on: ubuntu-latest
@@ -2845,10 +3045,10 @@ jobs:
   # its validate-yaml over that repository's contracts, never this one's. The step
   # body is the same as contract-validation.yml's "Run contract validation".
   contract-compliance:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     name: Contract Compliance Check
     runs-on: ubuntu-latest
-    if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
+    if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
@@ -2919,7 +3119,7 @@ jobs:
   # --strict so any NEW violation fails closed.
   # ============================================================================
   contract-sweep-gate:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Contract Sweep Gate
     runs-on: ubuntu-latest
@@ -2957,7 +3157,7 @@ jobs:
   # across repos rather than forking a second omnimarket-local copy.
   # ============================================================================
   aislop-sweep:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Aislop Sweep (strict, PR diff)
     runs-on: ubuntu-latest
@@ -3028,8 +3228,9 @@ jobs:
   # tests/unit/scripts/ci/test_ci_summary_gate.py::test_draft_gate_still_fails_closed_without_marker.
   # ============================================================================
   coverage-sweep-gate:
-    needs: [occ-preflight, zone-filter, detect-changes, test]
-    if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft) && needs.zone-filter.outputs.docs_only != 'true'
+    needs: [repo-evidence-preflight, zone-filter, detect-changes, test]
+    # OMN-19998 re-test waiver (RULING 2026-10-18T00:50:42Z); see queue-retest-waiver.
+    if: (always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft) && needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev'))
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -3093,7 +3294,7 @@ jobs:
   # sync. SYNC with pre-commit hook "workflow-module-refs".
   # ============================================================================
   workflow-module-refs:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     if: always()
     name: Workflow Module Resolution
     runs-on: ubuntu-latest
@@ -3219,7 +3420,7 @@ jobs:
   # ============================================================================
   customer-path-boundary:
     name: Customer Path Boundary (OMN-18012)
-    # OMNI_RUNNER_SELECTOR_V1 — trusted CI defaults to self-hosted omnibase-ci; public forks default to ubuntu-latest
+    # OMNI_RUNNER_SELECTOR_V1 — trusted CI defaults to ubuntu-latest; public forks default to ubuntu-latest
     #
     # OMN-18205: this job starts a broker container, so its placement is
     # governed by OMNI_DOCKER_CI_RUNS_ON_JSON before the general trusted seam --
@@ -3234,7 +3435,7 @@ jobs:
         (github.event_name == 'pull_request' &&
             github.event.pull_request.head.repo.full_name != github.repository)
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_DOCKER_CI_RUNS_ON_JSON || vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_DOCKER_CI_RUNS_ON_JSON || vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
     timeout-minutes: 30
     steps:
@@ -3247,6 +3448,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import os
+          import re
           import tomllib
 
           with open("uv.lock", "rb") as lock_file:
@@ -3256,11 +3458,22 @@ jobs:
           for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
               entries = [package for package in packages if package.get("name") == name]
               sources = [package.get("source") for package in entries]
-              if len(entries) != 1 or sources != [{"registry": "https://pypi.org/simple"}]:
-                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released pin is required (a sibling's dev is never an integration target).")
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
                   failed = True
                   continue
               pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
           if failed:
               raise SystemExit(1)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
@@ -3273,7 +3486,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: v${{ steps.pins.outputs.infra_version }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: .sibling/omnibase_infra
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
@@ -3643,6 +3856,85 @@ jobs:
               python -m omnibase_core.validators.canonical_file_shape --head HEAD
           fi
 
+  # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
+  # "Ci runners should be for private repos only"). omnibase_core's check refuses
+  # a job whose runs-on is, or can resolve to, a self-hosted label unless core's
+  # shrink-only baseline (shipped in the package, not editable here) records it,
+  # and refuses a baselined job that is new or newly self-hosted against the base.
+  # Same core release as the pre-commit hook. Unconditional: no needs/if;
+  # registered in ci_summary_gate.py STRICT_GATE_JOBS.
+  public-runner-placement:
+    name: Public Runner Placement (OMN-19998)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # The published release whose tag v0.47.46 is the pre-commit hook's rev
+      # c880801d4deeaa1627535c8622ab6c4ab8cfbecd. A git pin here would be a second
+      # core sha in this file, which precommit-pin-parity refuses.
+      RUNNER_PLACEMENT_CORE: "omnibase-core==0.47.46"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.8.3"
+      - name: Positive control (planted self-hosted job refused)
+        run: |
+          set -u
+          printf 'on: push\njobs:\n  planted:\n    runs-on: [self-hosted, omnibase-ci]\n    steps:\n      - run: "true"\n' \
+            > .github/workflows/zz-canary-planted.yml
+          git add .github/workflows/zz-canary-planted.yml
+          if uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
+            python -m omnibase_core.handlers.handler_public_runner_placement_cli --repo omnimarket \
+            .github/workflows/zz-canary-planted.yml; then
+            echo "POSITIVE CONTROL FAILED: planted self-hosted job was accepted"
+            exit 1
+          fi
+          echo "positive control: planted self-hosted job refused"
+          git rm -q --cached .github/workflows/zz-canary-planted.yml
+          rm .github/workflows/zz-canary-planted.yml
+      - name: Refuse new self-hosted jobs in this public repository
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -u
+          base="${PR_BASE:-${MQ_BASE:-${PUSH_BEFORE:-}}}"
+          args=(--repo omnimarket --visibility public)
+          if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            args+=(--base-ref "$(git merge-base "$base" HEAD)")
+          else
+            echo "no base revision on this event; checking the tree against the baseline only"
+          fi
+          uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
+            python -m omnibase_core.handlers.handler_public_runner_placement_cli "${args[@]}"
+
+  # OMN-19998: the guard has both refusal and passing-pin controls, including
+  # the actual lane-launch and controller-brief callers. Required by CI Summary.
+  internal-release-path-guard:
+    name: Internal Release Path Guard (OMN-19998)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+      - name: Check internal release refusals and tested pin acceptance
+        run: >-
+          uv run pytest
+          tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py
+          tests/test_golden_chain_internal_release_path_guard_compute.py
+          -q -p no:randomly
+
   # OMN-20844: bring-your-own-key customers choose their OpenRouter model; the
   # system never picks one. Names the tests that guard it so the generic split
   # `test` job's selection cannot silently drop them. Same command as the
@@ -3663,11 +3955,15 @@ jobs:
           tests/unit/cli/test_omn20844_openrouter_model_choice.py
           tests/test_omn20844_chosen_model_never_re_aimed.py
           tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py
+          tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py
           -q -p no:randomly
 
   # Release staleness (OMN-18010), moved from OCC per retirement plan step S8,
-  # option (b) of the addendum's section 11 question 2 (B3): enforce release
-  # debt only on the repository it measures, under its required CI Summary.
+  # option (b) of the addendum's section 11 question 2 (B3): measure release
+  # debt only on the repository it measures.
+  # OMN-19998: advisory, not gating. CI Summary lists it in SOFT_ALLOWLIST
+  # (scripts/ci/ci_summary_gate.py) under operator ruling 2026-10-16T07:34:18Z
+  # (no release wait; no users yet), so a STALE red shows here and holds no PR.
   # Unconditional: no `if:`, no `needs:`. Controls prove stale source is refused
   # and old docs are accepted before measuring origin/dev, never the PR head.
   # When red, dispatch the Release Cut workflow (.github/workflows/release-cut.yml).
@@ -3810,7 +4106,7 @@ jobs:
     # #1397 / omnibase_infra #2230 / omniclaude #1870 — omnimarket was the last
     # `needs`-gated ci-summary on the fleet). A `needs`-gated job gets no
     # check-run until its `needs` terminalize, so under self-hosted fleet
-    # saturation the old needs-based CI Summary (needs: [occ-preflight,
+    # saturation the old needs-based CI Summary (needs: [<preflight job>,
     # zone-filter, lint, ...28 upstream jobs]) was ABSENT forever and the PR
     # wedged BLOCKED with no auto-recovery. With NO `needs` this job's check-run
     # instantiates immediately (the required context can never be absent); it

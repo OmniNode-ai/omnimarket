@@ -7,7 +7,7 @@
 # returns a small discriminated-union result. Reuses the existing GitHub
 # GraphQL/REST transport; performs no mutation and no subprocess shell-out.
 name: node_github_repo_gateway_effect
-contract_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 3, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
@@ -16,9 +16,11 @@ description: >
   EFFECT (read-only): typed GitHub repo status reader. Selects one read
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
   review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
-  job_log_tail, artifacts, pr_text, releases, pr_heads) and returns a small typed object
+  job_log_tail, artifacts, pr_text, releases, pr_heads, commit_check_runs,
+  merged_pr) and returns a small typed object
   so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
-  log reads, `gh run download` and `gh release list`. Every operation is one
+  log reads, `gh run download`, `gh release list`, commit check-run reads,
+  and PR state/head/merge detail reads. Every operation is one
   ModelGithubGatewayRequest on
   onex.cmd.omnimarket.github-repo-gateway-read-requested.v1 answered by one
   ModelGithubGatewayResponse on
@@ -63,6 +65,12 @@ operations:
   # OMN-20977: the worktree prune tools' merged-PR read.
   - name: pr_heads
     description: "Request ModelGithubGatewayRequest, result ModelPrHeadsResult; replaces gh pr list --state merged --json headRefName,headRefOid."
+
+  # OMN-21146: commit checks and one PR's merge details.
+  - name: commit_check_runs
+    description: "Request ModelGithubGatewayRequest, result ModelCommitCheckRunsResult; replaces gh api repos/<r>/commits/<sha>/check-runs."
+  - name: merged_pr
+    description: "Request ModelGithubGatewayRequest, result ModelMergedPrResult; replaces gh pr view --json state,mergedAt,mergeCommit,headRefOid,headRefName,baseRefName."
 
 input_model:
   name: ModelGithubGatewayRequest

@@ -610,8 +610,8 @@ class TestParityWorkflowIsWired:
         triggers = self._workflow().get("on", self._workflow().get(True))
         assert "pull_request" in triggers
 
-    def test_workflow_checks_out_the_consumer_at_its_locked_release(self) -> None:
-        """AC2 -- resolve the release from the lock rather than a moving branch."""
+    def test_workflow_checks_out_the_consumer_at_its_locked_ref(self) -> None:
+        """AC2 -- resolve the release or commit from the lock."""
         text = PARITY_WORKFLOW.read_text(encoding="utf-8")
         workflow = self._workflow()
         steps = next(iter(workflow["jobs"].values()))["steps"]
@@ -625,8 +625,8 @@ class TestParityWorkflowIsWired:
         assert checkouts, "no checkout of OmniNode-ai/omnibase_infra"
 
         with_block = checkouts[0]["with"]
-        assert with_block["ref"] == "v${{ steps.pins.outputs.infra_version }}", (
-            "the gate must read the omnibase_infra release this repo pins in "
+        assert with_block["ref"] == "${{ steps.pins.outputs.infra_ref }}", (
+            "the gate must read the omnibase_infra release or commit this repo pins in "
             "uv.lock, never omnibase_infra's live branch"
         )
         assert "scripts/runtime_change_classifier.py" in str(

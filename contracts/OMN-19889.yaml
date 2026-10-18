@@ -1,0 +1,77 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19889"
+title: "dep-health / scan is blocking every omnimarket branch: the OMN-19677 ratchet de-banked 535 live findings and removed the advisory path"
+summary: >-
+  ff67f869 (OMN-19677) cut .onex_state/dep_health_baseline.json from 584 entries to 49,
+  made the delta step block on any new finding and removed the advisory fallback, so every
+  omnimarket branch went red. #3029 made the delta step continue-on-error under this ticket.
+  This PR accounts for the 535 de-banked findings: .onex_state/dep_health_debanked.json
+  lists the multiset of rows ff67f869 removed, entry for entry, each with its owning node and
+  an owner (the node's pack from its metadata.yaml); its derivation field records how
+  it was built. The ledger is not an allowlist; the sweep
+  never reads it, and a listed finding is still refused as new. A test pins the delta step
+  non-blocking while the ledger has entries, so it cannot be re-blocked with the findings
+  still outstanding.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-no-topic-pr-merges"
+    statement: "An omnimarket PR that touches no topic is not blocked by dep-health / scan."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: an omnimarket PR that touches no topic can merge again. -- falsifier:
+          `gh pr checks <pr> --repo OmniNode-ai/omnimarket` shows `dep-health / scan` not
+          FAILURE on a branch whose diff adds and removes no topic, and the same command
+          shows FAILURE against the current `dev`
+  - id: "req-ratchet-still-refuses-new"
+    statement: "The ratchet still refuses a genuinely new finding."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: the ratchet still refuses a genuinely new finding. -- falsifier: `pytest
+          tests/ci/test_run_dep_health_sweep_script.py` with one planted new CRITICAL finding
+          exits non-zero, so the unblock is not a way to stop looking; the OMN-19677 tests that
+          assert this must still pass
+  - id: "req-debanked-findings-accounted"
+    statement: "The 535 de-banked findings are listed with an owner and reconcile against ff67f869."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: the 535 de-banked findings are accounted for rather than forgotten. --
+          falsifier: a committed list of the findings removed from
+          `.onex_state/dep_health_baseline.json` by `ff67f869` exists with an owner named per
+          topic, and `git show ff67f869 -- .onex_state/dep_health_baseline.json` reconciles
+          against it entry for entry
+evidence_requirements:
+  - kind: "tests"
+    description: "The de-banked ledger tests (reconciliation, owners, non-blocking pin, listed finding still refused) and the OMN-19677 sweep script regression tests."
+    command: "uv run pytest tests/ci/test_dep_health_debanked_ledger.py tests/ci/test_run_dep_health_sweep_script.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19889-ac1-non-blocking-while-debanked"
+    description: "AC1: the dep-health delta step is continue-on-error while the de-banked ledger has entries, so a branch that touches no topic is not failed by the 535 outstanding findings. Fails at the merge base: the ledger does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dep_health_debanked_ledger.py::test_delta_step_stays_non_blocking_while_ledger_has_live_entries -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19889-ac2-debanked-still-new"
+    description: "AC2: a planted CRITICAL MISSING_TOPIC_EDGE taken from the ledger, swept against the current baseline in --delta-mode, exits 1 with new_findings_count >= 1, and the OMN-19677 sweep script regression tests still pass. Fails at the merge base: the ledger does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dep_health_debanked_ledger.py::test_a_debanked_finding_is_still_refused_as_new tests/ci/test_run_dep_health_sweep_script.py -q"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19889-ac3-ledger-reconciles"
+    description: "AC3: .onex_state/dep_health_debanked.json equals the multiset of rows ff67f869 removed from the baseline (535: 315 MISSING_TOPIC_EDGE, 219 UNTESTED_HANDLER, 1 UNDECLARED_TOPIC), and every entry names an owner and owning node, one owner per topic. Fails at the merge base: the ledger does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dep_health_debanked_ledger.py::test_ledger_reconciles_entry_for_entry_with_the_debank_commit tests/ci/test_dep_health_debanked_ledger.py::test_every_entry_names_an_owner_and_owning_node -q"
+    binds_ac: ["AC3"]

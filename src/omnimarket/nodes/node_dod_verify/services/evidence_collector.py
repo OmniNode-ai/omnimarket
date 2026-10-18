@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import ast
+import atexit
 import contextlib
 import fcntl
 import functools
@@ -73,6 +74,9 @@ from omnimarket.enums.enum_dod_verify_execution_audience import (
 )
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
+    SCM_CACHE_DIR_ENV,
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
@@ -155,6 +159,10 @@ from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     default_contract_path,
     resolve_repo_contracts,
 )
+from omnimarket.nodes.node_dod_verify.services.local_gh_reads import (
+    REAL_GH_ENV,
+    install_gh_shim,
+)
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
     parse_released_check_value,
@@ -167,10 +175,10 @@ from omnimarket.occ_evidence_probative_class import (
 
 logger = logging.getLogger(__name__)
 
-# Default contract search roots (first match wins)
+# Default contract search roots (first match wins). The change-control clone is
+# located only by ONEX_CC_REPO_PATH, never under $OMNI_HOME (OMN-17427).
 _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${ONEX_CC_REPO_PATH}/contracts",
-    "${OMNI_HOME}/onex_change_control/contracts",
 ]
 
 # OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
@@ -780,6 +788,12 @@ _HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
 # silently move its working directory and re-root every relative path in it.
 _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
+)
+
+# OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
+# local ``gh`` shim first on its PATH (see ``local_gh_reads``).
+_GH_READ_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?<![\w./-])['"]?gh['"]?[\s,]+['"]?(?:pr|api)['"]?(?![\w-])"""
 )
 
 # OMN-18756. The Python sibling of the two routings above, and the narrowest
@@ -2349,6 +2363,8 @@ class EvidenceCollector:
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
         self._must_fail_runner = must_fail_runner
+        # OMN-20768: the directory of the local ``gh`` shim, made on first use.
+        self._gh_shim_dir: Path | None = None
         # OMN-20858: reads the live ticket whose criteria the contract is pinned
         # to. None means the Linear effect, built on first use.
         self._ticket_reader = ticket_reader
@@ -2974,15 +2990,10 @@ class EvidenceCollector:
         return self._make_durable_gate_effect().handle(self._durable_gate_inputs)
 
     def _resolve_occ_root(self) -> Path | None:
-        """Return the OCC repo root from the environment, or None."""
+        """Return the OCC repo root from ``ONEX_CC_REPO_PATH``, or None."""
         cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
         if cc_repo_path and Path(cc_repo_path).is_dir():
             return Path(cc_repo_path)
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        if omni_home:
-            occ = Path(omni_home) / "onex_change_control"
-            if occ.is_dir():
-                return occ
         return None
 
     def _materialize_occ_dev_worktree(
@@ -4958,15 +4969,6 @@ class EvidenceCollector:
                 logger.info("Found contract at %s", candidate)
                 return candidate
 
-        # Fallback: resolve via OMNI_HOME env var
-        omni_home = os.environ.get("OMNI_HOME", "")
-        candidate = (
-            Path(omni_home) / "onex_change_control" / "contracts" / f"{ticket_id}.yaml"
-        )
-        if candidate.exists():
-            logger.info("Found contract at %s", candidate)
-            return candidate
-
         return None
 
     def _load_yaml(self, path: Path) -> dict[str, Any] | None:
@@ -5666,8 +5668,9 @@ class EvidenceCollector:
         """Return the onex_change_control repo path when contract is from OCC.
 
         Detects OCC contracts by checking whether the contract path contains
-        ``onex_change_control`` as a path component. Returns None for all
-        other contracts (cwd stays inherited).
+        ``onex_change_control`` as a path component, and returns the root of
+        that same tree, so greps run against the revision the contract was
+        read from. Returns None for all other contracts (cwd stays inherited).
         """
         # OMN-13888 (scope 6): during a dev-resolved collect, greps must run
         # inside the origin/dev worktree so dev-only receipt files are visible.
@@ -5677,12 +5680,10 @@ class EvidenceCollector:
             return None
         if "onex_change_control" not in contract_path.parts:
             return None
-        omni_home = os.environ.get("OMNI_HOME")
-        if not omni_home:
-            return None
-        occ_path = Path(omni_home) / "onex_change_control"
-        if occ_path.is_dir():
-            return str(occ_path)
+        parts = contract_path.parts
+        occ_root = Path(*parts[: parts.index("onex_change_control") + 1])
+        if occ_root.is_dir():
+            return str(occ_root)
         return None
 
     def _resolve_contract_repo_dir(self, contract_path: Path | None) -> str | None:
@@ -5703,7 +5704,9 @@ class EvidenceCollector:
            OCC root is derived from the contract path itself — correct even when
            ``OMNI_HOME`` is unset or points elsewhere.
         3. Otherwise ``$ONEX_CC_REPO_PATH`` when set.
-        4. Otherwise ``$OMNI_HOME/onex_change_control`` when that directory exists.
+
+        ``$OMNI_HOME`` is not consulted (OMN-17427): the change-control clone is
+        located only by ``ONEX_CC_REPO_PATH`` or by the contract's own path.
 
         Returns the absolute OCC root, or ``None`` when it cannot be resolved
         (the check then runs with the token unset — the fail-closed pre-fix
@@ -5729,12 +5732,6 @@ class EvidenceCollector:
         cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
         if cc_repo_path:
             return cc_repo_path
-
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        if omni_home:
-            occ_path = Path(omni_home) / "onex_change_control"
-            if occ_path.is_dir():
-                return str(occ_path)
 
         return None
 
@@ -7396,6 +7393,11 @@ class EvidenceCollector:
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
 
+        # OMN-20768: a command that reads PR facts through ``gh`` runs against a
+        # shim that answers the clone-held shapes locally (see local_gh_reads).
+        if _GH_READ_INVOCATION_RE.search(cmd_str) is not None:
+            run_env = self._with_local_gh_shim(run_env)
+
         logger.info(
             "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s, "
             "node stage=%s): %s",
@@ -7465,6 +7467,26 @@ class EvidenceCollector:
             )
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _with_local_gh_shim(self, env: dict[str, str] | None) -> dict[str, str]:
+        """``env`` with the local ``gh`` shim first on PATH (OMN-20768).
+
+        The shim directory is made once per collector and removed at exit. The
+        real ``gh``, found on the PATH the check would have used, rides in
+        ``REAL_GH_ENV`` for every invocation the shim does not answer.
+        """
+        out = dict(env if env is not None else os.environ)
+        if self._gh_shim_dir is None:
+            shim_dir = Path(tempfile.mkdtemp(prefix="dod-verify-gh-"))
+            install_gh_shim(shim_dir)
+            atexit.register(shutil.rmtree, shim_dir, True)
+            self._gh_shim_dir = shim_dir
+        real_gh = shutil.which("gh", path=out.get("PATH"))
+        if real_gh:
+            out[REAL_GH_ENV] = real_gh
+        out[SCM_CACHE_DIR_ENV] = str(self._gh_shim_dir)
+        out["PATH"] = os.pathsep.join([str(self._gh_shim_dir), out.get("PATH", "")])
+        return out
 
     def _run_released_check(self, check: dict[str, Any]) -> tuple[bool, str]:
         """Assert every cited merge is released (OMN-18010 deliverable 2).

@@ -45,7 +45,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  occ-preflight:
+  repo-evidence-preflight:
     name: Repo Evidence Dependency
     runs-on: ubuntu-latest
     permissions:
@@ -151,13 +151,13 @@ jobs:
           echo "::error::Timed out waiting for repo-evidence / dod-verify on ${HEAD_SHA}."
           exit 1
   validate:
-    needs: occ-preflight
+    needs: repo-evidence-preflight
     name: validate
-    # OMNI_RUNNER_SELECTOR_V1 - trusted events default to self-hosted omnibase-ci; pull_request defaults to ubuntu-latest
+    # OMNI_RUNNER_SELECTOR_V1 - trusted events default to ubuntu-latest; pull_request defaults to ubuntu-latest
     runs-on: >-
       ${{
         github.event_name != 'pull_request'
-        && fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        && fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
         || fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
     timeout-minutes: 10

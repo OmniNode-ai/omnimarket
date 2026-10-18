@@ -61,6 +61,12 @@ ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-update
 # GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
 PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
 
+# Repository merge event (OMN-20496). Published by `clone-refresh publish`, which the
+# landing controller runs after its merge readback and the PR watcher runs for a merge
+# it observed and did not make; consumed by node_canonical_clone_refresh_effect and,
+# as a second source of pr_merged_events (OMN-19998), by node_pr_merged_projection.
+REPO_MERGED_TOPIC_V1 = "onex.evt.omnimarket.repo-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics and node_canonical_clone_refresh_effect runtime_dispatch (OMN-19998)
+
 # Merge-flow state-transition telemetry (OMN-14648 / WS6). Emitted per PR state
 # transition through the merge flow; consumed by node_merge_state_projection,
 # which materializes the merge_state_transitions projection so the merge-flow
@@ -203,3 +209,5 @@ DEV_CAUSE_LANE_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.dev-cause-lane-requeste
 
 PROJECTION_ROUTING_FEEDBACK_APPLIED_TOPIC_V1 = "onex.evt.omnimarket.projection-routing-feedback-applied.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml terminal_event
 PROJECTION_ROUTING_FEEDBACK_MALFORMED_DLQ_TOPIC_V1 = "onex.dlq.omnimarket.projection-routing-feedback-malformed.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_routing_feedback contract.yaml dlq_topics
+REVIEW_FINDING_DISPOSITION_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-finding-disposition-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)
+REVIEW_PASS_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.review-pass-recorded.v1"  # onex-topic-allow: canonical topic registry; declared in node_review_finding_disposition_compute contract.yaml externally_produced_topics (OMN-17427)

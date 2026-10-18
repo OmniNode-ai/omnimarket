@@ -431,8 +431,13 @@ class TestProjectionViewReconciliation:
         # mid-list, which CREATE OR REPLACE VIEW would refuse anyway.
         # OMN-17426 appended `tenant_id` after it by the same rule, so the
         # assertion is about ORDER, not about which column happens to be last.
+        # OMN-20717 appended `unpriced_call_count` after both, by the same rule.
         columns = list(exposure["columns"])
-        assert columns[-2:] == ["cumulative_counterfactual_baseline_usd", "tenant_id"]
+        assert columns[-3:] == [
+            "cumulative_counterfactual_baseline_usd",
+            "tenant_id",
+            "unpriced_call_count",
+        ]
 
 
 @pytest.mark.unit
@@ -1013,7 +1018,11 @@ async def test_real_postgres_replace_view_preserves_column_contract(
             if exposure["table"] == "projection_delegation_savings"
         )
         assert actual == list(declared)
-        assert actual[-2:] == ["cumulative_counterfactual_baseline_usd", "tenant_id"]
+        assert actual[-3:] == [
+            "cumulative_counterfactual_baseline_usd",
+            "tenant_id",
+            "unpriced_call_count",
+        ]
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 

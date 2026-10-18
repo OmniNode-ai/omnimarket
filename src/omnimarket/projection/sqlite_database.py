@@ -37,6 +37,10 @@ from omnibase_core.models.projection.model_upsert_plan import (
     build_upsert_plan,
 )
 
+from omnimarket.handlers.handler_projection_derived_write import (
+    HandlerProjectionDerivedWrite,
+)
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_EVIDENCE_DB_PATH = (
@@ -91,6 +95,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "latency_ms",
     "lineage_kind",
     "model_name",
+    "modelled_savings_usd",
     "override_within_bounds",
     "parent_correlation_id",
     "parent_failure_cause",
@@ -106,6 +111,9 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "required_bar",
     "response_text",
     "routed_model",
+    "savings_baseline_model",
+    "savings_measurement",
+    "savings_pricing_manifest_version",
     "score_source",
     "session_id",
     "task_type",
@@ -204,15 +212,20 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
     cost_usd REAL NOT NULL,
     occurred_at TEXT NOT NULL,
     ingested_at TEXT NOT NULL,
-    usage_source TEXT NOT NULL DEFAULT 'unknown'
+    usage_source TEXT NOT NULL DEFAULT 'unknown',
+    cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed'
 )
 """
 
-_USAGE_BY_MODEL_DAY_DDL = """
-CREATE TABLE IF NOT EXISTS usage_by_model_day (
+# OMN-21015: the tier joins the key and each row carries its share of its
+# tenant's calls that day. A template, because the store step that moves an
+# older store onto this key builds the new table beside the old one.
+_USAGE_BY_MODEL_DAY_DDL_TEMPLATE = """
+CREATE TABLE IF NOT EXISTS {table} (
     tenant_id TEXT NOT NULL,
     usage_day TEXT NOT NULL,
     model_id TEXT NOT NULL,
+    cost_tier_name TEXT NOT NULL DEFAULT 'not_tier_routed',
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     cost_usd REAL NOT NULL,
@@ -221,9 +234,13 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day (
     call_count INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
     projection_cursor INTEGER,
-    PRIMARY KEY (tenant_id, usage_day, model_id)
+    call_share REAL,
+    PRIMARY KEY (tenant_id, usage_day, model_id, cost_tier_name)
 )
 """
+_USAGE_BY_MODEL_DAY_DDL = _USAGE_BY_MODEL_DAY_DDL_TEMPLATE.format(
+    table="usage_by_model_day"
+)
 
 # OMN-20006: columns the usage-by-model-day exposure serves that a store written
 # before them lacks. The read node refuses an exposure whose declared column the
@@ -516,6 +533,14 @@ CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
 _USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 # The SQLite counterpart of usage_by_model_day migration 0002.
 _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
+# The SQLite counterpart of usage_by_model_day migration 0003. The statements
+# that read the old table live with the node that owns it, as the delegation
+# views' do.
+_USAGE_BY_MODEL_DAY_TIER_STEP = "omn21015_usage_by_model_day_tier_share"
+_USAGE_BY_MODEL_DAY_TIER_KEY_SQL = (
+    "omnimarket.nodes.node_projection_usage_by_model_day",
+    "sqlite/usage_by_model_day_tier_key.sql",
+)
 # OMN-20709: the SQLite counterpart of node_projection_delegation migration
 # 0050's projection_delegation_summary view. It lives with the node that owns
 # delegation_events and the Postgres view; the file explains the differences.
@@ -550,12 +575,29 @@ _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
     ("projection_delegation_quality_gate", "sqlite/delegation_quality_gate_view.sql"),
 )
+# OMN-21015 AC2: the counterpart of node_projection_delegation migration 0060, the
+# model-routing view whose tiers each list their models with run count, share and
+# cost. Its own step, replacing the OMN-20754 definition of that one view: a store
+# that has already recorded the OMN-20754 step would never run it again.
+_DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP = "omn21015_model_routing_tier_models"
+_DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL = (
+    "projection_delegation_model_routing",
+    "sqlite/delegation_model_routing_view_v2.sql",
+)
 # OMN-20008: the counterpart of node_projection_savings migration 090's savings
 # view, serving the local exposure with each run's stored call provenance.
 _DELEGATION_SAVINGS_VIEW_STEP = "omn20008_delegation_savings_view"
 _DELEGATION_SAVINGS_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view.sql",
+)
+# OMN-20717: the counterpart of migration 096, which appends unpriced_call_count
+# to the savings view. Its own step after the OMN-20008 one: a store that has
+# recorded that step would never run it again.
+_DELEGATION_SAVINGS_UNPRICED_VIEW_STEP = "omn20717_delegation_savings_unpriced_view"
+_DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_savings",
+    "sqlite/delegation_savings_view_unpriced.sql",
 )
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
@@ -745,6 +787,14 @@ class SqliteDatabaseAdapter:
                     "added the usage-by-model-day columns and cursor triggers",
                 )
             )
+        if not cls._store_step_recorded(conn, _USAGE_BY_MODEL_DAY_TIER_STEP):
+            pending.append(
+                (
+                    _USAGE_BY_MODEL_DAY_TIER_STEP,
+                    cls._key_usage_by_model_day_on_tier,
+                    "keyed usage-by-model-day on the tier with each row's share",
+                )
+            )
         if not cls._store_step_recorded(conn, _DELEGATION_SUMMARY_VIEW_STEP):
             pending.append(
                 (
@@ -783,6 +833,24 @@ class SqliteDatabaseAdapter:
                     _METERING_SUMMARY_SAVINGS_PCT_STEP,
                     cls._add_metering_summary_savings_pct_column,
                     "added the metering-summary savings share column",
+                )
+            )
+        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP,
+                    cls._create_delegation_savings_unpriced_view,
+                    "re-created the delegation savings view with its unpriced-call count",
+                )
+            )
+        if not cls._store_step_recorded(
+            conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
+        ):
+            pending.append(
+                (
+                    _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP,
+                    cls._replace_delegation_model_routing_view,
+                    "listed each tier's models in the delegation model-routing view",
                 )
             )
         for index, (step, apply, _) in enumerate(pending):
@@ -842,6 +910,50 @@ class SqliteDatabaseAdapter:
             conn.execute(trigger)
 
     @classmethod
+    def _key_usage_by_model_day_on_tier(cls, conn: sqlite3.Connection) -> None:
+        """OMN-21015: move a store written before it onto the tier key, run once
+        per store as a store step, after the OMN-20006 step.
+
+        SQLite cannot change a primary key in place, so an older aggregate is
+        copied into a new table that replaces it, every row under
+        not_tier_routed with its cursor kept; dropping the old table drops its
+        cursor triggers, so they are created again. A kept row's call_share is
+        NULL, not computed, until its day takes a new call, as on Postgres. The
+        cursor sequence is moved past every kept cursor, so a later write never
+        repeats one.
+        """
+        if "cost_tier_name" not in cls._existing_columns(
+            conn, "usage_by_model_day_calls"
+        ):
+            conn.execute(
+                "ALTER TABLE usage_by_model_day_calls ADD COLUMN cost_tier_name "
+                "TEXT NOT NULL DEFAULT 'not_tier_routed'"
+            )
+        keyed = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(usage_by_model_day)")
+            if row["pk"]
+        }
+        if "cost_tier_name" not in keyed:
+            conn.execute(
+                _USAGE_BY_MODEL_DAY_DDL_TEMPLATE.format(
+                    table="usage_by_model_day_omn21015"
+                )
+            )
+            package, resource = _USAGE_BY_MODEL_DAY_TIER_KEY_SQL
+            script = files(package).joinpath(resource).read_text(encoding="utf-8")
+            body = "\n".join(
+                line for line in script.splitlines() if not line.startswith("--")
+            )
+            # One execute per statement: executescript would commit the step's
+            # write transaction part way through.
+            for statement in body.split(";"):
+                if statement.strip():
+                    conn.execute(statement)
+            for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
+                conn.execute(trigger)
+
+    @classmethod
     def _add_metering_summary_measure_columns(cls, conn: sqlite3.Connection) -> None:
         """OMN-20226: give a store written before them metering_summary's
         compression and cache columns, run once per store as a store step.
@@ -896,6 +1008,19 @@ class SqliteDatabaseAdapter:
             conn.execute(ddl)
 
     @staticmethod
+    def _replace_delegation_model_routing_view(conn: sqlite3.Connection) -> None:
+        """OMN-21015 AC2: the model-routing view whose tiers list their models.
+
+        Runs after the OMN-20754 step, which created the first definition; this
+        one drops it and creates the revision. A later revision is a new step.
+        """
+        package, _ = _DELEGATION_SUMMARY_VIEW_SQL
+        view, resource = _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute(f"DROP VIEW IF EXISTS {view}")
+        conn.execute(ddl)
+
+    @staticmethod
     def _create_delegation_savings_view(conn: sqlite3.Connection) -> None:
         """OMN-20008: give the store the savings relation the exposure reads.
 
@@ -903,6 +1028,18 @@ class SqliteDatabaseAdapter:
         this one; a later revision is a new step, never an edit to this one.
         """
         package, resource = _DELEGATION_SAVINGS_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_savings_unpriced_view(conn: sqlite3.Connection) -> None:
+        """OMN-20717: re-create the savings view with unpriced_call_count appended.
+
+        Same shape as the OMN-20008 step it follows: dropped first, and a later
+        revision is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
         conn.execute(ddl)
@@ -979,6 +1116,9 @@ class SqliteDatabaseAdapter:
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, object]]:
         """OMN-18159. The local CLI evidence target, with the same write contract.
 
@@ -1003,6 +1143,14 @@ class SqliteDatabaseAdapter:
             sql_expression_columns=sql_expression_columns,
             returning=returning,
         )
+        derivation = HandlerProjectionDerivedWrite.prepare(
+            plan,
+            row=row,
+            derive=derive,
+            input_columns=input_columns,
+            derived_columns=derived_columns,
+            insert_only_columns=insert_only_columns,
+        )
         # OMN-18159. Same split as the in-memory double, for the same reason.
         # CURRENT_USER is an IDENTITY this target cannot evaluate, and a local
         # evidence file that claimed one would be a fabricated attestation --
@@ -1024,7 +1172,13 @@ class SqliteDatabaseAdapter:
 
         conn = self._connect()
         try:
-            self._ensure_columns(conn, table, bound)
+            required = dict(bound)
+            if derivation is not None:
+                required.update(dict.fromkeys(derivation.conflict_columns))
+                required.update(dict.fromkeys(derivation.input_columns))
+                required.update(dict.fromkeys(derivation.derived_columns))
+            # Schema reconciliation finishes before the row transaction begins.
+            self._ensure_columns(conn, table, required)
             # Rendered with the expression columns folded into the bound set,
             # because SQLite must bind them rather than evaluate them, and
             # WITHOUT a RETURNING clause: SQLite's RETURNING needs 3.35+, and
@@ -1038,7 +1192,41 @@ class SqliteDatabaseAdapter:
             ).render(dialect="qmark_named")
             params = {col: self._encode(col, bound[col]) for col in bound}
             conn.execute(statement, params)
+            if derivation is not None:
+                # SQLite's implicit UPSERT transaction holds the write lock
+                # through readback, derivation, guarded update and final read.
+                where = " AND ".join(f'"{key}" = ?' for key in plan.conflict_keys)
+                select = " ".join(("SELECT * FROM", f'"{table}"', "WHERE", where))
+                keys = tuple(self._encode(key, row[key]) for key in plan.conflict_keys)
+                actual = conn.execute(select, keys).fetchone()
+                if actual is None:
+                    raise RuntimeError("derived UPSERT did not return exactly one row")
+                stored_row = dict(actual)
+                derived = HandlerProjectionDerivedWrite.derived_values(
+                    derivation, stored_row
+                )
+                update, bindings = HandlerProjectionDerivedWrite.update_statement(
+                    derivation, stored_row, derived, dialect="sqlite"
+                )
+                changed = conn.execute(
+                    update,
+                    tuple(self._encode(column, value) for column, value in bindings),
+                )
+                if changed.rowcount != 1:
+                    raise RuntimeError(
+                        "derived input guard did not update exactly one row"
+                    )
+                final = conn.execute(select, keys).fetchone()
+                rows = [] if final is None else [dict(final)]
+                result = HandlerProjectionDerivedWrite.check_final_rows(
+                    derivation, rows
+                )
+                conn.commit()
+                return result
             conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

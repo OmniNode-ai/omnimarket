@@ -76,6 +76,19 @@ from omnimarket.delegated_test_loop.must_fail_models import (
     ModelPrChangedFile,
     ModelPrDiffFacts,
 )
+from omnimarket.handlers.scm.handler_gateway_read_client import (
+    GatewayReadError,
+    HandlerGatewayReadClient,
+)
+
+# OMN-21146: the gateway node's contract-declared request and result models.
+from omnimarket.models.model_github_gateway_io import (
+    MAX_LIST_LIMIT,
+    EnumGithubGatewayOperation,
+    ModelCommitCheckRunsResult,
+    ModelGithubGatewayRequest,
+    ModelMergedPrResult,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     DodEvidenceLocalSource,
     canonical_clone,
@@ -141,6 +154,11 @@ _GH_CHECK_RUN_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 # OMN-20838: the local read source (PR watcher state plus canonical clones).
 # A module attribute so a test can substitute a fixture source.
 _default_local_source = DodEvidenceLocalSource
+
+# OMN-21146: PR facts and check runs the local source does not hold are read
+# through node_github_repo_gateway_effect, never the ``gh`` CLI. A module
+# attribute so a test can substitute a recorded gateway.
+_default_gateway_client = HandlerGatewayReadClient
 
 # OMN-20838: the required-context set of a base branch has no local source;
 # it is the one GitHub read a local run keeps. Read once per (repo, base) per
@@ -295,6 +313,16 @@ def _gh_json_lines(
 # simply never protected — see D2).
 _BASE_BRANCH_NOT_FOUND_TOKENS = ("404", "branch not found")
 _BASE_BRANCH_NOT_PROTECTED_TOKENS = ("404", "branch not protected")
+
+
+def _local_merge_sha(pr_data: object) -> str:
+    """The squash commit when the local PR facts say MERGED and name it."""
+    if not isinstance(pr_data, dict) or str(pr_data.get("state")) != "MERGED":
+        return ""
+    commit = pr_data.get("mergeCommit")
+    oid = commit.get("oid") if isinstance(commit, dict) else None
+    return oid if isinstance(oid, str) else ""
+
 
 # OMN-16788: the two CREDENTIAL renderings of the same probe. Neither says
 # anything about the base branch — they say the caller was not permitted to
@@ -571,11 +599,61 @@ class HandlerDodEvidenceGithubEffect:
     protection read (no local source) is cached per base branch.
     """
 
-    def __init__(self, local_source: DodEvidenceLocalSource | None = None) -> None:
+    def __init__(
+        self,
+        local_source: DodEvidenceLocalSource | None = None,
+        gateway: HandlerGatewayReadClient | None = None,
+    ) -> None:
         self._local = (
             local_source if local_source is not None else _default_local_source()
         )
+        self._gateway = gateway if gateway is not None else _default_gateway_client()
         self._checks_pr_merged = False
+
+    @property
+    def gateway(self) -> HandlerGatewayReadClient:
+        """The GitHub gateway client that answers what the local source lacks."""
+        return self._gateway
+
+    def gateway_merged_pr(self, repo: str, pr_number: int) -> ModelMergedPrResult | str:
+        """OMN-21146: one PR's state, head and merge facts from the gateway, or
+        a string saying why they are unreadable."""
+        try:
+            result = self._gateway.read(
+                ModelGithubGatewayRequest(
+                    operation=EnumGithubGatewayOperation.MERGED_PR,
+                    repo=repo,
+                    pr_number=pr_number,
+                )
+            )
+        except GatewayReadError as exc:
+            return str(exc)
+        if not isinstance(result, ModelMergedPrResult):
+            return f"gateway answered {result.operation!r} for merged_pr"
+        return result
+
+    def gateway_check_runs(
+        self, repo: str, sha: str, check_name: str | None = None
+    ) -> ModelCommitCheckRunsResult | str:
+        """OMN-21146: the latest check runs at one commit from the gateway, or a
+        string saying why they are unreadable."""
+        try:
+            result = self._gateway.read(
+                ModelGithubGatewayRequest(
+                    operation=EnumGithubGatewayOperation.COMMIT_CHECK_RUNS,
+                    repo=repo,
+                    head_sha=sha,
+                    check_name=check_name,
+                    limit=MAX_LIST_LIMIT,
+                )
+            )
+        except GatewayReadError as exc:
+            return str(exc)
+        if not isinstance(result, ModelCommitCheckRunsResult):
+            return f"gateway answered {result.operation!r} for commit_check_runs"
+        if result.truncated:
+            return f"{repo}@{sha[:12]}: more than {MAX_LIST_LIMIT} check runs"
+        return result
 
     @property
     def local_source(self) -> DodEvidenceLocalSource:
@@ -1264,21 +1342,17 @@ class HandlerDodEvidenceGithubEffect:
             )
 
         if not _complete(view):
-            view, detail = _gh_json(
-                [
-                    "gh",
-                    "pr",
-                    "view",
-                    str(number),
-                    "--repo",
-                    repo,
-                    "--json",
-                    "state,mergedAt,mergeCommit,headRefOid",
-                ],
-                _GH_PR_TIMEOUT_S,
-            )
+            read = self.gateway_merged_pr(repo, number)
+            if isinstance(read, str):
+                return f"{repo}#{number}: head, merge commit or merge time unreadable: {read}"
+            view = {
+                "state": read.state,
+                "headRefOid": read.head_sha,
+                "mergedAt": read.merged_at,
+                "mergeCommit": {"oid": read.merge_commit_sha},
+            }
             if not _complete(view):
-                return f"{repo}#{number}: head, merge commit or merge time unreadable: {detail}"
+                return f"{repo}#{number}: head, merge commit or merge time unreadable: gateway answer incomplete"
         assert isinstance(view, dict)
         if str(view.get("state") or "").upper() != "MERGED":
             return None
@@ -1336,28 +1410,27 @@ class HandlerDodEvidenceGithubEffect:
     ) -> ModelDodEvidenceGithubLookupResultEvent:
         repo = command.repo or ""
         sha = command.commit_sha or ""
-        name = urllib.parse.quote(REPO_EVIDENCE_CHECK_NAME, safe="")
-        rows, detail = _gh_json_lines(
-            [
-                "gh",
-                "api",
-                "--paginate",
-                f"repos/{repo}/commits/{sha}/check-runs?check_name={name}"
-                f"&filter=latest&{_PER_PAGE}",
-                "--jq",
-                ".check_runs[] | {id: .id, name: .name, app_slug: .app.slug, "
-                "status: .status, conclusion: .conclusion}",
-            ],
-            _GH_PR_TIMEOUT_S,
-        )
+        read = self.gateway_check_runs(repo, sha, REPO_EVIDENCE_CHECK_NAME)
         runs: list[ModelRepoEvidenceCheckRun] = []
-        for row in rows or ():
-            try:
-                runs.append(ModelRepoEvidenceCheckRun.model_validate(row))
-            except ValueError as exc:
-                rows, detail = None, f"malformed check run: {exc}"
-                break
-        if rows is None:
+        detail = read if isinstance(read, str) else ""
+        if not isinstance(read, str):
+            for run in read.check_runs:
+                if run.name != REPO_EVIDENCE_CHECK_NAME:
+                    continue
+                try:
+                    runs.append(
+                        ModelRepoEvidenceCheckRun(
+                            id=run.id,
+                            name=run.name,
+                            app_slug=run.app_slug or "",
+                            status=run.status,
+                            conclusion=run.conclusion,
+                        )
+                    )
+                except ValueError as exc:
+                    detail = f"malformed check run: {exc}"
+                    break
+        if detail:
             logger.warning("check runs of %s@%s unreadable: %s", repo, sha, detail)
             return ModelDodEvidenceGithubLookupResultEvent(
                 correlation_id=command.correlation_id,
@@ -1404,6 +1477,16 @@ class HandlerDodEvidenceGithubEffect:
         pr_from_local = isinstance(pr_data, dict) and all(
             pr_data.get(k) for k in ("headRefName", "baseRefName", "headRefOid")
         )
+        local_merge_sha = _local_merge_sha(pr_data)
+        if local_merge_sha and not pr_from_local:
+            # OMN-20768: the PR watcher no longer holds this PR (it keeps about
+            # 36 hours of merges), but the canonical clone proves the merge.
+            # Nothing else about it is held locally, so there is no head to
+            # read check-runs at: the merge event is the basis.
+            self._checks_pr_merged = True
+            return self._checks_green_from_merge_event(
+                command, merge_sha=local_merge_sha, pr_data=pr_data
+            )
         if not pr_from_local:
             pr_data, pr_detail = self._gh_pr_view_for_checks(repo, pr_number)
         if not isinstance(pr_data, dict):
@@ -1464,6 +1547,24 @@ class HandlerDodEvidenceGithubEffect:
             # nobody's credential problem.
             return self._checks_not_green(
                 command, base_protection_detail, protection_unreachable
+            )
+
+        if (
+            not required_names
+            and local_merge_sha
+            and not _detail_matches_all(classic_detail, _BASE_BRANCH_NOT_FOUND_TOKENS)
+            and not _detail_matches_all(
+                classic_detail, _BASE_BRANCH_NOT_PROTECTED_TOKENS
+            )
+        ):
+            # OMN-20768: the required-context set is a GitHub-only read. When it
+            # is unreadable (the lane gh guard refuses it) the canonical clone
+            # still proves the merge landed on the base branch, so the merge
+            # event is the basis, as for a head the watcher no longer holds. A
+            # base GitHub positively reports deleted or unprotected keeps its
+            # own branches below.
+            return self._checks_green_from_merge_event(
+                command, merge_sha=local_merge_sha, pr_data=pr_data
             )
 
         # OMN-20838: the PR watcher's last read of this exact head settles the
@@ -1882,6 +1983,40 @@ class HandlerDodEvidenceGithubEffect:
             _GH_PR_TIMEOUT_S,
         )
 
+    def _checks_green_from_merge_event(
+        self,
+        command: ModelDodEvidenceGithubLookupCommand,
+        *,
+        merge_sha: str,
+        pr_data: object,
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """OMN-20768: ``checks_green`` for a PR the clone proves merged.
+
+        Basis: the PR's squash commit is the one commit on the canonical
+        clone's ``origin/<base>`` first-parent history whose subject ends
+        ``(#<n>)`` (or the watcher's merge record names it). The base is the
+        repository's landing branch, and a merge into it cannot land past a red
+        required context unless it is an admin bypass, a separately auditable
+        event (the argument of ``_checks_green_from_own_history``). The detail
+        states only what was read: the merge commit and its branch. It does not
+        claim which contexts were required or what their conclusions were; no
+        local source holds either.
+        """
+        base = ""
+        if isinstance(pr_data, dict):
+            base = str(pr_data.get("baseRefName") or "")
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            checks_green=True,
+            detail=(
+                f"merged: squash commit {merge_sha[:12]} is on the canonical "
+                f"clone's origin/{base or '<base>'}; required-context "
+                f"conclusions are not read, the merge event is the basis "
+                f"(OMN-20768)"
+            ),
+        )
+
     def _checks_green_from_own_history(
         self,
         command: ModelDodEvidenceGithubLookupCommand,
@@ -2189,28 +2324,11 @@ class HandlerDurableEvidenceGateEffect:
             str(view.get("state") or "").upper() == "MERGED"
             and not (isinstance(merge, dict) and merge.get("oid"))
         ):
-            try:
-                proc = subprocess.run(
-                    [
-                        "gh",
-                        "pr",
-                        "view",
-                        str(pr_number),
-                        "--repo",
-                        repo,
-                        "--json",
-                        "state,mergeCommit",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=_GH_PR_TIMEOUT_S,
-                    check=False,
-                )
-                view = json.loads(proc.stdout) if proc.returncode == 0 else None
-            except (subprocess.TimeoutExpired, OSError, ValueError):
-                view = None
-        if not isinstance(view, dict):
-            return "UNKNOWN", None
+            # OMN-21146: the gateway node, never the gh CLI.
+            read = self._github.gateway_merged_pr(repo, pr_number)
+            if isinstance(read, str):
+                return "UNKNOWN", None
+            return read.state, read.merge_commit_sha
         merge = view.get("mergeCommit")
         oid = str(merge.get("oid") or "") if isinstance(merge, dict) else ""
         return str(view.get("state") or "UNKNOWN").upper(), oid or None

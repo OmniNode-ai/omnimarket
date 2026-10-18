@@ -1,6 +1,6 @@
 name: node_pr_merged_projection
 version: "1.0.0"
-description: "Projects GitHub PR-merged events into a queryable monotonic-cursor projection for per-machine worktree reaper polling"
+description: "Projects GitHub PR-merged events and the PR watcher's repo-merged events into a queryable monotonic-cursor projection for per-machine worktree reaper polling"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

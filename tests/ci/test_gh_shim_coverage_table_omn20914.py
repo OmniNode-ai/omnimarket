@@ -16,8 +16,9 @@ repository's installed copy:
 
 A reworded description, a renamed verb or a reformatted literal here therefore turns a
 refusal off in every lane with no failure anywhere. ``shim_coverage_violations`` reads both
-files the way the shim does and names every operation the shim would stop refusing, and
-the cases below plant each violation and require it refused. Run by the required lint job
+files the way the shim does and names every native command the shim would stop refusing.
+API writes, outside the native-command shim, must name an explicit HTTP mutation and an
+exactly matching served SCM verb. The cases below plant violations in both paths. Run by the required lint job
 and by a pre-commit hook; ``test_the_lint_job_and_the_hook_run_this_check`` fails when
 either is dropped.
 """
@@ -48,6 +49,12 @@ _BINDING_TESTS = (
 _HOOK_ID = "gh-shim-coverage-table"
 # The shim's awk pattern, verbatim: ``replaces gh [a-z]+ [a-z]+\.``.
 _SHIM_CLAUSE = re.compile(r"replaces gh ([a-z]+) ([a-z]+)\.")
+# gh api writes are outside the native-command shim's scope. Their replacements
+# must still be served exactly once and match a one-line, explicit HTTP request.
+_API_CLAUSE = re.compile(
+    r"  - name: ([a-z_]+)\n    description: [^\n]*replaces "
+    r'(gh api --method (?:POST|PATCH|PUT|DELETE) /repos/[^\s".]+)\.'
+)
 
 
 def _shim_table(contract_text: str) -> dict[str, str]:
@@ -84,8 +91,29 @@ def shim_coverage_violations(
     declared: Any = yaml.safe_load(contract_text).get("operations") or []
     declared_names = [str(entry["name"]) for entry in declared]
     table = _shim_table(contract_text)
+    api_table = dict(_API_CLAUSE.findall(contract_text))
     for name in declared_names:
         if name not in table:
+            replacement = api_table.get(name)
+            served = [
+                v for v in verbs if v.node is EnumScmNode.WRITE and v.operation == name
+            ]
+            if replacement is not None:
+                if len(served) != 1 or served[0].replaces != replacement:
+                    violations.append(
+                        f"operation {name}: API replacement is not served exactly once as {replacement!r}"
+                    )
+                elif any(
+                    literal not in dispatch_text
+                    for literal in (
+                        f'verb="{served[0].verb}"',
+                        f'replaces="{replacement}"',
+                    )
+                ):
+                    violations.append(
+                        f"operation {name}: API replacement literals are missing from the dispatch table"
+                    )
+                continue
             violations.append(
                 f"operation {name}: its description carries no one-line "
                 "'replaces gh <group> <sub>.' clause, so the shim never refuses it"
@@ -131,7 +159,7 @@ def _real() -> tuple[str, str]:
 def test_the_shim_reads_every_write_operation_the_repo_serves() -> None:
     contract_text, dispatch_text = _real()
     assert shim_coverage_violations(contract_text, dispatch_text, SCM_VERBS) == []
-    # Positive control for the zero: the table is not empty and names the six writes.
+    # Positive control: all six native CLI writes remain covered by the shim.
     assert sorted(_shim_table(contract_text)) == [
         "pr_close",
         "pr_comment",
@@ -257,3 +285,28 @@ def test_the_lint_job_and_the_hook_run_this_check(target: str) -> None:
 )
 def test_the_hook_files_filter_selects_what_the_shim_reads(watched: str) -> None:
     assert re.search(_hook()["files"], watched)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("replaces gh api --method POST", "replaces gh api --method GET"),
+        ("replaces gh api --method POST", "calls gh api --method POST"),
+        ('verb="check-run-create"', 'verb="check-run-post"'),
+        ('replaces="gh api --method POST', 'replaces="gh api --method PATCH'),
+    ],
+)
+def test_api_write_replacement_drift_is_refused(old: str, new: str) -> None:
+    contract_text, dispatch_text = _real()
+    assert old in contract_text or old in dispatch_text
+    assert shim_coverage_violations(
+        contract_text.replace(old, new), dispatch_text.replace(old, new), SCM_VERBS
+    )
+
+
+def test_api_write_requires_exactly_one_served_operation() -> None:
+    contract_text, dispatch_text = _real()
+    removed = [spec for spec in SCM_VERBS if spec.operation != "check_run_create"]
+    assert shim_coverage_violations(contract_text, dispatch_text, removed)
+    spec = next(spec for spec in SCM_VERBS if spec.operation == "check_run_create")
+    assert shim_coverage_violations(contract_text, dispatch_text, [*SCM_VERBS, spec])

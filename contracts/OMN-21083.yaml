@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21083"
+title: "A mutable delegation row is served as committed, whatever order its snapshots arrive in"
+summary: "Tests only. Two writers of one run publish in the opposite order to their commits; the projection API, which reads the writer's table, serves the row committed last. The snapshot cache class keeps its current rule, and its existing tests still pass."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-served-row-is-the-committed-row"
+    statement: |-
+      A client reading a mutable delegation row is served the row that was committed last, even when the two writers' snapshots arrive in the opposite order.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Two writes of one mutable-key row from different source topics, published in the opposite order to their commit, leave the cache serving the row that was committed last -- falsifier: the reproduction above, run with uv run pytest on the lab against owned Postgres, still serves 0.004 while the store holds 0.009
+      - id: "AC2"
+        statement: |-
+          AC2: The rule that decides between two rows of one key is stated in the cache's code and its test, and an append-only exposure keeps its current behaviour -- falsifier: the cache's existing tests fail, or an append-only exposure drops a row
+evidence_requirements:
+  - kind: "tests"
+    description: "The reproduction's race through two real writers on real Postgres, read through the real projection route, serves the stored 0.009; the same snapshots fed to the snapshot cache serve 0.004. The cache's existing tests pass unchanged."
+    command: "uv run pytest tests/test_omn21083_served_row_is_the_committed_row_real_postgres.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21083-served-row-is-the-committed-row"
+    description: "Served path: two real DelegationProjectionRunner writes of one run, the first publish held so the snapshots arrive newest first, then delegation.decisions.v1 read through the real /projection/{topic} route serves the stored 0.009. The projection API reads the writer's table, not the snapshot cache, so this is what a client is served. Per the ruling on the ticket (comment 8d6a4630), this test is the regression guard, and the unused cache class is retired under OMN-21159 rather than fixed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21083_served_row_is_the_committed_row_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21083-cache-tests-unchanged"
+    description: "The snapshot cache's rule (offsets compared only within one source topic and partition) is unchanged and stated in its code; its existing tests, including the append-only offset-ordering ones, still pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_snapshot_cache_offset_ordering.py tests/unit/projection/test_omn17215_snapshot_cache_drops_foreign_key_arity.py tests/unit/projection/test_snapshot_cache_tenant_scoping.py tests/test_omn18905_dropped_delta_counter.py tests/test_omn18905_per_exposure_staleness_guard.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

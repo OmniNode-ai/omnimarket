@@ -1,0 +1,134 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_history_archive_effect
+contract_name: node_lab_history_archive_effect
+node_name: node_lab_history_archive_effect
+node_type: EFFECT_GENERIC
+# Run by an operator through `onex lab-archive run`, and nightly on the platform runtime
+# tick of a lab host. The tick arrives far more often than nightly; the handler runs it
+# only inside the off-peak window (01:00 to 05:00 America/New_York) and at most once per
+# run_interval_seconds, the idiom node_consumer_flow_prune_effect takes. A tick outside
+# the window returns nothing. The host role comes from the deployment overlay: a host
+# whose roles include landing_controller is refused before any file is read.
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Archive lab history older than seven days from declared source roots to a declared
+  Drive destination. Each part is staged as a compressed tarball on the staging drive,
+  uploaded by a CLI uploader (rclone) under nice, an IO class and a bytes-per-second
+  cap, and read back from Drive; only a part whose size and md5 match what Drive
+  reports is verified, and only a verified part's source files are deleted, each only
+  if unchanged since staging. The run stops at the first failed part and deletes
+  nothing on a failure. The live ledger and anything under a memory directory are never
+  archived, and nothing modified inside the retention window (floor seven days) is read
+  for archive. The node never uses Google Drive for desktop and holds no credential: the
+  uploader remote is configured on the lab host, and its absence is a typed refusal.
+
+handler:
+  module: omnimarket.nodes.node_lab_history_archive_effect.handlers.handler_lab_history_archive
+  class: HandlerLabHistoryArchive
+  input_model: omnimarket.nodes.node_lab_history_archive_effect.models.ModelLabHistoryArchiveRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_history_archive
+      handler:
+        name: HandlerLabHistoryArchive
+        module: omnimarket.nodes.node_lab_history_archive_effect.handlers.handler_lab_history_archive
+      handler_module: omnimarket.nodes.node_lab_history_archive_effect.handlers.handler_lab_history_archive
+      event_model: omnimarket.nodes.node_lab_history_archive_effect.models.ModelLabHistoryArchiveRequest
+    # The nightly host tick. Same handler class as the manual operation: the
+    # in-window and interval gates are per-instance state.
+    - operation: lab_history_archive.scheduled_run
+      handler:
+        name: HandlerLabHistoryArchive
+        module: omnimarket.nodes.node_lab_history_archive_effect.handlers.handler_lab_history_archive
+      handler_module: omnimarket.nodes.node_lab_history_archive_effect.handlers.handler_lab_history_archive
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Run lab_history_archive when the tick falls inside config.lab_history_archive.schedule's
+        window in its timezone and run_interval_seconds have passed since the last run.
+
+input_model:
+  name: ModelLabHistoryArchiveRequest
+  module: omnimarket.nodes.node_lab_history_archive_effect.models
+  description: Retention days (floor 7), as-of instant, dry run, host name and overlay overrides.
+
+output_model:
+  name: ModelLabHistoryArchiveResult
+  module: omnimarket.nodes.node_lab_history_archive_effect.models
+  description: A verdict, a refusal code when refused, and one event per part.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 14400000
+  runtime_profiles: [effects]
+  side_effects:
+    - tar of files older than the retention window into the staging directory
+    - upload of the staged part and its manifest to the Drive destination
+    - deletion of each source file in a part Drive reports with the staged size and md5
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "lab_history_archive.scheduled_run"
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.lab-history-archive-part.v1"
+    - "onex.evt.omnimarket.lab-history-archive-completed.v1"
+
+terminal_event: onex.evt.omnimarket.lab-history-archive-completed.v1
+
+# Read by the operator's lab dashboards and the ledger relay, not by another node.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-history-archive-part.v1
+  - onex.evt.omnimarket.lab-history-archive-completed.v1
+
+published_events:
+  - event_type: ModelLabHistoryArchivePartEvent
+    topic: onex.evt.omnimarket.lab-history-archive-part.v1
+    description: "One part as it settles: files, bytes staged, Drive path, md5, files deleted, bytes freed."
+  - event_type: ModelLabHistoryArchiveResult
+    topic: onex.evt.omnimarket.lab-history-archive-completed.v1
+    description: "One run: a verdict, a refusal code when refused, and every part event."
+
+config:
+  lab_history_archive:
+    retention_days: 7
+    # Operator consent, ledger line 31101: history older than 7 days, lab hosts only.
+    # The overlay (node_lab_history_archive_effect/overlay.yaml under the overlay
+    # roots) declares hosts and roles, source roots, staging_dir, the Drive remote and
+    # folder, and the budget. Nothing about a deployment is in this contract.
+    refuse_roles: [landing_controller]
+    uploader: rclone
+    budget:
+      bytes_per_second: 4000000
+      nice: 19
+      io_class: idle
+      part_max_bytes: 536870912
+      max_parts_per_run: 24
+      max_run_seconds: 10800
+    schedule:
+      timezone: America/New_York
+      window_start: "01:00"
+      window_end: "05:00"
+      run_interval_seconds: 86400
+      dry_run: false
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-history-archive-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lab-history-archive-completed.v1
+
+metadata:
+  # Subscribes to the runtime tick and the request topic; staging and Drive are
+  # reached through the rclone CLI as subprocesses.
+  transport_type: kafka

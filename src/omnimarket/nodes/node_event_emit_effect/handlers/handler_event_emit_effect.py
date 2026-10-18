@@ -162,6 +162,42 @@ def _is_topic_authorization_refusal(exc: BaseException) -> bool:
     return False
 
 
+def _is_payload_too_large_refusal(exc: BaseException) -> bool:
+    """Is this failure the producer's size refusal, anywhere in its cause chain?
+
+    OMN-19513: a record over the producer's request limit is refused on every
+    attempt, so it is a verdict exactly like the ACL refusal above and takes the
+    same quarantine. Keyed on the aiokafka error types, walked the same way.
+    """
+    from aiokafka.errors import MessageSizeTooLargeError, RecordTooLargeError
+
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, (MessageSizeTooLargeError, RecordTooLargeError)):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
+_QUARANTINE_DETAIL = {
+    "topic_authorization_denied": (
+        "The broker refused a publish to {topic!r} on the "
+        "topic's ACLs. The publishing principal has no WRITE "
+        "grant on it, or the topic is not provisioned on a broker "
+        "that reports an absent topic as unauthorized. Provision "
+        "the grant and replay this record; it is moved, not "
+        "deleted."
+    ),
+    "payload_too_large": (
+        "The producer refused the record for {topic!r} as larger than its "
+        "request limit. A retry sends the same bytes and is refused again, so "
+        "it is moved here, not deleted (OMN-19513)."
+    ),
+}
+
+
 class ProtocolPublishAdapter(Protocol):
     """Effect boundary for publishing one payload to one topic."""
 
@@ -443,6 +479,9 @@ class HandlerEventEmitEffect:
         """
         self._spool = spool
         self._publish_adapter = publish_adapter
+        # OMN-19513: the refusal class of each record _try_publish judged
+        # unpublishable, read once by _quarantine to name its reason.
+        self._refusals: dict[Path, str] = {}
         self._spool_dir = spool_dir
         self._drain_budget_seconds = drain_budget_seconds
         self._max_drain_count = max_drain_count
@@ -798,14 +837,23 @@ class HandlerEventEmitEffect:
                 timeout_seconds=min(remaining, _SINGLE_PUBLISH_CAP_SECONDS),
             )
         except Exception as exc:
-            if _is_topic_authorization_refusal(exc):
+            refusal = (
+                "topic_authorization_denied"
+                if _is_topic_authorization_refusal(exc)
+                else "payload_too_large"
+                if _is_payload_too_large_refusal(exc)
+                else None
+            )
+            if refusal is not None:
                 logger.warning(
-                    "Publish refused permanently for event %s on topic %s: %s. "
-                    "Quarantining rather than retrying.",
+                    "Publish refused permanently (%s) for event %s on topic %s: "
+                    "%s. Quarantining rather than retrying.",
+                    refusal,
                     record.event_id,
                     record.topic,
                     exc,
                 )
+                self._refusals[spool_file.path] = refusal
                 return EnumPublishOutcome.UNPUBLISHABLE
             logger.warning(
                 "Publish failed for event %s; leaving spooled for retry",
@@ -823,19 +871,13 @@ class HandlerEventEmitEffect:
     ) -> None:
         """Move an unpublishable record aside, with its reason beside it."""
         record = spool_file.record
+        reason_code = self._refusals.pop(spool_file.path, "topic_authorization_denied")
         spool.quarantine(
             spool_file.path,
             ModelQuarantineReason(
                 quarantined_at=datetime.now(UTC),
-                reason_code="topic_authorization_denied",
-                detail=(
-                    f"The broker refused a publish to {record.topic!r} on the "
-                    f"topic's ACLs. The publishing principal has no WRITE "
-                    f"grant on it, or the topic is not provisioned on a broker "
-                    f"that reports an absent topic as unauthorized. Provision "
-                    f"the grant and replay this record; it is moved, not "
-                    f"deleted."
-                ),
+                reason_code=reason_code,
+                detail=_QUARANTINE_DETAIL[reason_code].format(topic=record.topic),
                 event_id=record.event_id,
                 event_type=record.event_type,
                 topic=record.topic,

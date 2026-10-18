@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     ModelMergeSweepRequest,
@@ -300,10 +302,21 @@ class TestHandlerPrSnapshotGoldenChain:
 
     def test_default_repos_contains_all_org_repos(self) -> None:
         """DEFAULT_REPOS includes all expected OmniNode-ai repos."""
-        assert len(DEFAULT_REPOS) == 12
+        assert len(DEFAULT_REPOS) == 11
         assert all(r.startswith("OmniNode-ai/") for r in DEFAULT_REPOS)
         assert "OmniNode-ai/omniclaude" in DEFAULT_REPOS
         assert "OmniNode-ai/omnimarket" in DEFAULT_REPOS
+
+    def test_contract_publishes_the_snapshot_completed_event(self) -> None:
+        """The contract's terminal event is the topic the snapshot publishes."""
+        contract_path = (
+            Path(__file__).resolve().parent.parent
+            / "src/omnimarket/nodes/node_pr_snapshot_effect/contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        completed = "onex.evt.omnimarket.pr-snapshot-completed.v1"
+        assert contract["terminal_event"] == completed
+        assert completed in contract["event_bus"]["publish_topics"]
 
     def test_empty_repo_list(self) -> None:
         """Empty repos list produces empty result."""

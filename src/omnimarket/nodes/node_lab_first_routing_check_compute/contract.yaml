@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_lab_first_routing_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure check of the lab-first routing rule (OMN-17427, operator ruling
+  2026-10-08T23:48:01Z). The task-class contract declares a scoring rubric: a
+  policy naming the lab tier and the adequacy bar, and per routable class a
+  verdict with the measurement behind it. A class leaves lab-first only on a
+  recorded measurement below the bar. The check refuses a tier_order that does
+  not open on the lab tier, an entry_share that starts a fraction of requests
+  elsewhere, a model pin the lab tier does not serve, a routing ladder that does
+  not open on the lab tier, a routable class with no rubric, and a verdict its
+  measurement does not earn. It reads no file, calls no model and holds no
+  clock; the two contracts arrive parsed. The pre-commit hook and the CI step
+  run it through the golden-chain test over the shipped contracts.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_first_routing_check
+      handler:
+        name: HandlerLabFirstRoutingCheck
+        module: omnimarket.nodes.node_lab_first_routing_check_compute.handlers.handler_lab_first_routing_check
+
+handler:
+  module: omnimarket.nodes.node_lab_first_routing_check_compute.handlers.handler_lab_first_routing_check
+  class: HandlerLabFirstRoutingCheck
+  input_model: omnimarket.nodes.node_lab_first_routing_check_compute.models.model_lab_first_routing_check.ModelLabFirstRoutingRequest
+  output_model: omnimarket.nodes.node_lab_first_routing_check_compute.models.model_lab_first_routing_check.ModelLabFirstRoutingResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  task_class_contracts:
+    type: dict
+    required: true
+    description: Parsed task_class_contracts.v1.yaml, including lab_first_policy and each class's lab_rubric.
+  routing_tiers:
+    type: dict
+    required: true
+    description: Parsed routing_tiers.yaml, whose tier order is the ladder a class without its own tier_order runs.
+
+outputs:
+  ok:
+    type: bool
+  checked_classes:
+    type: int
+  findings:
+    type: list
+
+terminal_event: onex.evt.omnimarket.lab-first-routing-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-first-routing-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-first-routing-checked.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-first-routing-check-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-first-routing-checked.v1

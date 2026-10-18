@@ -176,6 +176,7 @@ DETECT_CHANGES_JOB = "Detect Changes"
 # — draft-induced or otherwise — still fails ``CI Summary`` closed. The "no
 # legitimate if:" derivation above is otherwise unchanged for every other row.
 STRICT_GATE_JOBS: tuple[str, ...] = (
+    "Internal Release Path Guard (OMN-19998)",  # internal-release-path-guard
     # Repo-owned evidence dependency — non-PR events keep their existing gates;
     # no ``if:``, so the job is always present + completed.
     "Repo Evidence Dependency",
@@ -319,12 +320,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # default-deny sweep, and this row makes a skipped or absent conclusion fail
     # closed too. Unconditional in ci.yml (no needs/if), so a skip is anomalous.
     "Canonical File Shape (OMN-20304)",  # canonical-file-shape
-    # OMN-18010: release staleness moved from OCC under retirement plan S8,
-    # option (b) of addendum section 11 question 2 (B3). Registered on the
-    # same terms: a FAILURE already fails CI Summary through the default-deny
-    # sweep, and this row makes a skipped or absent conclusion fail closed too.
-    # Unconditional in ci.yml (no needs/if), so a skip is anomalous.
-    "Release Staleness (OMN-18010)",  # release-staleness
+    # OMN-19998: public-repository runner placement; unconditional in ci.yml
+    # (no needs/if), so a skip or absence fails closed here.
+    "Public Runner Placement (OMN-19998)",  # public-runner-placement
     # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
     # change to the generic test job's selection cannot drop them. Registered
     # on the same terms as the rows above; unconditional in ci.yml.
@@ -427,6 +425,20 @@ DOCS_ONLY_MARKER_JOB = "Docs-Only Marker (OMN-16662)"
 
 DOCS_ONLY_SKIPPABLE_GATE_JOBS: tuple[str, ...] = ("Coverage Sweep Gate",)
 
+# OMN-19998, operator RULING 2026-10-18T00:50:42Z: tests run once, on the pull
+# request. A merge_group run, or a push to dev after the squash merge, skips the
+# heavy tier that already ran on the pull request head, and this marker job
+# (ci.yml `queue-retest-waiver`, gated only on those two events) is what lets
+# the poller accept that skip. It relaxes exactly the docs-only tier above and
+# nothing else; the matrix waiver follows from `Detect Changes` skipping, and
+# every other heavy job is already in SKIPPABLE_GATE_JOBS. Only a marker that
+# ran and concluded success relaxes anything, as with the docs-only marker.
+# EXPIRY: short term only, until the merge queue clears and test deduplication
+# works. Remove this constant, the ci.yml marker job and the waiver clause on
+# the heavy jobs when the long-term run-once design (tests-once-merge-queue,
+# inherited from omnibase_core CI) lands in this repository.
+RETEST_WAIVER_MARKER_JOB = "Queue Re-test Waiver (OMN-19998)"
+
 # Every job the completeness anchor must observe present+good for SUCCESS.
 GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 
@@ -435,10 +447,16 @@ GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 # already non-blocking. Keep this list SMALL and only add jobs that genuinely
 # already exist in ci.yml as non-gating.
 SOFT_ALLOWLIST: frozenset[str] = frozenset(
-    # Empty since OMN-18556: its only entry, "Coverage Aggregate (shadow)", was
-    # removed from ci.yml when that aggregate became the required census inside
-    # ``Coverage Sweep Gate``. The mechanism stays (``evaluate(allowlist=...)``)
-    # and is exercised by test_allowlisted_shadow_failure_is_tolerated.
+    {
+        # OMN-19998: release staleness (OMN-18010) stays an unconditional job in
+        # ci.yml that measures dev against the newest release tag and reports
+        # STALE, but it no longer gates CI Summary. Operator ruling
+        # 2026-10-16T07:34:18Z: "There's no reason we need to wait for a
+        # release." and "have no users right now." Consumers take omnimarket
+        # by branch or tag pin, so release debt is visible on the check-run and
+        # never holds a PR or dev. Its 24-hour threshold is unchanged.
+        "Release Staleness (OMN-18010)",  # release-staleness
+    }
 )
 
 # L4: contexts produced by OTHER workflow files (separate runs the in-run
@@ -527,15 +545,12 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "No Faked Boundary Gate",
     # OMN-20173: enforce the standalone endpoint validator before merge.
     "No Coding Plan Endpoint",
-    # OMN-20073 S6: branch protection no longer requires these two, but they
-    # test omnimarket's own OCC companion emitter and its schema compatibility
-    # against a pinned onex_change_control checkout. Neither reads a PR's
-    # companion, so CI Summary keeps enforcing them until the emitter itself is
-    # retired (plan S7 to S9). OMN-20885: the schema-compatibility job now
+    "Omni Standards Gate",
+    # OMN-20073 S6: branch protection no longer requires this one, but it tests
+    # the ticket-contract schema compatibility and reads no PR's companion, so
+    # CI Summary keeps enforcing it. OMN-20885: the schema-compatibility job now
     # reads the ticket-contract schema from omnibase_core, its owner, and checks
     # out no onex_change_control; it keeps its context name.
-    "OCC Emitter Golden Gate",
-    "Omni Standards Gate",
     "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
     "Precommit Fail-Loud Gate",
@@ -967,6 +982,7 @@ def evaluate(
     allowlist: frozenset[str] = SOFT_ALLOWLIST,
     docs_only_marker: str = DOCS_ONLY_MARKER_JOB,
     docs_only_gates: tuple[str, ...] = DOCS_ONLY_SKIPPABLE_GATE_JOBS,
+    retest_waiver_marker: str = RETEST_WAIVER_MARKER_JOB,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the current job snapshot."""
 
@@ -996,12 +1012,21 @@ def evaluate(
         and marker_state.status == "completed"
         and marker_state.conclusion == "success"
     )
+    # OMN-19998: the re-test waiver marker relaxes the same tier, on the same
+    # fail-closed terms (see RETEST_WAIVER_MARKER_JOB).
+    waiver_state = latest.get(retest_waiver_marker)
+    retest_waived = (
+        waiver_state is not None
+        and waiver_state.status == "completed"
+        and waiver_state.conclusion == "success"
+    )
+    tier_markers = tuple(m for m in (marker_state, waiver_state) if m is not None)
     # Relaxed ⊆ strict_gates: a name that is not strict cannot be "relaxed" into
     # existence, so a tier entry dropped from STRICT_GATE_JOBS degrades to a
     # no-op here instead of silently becoming permanently skippable.
     relaxed = (
         frozenset(docs_only_gates) & frozenset(strict_gates)
-        if docs_only
+        if docs_only or retest_waived
         else frozenset()
     )
     # The tier can skip before the marker finishes on another runner. Only
@@ -1010,8 +1035,7 @@ def evaluate(
     pending_docs_only_skips = frozenset(
         g
         for g in frozenset(docs_only_gates) & frozenset(strict_gates)
-        if marker_state is not None
-        and marker_state.status != "completed"
+        if any(m.status != "completed" for m in tier_markers)
         and (st := latest.get(g)) is not None
         and st.status == "completed"
         and st.conclusion == "skipped"
@@ -1100,6 +1124,7 @@ def evaluate(
             gate_missing_or_pending,
             matrix_state,
             docs_only=docs_only,
+            retest_waived=retest_waived,
             relaxed=relaxed,
             sweep_running=sweep_running,
             provisional_own_cancellations=provisional_own_cancellations,
@@ -1130,6 +1155,7 @@ def _report(
     matrix_state: str,
     *,
     docs_only: bool = False,
+    retest_waived: bool = False,
     relaxed: frozenset[str] = frozenset(),
     sweep_running: list[str] | None = None,
     provisional_own_cancellations: list[str] | None = None,
@@ -1149,9 +1175,19 @@ def _report(
         )
         + f" -> docs_only={str(docs_only).lower()}"
     )
+    waiver_state = latest.get(RETEST_WAIVER_MARKER_JOB)
+    lines.append(
+        "  re-test waiver marker: "
+        + (
+            "<absent>"
+            if waiver_state is None
+            else f"{waiver_state.status}/{waiver_state.conclusion}"
+        )
+        + f" -> retest_waived={str(retest_waived).lower()}"
+    )
     if relaxed:
         lines.append(
-            "  docs-only skip tier ACTIVE (success|skipped accepted for): "
+            "  skip tier ACTIVE (success|skipped accepted for): "
             + ", ".join(sorted(relaxed))
         )
     lines.append("  strict gates (must be completed + success):")
@@ -1722,12 +1758,6 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("pull_request",),
             (),
             ("non-dev-base-guard",),
-        ),
-        (
-            "occ-emitter-golden-gate.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("OCC Emitter Golden Gate",),
         ),
         (
             "omni-standards-compliance.yml",

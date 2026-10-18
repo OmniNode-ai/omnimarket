@@ -1,0 +1,687 @@
+schema: omnimarket/context_compaction_labels/1
+plan_task: TE.1
+ticket: OMN-21138
+manifest: tests/fixtures/context_compaction/manifest.yaml (plan task T0.2); each case binds by transcript_chain_sha256
+replay_root_env: ONEX_CONTEXT_REPLAY_ROOT (required, no default)
+authored_before_model_output: true
+offsets:
+  unit: Python str indices (code points) into the record's `content`, half-open [start, end)
+  record: the chain record whose event_id and chunk_index are given
+  normalisation: runs of whitespace collapse to one space, then strip
+  span_sha256: sha256 of the UTF-8 bytes of the normalised span
+scoring:
+  written_before_any_model_run: true
+  recall: a proposition is recalled when an admitted event sits in the same record (or one listed in same_content_event_ids),
+    its admitted span covers [start, end) whole, and its kind equals the label's kind; overlap alone scores
+    nothing
+  hard_gate: every proposition with a t02_statement_id is recalled in every repeated run
+  negative_controls: a control is never scored as the item it controls and never admitted as a candidate
+    of that item's kind; a corrected ruling is credited only when its correction is recalled with it
+  negative_segments: an event admitted inside a negative segment counts against precision
+  already_done: the fixed answer proposes no already_done item
+  kinds:
+  - ruling
+  - correction
+  - constraint
+  - decision
+  polarities:
+  - affirm
+  - negate
+not_in_this_set: Role C labels (tests/fixtures/context_eval/<profile>/) wait on the per-profile manifests
+  of plan task TC.9
+cases:
+- case_id: L1-compact-mod-not-hooks
+  session_id: 4fb6b47e-ec68-4a15-ab71-0de49ccbcec6
+  transcript_chain_sha256: 2198bf4a5f4effda06a69ce11ea0dfab85ea877094ad63f7cf72ad7a4933ae09
+  boundaries: 2
+  coverage: 'partial: the T0.2 incident statement plus the propositions, controls and negative segments
+    listed here; not every operator proposition in the window'
+  size:
+    estimator: ceil(characters / 4) over every content record of the pinned chain
+    transcript_tokens_estimate: 623231
+    content_records: 2044
+    segment_rule: a segment starts at each `operator_prompt` record
+    chunk_rule: chunk budget is half the candidate window; whole segments are packed greedily in order;
+      a segment over the budget is one chunk on its own
+    segments: 203
+    largest_segment_tokens: 37800
+    largest_record_tokens: 4021
+    candidate_windows:
+    - window_tokens: 32768
+      chunk_budget_tokens: 16384
+      chunks: 44
+      largest_chunk_tokens: 37800
+      segments_over_budget: 6
+    - window_tokens: 65536
+      chunk_budget_tokens: 32768
+      chunks: 21
+      largest_chunk_tokens: 37800
+      segments_over_budget: 1
+    - window_tokens: 131072
+      chunk_budget_tokens: 65536
+      chunks: 11
+      largest_chunk_tokens: 65319
+      segments_over_budget: 0
+  propositions:
+  - label_id: L1-p1
+    kind: decision
+    polarity: affirm
+    event_id: ca1574c55dfb5177818452334089c2d9f4109bbcb7a982073040d953c200b3a9
+    record_kind: prompt
+    emitted_at: '2026-10-15T03:37:27.691070Z'
+    chunk_index: 0
+    start: 0
+    end: 62
+    quote: 'Why don’t we start working on the compact mod for Claude
+
+      Code?'
+    span_sha256: 5971ba3e1c106e0b1f99de2f484e17b5ed248b38ff8aab2a7e799362902d14ef
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-15T03:37:58Z
+    - boundary: 2
+      covered_by: RULING 2026-10-15T03:37:58Z
+    t02_statement_id: L1-s1
+    conditions_and_scope: 'a directive phrased as a question: build the compaction work as a Claude Code
+      mod'
+  - label_id: L1-p2
+    kind: ruling
+    polarity: affirm
+    event_id: c70e686fdbcf986657ef0a02c4b3724fe955e83c85abe23886b44563e8fc73aa
+    record_kind: prompt
+    emitted_at: '2026-10-14T21:39:34.286731Z'
+    chunk_index: 0
+    start: 0
+    end: 64
+    quote: You can consider anything in prod cloud as legacy except for web
+    span_sha256: ef78b2214cf7cf2b50a61984d31a4f390f2fae34857ea7d0e619b90fbef464c3
+    same_content_event_ids:
+    - c1c1073be4c77fe72fd42987add11a6fe4d3c3545b1bed69c007e3bda34fa371
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-14T21:40:51Z
+    - boundary: 2
+      covered_by: RULING 2026-10-14T21:40:51Z
+    t02_statement_id: null
+    conditions_and_scope: 'exception: except for web'
+  - label_id: L1-p3
+    kind: decision
+    polarity: affirm
+    event_id: a726223c3f89810db2d1375fc779c1ad5b5ba8c90e7d555a63bfb5519e83045f
+    record_kind: prompt
+    emitted_at: '2026-10-14T21:46:10.266168Z'
+    chunk_index: 0
+    start: 0
+    end: 97
+    quote: I would rather you do manual triage and fill those 27 shots and get things fixed and just waiting
+    span_sha256: 8cf8e108261b637eacbccfdd388da3f160a892bd5dd0220bba6509bf98cb22d2
+    same_content_event_ids:
+    - 5527be286a13ab46a30fe6d16b790b3da85cdeab1afaad6518e780f252511eee
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-14T21:46:25Z
+    - boundary: 2
+      covered_by: RULING 2026-10-14T21:46:25Z
+    t02_statement_id: null
+  - label_id: L1-p4
+    kind: decision
+    polarity: affirm
+    event_id: 592eb16078c51069cd25f5d8862db75cd914bc153f33f34ec78ef29078af3682
+    record_kind: prompt
+    emitted_at: '2026-10-14T21:46:25.535537Z'
+    chunk_index: 0
+    start: 0
+    end: 22
+    quote: or start more landers.
+    span_sha256: fb89ee7344953da1a747747637a282af4d51f7363dac72db3bcc11edc320b423
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    - boundary: 2
+      covered_by: null
+    t02_statement_id: null
+    conditions_and_scope: the alternative to L1-p3, given as its own prompt; the ruling row quotes only
+      L1-p3
+  - label_id: L1-p5
+    kind: decision
+    polarity: affirm
+    event_id: 632f5b0a03b77b97b99179d50635d894a4b3b9e63812a1b0bac842aa974828c5
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T00:35:30.841612Z'
+    chunk_index: 0
+    start: 0
+    end: 51
+    quote: Yes raise the limits and yes close after did verify
+    span_sha256: 5716e70c8ebd62befe9fc561ef4ed3a2660ff5958aad5f133210311b6efa78ad
+    same_content_event_ids:
+    - 8624c377493abc074fa4f988d64456254cb279e945c6b6e3adc42d4cf607b5e2
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-15T00:33:47Z
+    - boundary: 2
+      covered_by: RULING 2026-10-15T00:33:47Z
+    t02_statement_id: null
+    conditions_and_scope: 'condition: close only after the verification'
+  - label_id: L1-p6
+    kind: constraint
+    polarity: affirm
+    event_id: d58de005c23a36d13d9936bfea898fc208f419560260ff5efcedd46b3459e650
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T00:43:41.210468Z'
+    chunk_index: 0
+    start: 0
+    end: 168
+    quote: If our repository has any PR's that are outstanding and there hasn't been merged every tick
+      you should send to worker to check the repo status. use delegation or haiku.
+    span_sha256: 150074b98b3006dc5aaf30dbb7bc8101d3709cbeb4c81570648c494999c6266b
+    same_content_event_ids:
+    - e3ac6d369e9ea14ee2709d9834280eeb43486de0d908ab422f468acf2a1ac94c
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-15T00:42:51Z
+    - boundary: 2
+      covered_by: RULING 2026-10-15T00:42:51Z
+    t02_statement_id: null
+    conditions_and_scope: 'condition: a repository with outstanding PRs and no merge in the window'
+  - label_id: L1-p7
+    kind: constraint
+    polarity: negate
+    event_id: 65da7be839a80a310a54e1ea9b948b0619b9647140bc85c07b69892641076277
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T02:59:26.675246Z'
+    chunk_index: 0
+    start: 0
+    end: 92
+    quote: I shouldn't have to be part of the loop that tells you those slots always need to be filled.
+    span_sha256: bc85b2d1df84b0595c6128ca948c3dd4208d7c9638765e13cd40ce9f99d578ce
+    same_content_event_ids:
+    - 4c2fe3226b341b556e0e6d3acd7b69b28383000c72ed1b59ea4dd465f7b0f626
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-15T02:55:05Z
+    - boundary: 2
+      covered_by: RULING 2026-10-15T02:55:05Z
+    t02_statement_id: null
+  - label_id: L1-p8
+    kind: decision
+    polarity: affirm
+    event_id: edd5101ccf2cd3a9f4471b940bd1b6aa6d6b3a34f2a5ae179fa9a7f0ec85aee4
+    record_kind: prompt
+    emitted_at: '2026-10-14T22:55:03.153922Z'
+    chunk_index: 0
+    start: 21
+    end: 118
+    quote: null
+    span_sha256: 8ec5da51b7df59d112c4b1ff429c4ba1269ab2031812b383d7e8512191def48f
+    withheld_reason: 'person names: the span is pinned by offsets and span_sha256 only'
+    same_content_event_ids:
+    - 29bd08ee080c02b25b468ca1207f34ef5851c5eeee7678476950aafb432beef9
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    - boundary: 2
+      covered_by: null
+    t02_statement_id: null
+    conditions_and_scope: 'corrected by L1-p9 26 seconds later: send the PR, not only the plan'
+  - label_id: L1-p9
+    kind: correction
+    polarity: affirm
+    event_id: 52fc8c0df5ed8217df3c1e4351550600352b5eee388b0e4f733aa61ca5931892
+    record_kind: prompt
+    emitted_at: '2026-10-14T22:56:22.828739Z'
+    chunk_index: 0
+    start: 0
+    end: 66
+    quote: Why don't you send the PR? Because it has more than just the plan.
+    span_sha256: e0a67be8a80defe97ff971b41a3b2095dfeed1cf785f5fb7ac338551d2b97ae6
+    same_content_event_ids:
+    - e122c8560ca1a17d28aa4c2b8b7960da8b6cc10b83b4cb1d71f42dbba987e8ec
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    - boundary: 2
+      covered_by: null
+    t02_statement_id: null
+    corrects: L1-p8
+  negative_segments:
+  - label_id: L1-n1
+    reason: status question, no decision
+    event_id: bb108d4cc2708e034be56aa3066c8dd55ba2392135d47b8d74a85eaeb220cf45
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T02:54:20.232974Z'
+    chunk_index: 0
+    start: 0
+    end: 22
+    quote: Is the lab at capacity
+    span_sha256: adbe189a747c3a9b4b342294fa729508875243a4208e260487b46e96665a94fc
+    same_content_event_ids:
+    - e3b3de305658c80abcaf1aa2efc1e48fbe849f2157a4fc43a0e09b03e9c289a9
+  - label_id: L1-n2
+    reason: status question, no decision
+    event_id: fba6b61bb1a329443f677ead85d74670b9eba4f8ff1bcdd463e6e16356c4bee3
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T01:29:36.501727Z'
+    chunk_index: 0
+    start: 0
+    end: 41
+    quote: OK, what’s the status of everything else?
+    span_sha256: 198247b924438411dddf8c85a8f8acc7bcab73e7a6b954fe3a33d23951bc1a9b
+    same_content_event_ids:
+    - 2dc9097caada93c49965327583fc6dc00a4fb7f9ab9b8de89cdd428102e87f43
+  - label_id: L1-n3
+    reason: complaint, no decision
+    event_id: ca2a62dc31f671b06f9a13c0fe2e944a739b16931218b798b6e966979467092d
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T01:04:46.275130Z'
+    chunk_index: 0
+    start: 0
+    end: 36
+    quote: i did exactly what you told me to do
+    span_sha256: ed6dd2822c786583d4a6c422c0a80a03ade51e9ade4a864ffb7d8b37afcb936d
+    same_content_event_ids:
+    - 8b072b2a0a8ed245fbfec7f97e3a24f8ceefbfe7eae311e14fec1fbaa987218f
+  negative_controls:
+  - label_id: L1-c2
+    control_kind: partial_quote
+    controls: L1-p2
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: drops the exception `except for web`
+    event_id: c70e686fdbcf986657ef0a02c4b3724fe955e83c85abe23886b44563e8fc73aa
+    record_kind: prompt
+    emitted_at: '2026-10-14T21:39:34.286731Z'
+    chunk_index: 0
+    start: 0
+    end: 49
+    quote: You can consider anything in prod cloud as legacy
+    span_sha256: 95bf022f343ecd9f690b1d0cc2e577c01c23beea3a8fdd545107a6690855c791
+    same_content_event_ids:
+    - c1c1073be4c77fe72fd42987add11a6fe4d3c3545b1bed69c007e3bda34fa371
+  - label_id: L1-c5
+    control_kind: partial_quote
+    controls: L1-p5
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: drops the condition `after did verify`
+    event_id: 632f5b0a03b77b97b99179d50635d894a4b3b9e63812a1b0bac842aa974828c5
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T00:35:30.841612Z'
+    chunk_index: 0
+    start: 25
+    end: 34
+    quote: yes close
+    span_sha256: 435f6e1239765bb8a2cd74fc2b4fb36c19a95e41a8ec2ad8330a766895a39665
+    same_content_event_ids:
+    - 8624c377493abc074fa4f988d64456254cb279e945c6b6e3adc42d4cf607b5e2
+  - label_id: L1-c6
+    control_kind: partial_quote
+    controls: L1-p6
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: drops the condition that opens the sentence
+    event_id: d58de005c23a36d13d9936bfea898fc208f419560260ff5efcedd46b3459e650
+    record_kind: operator_prompt
+    emitted_at: '2026-10-15T00:43:41.210468Z'
+    chunk_index: 0
+    start: 81
+    end: 142
+    quote: every tick you should send to worker to check the repo status
+    span_sha256: d7828639c2e87b4317b4f11caa392b44f4aa4f944fe2b24a8ac3502a6b63b909
+    same_content_event_ids:
+    - e3ac6d369e9ea14ee2709d9834280eeb43486de0d908ab422f468acf2a1ac94c
+  - label_id: L1-cr1
+    control_kind: corrected_ruling
+    ruling: L1-p8
+    correction: L1-p9
+    expected: L1-p8 is recalled only together with L1-p9
+  already_done:
+  - item: the compaction-mod start is recorded
+    evidence: RULING 2026-10-15T03:37:58Z
+  - item: the lab-fill rule is recorded
+    evidence: RULING 2026-10-15T02:55:05Z
+  - item: the AWS plan PR and its main fix are merged
+    evidence: event fd806af2f3854d5d4adfef770da2cea06b6331e568200873b1b81b457f76fb05
+- case_id: L2-merge-queue-reasked
+  session_id: 4fb6b47e-ec68-4a15-ab71-0de49ccbcec6
+  transcript_chain_sha256: ed4211be608dfbd6e193dc6be732d5d55b19d9663cfb3d78b530c62a347d4c86
+  boundaries: 1
+  coverage: 'partial: the T0.2 incident statement plus the propositions, controls and negative segments
+    listed here; not every operator proposition in the window'
+  size:
+    estimator: ceil(characters / 4) over every content record of the pinned chain
+    transcript_tokens_estimate: 309158
+    content_records: 935
+    segment_rule: a segment starts at each `operator_prompt` record
+    chunk_rule: chunk budget is half the candidate window; whole segments are packed greedily in order;
+      a segment over the budget is one chunk on its own
+    segments: 79
+    largest_segment_tokens: 37800
+    largest_record_tokens: 4021
+    candidate_windows:
+    - window_tokens: 32768
+      chunk_budget_tokens: 16384
+      chunks: 22
+      largest_chunk_tokens: 37800
+      segments_over_budget: 3
+    - window_tokens: 65536
+      chunk_budget_tokens: 32768
+      chunks: 11
+      largest_chunk_tokens: 37800
+      segments_over_budget: 1
+    - window_tokens: 131072
+      chunk_budget_tokens: 65536
+      chunks: 6
+      largest_chunk_tokens: 65150
+      segments_over_budget: 0
+  propositions:
+  - label_id: L2-p1
+    kind: ruling
+    polarity: affirm
+    event_id: fab939082738d2ed63e89f222d1efcb0a5bade5c48d75cf9e1e18efe44aa9633
+    record_kind: prompt
+    emitted_at: '2026-10-13T22:42:19.342238Z'
+    chunk_index: 0
+    start: 75
+    end: 100
+    quote: yes, set up a merge queue
+    span_sha256: c6be02eb48f05642f450abcaffb902d7dbe80bd094cf0049697cbec934dfed33
+    same_content_event_ids:
+    - 74bd6fbad10d262ece3cf9aafc0db4be6feaa1326c4b6bb5be31695cf547d4c7
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-13T22:42:38Z
+    t02_statement_id: L2-s1
+  - label_id: L2-p2
+    kind: ruling
+    polarity: affirm
+    event_id: 7cc144cb27ab47a34a11480fdd884559e8508d6dd263775f85cb0477937d75d1
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T20:52:09.629372Z'
+    chunk_index: 0
+    start: 216
+    end: 382
+    quote: null
+    span_sha256: 80e50b71973a7ee4a74ae4047f899d316ed23a1279c321109ca753c34c80dbaf
+    withheld_reason: 'names a private repository: the span is pinned by offsets and span_sha256 only'
+    same_content_event_ids:
+    - 60c6a7fa96e50102ecbd1184a53a1a61c5de8464fa0ca83fd6d2ba7e58c89b12
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-13T20:50:03Z
+    t02_statement_id: null
+    conditions_and_scope: 'scope: one named repository stays private; every other repository may be reviewed
+      on cloud models'
+  - label_id: L2-p3
+    kind: decision
+    polarity: affirm
+    event_id: 2cd39cd9134d5f7e95bbd3e047e77fae657b492a431181ed8e7c38ababa4dbce
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T20:06:11.295286Z'
+    chunk_index: 0
+    start: 0
+    end: 37
+    quote: Yes go ahead and fold all of them in.
+    span_sha256: 56f37ecf76df037e620da55812b0d84d07be58220fe98d7b439ff3c2b77da9bc
+    same_content_event_ids:
+    - 18d9682a67237b2e8ae4777478c334185c13fb51c6225e7e09a4cbaa2943ea4d
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    t02_statement_id: null
+  - label_id: L2-p4
+    kind: correction
+    polarity: affirm
+    event_id: 343a6ec40149791f1fb41973415fde8d1f57daf12b9a787447a6093104045651
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T23:02:47.033238Z'
+    chunk_index: 0
+    start: 0
+    end: 84
+    quote: null
+    span_sha256: 41a68de9bce58159ad22bb89d4802f9c20002926b637ada3fba935f3f7efbd77
+    withheld_reason: 'names a private network host: the span is pinned by offsets and span_sha256 only'
+    same_content_event_ids:
+    - cc728f21884d70519b9e9ce5a04f92825f246d3cb7774ba7aec54f9066bbebbd
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    t02_statement_id: null
+    conditions_and_scope: corrects the assistant's claim that a lab host is out of usage
+  - label_id: L2-p5
+    kind: decision
+    polarity: affirm
+    event_id: aef317b781de0e1b7120496559f4fcec43c1645743e30dc424e0668ebf1b3378
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T21:44:59.467007Z'
+    chunk_index: 0
+    start: 0
+    end: 23
+    quote: Yes, let's run it here.
+    span_sha256: ef1b5b831e64c5a39a8c2c3e91e2e8712e050611832c2f7daeb7fedd4b6ba89a
+    same_content_event_ids:
+    - d78640cc99cb33df31fd8b58a5b0ba39277a824039ee67e46fa880d037e5a18b
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    t02_statement_id: null
+  negative_segments:
+  - label_id: L2-n1
+    reason: status question, no decision
+    event_id: b94bf86f71909f0224d7619a39f1e0bd2812a96508e298f48c4811209aae8006
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T22:30:35.665939Z'
+    chunk_index: 0
+    start: 0
+    end: 44
+    quote: how are we doing on merges in the last hour?
+    span_sha256: 7769215234c4ab8e1ee15e019f06053b17a6ac5521a1ba7737d593b06a671078
+    same_content_event_ids:
+    - 4ff34c2f33c7048b8c36ad2cf64d654151c6318d851c6e87581e12013af65ab7
+  - label_id: L2-n2
+    reason: question, no decision
+    event_id: 68e0a05839a321d49aecb9bd5f95ab4d8a1fb21e54fa737dd6795a39b31a052d
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T22:33:56.185090Z'
+    chunk_index: 0
+    start: 0
+    end: 23
+    quote: why are merges so slow?
+    span_sha256: faed8a1e33feb40f016992c7a5e9316ab9d8170a58af7d09255c94e7fd6fe0a7
+    same_content_event_ids:
+    - 03354f27cce545e19d0d14c2101fcd1e349b331b3628da2acade02da7f6d1457
+  - label_id: L2-n3
+    reason: question, no decision
+    event_id: 4594edbc0b903a68fce58d0cc3d7a04943f120c20114e0fb0930d2ebd24f8cf1
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T22:58:42.480546Z'
+    chunk_index: 0
+    start: 0
+    end: 18
+    quote: what is "the mac"?
+    span_sha256: 68f85f7f2f3f9993f53d0f7d33793ad9f51aa2204e01e51127dde16f690d1d3f
+    same_content_event_ids:
+    - cc8081ac959e1294f49b4aaccbad8beb0e436793ca415f8797e83f2e8e2bad45
+  negative_controls:
+  - label_id: L2-c2
+    control_kind: partial_quote
+    controls: L2-p2
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: drops the scope that names the one private repository
+    event_id: 7cc144cb27ab47a34a11480fdd884559e8508d6dd263775f85cb0477937d75d1
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T20:52:09.629372Z'
+    chunk_index: 0
+    start: 340
+    end: 382
+    quote: any code review can be run on cloud models
+    span_sha256: 26faaf9867702ec0802e5815ae4da2dcc22db0e1ec216b2bfb98b93cbf548863
+    same_content_event_ids:
+    - 60c6a7fa96e50102ecbd1184a53a1a61c5de8464fa0ca83fd6d2ba7e58c89b12
+  - label_id: L2-h1
+    control_kind: hypothetical
+    controls: L2-p5
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: a musing about a possible action, not a decision
+    event_id: aef317b781de0e1b7120496559f4fcec43c1645743e30dc424e0668ebf1b3378
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T21:44:59.467007Z'
+    chunk_index: 0
+    start: 24
+    end: 77
+    quote: maybe I should actually do the walk myself to see it.
+    span_sha256: 371ae2f87d3ef23c5f235eef315704ad902d42266296b4c34813c12c411c99d3
+    same_content_event_ids:
+    - d78640cc99cb33df31fd8b58a5b0ba39277a824039ee67e46fa880d037e5a18b
+  - label_id: L2-q1
+    control_kind: question
+    controls: L2-p5
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: a question; no decision is stated
+    event_id: d097e23224eb6d21028798e15238ad2dbbc71ec0a635308cf3f13301063db0ee
+    record_kind: operator_prompt
+    emitted_at: '2026-10-13T22:29:10.041107Z'
+    chunk_index: 0
+    start: 0
+    end: 61
+    quote: you can also add cloud connection as a single node too right?
+    span_sha256: 8417e016971f5181401b9244b1e09d4850b0fa10f2db642710991299369f838e
+    same_content_event_ids:
+    - ba4df22129be0b497fc17cd3f7de1de6b8e97da7e7bb1065dc9ccafed97865bd
+  already_done:
+  - item: the merge-queue answer is recorded; it is not asked again
+    evidence: RULING 2026-10-13T22:42:38Z
+  - item: the cloud-review scope is recorded
+    evidence: RULING 2026-10-13T20:50:03Z
+- case_id: L6-foreground-two-boundaries
+  session_id: ae703c28-ae76-508a-947b-078e4114d281
+  transcript_chain_sha256: 9cd203d4d1708de41a80aea8ce04b9627bfc76d9278197c6b1db456a5d07b6c9
+  boundaries: 2
+  coverage: 'partial: the T0.2 incident statement plus the propositions, controls and negative segments
+    listed here; not every operator proposition in the window'
+  size:
+    estimator: ceil(characters / 4) over every content record of the pinned chain
+    transcript_tokens_estimate: 267197
+    content_records: 853
+    segment_rule: a segment starts at each `prompt` record (this chain has no operator_prompt records,
+      so every prompt record starts one)
+    chunk_rule: chunk budget is half the candidate window; whole segments are packed greedily in order;
+      a segment over the budget is one chunk on its own
+    segments: 410
+    largest_segment_tokens: 2763
+    largest_record_tokens: 2197
+    candidate_windows:
+    - window_tokens: 32768
+      chunk_budget_tokens: 16384
+      chunks: 17
+      largest_chunk_tokens: 16344
+      segments_over_budget: 0
+    - window_tokens: 65536
+      chunk_budget_tokens: 32768
+      chunks: 9
+      largest_chunk_tokens: 32753
+      segments_over_budget: 0
+    - window_tokens: 131072
+      chunk_budget_tokens: 65536
+      chunks: 5
+      largest_chunk_tokens: 65498
+      segments_over_budget: 0
+  propositions:
+  - label_id: L6-p1
+    kind: constraint
+    polarity: negate
+    event_id: 259db0b4d62c0a2957b6db9cb47dcd69cbb96af0b22ab584389a21834871f881
+    record_kind: prompt
+    emitted_at: '2026-10-10T01:15:56.467960Z'
+    chunk_index: 0
+    start: 21
+    end: 155
+    quote: null
+    span_sha256: 01519f58a944bc95b88eba0e63de152aa06c30e0efc626b892bf5abf7a12c9a8
+    withheld_reason: 'register: the span is pinned by offsets and span_sha256 only'
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    - boundary: 2
+      covered_by: RULING 2026-10-10T17:54:29Z
+    t02_statement_id: L6-s1
+    conditions_and_scope: 'prohibition: no shell call that blocks the foreground'
+  - label_id: L6-p2
+    kind: ruling
+    polarity: affirm
+    event_id: e6eccb6262c310afeb83ded0b52a62fd46889c29b5a36b8bf16258d30949832a
+    record_kind: prompt
+    emitted_at: '2026-10-10T00:19:11.765909Z'
+    chunk_index: 0
+    start: 0
+    end: 105
+    quote: Customer choose the open router model absolutely required that they get to choose their open
+      router model
+    span_sha256: bb628259066fe52ede670ee197546847fbea6070268c03c5f02a500c8ef5c167
+    ledger_coverage:
+    - boundary: 1
+      covered_by: RULING 2026-10-10T01:11:58Z
+    - boundary: 2
+      covered_by: RULING 2026-10-10T01:11:58Z
+    t02_statement_id: null
+  - label_id: L6-p3
+    kind: decision
+    polarity: affirm
+    event_id: b6dfc1e45c4beac3429c1d48451fa4d76bc69f2e7d1a55a09f612adfbc33aee6
+    record_kind: prompt
+    emitted_at: '2026-10-09T23:36:59.481942Z'
+    chunk_index: 0
+    start: 0
+    end: 21
+    quote: You can leave it open
+    span_sha256: b5e57e2fcedb5d36ec04172e9951a393e5e37b29b491c0dda20b2ee8cfb224e9
+    ledger_coverage:
+    - boundary: 1
+      covered_by: null
+    - boundary: 2
+      covered_by: null
+    t02_statement_id: null
+  negative_segments:
+  - label_id: L6-n1
+    reason: status question, no decision
+    event_id: 82139e4a8051be43d3bcdb002842fe5b4bc830b9d1dcbce610d5ebc0f7d36334
+    record_kind: prompt
+    emitted_at: '2026-10-10T01:17:43.919397Z'
+    chunk_index: 0
+    start: 0
+    end: 41
+    quote: Are things landing? It’s a system working
+    span_sha256: 6e2d5b35d246a5de655ebb97dc5d42ce5a2dd85376f5db4892475a732718c6dc
+  - label_id: L6-n2
+    reason: status question, no decision
+    event_id: 3a22628657c2441185c37080eae64d8fb54d56bd9efee46780374a0cbacecba0
+    record_kind: prompt
+    emitted_at: '2026-10-09T23:32:02.739350Z'
+    chunk_index: 0
+    start: 0
+    end: 72
+    quote: What’s the status of the lab? Are we at capacity how our merge is going?
+    span_sha256: 6b975e182aff27b08e48494cd1c51387148eae3a10f408a765c7622d38405f7a
+  - label_id: L6-n3
+    reason: 'not operator words: a lane brief in the prompt stream'
+    event_id: 146ea353dbc34f8116aa376b4e868eeaf26f64675924260906f33ae07bef1052
+    record_kind: prompt
+    emitted_at: '2026-10-09T23:38:15.829981Z'
+    chunk_index: 0
+    start: 0
+    end: 43
+    quote: Follow-up for the operator's "make it live"
+    span_sha256: 6821d40df61968040d4be27e3d76e2774cfb3b66b558d119175e3cad5b62edc7
+  negative_controls:
+  - label_id: L6-c1
+    control_kind: partial_quote
+    controls: L6-p1
+    expected: not recalled as the controlled item and not admitted as a candidate of its kind
+    note: drops the negation `do not`
+    event_id: 259db0b4d62c0a2957b6db9cb47dcd69cbb96af0b22ab584389a21834871f881
+    record_kind: prompt
+    emitted_at: '2026-10-10T01:15:56.467960Z'
+    chunk_index: 0
+    start: 142
+    end: 155
+    quote: do that again
+    span_sha256: 02ae52fa155cb1190b4c7b963c56af2a2312b2a9d7d6df7627c7e2f9235117ba
+  already_done:
+  - item: the OpenRouter model-choice ruling is recorded
+    evidence: RULING 2026-10-10T01:11:58Z

@@ -187,17 +187,18 @@ class TestSeamMatch:
         # nested analysis must match the consumer's ModelNodeAnalysis shape.
         assert set(dump["analysis"]) <= {"description", "tags", "version"}
 
-    def test_serialize_outcome_drives_file_write_not_a_downstream_seam(self) -> None:
-        # The file-write command targets tier-4's OWN effect, so it legitimately
-        # carries pipeline state — assert the file set is assembled, not a seam.
+    def test_serialize_outcome_drives_handler_test_not_a_downstream_seam(
+        self,
+    ) -> None:
+        # The handler-test command targets tier-4's OWN effect (OMN-21153), so
+        # it legitimately carries pipeline state — not a downstream seam.
         topic, model = _emit_for(
-            ModelCodegenSerializeOutcome(state=_state(source="SRC", contract_yaml="Y"))
+            ModelCodegenSerializeOutcome(
+                state=_state(source="SRC", contract_yaml="Y"), lint_passed=True
+            )
         )
-        assert topic.endswith("codegen-file-write.v1")
+        assert topic.endswith("codegen-handler-test-requested.v1")
         assert isinstance(model, BaseModel)
-        by_path = {f.relative_path: f.content for f in model.files}  # type: ignore[attr-defined]
-        assert by_path["handler.py"] == "SRC"
-        assert by_path["contract.yaml"] == "Y"
 
 
 @pytest.mark.unit

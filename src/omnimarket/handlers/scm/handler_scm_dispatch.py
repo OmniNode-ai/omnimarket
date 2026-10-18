@@ -129,6 +129,19 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh pr list --state merged --json headRefName,headRefOid",
         local_read=EnumScmLocalRead.PR_HEADS,
     ),
+    # OMN-21146: the reads node_dod_verify sends the gateway.
+    ModelScmVerb(
+        verb="commit-check-runs",
+        node=_G,
+        operation="commit_check_runs",
+        replaces="gh api repos/<o>/<r>/commits/<sha>/check-runs",
+    ),
+    ModelScmVerb(
+        verb="pr-merged",
+        node=_G,
+        operation="merged_pr",
+        replaces="gh pr view --json state,mergedAt,mergeCommit,headRefOid",
+    ),
     ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),
@@ -147,6 +160,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="workflow_dispatch",
         replaces="gh workflow run",
+    ),
+    ModelScmVerb(
+        verb="check-run-create",
+        node=_W,
+        operation="check_run_create",
+        replaces="gh api --method POST /repos/{o}/{r}/check-runs",
     ),
 )
 

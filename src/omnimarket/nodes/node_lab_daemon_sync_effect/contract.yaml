@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-timer effect, like node_host_reconcile_effect: no subscription and no
+# onex.nodes entry point, invoked by `python -m` on each lab host by its tick.
+# `experimental` is the drift gate's marker for an intentionally unregistered
+# node; the topic graph sees it as an externally triggered ingress root.
+name: lab_daemon_sync_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Converges every lab daemon the overlay declares on this host to its source branch tip.
+  A lag, or a branch install whose expiry has passed, runs the daemon's own installer; an
+  unexpired branch install is held; a held installer lock skips the tick. A refusal publishes
+  an alarm naming the blocker and dispatches one fix lane through the remote-lane runner.
+  Every tick writes the host's drift rows, which the throughput tick reads as deploy_drifts.
+  Registry clones are cloned when missing and fast-forwarded when clean, chores such as the
+  pre-commit cache gc run every tick, and the completed event lists what the run changed.
+input_model: omnimarket.nodes.node_lab_daemon_sync_effect.models.model_lab_daemon_sync.ModelLabDaemonSyncCommand
+output_model: omnimarket.nodes.node_lab_daemon_sync_effect.models.model_lab_daemon_sync.ModelLabDaemonSyncResult
+handler:
+  # Invoked by __main__.py on a host timer, which supplies the host and
+  # publisher boundaries. Run with:
+  # python -m omnimarket.nodes.node_lab_daemon_sync_effect [--check] [--overlay <yaml>]
+  module: omnimarket.nodes.node_lab_daemon_sync_effect.handlers.handler_lab_daemon_sync
+  class: HandlerLabDaemonSync
+  input_model: omnimarket.nodes.node_lab_daemon_sync_effect.models.model_lab_daemon_sync.ModelLabDaemonSyncCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 7200000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.lab-daemon-sync-completed.v1
+# Publish only. The node reads and installs on the host's own filesystem, so a
+# host timer runs it with python -m on that host; a runtime container must
+# never dispatch it.
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+  - onex.evt.omnimarket.lab-daemon-install-refused.v1
+  - onex.evt.omnimarket.lab-daemon-sync-completed.v1
+runtime_dispatch:
+  external_trigger: true
+externally_consumed_topics:
+- onex.evt.omnimarket.lab-daemon-install-refused.v1
+- onex.evt.omnimarket.lab-daemon-sync-completed.v1
+metadata:
+  transport_type: kafka
+  execution_locus: host-local
+  ticket: OMN-19998
+inputs:
+  host:
+    type: str
+    required: true
+    description: The lab host this tick runs on.
+  overlay:
+    type: object
+    required: true
+    description: The declared daemons (overlays/lab_daemons.yaml by default) and the fix-lane command.
+  state_dir:
+    type: str
+    required: true
+    description: Where the host's drift rows and fix-lane briefs are written.
+  now:
+    type: str
+    required: true
+    description: ISO-Z time of the tick.
+  mode:
+    type: str
+    required: false
+    description: repair (default) installs and dispatches; check only reads and records.
+outputs:
+  daemons:
+    type: list
+    description: One outcome per daemon present on this host (decision, verdict, revisions, blocker).
+  drifts:
+    type: list
+    description: The daemons not running their source tip, with the stamp each lag was first read.
+  exit_code:
+    type: int
+    description: 0 when nothing was refused; 1 when any daemon's install refused or was unreadable.

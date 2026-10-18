@@ -31,6 +31,141 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "AC5: given repo_status facts, a repository with two open PRs red on the same check and no cause lease is shared_red_unowned with a MISSING repo-status line naming one cause lane, a base_blocked ejection is merge_queue_ejecting, an open unit with the same verdict emits no event, and the verdicts ride the node's result over the in-memory bus -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q fails at the merge base"
+  - id: "req-expired-dep-health-allowlist-row-removed"
+    statement: "The committed dep-health allowlist carries no row past its expires_at: the task-delegated legacy compat row expired 2026-10-15 and is removed, so the allowlist expiry test passes on dev and in every shard that runs it."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: src/dep_health_allowlist.yaml carries no row for onex.evt.omniclaude.task-delegated.v1, test_this_repo_allowlist_has_no_expired_entries passes, and the dependency health sweep reports no finding for that topic -- falsifier: uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries fails at the merge base once the UTC date is past 2026-10-15"
+  - id: "req-construction-terminal-consumer-first"
+    statement: "The delegate-skill consumer accepts the declared construction-result keys, preserving a null score and the gate's own flag and retaining the construction-result fields through JSON serialization."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: response and failed-topic JSON decode construction failure with either gate flag and a null score; conversion retains the distinction, contradictory evidence and unknown keys are refused, legacy defaults stay intact, the declared construction outcome, content verdict and failure reason round-trip through JSON serialization, and empty rule evaluations retain their omission -- falsifier: uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q refuses a receiver that discards these fields"
+  - id: "req-capture-item-identity-node-in-omnimarket"
+    statement: "The shared item identity, per-stream producer sequence and barrier fields that omniclaude's two capture hooks stamp are owned by an omnimarket node in canonical shape (contract, node, handler), and the capture-redaction owner contract classifies the new record fields verbatim."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: node_capture_item_identity_effect resolves a content record id, claims one event id shared by the two hooks of a call in either order, issues 1,000 gap-free sequence numbers to eight concurrent writers, declares its topics in its contract, loads by file path with standard-library imports only, and the owner redaction contract keeps content_record_id, producer_seq, stream and the barrier fields verbatim -- falsifier: uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q fails at the merge base"
+  - id: "req-external-deadman-check-node-in-omnimarket"
+    statement: "The external dead-man check that judges the two watchdog legs' mirror variables, the open issues and the clock is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: node_external_deadman_check_compute raises when both mirrors are stale or unreadable, when a fresh mirror reports an episode undelivered or unrecorded past its due time plus the escalation bound, or when the day's canary is past its receipt deadline, keeps one issue, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/test_external_deadman_omn20808.py tests/test_golden_chain_external_deadman_check_compute.py -q fails at the merge base"
+  - id: "req-release-gates-accept-git-pin"
+    statement: "omnimarket's release-gated checks grade the commit a consumer pins instead of waiting for a release: the Wire Compatibility Gate replays against the omnimarket commit omniclaude dev's uv.lock pins, the sibling pins steps accept a uv.lock git source locked to one commit and check omnibase_infra out at it, and a dev merge dispatches omnimarket-dev-moved to omniclaude."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: check_wire_compatibility.py --consumer-ref grades the pinned commit and fails closed on an unresolvable ref, the gate step passes omniclaude's pin, every pins step accepts a commit-locked git source and refuses a moving one, and runtime-rebuild-trigger.yml dispatches omnimarket-dev-moved on a dev merge -- falsifier: uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q, uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -k 'pinned_consumer or unresolvable_consumer_ref' and uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k commit_pin fail at the merge base"
+  - id: "req-release-staleness-advisory"
+    statement: "Operator RULING 2026-10-16T07:34:18Z (no release wait; no users yet): Release Staleness (OMN-18010) keeps running unconditionally in ci.yml and keeps its 24-hour STALE measurement, but CI Summary lists it in SOFT_ALLOWLIST instead of STRICT_GATE_JOBS, so a stale, failed, absent or running Release Staleness job never fails or holds CI Summary, while any other failed job still fails it."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: Release Staleness (OMN-18010) is in SOFT_ALLOWLIST and in neither STRICT_GATE_JOBS nor SKIPPABLE_GATE_JOBS, CI Summary evaluates SUCCESS with that job failed, cancelled, absent or running, an unregistered failed job still yields FAILURE, and the job stays unconditional with its STALE controls -- falsifier: uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q fails at the merge base"
+  - id: "req-dev-merge-tag-on-every-dev-push"
+    statement: "Operator RULING 2026-10-16T09:35:49Z: in the lab omnimarket deploys from a tag cut automatically on each dev merge, not from a PyPI release. Every push to dev gets a lightweight tag dev-<UTC YYYYMMDDHHMMSS>-<sha12> on the pushed commit, idempotent per commit, and no other ref gets one."
+    acceptance:
+      - id: "AC11"
+        statement: "AC11: .github/workflows/dev-merge-tag.yml triggers only on push to dev, and its tag step, run against a throwaway repository with a +05:30 committer date, pushes one lightweight tag named dev-<committer time in UTC>-<sha12> at the commit, pushes nothing on a second run or when a dev tag for that sha already exists, pushes nothing in a dry run, and refuses a value that is not a full sha -- falsifier: uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py -q fails at the merge base, where the workflow does not exist"
+  - id: "req-mirror-durable-merge-outbox"
+    statement: "The git query mirror persists merge payloads before moving its scan watermark and marks a PR published only after its Kafka adapter returns from the broker acknowledgement; a restarted handler republishes pending payloads with their original event IDs."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: publish failure leaves the merge pending and unpublished, a new process republishes the saved payload, the Kafka adapter waits for acknowledgement before the published marker is written, partial batches retry only unacknowledged merges, and failures before the scan or published-marker write retain recoverable state -- falsifier: uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q fails with the mirror and handler at the merge base"
+  - id: "req-github-check-run-create"
+    statement: "The existing GitHub repository write effect accepts typed check-run creation through its declared command topic and existing transport and auth."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: check_run_create validates name, head_sha, status, conclusion and output title/summary, posts the recorded request shape, returns check_run_id, html_url and head_sha on the completed topic, and retains dry-run, quota, failure and in-process replay behavior -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py tests/test_golden_chain_github_repo_write_effect.py -q -k check_run_create fails at the merge base"
+  - id: "req-sibling-gate-follows-dev-tags"
+    statement: "Operator RULING 2026-10-16T09:35:49Z: in the lab, tags replace releases. The Sibling Release Compatibility Gate (sibling-release-compat) accepts a sibling pin that is a PyPI release or a uv.lock git source pinned to a dev-<UTC YYYYMMDDHHMMSS>-<sha12> tag of that sibling, still checks out and installs the exact pinned commit and runs the same compatibility checks, and keeps accepting any other uv.lock git source of that sibling locked to one commit (RULING 2026-10-16T07:34:18Z)."
+    acceptance:
+      - id: "AC14"
+        statement: "AC14: the gate's pins step resolves a uv.lock git source ?tag=dev-<14 digits>-<sha12>#<sha> of omnibase_infra or omnibase_core to the pinned sha, still resolves a PyPI pin to v<version>, resolves any other git source of https://github.com/OmniNode-ai/<sibling>.git locked to one commit to that commit, and refuses a dev tag whose sha12 is not the pinned commit, a malformed dev tag, another repository, a fork, a subdirectory, directory and editable source; its tag step fails for a pin to a nonexistent tag and for a tag that names another commit -- falsifier: uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py -q -n 0 fails at the merge base, where the pins step accepts only the PyPI registry"
+  - id: "req-context-compaction-manifest-node-in-omnimarket"
+    statement: "The compaction replay manifest (boundary pairing, prompt-window and repeat classification, manifest build and bundle verification over caller-supplied rows) is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract and no captured session data committed."
+    acceptance:
+      - id: "AC15"
+        statement: "AC15: node_context_compaction_manifest_compute pairs PreCompact and PostCompact boundaries keeping an unpaired PreCompact, classifies a repeat with no boundary between as NO_BOUNDARY_BETWEEN and one after a boundary as AFTER_BOUNDARY, builds a byte-identical manifest on a second build, reports a planted changed byte as a hash mismatch, refuses a quote not in the prompt and a path leaving the bundle root, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_context_compaction_manifest.py tests/test_golden_chain_context_compaction_manifest_compute.py -q fails at the merge base"
+  - id: "req-repo-write-envelope-operation-scope"
+    statement: "A repository write request serializes only the fields its own operation reads, so a field added for one operation never reaches another operation's envelope on a runtime that predates it."
+    acceptance:
+      - id: "AC16"
+        statement: "AC16: the pr-create, pr-edit, pr-ready, pr-close, pr-comment and workflow-run envelopes the onex scm command publishes carry no check_run_create field and validate against the contract 1.2.0 request fields with extra inputs forbidden, while check-run-create still carries its fields -- falsifier: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -k 'deployed_contract or check_run' fails with the request model at the merge base"
+  - id: "req-rescue-patch-review-nodes-in-omnimarket"
+    statement: "The automatic review of saved rescue patches (a pure verdict per patch and a tick that writes VERDICT.json and a heartbeat) is a pair of omnimarket nodes in canonical shape (contract, node, handler) with their topics declared in their contracts."
+    acceptance:
+      - id: "AC17"
+        statement: "AC17: node_rescue_patch_review_compute discards an empty, already-on-base, junk-only or whitespace-only patch and leaves any other change for a read, node_rescue_patch_review_effect writes one VERDICT.json per unreviewed patch, never rewrites one, counts a patch whose clone or base is missing as unjudgeable and writes last-run.json on every run, and both declare their command and event topics in their contracts -- falsifier: uv run pytest tests/nodes/node_rescue_patch_review_compute/test_rescue_patch_review.py tests/test_golden_chain_rescue_patch_review_compute.py tests/test_golden_chain_rescue_patch_review_effect.py -q fails at the merge base"
+  - id: "req-hostile-reviewer-structured-votes-pin"
+    statement: "The Hostile Reviewer clones omniintelligence at the revision that keeps large reviewer votes structured, so a voter's free-text reply no longer leaves the gate degraded."
+    acceptance:
+      - id: "AC18"
+        statement: "AC18: hostile-reviewer.yml clones omniintelligence at 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0, a descendant of the previous pin 3fcbf795087a79081c0ceeb676216bf64c5d49ae -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py -q fails over the merge base's workflow, which pins 3fcbf795087a79081c0ceeb676216bf64c5d49ae"
+  - id: "req-prrp-snapshot-publish-node-in-omnimarket"
+    statement: "The placement gate's Actions-variables snapshot publish (one gate read per registry repository merged into one dated file, complete or nothing, copied and read back on every available host, with a heartbeat and a failure record) is an omnimarket node in canonical shape (contract, node, handler) with its topics declared in its contract and the host list handed in by the caller."
+    acceptance:
+      - id: "AC19"
+        statement: "AC19: node_prrp_snapshot_publish_effect publishes no file when one repository's gate read fails, dates the merged snapshot by its oldest read, writes each available host and skips an unavailable one, fails the run on a copy that does not read back identical while the other hosts still get the file, writes heartbeat.json only on a complete run and failure.json otherwise, and declares its command and event topics in its contract -- falsifier: uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/test_golden_chain_prrp_snapshot_publish_effect.py -q fails at the merge base"
+  - id: "req-prrp-snapshot-effects-runtime-owner"
+    statement: "The snapshot publisher command subscription belongs to the effects runtime."
+    acceptance:
+      - id: "AC20"
+        statement: "AC20: node_prrp_snapshot_publish_effect declares descriptor.runtime_profiles exactly [effects], so the effects runtime owns its command subscription -- falsifier: uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py -q -k test_the_effects_runtime_owns_the_publisher_command_subscription fails when the publisher declares [main] and at the merge base"
+  - id: "req-hostile-reviewer-large-result-verdict"
+    statement: "The Hostile Reviewer verdict step reads cli_review's result from a file, so a review result over the 128 KiB per-string exec limit still yields a verdict instead of failing as unknown with Argument list too long."
+    acceptance:
+      - id: "AC21"
+        statement: "AC21: hostile-reviewer.yml writes cli_review's stdout to REVIEW_JSON_FILE and the verdict parser reads that file, so a 300000-byte review result yields its quorum verdict -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_large_result_omn19998.py -q fails over the merge base's workflow with Argument list too long, exit 126"
+  - id: "req-lab-daemons-converge-to-main"
+    statement: "Operator 2026-10-17: merged means running for every lab daemon. A host-timer node reads the declared daemons from an overlay, installs the source tip through each daemon's own installer when the installed revision lags it or a branch install's expiry has passed, and on a refused install publishes an alarm naming the blocker and dispatches one fix lane; the throughput tick prints MISSING deploy-drift:<daemon>@<host> when a lag lasts beyond 2 hours."
+    acceptance:
+      - id: "AC22"
+        statement: "AC22: node_lab_daemon_sync_effect installs main through the declared installer for a lagging daemon, reverts an expired branch install to main and holds an unexpired one, and for a refusing installer publishes lab-daemon-install-refused naming the blocker and dispatches exactly one fix lane across two ticks -- falsifier: uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_effect.py -q fails at the merge base, which has no such node"
+      - id: "AC23"
+        statement: "AC23: given deploy_drifts facts, the throughput tick decision prints MISSING deploy-drift:<daemon>@<host> for a lag older than deploy_drift_max_hours (default 2), and a NOTE for a younger lag or one an unexpired branch install holds -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_deploy_drift_throughput_tick_decision_compute.py -q fails at the merge base, whose request model refuses deploy_drifts"
+      - id: "AC25"
+        statement: "AC25: on its host tick node_lab_daemon_sync_effect clones a missing registry clone, fast-forwards a clean one on its default branch and leaves a dirty, detached or diverged one alone, installs an absent omni or onex-overlays plugin from the marketplace, runs the pre-commit cache gc, and lists each change in the completed event -- falsifier: uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_acts.py -q fails at the merge base, which has no clones, chores or changes"
+  - id: "req-runner-route-check-hosted-fallback"
+    statement: "The reusable runner-route check accepts a hosted trusted-seam fallback while retaining the original fleet fallback and fork isolation."
+    acceptance:
+      - id: "AC24"
+        statement: "AC24: the runner fallback guard accepts hosted and fleet trusted defaults and refuses self-hosted public defaults, unknown labels, incomplete fleet labels and empty labels; the workflow checks still pass -- falsifier: uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q fails at the merge base because the hosted fallback guard does not exist"
+  - id: "req-omn19998-public-runner-placement"
+    statement: "Operator RULING 2026-10-16T07:07:09Z: CI runners are for private repositories only. omnimarket is public, so no workflow routing fallback may name the self-hosted fleet except the two lab carve-outs (OMNI_REVIEW_RUNS_ON_JSON, OMNI_PR_MERGED_PUBLISHER_RUNS_ON_JSON), and omnibase_core's check-public-runner-placement runs as a CI Summary registered job and as a pre-commit hook at one core pin."
+    acceptance:
+      - id: "AC25"
+        statement: "AC25: no workflow line outside the two carve-outs carries the self-hosted fleet fallback, the Public Runner Placement job is unconditional, hosted, carries a positive control and the same core pin as the hook, and CI Summary registers it -- falsifier: uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q fails at the merge base, where 18 fallback lines name the fleet and neither the job nor the hook exists"
+  - id: "req-pr-merged-projection-reads-watcher-merges"
+    statement: "node_pr_merged_projection also subscribes to onex.evt.omnimarket.repo-merged.v1, which the PR watcher publishes for every merge it observes, and folds each merged event into one pr_merged_events row keyed by the shared (repo, pr_number, merge sha) event id, so the merged-PR feed does not depend on the Actions publisher or the webhook path."
+    acceptance:
+      - id: "AC26"
+        statement: "AC26: a repo-merged event dispatched to HandlerPrMergedProjection.handle with _topic onex.evt.omnimarket.repo-merged.v1 writes one row with event_id pr_merged_event_id(repo, pr_number, merge_sha) and branch refs/pull/<n>/head, a replay or the git mirror's pr-merged event for the same merge leaves one row, an open or closed state writes nothing, and the contract declares the subscription -- falsifier: uv run pytest tests/test_omn19998_pr_merged_projection_repo_merged.py -q fails with the handler and contract at the merge base"
+  - id: "req-pr-merged-projection-dedupes-on-repo-pr-number"
+    statement: "node_pr_merged_projection stores one pr_merged_events row per (repo, pr_number): a merge announced twice, under the same or a fresh event_id, leaves one row, and a node migration puts the unique key on the table after collapsing existing duplicates."
+    acceptance:
+      - id: "AC27"
+        statement: "AC27: HandlerPrMergedProjection upserts on (repo, pr_number), so replaying one merged event, or the same merge under a new event_id, yields one row while the same pr_number in two repositories yields two, and migration 0003 deletes all but the lowest projection_cursor row per (repo, pr_number) before adding UNIQUE (repo, pr_number) -- falsifier: at the merge base the new-event_id replay leaves two rows and the 0003 migration file does not exist"
+  - id: "req-hostile-reviewer-budget-timeout-pin"
+    statement: "The Hostile Reviewer clones omniintelligence at the revision where a voter that exhausts its review budget fails as a timeout, so the lost voter is eligible for substitute receipts instead of leaving the gate with no verdict."
+    acceptance:
+      - id: "AC28"
+        statement: "AC28: hostile-reviewer.yml clones omniintelligence at 037af72c2a7f49fda953fed6a99edd5ec588dede, the merge commit of omniintelligence#1095 and a descendant of the previous pin 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q fails over the merge base's workflow, which pins 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
+  - id: "req-tests-run-once-on-the-pull-request"
+    statement: "Operator RULING 2026-10-18T00:50:42Z, short term until the merge queue clears and test deduplication works: a merge_group run or a push to dev skips the heavy ci.yml tier (test splits, coverage census, integration, golden and event chains, e2e) that already ran on the pull request head, a Queue Re-test Waiver (OMN-19998) marker job runs only on those two events, and CI Summary accepts the skip only when that marker succeeded, while pull request runs and main pushes are unchanged."
+    acceptance:
+      - id: "AC29"
+        statement: "AC29: the marker's if names only merge_group and a push to refs/heads/dev, every heavy job's if carries the waiver clause, CI Summary passes a waived snapshot with the marker succeeded and fails it with the marker absent, skipped, failed or cancelled, and a skipped light gate still fails it -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest fails at the merge base"
+  - id: "req-internal-release-path-guard"
+    statement: "Internal consumer remediation uses tested git tags or immutable commits instead of a release cut or release wait."
+    acceptance:
+      - id: "AC30"
+        statement: "AC30: the canonical internal release-path check refuses an internal release strategy or instruction, accepts a git pin, blocks lab-fill dispatch before file writes and controller worker/cause briefs before construction, and runs through its contract-declared bus topics -- falsifier: uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q fails at the merge base"
+
+  - id: "req-git-mirror-sync-on-runtime-tick"
+    statement: "Plan step 5.0 (mirror path): node_git_mirror_sync_schedule_compute turns the runtime tick into a detecting sync request for one watched repository per window on onex.cmd.omnimarket.git-query-mirror-requested.v1, node_git_query_mirror_effect subscribes to that topic so the runtime wires it instead of skipping it, and the mirror's query response is its terminal event on onex.evt.omnimarket.git-query-mirror-completed.v1, never the pr-merged topic."
+    acceptance:
+      - id: "AC29"
+        statement: "AC29: the schedule uses canonical typed handler routing without legacy routing_key or handler_key fields, wire_from_manifest wires node_git_query_mirror_effect with no skip, a window tick through the runtime publishes one sync request that ModelGitQueryRequest accepts as a detecting sync of OmniNode-ai/omnimarket, an off-window tick publishes nothing, watched repositories take turns, and the mirror's terminal_event is the completed topic -- falsifier: uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q fails with the legacy schedule routing fields or the mirror contract at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -38,11 +173,51 @@ evidence_requirements:
   - kind: "tests"
     description: "A reviewer red rerun at its head gets a worker or an escalation, never pending."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_pool_rerun_red.py tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -q"
+  - kind: "tests"
+    description: "The committed dep-health allowlist has no expired row."
+    command: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k test_this_repo_allowlist_has_no_expired_entries"
+  - kind: "tests"
+    description: "The placement tests read every workflow file for the fleet fallback, the ci.yml job, .pre-commit-config.yaml and the CI Summary gate list."
+    command: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+
 dod_evidence:
+  - id: "dod-omn19998-mirror-durable-outbox"
+    description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_omn19834_mirror_merge_events.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_query_mirror_effect/test_golden_chain_git_query_mirror_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn19998-mirror-outbox-deploy-probe"
+    description: "Hosted-runner source probe requires the mirror's publication path to await adapter.publish before mark_merge_published; the base has no such path and fails. This source probe does not claim successful live broker delivery."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'import ast; from pathlib import Path; p=Path("src/omnimarket/nodes/node_git_query_mirror_effect/handlers/handler_git_query_mirror.py"); t=ast.parse(p.read_text()); f=next(n for n in ast.walk(t) if isinstance(n,ast.AsyncFunctionDef) and n.name=="_publish_pending"); a=[n for n in ast.walk(f) if isinstance(n,ast.Await)]; publish=next(n.lineno for n in a if "adapter.publish" in ast.unparse(n)); ack=next(n.lineno for n in a if "mirror.mark_merge_published" in ast.unparse(n)); assert publish < ack'
+  - id: "dod-omn19998-construction-consumer-first"
+    description: "The consumer JSON decode and terminal conversion tests preserve the gate fact and null score, retain the declared construction-result fields, and refuse contradictory evidence and unknown keys."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_construction_consumer_first_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn19998-construction-consumer-deploy-probe"
+    description: "Hosted-runner decode through the consumer's JSON API at this head accepts an unscored construction failure, retains the gate flag and empty rule evaluations, and round-trips the declared construction outcome, content verdict and failure reason; a receiver that discards or changes the construction pair or failure reason fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import json; from omnimarket.models.delegation.wire.model_delegate_skill_response import ModelDelegateSkillFailed; p={"correlation_id":"4d97ece9-97cc-4837-9f67-fc0c29bc53ef","task_type":"document","status":"failed","quality_gate_passed":True,"quality_score":None,"operational_outcome":"terminal_construction_failed","content_verdict":"undetermined","terminal_failure_reason":"terminal_construction_failed","rule_evaluations":[]}; r=ModelDelegateSkillFailed.model_validate_json(json.dumps(p)); assert r.quality_gate_passed is True and r.quality_score is None; d=r.model_dump(mode="json"); assert all(d[k] == p[k] for k in ("operational_outcome","content_verdict","terminal_failure_reason")); assert r.rule_evaluations == () and "rule_evaluations" not in d; assert ModelDelegateSkillFailed.model_validate_json(r.model_dump_json()).model_dump(mode="json") == d'
   - id: "dod-omn19998-repo-contracts-bind-pytest-evidence"
     description: "The repo evidence test passes at the head and fails at the merge base, where contracts/OMN-20074.yaml binds AC10 to a command-only deploy probe."
     source: "manual"
@@ -114,3 +289,406 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def check_repo_status('
+  - id: "dod-omn19998-expired-allowlist-row-removed"
+    description: "The allowlist expiry test passes at the head and fails at the merge base, where the task-delegated row is past its expires_at of 2026-10-15."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_dep_health_contract_topology.py -q -k 'test_this_repo_allowlist_has_no_expired_entries or test_this_repo_allowlist_has_no_task_delegated_row'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn19998-expired-allowlist-deploy-probe"
+    description: "Hosted-runner probe reads the dep-health allowlist at this commit and requires the diagnostic row to remain and the task-delegated row to be gone; the base still carries the expired row and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/dep_health_allowlist.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/onex.evt.diagnostic.daemon-health.v1/{a=1} /onex.evt.omniclaude.task-delegated.v1/{b=1} END{exit !(a&&!b)}'
+  - id: "dod-omn19998-capture-item-identity-node"
+    description: "The node's handler, golden chain and contract tests and the redaction owner fields pass at the head; at the merge base the node package does not exist and every test file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_capture_item_identity_effect.py tests/test_golden_chain_capture_item_identity_effect.py tests/unit/nodes/node_event_emit_effect/test_capture_identity_fields_omn18531.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19998-capture-item-identity-deploy-probe"
+    description: "Hosted-runner probe reads the item identity handler at this commit and requires claim_event_id; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_capture_item_identity_effect/handlers/handler_item_identity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^def claim_event_id('
+  - id: "dod-omn19998-external-deadman-check-node"
+    description: "The node's handler and golden-chain tests pass at the head; at the merge base the node package does not exist and both test files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_external_deadman_omn20808.py tests/test_golden_chain_external_deadman_check_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn19998-external-deadman-check-deploy-probe"
+    description: "Hosted-runner probe reads the dead-man handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_external_deadman_check_compute/handlers/handler_external_deadman_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerExternalDeadmanCheck'
+  - id: "dod-omn19998-release-gates-accept-git-pin"
+    description: "The pinned-consumer wire replay, the commit-pin acceptance of every sibling pins step and the omniclaude dispatch pass at the head; at the merge base the new tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -k 'pinned_consumer or unresolvable_consumer_ref'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q -k commit_pin"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn19998-git-pin-gates-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this commit and requires the wire gate to pass omniclaude's pin as --consumer-ref; the base has no such line and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cF -- '--consumer-ref "$pin"'
+  - id: "dod-omn19998-release-staleness-advisory"
+    description: "The release-staleness registration and CI Summary verdict tests pass at the head; at the merge base the job is a strict gate, so a failed or absent Release Staleness fails or holds CI Summary and six tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn19998-staleness-advisory-deploy-probe"
+    description: "Hosted-runner probe parses scripts/ci/ci_summary_gate.py at this commit and requires Release Staleness in SOFT_ALLOWLIST and out of STRICT_GATE_JOBS; at the base it is strict and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/scripts/ci/ci_summary_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import ast,sys; t=ast.parse(sys.stdin.read()); v={n.target.id: ((ast.literal_eval(n.value.args[0]) if n.value.args else ()) if isinstance(n.value, ast.Call) else ast.literal_eval(n.value)) for n in t.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in ("STRICT_GATE_JOBS","SOFT_ALLOWLIST")}; j="Release Staleness (OMN-18010)"; assert j in v["SOFT_ALLOWLIST"] and j not in v["STRICT_GATE_JOBS"], "Release Staleness still gates CI Summary"'
+  - id: "dod-omn19998-dev-merge-tag"
+    description: "The dev merge tag tests pass at the head; at the merge base the workflow file does not exist and every test fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dev_merge_tag_workflow_omn19998.py tests/ci/test_automated_pusher_identity_omn18273.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
+  - id: "dod-omn19998-dev-merge-tag-deploy-probe"
+    description: "Hosted-runner probe reads the dev merge tag workflow at this commit and requires its push-to-dev trigger and its tag push; the base has no such file and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/dev-merge-tag.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/branches: \[dev\]/{a=1} /git push origin "refs\/tags\//{b=1} END{exit !(a&&b)}'
+
+  - id: "dod-omn19998-github-check-run-create"
+    description: "Recorded exchanges and the real contract-discovery/runtime-dispatch chain exercise check-run creation without a live GitHub call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py -q -k check_run_create"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
+  - id: "dod-omn19998-github-check-run-create-deploy-probe"
+    description: "Hosted-runner runtime dispatch at this head discovers the real contract, decodes a check-run command and publishes the recorded check identity on the declared completed topic; the merge base refuses the operation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_github_repo_write_effect.py -q -k check_run_create"
+
+  - id: "dod-omn19998-github-check-run-create-scm"
+    description: "The SCM command publishes the typed check-run request, invalid fields publish nothing, and both operation and shim coverage tables retain their mutation controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -k check_run"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_scm_operation_table_omn20912.py -q"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_gh_shim_coverage_table_omn20914.py -q"
+    binds_ac: ["AC13"]
+  - id: "dod-omn19998-sibling-gate-dev-tag"
+    description: "The sibling gate dev-tag tests pass at the head, including the nonexistent-tag negative control; at the merge base the pins step has no dev-tag outputs and no tag step, and the tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_release_compat_dev_tag_omn19998.py -q -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC14"]
+  - id: "dod-omn19998-sibling-gate-dev-tag-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this commit and requires the dev-tag verification step and the pinned-revision checkout of the sibling-release-compat job; the base has neither and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | awk '/Every dev-tag pin names the commit it pins/{a=1} /ref: \$\{\{ steps.pins.outputs.infra_ref \}\}/{b=1} END{exit !(a&&b)}'
+  - id: "dod-omn19998-context-compaction-manifest-node"
+    description: "The manifest and golden-chain tests pass at the head; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_context_compaction_manifest.py tests/test_golden_chain_context_compaction_manifest_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]
+  - id: "dod-omn19998-compaction-manifest-deploy-probe"
+    description: "Hosted-runner probe reads the manifest handler at this commit and requires its exception class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_compaction_manifest_compute/handlers/handler_compaction_manifest.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class ManifestRefusalError'
+
+  - id: "dod-omn19998-repo-write-envelope-operation-scope"
+    description: "Every older write verb's published envelope validates against the request fields the pre-check-run runtime accepts; check-run-create keeps its fields."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -k 'deployed_contract or check_run'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn19998-rescue-patch-review-nodes"
+    description: "The verdict, scan, CLI and golden-chain tests pass at the head; at the merge base the node packages do not exist and the tests fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_rescue_patch_review_compute/test_rescue_patch_review.py tests/test_golden_chain_rescue_patch_review_compute.py tests/test_golden_chain_rescue_patch_review_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
+  - id: "dod-omn19998-rescue-patch-review-deploy-probe"
+    description: "Hosted-runner probes read both handlers at this commit and require their handler classes; the base has neither file and the probes find no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/rescue_patch_review/handler_rescue_patch_review.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchReview'
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_rescue_patch_review_effect/handlers/handler_rescue_patch_scan.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerRescuePatchScan'
+  - id: "dod-omn19998-rescue-patch-effects-runtime"
+    description: "The command-consuming rescue-patch scan declares the effects runtime profile and retains its verdict and heartbeat behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py tests/test_golden_chain_rescue_patch_review_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]
+  - id: "dod-omn19998-rescue-patch-effects-deploy-probe"
+    description: "Hosted-runner source probe requires the rescue-patch scan contract to declare effects runtime ownership; the dispatch head declares main and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_rescue_patch_review_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]'
+  - id: "dod-omn19998-hostile-reviewer-structured-votes-pin"
+    description: "The workflow pins omniintelligence at the structured-votes revision; the merge base's pin fails the test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC18"]
+  - id: "dod-omn19998-prrp-snapshot-publish-node"
+    description: "The publisher and golden-chain tests pass at the head; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/test_golden_chain_prrp_snapshot_publish_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC19"]
+  - id: "dod-omn19998-prrp-snapshot-publish-deploy-probe"
+    description: "Hosted-runner probe reads the snapshot publisher at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prrp_snapshot_publish_effect/handlers/handler_prrp_snapshot_publish.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerPrrpSnapshotPublish'
+  - id: "dod-omn19998-prrp-snapshot-effects-runtime-owner"
+    description: "The publisher's own contract test requires descriptor.runtime_profiles exactly [effects] and the runtime ownership contract test accepts it; at the merge base the node package does not exist and the publisher test fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_prrp_snapshot_publish_effect/test_prrp_snapshot_publish.py tests/validation/test_runtime_profile_contracts.py -q -k 'test_the_effects_runtime_owns_the_publisher_command_subscription or test_effectful_command_consumers_declare_effects_runtime_profile'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC20"]
+  - id: "dod-omn19998-prrp-effects-runtime-deploy-probe"
+    description: "Hosted-runner probe reads the publisher contract at this commit and refuses any runtime owner other than effects."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prrp_snapshot_publish_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys,yaml; c=yaml.safe_load(sys.stdin); assert c["descriptor"]["runtime_profiles"] == ["effects"], "snapshot publisher must belong to effects"'
+  - id: "dod-omn19998-hostile-reviewer-large-result-verdict"
+    description: "The verdict step reads a review result over 128 KiB from a file and prints its verdict; the merge base's workflow fails the test with Argument list too long."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_large_result_omn19998.py tests/ci/test_hostile_reviewer_quorum_verdict.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC21"]
+  - id: "dod-omn19998-lab-daemon-sync"
+    description: "The lag, branch-expired and installer-refused fixtures pass at the head; the merge base has no lab daemon sync node."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC22"]
+  - id: "dod-omn19998-deploy-drift-tick-line"
+    description: "The deploy-drift scenarios pass at the head and fail at the merge base, whose request model refuses deploy_drifts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_deploy_drift_throughput_tick_decision_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC23"]
+  - id: "dod-omn19998-lab-daemon-sync-deploy-probe"
+    description: "Hosted-runner probe reads the lab daemon sync handler at this commit; the base lacks it and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_daemon_sync_effect/handlers/handler_lab_daemon_sync.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fc 'def decide_daemon('
+  - id: "dod-omn19998-lab-daemon-sync-acts"
+    description: "The clone, plugin, chore and change-list fixtures pass at the head; the merge base has no such test file."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_acts.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC25"]
+
+  - id: "dod-omn19998-route-check-hosted-fallback"
+    description: "The reusable runner-route checks retain the seam and fork constraints and exercise accepted and rejected fallback labels."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q"
+    binds_ac: ["AC24"]
+  - id: "dod-omn19998-route-check-hosted-deploy-probe"
+    description: "Hosted-runner probe calls the check's fallback guard with the hosted trusted default; the base has no guard and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_route_runner_reusable_omn16647.py -q -k test_runner_fallback_guard_accepts_hosted_and_fleet_seams"
+  - id: "dod-omn19998-ac22-public-runner-placement"
+    description: "AC25 tests read the workflows, the CI job, the pre-commit hook and the CI Summary gate list."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC25"]
+  - id: "dod-omn19998-public-runner-placement-deploy-probe"
+    description: "Hosted-runner probe requires hosted routing fallbacks and the registered runner-placement CI job and hook; the merge base lacks them and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
+  - id: "dod-omn19998-pr-merged-projection-repo-merged"
+    description: "The repo-merged fold tests pass at the head; at the merge base the handler reads a repo-merged payload as a pr-merged event and the contract does not subscribe to the topic, so the tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19998_pr_merged_projection_repo_merged.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC26"]
+  - id: "dod-omn19998-watcher-merge-deploy-probe"
+    description: "Hosted-runner probe reads the projection contract at this commit and requires the repo-merged subscription; the base subscribes only to the pr-merged topic and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_merged_projection/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^    - onex.evt.omnimarket.repo-merged.v1$'
+  - id: "dod-omn19998-pr-merged-projection-dedupe"
+    description: "The pr-merged projection golden-chain tests pass at the head; at the merge base a replay under a fresh event_id leaves two rows and the 0003 migration is absent, so two tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_pr_merged_projection.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC27"]
+  - id: "dod-omn19998-pr-merged-dedupe-real-postgres"
+    description: "On a real PostgreSQL schema built by migration 0001, migration 0003 keeps the lowest-cursor row of each (repo, pr_number), is idempotent, and the handler writing through the sync Postgres adapter leaves one row for a fresh event_id replay; at the merge base the 0003 file is absent so the tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19998_pr_merged_dedupe_real_postgres.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC27"]
+  - id: "dod-omn19998-pr-merged-dedupe-deploy-probe"
+    description: "Hosted-runner probe requires the installed omnibase-infra to be a git checkout (the registry release has no migration 0003) and the projection handler's (repo, pr_number) conflict key; the prior registry pin has no VCS commit and fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import importlib.metadata as m, json; from omnimarket.nodes.node_pr_merged_projection.handlers.handler_pr_merged_projection import CONFLICT_KEY; d=json.loads(m.distribution("omnibase-infra").read_text("direct_url.json") or "{}"); assert d.get("vcs_info", {}).get("vcs") == "git" and len(d["vcs_info"]["commit_id"]) == 40; assert CONFLICT_KEY == "repo,pr_number"'
+  - id: "dod-omn19998-hostile-reviewer-budget-timeout-pin"
+    description: "The workflow pins omniintelligence at the merge commit of omniintelligence#1095; the merge base's pin fails the test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC28"]
+  - id: "dod-omn19998-tests-run-once-on-the-pull-request"
+    description: "The re-test waiver tests pass at the head; at the merge base ci.yml has no queue-retest-waiver job and ci_summary_gate.py has no RETEST_WAIVER_MARKER_JOB, so they fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
+  - id: "dod-omn19998-tests-run-once-deploy-probe"
+    description: "Hosted-runner probe reads ci.yml at this head: the queue-retest-waiver job runs only on merge_group and a dev push, and detect-changes and coverage-sweep-gate carry the waiver clause; the merge base has no such job and fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'import yaml; j=yaml.safe_load(open(".github/workflows/ci.yml"))["jobs"]; c="!(github.event_name == \x27merge_group\x27 || (github.event_name == \x27push\x27 && github.ref == \x27refs/heads/dev\x27))"; w=j["queue-retest-waiver"]["if"]; assert "merge_group" in w and "refs/heads/dev" in w and "pull_request" not in w; assert all(c in " ".join(j[k]["if"].split()) for k in ("detect-changes", "coverage-sweep-gate"))'
+  - id: "dod-omn19998-internal-release-path-guard"
+    description: "Refusal, passing-pin, lane dispatch, controller brief, CLI and bus controls for the shared policy."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn19998-internal-release-path-deploy-probe"
+    description: "Hosted runner resolves the packaged node from its contract and exercises a refused release instruction and a passing git pin; the base has no node."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_golden_chain_internal_release_path_guard_compute.py -q"
+  - id: "dod-omn19998-git-mirror-sync-schedule"
+    description: "The schedule uses canonical typed handler routing and its runtime golden chain passes; the dispatch head carries legacy routing_key and handler_key fields and fails the routing migration test. At the merge base the mirror contract declares no subscribe topic and no terminal event, so the wiring, topic and terminal-event tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_git_mirror_sync_schedule_compute/test_golden_chain_git_mirror_sync_schedule_compute.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_canonical_handler_routing_migration.py -q -k test_no_node_contract_carries_legacy_route_fields"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contracts.py::test_effectful_command_consumers_declare_effects_runtime_profile -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC29"]
+  - id: "dod-omn19998-git-mirror-effects-deploy-probe"
+    description: "Hosted-runner source probe requires descriptor-level effects ownership and the detecting-sync command subscription. The dispatch head lacks descriptor.runtime_profiles and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_git_query_mirror_effect/contract.yaml").read_text()); assert c["descriptor"]["runtime_profiles"] == ["effects"]; s=yaml.safe_load(Path("src/omnimarket/nodes/node_git_mirror_sync_schedule_compute/contract.yaml").read_text()); assert s["terminal_event"] in c["event_bus"]["subscribe_topics"]'
+  - id: "dod-omn19998-git-mirror-routing-deploy-probe"
+    description: "Hosted-runner source probe requires the schedule's canonical typed runtime-tick route without removed routing fields; the dispatch head fails this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          python3 -c 'from pathlib import Path; import yaml; c=yaml.safe_load(Path("src/omnimarket/nodes/node_git_mirror_sync_schedule_compute/contract.yaml").read_text()); r=c["handler_routing"]; assert r["routing_strategy"] == "payload_type_match"; h, = r["handlers"]; assert not {"routing_key", "handler_key", "priority", "output_events", "callable", "lazy_import"}.intersection(h); assert h["event_model"] == "omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick"; assert h["handler"]["name"] == "HandlerGitMirrorSyncSchedule"; assert h["event_type"] == "platform.runtime-tick"'

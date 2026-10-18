@@ -174,7 +174,14 @@ def _upsert_row(mock_db: AsyncMock) -> dict[str, Any]:
     sql = str(call.args[0])
     columns_segment = sql.split("(", 1)[1].split(")", 1)[0]
     columns = [c.strip() for c in columns_segment.split(",")]
-    return dict(zip(columns, call.args[1:], strict=True))
+    # Database-authored attestation expressions consume no bound parameter.
+    slots = sql.split("VALUES (", 1)[1].split(")", 1)[0].split(",")
+    bound = [
+        column
+        for column, slot in zip(columns, slots, strict=True)
+        if slot.strip().startswith("$")
+    ]
+    return dict(zip(bound, call.args[1:], strict=True))
 
 
 class TestEnvelopeTenantIdentity:
@@ -363,6 +370,8 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
         call = _upsert_call(mock_db)
         sql = str(call.args[0])
         insert_columns, update_clause = sql.split("ON CONFLICT", 1)
+        # RETURNING reads columns; it does not overwrite them.
+        update_clause = update_clause.split(" RETURNING ", 1)[0]
         assert "tenant_id" in insert_columns, (
             "the proposed INSERT row must NAME its tenant -- Postgres evaluates "
             "the policy WITH CHECK against it before the conflict is resolved, "

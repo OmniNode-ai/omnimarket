@@ -13,6 +13,7 @@ suite rather than passing vacuously.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,31 @@ class TestPathBranch:
         assert result.mypy_available is True
         assert result.error_count >= 1
         assert result.success is False
+
+    @pytest.mark.parametrize("relative", [False, True])
+    def test_path_edits_are_rechecked_with_identical_size_and_mtime(
+        self, tmp_path: Path, relative: bool
+    ) -> None:
+        artifact = tmp_path / "artifact.py"
+        clean = "def value() -> int:\n    return 123\n"
+        broken = 'def value() -> int:\n    return "x"\n'
+        assert len(clean) == len(broken)
+        artifact.write_text(clean)
+        original = artifact.stat()
+        path = os.path.relpath(artifact) if relative else str(artifact)
+        request = ModelMypyCheckRequest(path=path)
+        assert check_artifact(request).success is True
+
+        artifact.write_text(broken)
+        os.utime(artifact, ns=(original.st_atime_ns, original.st_mtime_ns))
+        rejected = check_artifact(request)
+        assert rejected.mypy_available is True
+        assert rejected.success is False
+        assert any(diag.code == "return-value" for diag in rejected.diagnostics)
+
+        artifact.write_text(clean)
+        os.utime(artifact, ns=(original.st_atime_ns, original.st_mtime_ns))
+        assert check_artifact(request).success is True
 
 
 @pytest.mark.unit

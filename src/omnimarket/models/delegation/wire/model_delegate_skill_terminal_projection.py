@@ -313,7 +313,8 @@ class ModelDelegationEventProjectionRow(BaseModel):
     quality_gates_checked: tuple[str, ...]
     quality_gates_failed: tuple[str, ...]
     quality_gate_detail: str
-    cost_usd: Decimal
+    # OMN-20717: NULL for a call that was not priced, never an invented zero.
+    cost_usd: Decimal | None
     cost_savings_usd: Decimal
     latency_ms: int
     repo_name: str | None = None
@@ -352,7 +353,14 @@ class ModelDelegationEventProjectionRow(BaseModel):
             quality_gates_checked=("delegate-skill-terminal",),
             quality_gates_failed=tuple(event.quality_gates_failed),
             quality_gate_detail=quality_detail,
-            cost_usd=Decimal(str(metrics.cost_usd)),
+            # OMN-20717 AC2: a call whose rungs reported a source and none was
+            # measured was not priced; its zero is unknown, stored as NULL. A
+            # measured zero (a free local model) stays zero.
+            cost_usd=(
+                None
+                if metrics.cost_measured is False and metrics.cost_usd == 0
+                else Decimal(str(metrics.cost_usd))
+            ),
             # The legacy delegation_events projection has a NOT NULL savings
             # column. Keep that compatibility projection numeric; the typed
             # receipt and savings_estimates row preserve unresolved as null.

@@ -1,0 +1,27 @@
+# onex-retention-cleanup.service: the Linux lab host's one retention run.
+#
+# A systemd USER unit, one-shot, fired by onex-retention-cleanup.timer. It runs
+# node_retention_cleanup with --files: the contract's file_retention paths on
+# this host, plus the declared tables when OMNIDASH_ANALYTICS_DB_URL is set in
+# the environment file. Replace __OMNIMARKET_DIR__ with a clean omnimarket
+# checkout on dev and write ONEX_RETENTION_ARCHIVE_ROOT=<archive folder> and
+# OMNI_HOME=<registry root> into %h/.config/onex/retention-cleanup.env. With no
+# archive root, an archive entry removes nothing.
+#
+# Check: systemctl --user list-timers onex-retention-cleanup.timer
+#        journalctl --user -u onex-retention-cleanup.service -n 50
+
+[Unit]
+Description=ONEX retention cleanup, tables and files, lab host
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/onex/retention-cleanup.env
+WorkingDirectory=__OMNIMARKET_DIR__
+ExecStart=/bin/bash -c 'exec env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retention_cleanup --files'
+TimeoutStartSec=4h
+Nice=10
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=onex-retention-cleanup

@@ -18,7 +18,8 @@
 # one difference: it does not assume the verdict, it reads it. The job reads
 # the pull request named by the queue ref, lists that context's check-runs on
 # the pull request's head sha and takes the newest. It passes only when that
-# run concluded success, neutral or skipped, the set branch protection accepts.
+# run concluded success, neutral or skipped, the set branch protection accepts
+# (the repo-evidence / dod-verify job is narrower; see its comment).
 # No run on the head, a run still in progress, a red run, an unreadable ref or
 # a failed API read fails the job, so nothing here can pass a head the
 # pull-request run did not pass.
@@ -238,7 +239,7 @@ jobs:
               ;;
           esac
 
-  ctx-onex-change-control-schema-compatibility:
+  ctx-onex-schema-compatibility:
     name: "ONEX Change Control Schema Compatibility"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1047,7 +1048,12 @@ jobs:
   # OMN-20497: dev's repo-evidence ruleset requires this context. Its caller
   # (call-repo-evidence-gate.yml) runs on pull_request_target and its reusable
   # refuses any other event, so no queue commit carries the context and an entry
-  # waits until the queue's check timeout. Same read as the jobs above.
+  # waits until the queue's check timeout. Same read as the jobs above, with two
+  # differences (OMN-20073 AC2): it reads only GitHub Actions' runs (app 15368,
+  # the producer the ruleset requires), so a run of the same name written by any
+  # other App is never the verdict, and it passes only on success. A neutral or
+  # skipped evidence verdict on the head is not one the gate reached, and a
+  # queue-commit success would let it satisfy the required context.
   ctx-repo-evidence-dod-verify:
     name: "repo-evidence / dod-verify"
     runs-on: ubuntu-latest
@@ -1068,11 +1074,11 @@ jobs:
           head_sha="$(gh api "repos/${REPO}/pulls/${BASH_REMATCH[1]}" --jq .head.sha)"
           newest="$(gh api --paginate --method GET "repos/${REPO}/commits/${head_sha}/check-runs" \
             -f check_name="$CONTEXT" -f per_page=100 \
-            --jq '.check_runs[] | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
+            --jq '.check_runs[] | select(.app.id == 15368) | "\(.id) \(.status) \(.conclusion // "none")"' | sort -n | tail -n 1)"
           echo "${CONTEXT} on pull request head ${head_sha}: ${newest:-no run}"
           read -r _ status conclusion <<<"${newest:-0 absent none}"
           case "${status}:${conclusion}" in
-            completed:success | completed:neutral | completed:skipped) ;;
+            completed:success) ;;
             *)
               echo "::error::${CONTEXT} is not proven on the queued pull request head (${status} ${conclusion})"
               exit 1

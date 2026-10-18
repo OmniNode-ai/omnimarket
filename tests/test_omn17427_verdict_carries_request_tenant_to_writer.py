@@ -260,7 +260,14 @@ def _insert(db: AsyncMock) -> dict[str, Any]:
     assert writes, "the writer issued no delegation_events INSERT"
     sql = str(writes[-1].args[0])
     columns = [c.strip() for c in sql.split("(", 1)[1].split(")", 1)[0].split(",")]
-    return dict(zip(columns, writes[-1].args[1:], strict=True))
+    # Database-authored attestation expressions consume no bound parameter.
+    slots = sql.split("VALUES (", 1)[1].split(")", 1)[0].split(",")
+    bound = [
+        column
+        for column, slot in zip(columns, slots, strict=True)
+        if slot.strip().startswith("$")
+    ]
+    return dict(zip(bound, writes[-1].args[1:], strict=True))
 
 
 class TestATenantStampedRequestYieldsAnAcceptedVerdict:

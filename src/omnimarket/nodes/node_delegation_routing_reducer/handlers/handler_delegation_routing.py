@@ -43,6 +43,7 @@ Related:
 from __future__ import annotations
 
 import importlib
+import importlib.resources
 import logging
 import os
 import re
@@ -96,6 +97,9 @@ from omnimarket.models.delegation.model_entry_tier_share import (
     entry_share_draw,
     entry_share_from_contract_entry,
     validate_entry_share,
+)
+from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
+    ModelGroundingBudgetByTaskClass,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -1979,6 +1983,20 @@ def tier_for_backend(backend_id: str) -> str | None:
     return None
 
 
+def tiers_declaring_backend(backend_ref: str) -> tuple[str, ...]:
+    """Return the NAMES of every routing tier that declares ``backend_ref``.
+
+    More than one name means two tier labels share one concrete backend, so the
+    later label is not an independent rung for a caller that already failed on
+    the first (OMN-18831).
+    """
+    names: list[str] = []
+    for tier in _get_config().tiers:
+        if any(model.backend_ref == backend_ref for model in tier.models):
+            names.append(tier.name)
+    return tuple(names)
+
+
 # OMN-18297: the divisor of the character-based input measurement. It is the
 # repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
 # _compute) and it UNDER-counts: the recorded 57,120-character prompt of
@@ -1996,10 +2014,15 @@ def measure_grounding_input_tokens(text: str) -> int:
     return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
 
 
-def resolve_backend_grounding_budget(backend_id: str) -> int | None:
+def resolve_backend_grounding_budget(
+    backend_id: str, task_type: str | None = None
+) -> int | None:
     """Return the contract-declared input budget for ``backend_id``.
 
-    OMN-18297. ``None`` means the backend declares no budget -- NOT DECLARED,
+    OMN-18297. OMN-20486: a ``task_type`` named for the backend in
+    ``configs/grounding_budget_by_task_class.yaml`` gets that class's value; any
+    other class, and a call with no ``task_type``, gets the backend default.
+    ``None`` means the backend declares no budget -- NOT DECLARED,
     never "unlimited by policy". Reading it here keeps the bifrost contract the
     single authority for per-backend limits, the same way
     :func:`backend_id_for_tier` keeps tier->backend mapping here rather than in
@@ -2019,8 +2042,24 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
     )
     for backend in config.backends:
         if backend.backend_id == backend_id:
+            if task_type is not None:
+                class_budget = _load_grounding_budget_by_task_class().budget_for(
+                    backend_id, task_type
+                )
+                if class_budget is not None:
+                    return class_budget
             return backend.max_grounded_input_tokens
     return None
+
+
+@lru_cache(maxsize=1)
+def _load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
+    """Load the packaged per-task-class grounded input budgets (OMN-20486)."""
+    resource = importlib.resources.files("omnimarket").joinpath(
+        "configs/grounding_budget_by_task_class.yaml"
+    )
+    data = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
+    return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
 def backend_id_for_tier(

@@ -107,6 +107,9 @@ class World:
             "merges": {},
         }
         self.check_runs: dict[tuple[str, str], list[dict[str, object]]] = {}
+        # OMN-21146: every merged PR as GitHub holds it, including the ones
+        # the watcher's window no longer does (see ``forget``).
+        self.github_prs: dict[str, dict[str, Any]] = {}
         self._hour = 0
 
     def clone(self, name: str) -> Path:
@@ -170,6 +173,9 @@ class World:
             "merged_at": f"2026-10-0{1 + self._hour // 24}T{self._hour % 24:02d}:00:00Z",
             "base": "dev",
         }
+        self.github_prs[f"{repo}#{number}"] = dict(
+            self.state["merges"][f"{repo}#{number}"]
+        )
         if run is not None:
             self.check_runs[(f"OmniNode-ai/{repo}", head_sha)] = [
                 {
@@ -181,6 +187,16 @@ class World:
                 }
             ]
         return {"merge_sha": merge_sha, "head_sha": head_sha}
+
+    def forget(self, repo: str, number: int) -> None:
+        """Drop PR ``number`` from the watcher state: it merged outside the
+        watcher's window, so only its squash commit on the clone remains."""
+        del self.state["merges"][f"{repo}#{number}"]
+
+    def gh_calls(self) -> list[str]:
+        """Every ``gh`` invocation the failing stub on ``PATH`` received."""
+        log = self.root / "gh-calls.log"
+        return log.read_text().splitlines() if log.exists() else []
 
     def occ(self, contracts: dict[str, str]) -> Path:
         """``onex_change_control`` with ``contracts`` on a bare-upstream ``dev``."""
@@ -207,7 +223,9 @@ class World:
         state_path.write_text(json.dumps(self.state))
         monkeypatch.setenv("OMNI_HOME", str(self.registry))
         monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(state_path))
-        monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+        monkeypatch.setenv(
+            "ONEX_CC_REPO_PATH", str(self.registry / "onex_change_control")
+        )
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
         monkeypatch.setattr(hd_mod, "_default_local_source", DodEvidenceLocalSource)
 
@@ -230,6 +248,24 @@ class World:
 
         monkeypatch.setattr(hd_mod, "_gh_json", no_gh)
         monkeypatch.setattr(hd_mod, "_gh_json_lines", check_runs)
+        # OMN-21146: a ``gh`` on PATH that fails on any call and records it,
+        # and the GitHub gateway answering from this world. Imported here so
+        # this module still imports at a commit without the gateway client.
+        stub_dir = self.root / "gh-stub"
+        stub_dir.mkdir(exist_ok=True)
+        stub = stub_dir / "gh"
+        stub.write_text(
+            f'#!/bin/sh\necho "$*" >> "{self.root / "gh-calls.log"}"\nexit 1\n'
+        )
+        stub.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{stub_dir}{os.pathsep}{os.environ['PATH']}")
+        if hasattr(hd_mod, "_default_gateway_client"):
+            from tests.unit.nodes.node_dod_verify.omn_21146_world_gateway import (
+                WorldGateway,
+            )
+
+            gateway = WorldGateway(self.check_runs, self.github_prs)
+            monkeypatch.setattr(hd_mod, "_default_gateway_client", lambda: gateway)
 
 
 def normalise(text: str | None, world: World) -> str:

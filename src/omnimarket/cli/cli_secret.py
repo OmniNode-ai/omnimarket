@@ -83,6 +83,7 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
     ModelLocalSecretResult,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    LOCAL_URL_PROVIDER,
     PROVIDERS,
     HandlerModelSetup,
     ModelSetupRefusedError,
@@ -1181,6 +1182,7 @@ _MODEL_LABELS: dict[str, str] = {
     "openai": "OpenAI",
     "anthropic": "Anthropic",
     "ollama": "Ollama",
+    "local": "Local URL",
 }
 _KEY_PAGES: dict[str, str] = {
     "gemini": "aistudio.google.com/apikey",
@@ -1191,6 +1193,10 @@ _KEY_PAGES: dict[str, str] = {
 _OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
     "Mac: run onboarding again with --provider ollama."
+)
+_LOCAL_HOW = (
+    "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "
+    "vLLM, MLX) with: onex models add local --url <base url> --model <name>"
 )
 
 
@@ -1223,10 +1229,12 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
         click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
     elif result.status == "failed":
         click.echo(f"{label} ✗ {result.reason}")
-        if result.provider != "ollama":
+        if result.provider != "ollama" and result.provider != LOCAL_URL_PROVIDER:
             click.echo(f"  Fix it, then run: onex models test {result.provider}")
     elif result.provider == "ollama":
         click.echo(f"{label} not set up. {_OLLAMA_HOW}")
+    elif result.provider == LOCAL_URL_PROVIDER:
+        click.echo(f"{label} not set up. {_LOCAL_HOW}")
     else:
         click.echo(
             f"{label} not set up. Add it with: onex models add {result.provider}"
@@ -1263,8 +1271,8 @@ models_group = click.Group(
     "models",
     help=(
         "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
-        "Anthropic, Ollama.\n\nSet up any combination; delegation chooses among "
-        "them for each task."
+        "Anthropic, Ollama, or a local model server by URL.\n\nSet up any "
+        "combination; delegation chooses among them for each task."
     ),
 )
 
@@ -1278,11 +1286,22 @@ models_group = click.Group(
     help=(
         "A model your key runs, checked against the provider's list for it; "
         "repeat it to choose several, first is tried first. For OpenRouter you "
-        "choose it: without --model a terminal is asked and a script is refused."
+        "choose it: without --model a terminal is asked and a script is refused. "
+        "For local, the one model the server runs."
+    ),
+)
+@click.option(
+    "--url",
+    default=None,
+    help=(
+        "local only: the base URL of a model server that speaks the "
+        "OpenAI-compatible API and needs no key, such as http://<host>:<port>."
     ),
 )
 @_model_json
-def add_model(provider: str, model_options: tuple[str, ...], as_json: bool) -> None:
+def add_model(
+    provider: str, model_options: tuple[str, ...], url: str | None, as_json: bool
+) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
     The key is read from stdin when piped, or asked for at a hidden prompt.
@@ -1290,9 +1309,35 @@ def add_model(provider: str, model_options: tuple[str, ...], as_json: bool) -> N
     as its ordered list. The test passes only when it answers on the first
     model stored for the key. Add models to a stored key later with
     ``onex models add-model``.
+
+    ``local`` asks for no key: ``--url`` names a model server that speaks the
+    OpenAI-compatible API and ``--model`` the model it runs. The URL must answer
+    before it is declared in the local routes, beside any routes already there.
     """
     name = provider.lower()
     handler = _model_handler()
+    if url is not None and name != "local":
+        raise click.ClickException(
+            "--url is for a local model server: onex models add local --url "
+            "<base url> --model <name>"
+        )
+    if name == "local":
+        if url is None or len(model_options) != 1:
+            raise click.ClickException(_LOCAL_HOW)
+        try:
+            added = handler.handle(
+                ModelModelSetupRequest(
+                    operation="add_local", url=url, models=model_options
+                )
+            )
+        except ModelSetupRefusedError as refusal:
+            raise click.ClickException(str(refusal)) from None
+        # The add ran its one pinned test delegation already.
+        (result,) = added.tests
+        _show_model_test(result, as_json)
+        if result.status != "passed":
+            sys.exit(1)
+        return
     if name == "ollama":
         if not handler.is_set_up("ollama"):
             raise click.ClickException(_OLLAMA_HOW)
@@ -1377,6 +1422,26 @@ def list_models(as_json: bool) -> None:
             )
 
 
+@models_group.command("default-model")
+@click.argument("provider", type=_model_choice)
+def default_model(provider: str) -> None:
+    """Print the model onboarding registers for PROVIDER, from the deployment overlay.
+
+    Onboarding reads it here instead of naming a model itself. Nothing is stored
+    and no key is read. To use another model afterwards, one command:
+
+        onex models add openrouter --model MODEL_ID
+    """
+    request = ModelModelSetupRequest(
+        operation="default_model", provider=cast(ModelProvider, provider.lower())
+    )
+    try:
+        result = _model_handler().handle(request)
+    except ModelSetupRefusedError as refusal:
+        raise click.ClickException(str(refusal)) from None
+    click.echo(result.models[0])
+
+
 def _edit_model_list(
     handler: HandlerModelSetup, request: ModelModelSetupRequest
 ) -> None:
@@ -1407,6 +1472,10 @@ def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
     name = provider.lower()
     if name == "ollama":
         raise click.ClickException(f"Ollama has no key to add models to. {_OLLAMA_HOW}")
+    if name == "local":
+        raise click.ClickException(
+            f"a local URL runs one model; to change it, add it again. {_LOCAL_HOW}"
+        )
     store = LocalByokCredentialStore()
     key = asyncio.run(store.get_secret(f"llm.{name}.api_key"))
     if key is None:
@@ -1472,6 +1541,13 @@ def remove_model(provider: str, model_options: tuple[str, ...]) -> None:
             f"Ollama's routes are in {handler.overrides_path()}; delete that file "
             "to stop using Ollama, and quit the Ollama app."
         )
+    if name == "local":
+        try:
+            handler.handle(ModelModelSetupRequest(operation="remove_local"))
+        except ModelSetupRefusedError as refusal:
+            raise click.ClickException(str(refusal)) from None
+        click.echo(f"Removed the local model URL from {handler.overrides_path()}")
+        return
     if not handler.is_set_up(cast(ModelProvider, name)):
         raise click.ClickException(f"no {_MODEL_LABELS[name]} key is stored.")
     delete_secret_value(f"llm.{name}.api_key")

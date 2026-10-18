@@ -12,6 +12,10 @@ OMN-20864: a pr-land item (the idle-slot fallback lab-fill selection plans on a 
 unowned-red PR) ranks after every other kind, so it takes only slots ordinary work leaves idle. It keeps
 the selection's order, takes the run's parent ticket when its PR names none, is deduplicated by PR only,
 and its lane is named for the PR.
+
+OMN-17427: a dod-verify item (a ticket lab-fill selection skipped because its implementation merged,
+taken for an idle slot) ranks after pr-land, is scoped by the kind it was enumerated as
+(``origin_kind``), carries no PR of its own, and its lane is ``lab-fill-verify-<ticket>-<tag>``.
 """
 
 from __future__ import annotations
@@ -33,11 +37,12 @@ from .helpers_js_value import get, has_word, has_word_stem, text_of, truthy, wor
 
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
 PR_LAND = "pr-land"
+DOD_VERIFY = "dod-verify"
 PR_KINDS = ("pr-red", "pr-stalled", PR_LAND)
 KINDS = ("pr-red", "pr-stalled", "defect", "ticket", *APPROVED_KINDS)
 # The kinds a plan dispatches. pr-land is not an enumerated source kind (the STATUS row's per-kind cells
 # iterate KINDS): lab-fill selection's idle-slot fallback produces it (OMN-20864).
-DISPATCH_KINDS = (*KINDS, PR_LAND)
+DISPATCH_KINDS = (*KINDS, PR_LAND, DOD_VERIFY)
 # Lower first: a red PR blocks a merge now, a stalled one blocks it soon, a defect
 # degrades every lane, a ticket is new work.
 KIND_PRIORITY = {
@@ -49,6 +54,7 @@ KIND_PRIORITY = {
     "partial-node": 4,
     "wiring": 4,
     PR_LAND: 5,
+    DOD_VERIFY: 6,
 }
 LANE = "lab-fill"
 # The dispatched lane's ROUTE line. The runner refuses a --model or --effort that
@@ -91,7 +97,20 @@ def _lane_name(candidate: object, tag: str) -> str:
         repo, _, number = _pr_key(candidate).partition("#")
         return f"{LANE}-land-{re.sub(r'[^a-z0-9_-]', '', repo)}-{number}-{tag}"
     ticket = re.sub(r"[^a-z0-9]", "", text_of(get(candidate, "ticket")).lower())
+    if get(candidate, "kind") == DOD_VERIFY:
+        return f"{LANE}-verify-{ticket}-{tag}"
     return f"{LANE}-{ticket}-{tag}"
+
+
+def dod_verify_item(candidate: dict[str, object], merged: str) -> dict[str, object]:
+    """The enumerated candidate as DoD-verify work on the PRs its implementation merged in."""
+    return {
+        **{k: v for k, v in candidate.items() if k not in ("pr", "head_ref", "host")},
+        "kind": DOD_VERIFY,
+        "origin_kind": candidate.get("kind"),
+        "self_contained_code": False,
+        "title": f"implementation merged in {merged}: {text_of(candidate.get('title'))}",
+    }
 
 
 def skip_reason(
@@ -104,6 +123,11 @@ def skip_reason(
     kind = c.get("kind")
     if kind not in DISPATCH_KINDS:
         return "unknown-kind"
+    if kind == DOD_VERIFY:
+        # Scoped, fenced and owned as the kind it was enumerated as.
+        kind = c.get("origin_kind")
+        if kind not in KINDS:
+            return "unknown-kind"
     ticket_raw = c.get("ticket")
     ticket = ticket_raw.strip() if isinstance(ticket_raw, str) else ""
     if _TICKET_RE.fullmatch(ticket) is None:
@@ -204,7 +228,7 @@ def _compare(x: dict[str, object], y: dict[str, object]) -> int:
         return by_kind
     if x["kind"] in APPROVED_KINDS and y["kind"] in APPROVED_KINDS:
         return 0
-    if x["kind"] == PR_LAND and y["kind"] == PR_LAND:
+    if x["kind"] == y["kind"] and x["kind"] in (PR_LAND, DOD_VERIFY):
         return 0
     by_ticket = _ticket_number(x["ticket"]) - _ticket_number(y["ticket"])
     if by_ticket:

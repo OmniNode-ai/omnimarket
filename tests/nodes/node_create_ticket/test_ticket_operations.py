@@ -15,6 +15,7 @@ import importlib
 import inspect
 import json
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,7 +34,7 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     locate_ticket_guard,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("lane_create_context")]
 
 _CONTRACT = (
     Path(__file__).resolve().parents[3]
@@ -63,6 +64,7 @@ class _RecordingLinearClient:
         team: str,
         parent: str | None,
         assignee_id: str | None,
+        label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         self.calls.append(
             {
@@ -225,9 +227,11 @@ def test_description_passes_through_unchanged() -> None:
         )
     )
     assert result.status == "created"
-    assert client.calls[0]["description"] == _BODY
-    assert result.description_body == _BODY
-    assert guard.inputs[0]["description"] == _BODY
+    # OMN-17942: the lane stamp is the first line; the caller's text follows unchanged
+    stamped = "stamped-by: lane-under-test\n\n" + _BODY
+    assert client.calls[0]["description"] == stamped
+    assert result.description_body == stamped
+    assert guard.inputs[0]["description"] == stamped
     assert "Definition of Done" not in str(client.calls[0]["description"])
 
 
@@ -242,9 +246,10 @@ def test_description_passes_through_unchanged_to_the_guard_payload() -> None:
     assert guard.inputs[0] == {
         "team": "Omninode",
         "title": "t",
-        "description": _BODY,
+        "description": "stamped-by: lane-under-test\n\n" + _BODY,
         "parentId": "OMN-17427",
         "state": "Backlog",
+        "labels": ["test-lane-label"],
     }
 
 

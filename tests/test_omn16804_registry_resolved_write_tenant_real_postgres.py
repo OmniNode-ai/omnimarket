@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -55,6 +55,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
     ModelProjectionTaskDelegatedEvent,
 )
+from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.tenant_isolation import _LEGACY_TENANT_UUID_MAP
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
@@ -226,10 +227,18 @@ class _SyncAsyncpgAdapter:
         }
     )
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, conn: asyncpg.Connection):
+    def __init__(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        conn: asyncpg.Connection,
+        *,
+        dsn: str,
+        schema: str,
+    ) -> None:
         self._loop = loop
         self._conn = conn
         self._temporal_columns: dict[str, frozenset[str]] = {}
+        self._derived_adapter = PostgresSyncProjectionAdapter(dsn, schema=schema)
 
     def _temporal_for(self, table: str) -> frozenset[str]:
         if table not in self._temporal_columns:
@@ -277,6 +286,9 @@ class _SyncAsyncpgAdapter:
         insert_only_columns: frozenset[str] = frozenset(),
         sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
         returning: Sequence[str] = (),
+        derive: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        input_columns: Sequence[str] = (),
+        derived_columns: Sequence[str] = (),
     ) -> list[dict[str, Any]]:
         """OMN-18159. The attested write, over the same real connection.
 
@@ -293,6 +305,21 @@ class _SyncAsyncpgAdapter:
         That is a property of the fixture and is why the RLS-sensitive proofs
         live in the tenant-isolation suites instead.
         """
+        if derive is not None or input_columns or derived_columns:
+            # Exercise the production transaction/callback on the same owned
+            # schema, rather than model derived writes in this legacy bridge.
+            return self._derived_adapter.upsert_returning(
+                table,
+                conflict_key,
+                row,
+                tenant=tenant,
+                insert_only_columns=insert_only_columns,
+                sql_expression_columns=sql_expression_columns,
+                returning=returning,
+                derive=derive,
+                input_columns=input_columns,
+                derived_columns=derived_columns,
+            )
         plan = build_upsert_plan(
             table=table,
             conflict_key=conflict_key,
@@ -390,7 +417,7 @@ def real_pg_adapter():
                 )
             loop.run_until_complete(conn.execute(_MIRROR_DDL))
             loop.run_until_complete(conn.execute(_CONVERT_TENANT_ID_TO_UUID))
-            yield _SyncAsyncpgAdapter(loop, conn)
+            yield _SyncAsyncpgAdapter(loop, conn, dsn=dsn, schema=schema)
         finally:
             loop.run_until_complete(
                 conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
@@ -398,6 +425,66 @@ def real_pg_adapter():
             loop.run_until_complete(conn.close())
     finally:
         loop.close()
+
+
+@pytest.mark.integration
+def test_legacy_and_derived_writes_are_visible_on_the_original_connection(
+    real_pg_adapter: _SyncAsyncpgAdapter,
+) -> None:
+    """The two drivers share committed storage, not just a schema name.
+
+    Use a derived model label, not a fabricated monetary result. The legacy
+    write supplies its input; the production derived write preserves that
+    input on conflict and returns its new label after commit. Read both back
+    through the original asyncpg connection, then write through it again.
+    """
+    correlation_id = str(uuid4())
+    common: dict[str, object] = {
+        "correlation_id": correlation_id,
+        "tenant_id": str(FRESH_TENANT_UUID),
+        "task_type": "connection-visibility",
+        "timestamp": datetime.fromisoformat("2026-10-14T12:00:00+00:00"),
+    }
+    assert real_pg_adapter.upsert(
+        TABLE,
+        "correlation_id",
+        {**common, "delegated_to": "legacy-backend", "model_name": "legacy-label"},
+    )
+
+    def derive_label(stored: Mapping[str, object]) -> Mapping[str, object]:
+        assert stored["delegated_to"] == "legacy-backend"
+        return {"model_name": stored["delegated_to"]}
+
+    returned = real_pg_adapter.upsert_returning(
+        TABLE,
+        "correlation_id",
+        {**common, "delegated_to": ""},
+        insert_only_columns=frozenset({"delegated_to"}),
+        returning=("correlation_id", "delegated_to", "model_name"),
+        derive=derive_label,
+        input_columns=("delegated_to",),
+        derived_columns=("model_name",),
+    )
+    stored = real_pg_adapter.query(TABLE, {"correlation_id": correlation_id})
+    assert len(stored) == 1
+    assert returned == [
+        {
+            key: stored[0][key]
+            for key in ("correlation_id", "delegated_to", "model_name")
+        }
+    ]
+    assert stored[0]["model_name"] == "legacy-backend"
+    assert real_pg_adapter.upsert(
+        TABLE,
+        "correlation_id",
+        {**common, "delegated_to": "legacy-backend", "model_name": "legacy-after"},
+    )
+    assert (
+        real_pg_adapter.query(TABLE, {"correlation_id": correlation_id})[0][
+            "model_name"
+        ]
+        == "legacy-after"
+    )
 
 
 @pytest.mark.integration

@@ -15,7 +15,7 @@
 # in Python or YAML is prohibited — use this registry as the single source.
 
 schema_version: "1.0.0"
-model_registry_version: "1.4.0"
+model_registry_version: "1.5.0"
 pricing_manifest_version: "2026-06-11-gemini-25-flash-lite"
 observed_at: "2026-06-11T00:00:00Z"
 
@@ -130,6 +130,27 @@ models:
       names the model the backend serves (nvidia nemotron-3-ultra); an earlier
       id that named a different model is mapped by formerly_model_ids below.
       model_id must stay byte-identical to the bifrost backend_id.
+
+  openrouter-onboarding-default:
+    model_id: "openrouter-onboarding-default"
+    provider: "openrouter"
+    endpoint_env: "OPENROUTER_URL"
+    model_name: "qwen/qwen3.8-27b"
+    requires_api_key_env: "OPENROUTER_API_KEY"
+    context_window: 1000000
+    pricing_per_1m_input: "0.24"
+    pricing_per_1m_output: "2.20"
+    cost_basis: "cloud_api_cost"
+    observed_at: "2026-10-16T00:00:00Z"
+    source: "openrouter catalog"
+    notes: >
+      The model onboarding registers on a developer's own OpenRouter key when
+      neither ONEX_OPENROUTER_DEFAULT_MODEL nor a node_model_setup_effect overlay
+      names one, so a first run needs no private overlay. It is the customer's
+      model on the customer's key, not a delegation rung: no bifrost backend
+      routes to it by this id. Read from the live OpenRouter catalog on
+      2026-10-16 (GET /api/v1/models): qwen/qwen3.8-27b, context_length
+      1000000, prompt 0.00000024 and completion 0.0000022 USD per token.
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"

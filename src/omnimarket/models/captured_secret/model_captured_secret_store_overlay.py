@@ -33,6 +33,9 @@ class ModelCapturedSecretStoreOverlay(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
+    #: Which store adapter node_secret_store_effect uses for this namespace.
+    #: The writer requires it; the reader does not read it yet.
+    provider: str | None = Field(default=None, min_length=1)
     infisical_addr: str = Field(min_length=1, pattern=r"^https?://")
     project_id: uuid.UUID
     environment_slug: str = Field(min_length=1)
