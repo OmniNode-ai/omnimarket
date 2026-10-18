@@ -157,6 +157,13 @@ PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
 
+DEPLOY_DRIFT_FIX = (
+    "the host's lab daemon sync (python -m omnimarket.nodes.node_lab_daemon_sync_effect) installs "
+    "main through the daemon's own installer every tick; read its alarm and fix lane in "
+    "~/.local/state/omni/lab-daemon-sync/<host>.json on that host, and never install a branch by hand"
+)
+
+
 def parse_stamp(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
@@ -1260,6 +1267,36 @@ def check_venv_divergence(
             )
 
 
+def check_deploy_drift(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A lab daemon lagging its source tip past the bound is MISSING `deploy-drift:<daemon>@<host>`;
+    a younger lag, or one an unexpired branch install holds, is a NOTE (OMN-19998)."""
+    rep.checked.append("deploy-drift")
+    bound = request.deploy_drift_max_hours
+    for drift in sorted(
+        request.deploy_drifts or [], key=lambda d: (d.lagging_since, d.daemon, d.host)
+    ):
+        loop = f"deploy-drift:{drift.daemon}@{drift.host}"
+        hours = max(
+            0.0, (now - parse_stamp(drift.lagging_since)).total_seconds() / 3600
+        )
+        installed = (drift.installed_revision or "unreadable")[:8]
+        source = (drift.source_revision or "unreadable")[:8]
+        why = (
+            f"installed {installed} lags source {source} since {drift.lagging_since} "
+            f"({round(hours, 1):g}h, {'>' if hours > bound else '<='} {bound:g}h)"
+            + (f"; blocker: {drift.blocker}" if drift.blocker else "")
+        )
+        held = drift.branch_until is not None and parse_stamp(drift.branch_until) > now
+        if held:
+            rep.note(f"{loop} | {why}; branch install held until {drift.branch_until}")
+        elif hours > bound:
+            rep.miss(loop, why, DEPLOY_DRIFT_FIX)
+        else:
+            rep.note(f"{loop} | {why}")
+
+
 def _pr_short(text: object) -> str:
     """`Owner/repo#n` or `repo#n` to `repo#n`."""
     return str(text).rsplit("/", 1)[-1]
@@ -1517,6 +1554,8 @@ class HandlerThroughputTickDecision:
             check_unplaced_lanes(rep, request, now)
         if request.venv_divergences is not None:
             check_venv_divergence(rep, request, now)
+        if request.deploy_drifts is not None:
+            check_deploy_drift(rep, request, now)
         repo_status = (
             check_repo_status(rep, request, request.repo_status, covers, ticks, now)
             if request.repo_status is not None

@@ -91,7 +91,7 @@ def _deploy_gate_module() -> ModuleType | None:
     return module
 
 
-def _admissibility_module() -> ModuleType | None:
+def _admissibility_module() -> ModuleType:
     return _load_occ_module(
         "src/onex_change_control/validation/evidence_admissibility.py",
         "evidence_admissibility_omn_16160",
@@ -144,8 +144,6 @@ class TestLegacyShapeIsRejectedByBothLiveGates:
     )
     def test_rejected_by_occ_admissibility(self, name: str) -> None:
         module = _admissibility_module()
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         verdict = module.classify_evidence(
             _LEGACY_FUNCS[name](),
             admissible_probes=module.LIVE_PROBE_COMMANDS
@@ -184,8 +182,6 @@ class TestDeployAssessmentDefaultClearsBothLiveGates:
         change did not cost it (a fix that traded one gate for the other would
         be no fix at all)."""
         module = _admissibility_module()
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         verdict = module.classify_evidence(
             deploy_assessment_check_value(pr_number=_PR, repo=_REPO),
             admissible_probes=module.LIVE_PROBE_COMMANDS
@@ -243,8 +239,6 @@ class TestContentBoundOverrideIsAdmissibleUnderBothLiveGates:
     @pytest.mark.parametrize("name", sorted(_OVERRIDE_FUNCS))
     def test_admitted_by_occ_admissibility(self, name: str) -> None:
         module = _admissibility_module()
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         verdict = module.classify_evidence(
             _OVERRIDE_FUNCS[name](_CONTENT_BOUND),
             admissible_probes=module.LIVE_PROBE_COMMANDS
@@ -315,8 +309,6 @@ class TestSelfBindCheckValueDocumentedDecision:
     def test_self_bind_shape_is_still_rejected_by_occ_admissibility(self) -> None:
         """Documents the known, accepted gap -- not a regression."""
         module = _admissibility_module()
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         value = self_bind_check_value(
             occ_pr_number=6645, occ_repo="OmniNode-ai/onex_change_control"
         )
@@ -334,8 +326,6 @@ class TestSelfBindCheckValueDocumentedDecision:
         admissible, so a contract is never blocked by self-bind's shape alone.
         """
         module = _admissibility_module()
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         verdict = module.classify_evidence(
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
             admissible_probes=module.LIVE_PROBE_COMMANDS
@@ -565,8 +555,6 @@ class TestDiffScopeCheckValueClearsBothLiveGates:
 
     def test_admitted_by_occ_admissibility(self) -> None:
         module = _admissibility_module()
-        if module is None:
-            pytest.skip("onex_change_control checkout not available")
         verdict = module.classify_evidence(
             _DIFF_SCOPE,
             admissible_probes=module.LIVE_PROBE_COMMANDS

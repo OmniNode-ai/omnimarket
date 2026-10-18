@@ -90,6 +90,8 @@ inputs:
   unplaced_lane_alarm_minutes: {type: int, required: false, description: "A dispatched lane with no placement receipt for longer than this is an ALARM (default 10)."}
   venv_divergences: {type: list, required: false, description: "Cross-host dispatch-venv divergences with the stamp each was first read; omitted skips the venv-divergence finding."}
   venv_divergence_alarm_minutes: {type: int, required: false, description: "A divergence older than this is an ALARM, a younger one a NOTE (default 30)."}
+  deploy_drifts: {type: list, required: false, description: "Lab daemon drift rows node_lab_daemon_sync_effect wrote per host (OMN-19998); omitted skips the deploy-drift finding."}
+  deploy_drift_max_hours: {type: float, required: false, description: "A daemon lagging its source tip longer than this is MISSING deploy-drift:<daemon>@<host>, a younger lag a NOTE (default 2)."}
   repo_status: {type: object, required: false, description: "OMN-19998: window_minutes and the open status-check units; every repository with open non-draft PRs and no merge in the window gets one typed verdict; omitted skips the check."}
 outputs:
   lines: {type: list}

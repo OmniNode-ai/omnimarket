@@ -86,7 +86,6 @@ REGISTRY_REPOS: tuple[str, ...] = (
     "OmniNode-ai/omniintelligence",
     "OmniNode-ai/omnimemory",
     "OmniNode-ai/omnidash",
-    "OmniNode-ai/onex_change_control",
     "OmniNode-ai/omninode_infra",
     "OmniNode-ai/knowledge-base-internal",
     "OmniNode-ai/omniclaude-internal",

@@ -61,6 +61,12 @@ ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-update
 # GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
 PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
 
+# Repository merge event (OMN-20496). Published by `clone-refresh publish`, which the
+# landing controller runs after its merge readback and the PR watcher runs for a merge
+# it observed and did not make; consumed by node_canonical_clone_refresh_effect and,
+# as a second source of pr_merged_events (OMN-19998), by node_pr_merged_projection.
+REPO_MERGED_TOPIC_V1 = "onex.evt.omnimarket.repo-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics and node_canonical_clone_refresh_effect runtime_dispatch (OMN-19998)
+
 # Merge-flow state-transition telemetry (OMN-14648 / WS6). Emitted per PR state
 # transition through the merge flow; consumed by node_merge_state_projection,
 # which materializes the merge_state_transitions projection so the merge-flow

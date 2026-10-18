@@ -20,6 +20,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The migration proof passes at the head against a real Postgres and fails at the merge base, where the migration files do not exist."
     command: "uv run pytest tests/test_omn19988_local_environment_migrations_real_postgres.py -q --refuse-skips"
+  - kind: "tests"
+    description: "Ownership half only; the cursor sequence is declared once, with its domain and owner."
+    command: "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -40,3 +43,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19988_local_environment_migrations_real_postgres.py -q --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19988-ac1-cursor-sequence-ownership"
+    description: "Ownership half only. The cursor sequence is declared exactly once, in the tenant domain, owned by the projection migration runner. It does not prove the verdicts, the store or the panel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

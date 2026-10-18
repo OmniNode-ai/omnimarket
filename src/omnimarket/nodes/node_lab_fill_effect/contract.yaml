@@ -33,7 +33,11 @@ description: >
   Reads the lab pool, the ownership sources and the runner receipts for a lab-fill
   run, launches decided lanes through the remote-lane runner inside their share of
   the dispatch window, and appends the run's STATUS row to the rolling ledger over
-  the bus append. Decides nothing about which work runs where.
+  the bus append. Decides nothing about which work runs where, except in
+  run_lab_fill_tick, which fills a fire's free slots from the approved-work list in
+  priority order with no model in the loop, names every lane it did not place, parks a
+  ticket the brief check refused twice, and dispatches one deduplicated diagnose lane
+  when free slots go unplaced for two ticks running.
 input_model:
   name: "ModelLabFillProbeRequest"
   module: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect"
@@ -86,6 +90,16 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_status"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillStatusWriteResult"
+    # OMN-17427: the whole fill as one operation with no model in the loop. Headroom
+    # slots and the approved-work list in; ownership read once, each lane launched
+    # through launch_lab_fill_lane's handler (which re-reads the Linear assignee and
+    # state directly); the result names what went where and why the rest did not.
+    - operation: "run_lab_fill_tick"
+      handler:
+        name: "HandlerLabFillTick"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_tick"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick.ModelLabFillTickRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick.ModelLabFillTickResult"
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -100,6 +114,9 @@ published_events:
   - event_type: ModelLabFillStatusWriteResult
     topic: onex.evt.omnimarket.lab-fill-effect-completed.v1
     description: "The outcome of one lab-fill effect operation, answered whatever happened."
+  - event_type: ModelLabFillTickResult
+    topic: onex.evt.omnimarket.lab-fill-effect-completed.v1
+    description: "One lab-fill tick: the lanes dispatched with host and receipt, each skipped row with its reason, the rows never tried and why the tick stopped, every lane made and not placed with its reason (refusals, refusals_cell), the tickets parked after a second brief-check refusal, and the zero-placement alarm (idle streak and the diagnose lane's dispatch) when free slots went unplaced."
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-fill-effect-completed.v1
   - onex.evt.omnimarket.lab-fill-effect-failed.v1
@@ -115,3 +132,4 @@ metadata:
     - "OMN-20668"
   related_tickets:
     - "OMN-20668"
+    - "OMN-17427"

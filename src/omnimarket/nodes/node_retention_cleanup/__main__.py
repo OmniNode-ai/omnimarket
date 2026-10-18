@@ -4,6 +4,9 @@
 
 Usage:
     python -m omnimarket.nodes.node_retention_cleanup [--dry-run] [--db-url URL]
+        [--files [--only NAME ...] [--archive-root DIR]]
+
+``--files`` also retires the contract's file_retention paths on this host.
 
 Outputs JSON to stdout: RetentionCleanupResult model.
 """
@@ -38,10 +41,33 @@ def main() -> None:
         default="",
         help="PostgreSQL connection URL (default: OMNIDASH_ANALYTICS_DB_URL env var)",
     )
+    parser.add_argument(
+        "--files",
+        action="store_true",
+        default=False,
+        help="Also retire the contract's file_retention paths on this host",
+    )
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        default=[],
+        help="With --files, run only these file entries (by name)",
+    )
+    parser.add_argument(
+        "--archive-root",
+        default="",
+        help="Archive tree for archive entries (default: the contract's archive_root_env)",
+    )
     args = parser.parse_args()
 
     db_url = args.db_url or os.environ.get("OMNIDASH_ANALYTICS_DB_URL", "")
-    request = RetentionCleanupRequest(dry_run=args.dry_run, db_url=db_url)
+    request = RetentionCleanupRequest(
+        dry_run=args.dry_run,
+        db_url=db_url,
+        include_files=args.files,
+        file_only=tuple(args.only),
+        file_archive_root=args.archive_root,
+    )
 
     handler = NodeRetentionCleanup()
     result = handler.handle(request)

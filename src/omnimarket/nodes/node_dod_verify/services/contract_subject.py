@@ -97,13 +97,11 @@ def resolve_contract_subject(path: Path) -> ModelDodContractSubject:
             return unbound.model_copy(
                 update={"repository": repository, "repo_path": relpath}
             )
-        source = (
-            EnumDodContractSource.ONEX_CHANGE_CONTROL
-            if repository.split("/", 1)[1] == "onex_change_control"
-            else EnumDodContractSource.PRODUCT_REPOSITORY
-        )
         return ModelDodContractSubject(
-            source=source, repository=repository, commit_sha=sha, repo_path=relpath
+            source=EnumDodContractSource.PRODUCT_REPOSITORY,
+            repository=repository,
+            commit_sha=sha,
+            repo_path=relpath,
         )
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
         return unbound
