@@ -376,12 +376,20 @@ requirements:
     acceptance:
       - id: "AC69"
         statement: "AC69: the fold counts wrong and not_applicable as noise, computes one-round pass share, five-or-more-round share and mean rounds to pass per repo, returns exactly one class-fix request for a class on three distinct PRs inside the window and none for two PRs, many findings on one PR or answers older than the window, and a worker result accepts finding_dispositions -- falsifier: uv run pytest tests/test_golden_chain_node_review_finding_disposition_compute.py -q fails at the merge base"
+  - id: "req-claude-account-token-pool"
+    statement: "Each host keeps a local secret-store entry per Claude account, resolves the first usable token in account order, marks a usage limit on that account and reports token-free pool status."
+    acceptance:
+      - id: "AC71"
+        statement: "AC71: the token-pool CLI and contract handler add accounts from stdin, rotate to the next account after a usage limit, resolve nothing and report ALARM when all accounts are limited, reuse an account after reset and keep token values out of status, metadata and refusal output -- falsifier: the focused token-pool unit or golden-chain test file fails"
   - id: "req-publisher-fixture-one-copy"
     statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
     acceptance:
       - id: "AC70"
         statement: "AC70: omnimarket's publisher fixture builds the omnibase_infra PublisherContractCorpus over omnimarket's contracts, every topic omnimarket's contract topic graph parser reads as published is resolved by it, a topic nothing publishes is still refused, and the omnimarket module imports no contract parser -- falsifier: uv run pytest tests/validators/test_publisher_fixture_one_copy_omn17427.py -q fails when the module carries its own index"
 evidence_requirements:
+  - kind: "tests"
+    description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
+    command: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
   - kind: "tests"
     description: "AC64: the core pin compatibility tests cover both dependency floors and the recorded incident's positive and negative controls."
     command: "uv run pytest tests/ci/test_core_pin_compat_omn17427.py -q"
@@ -522,6 +530,46 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-claude-token-pool-unit"
+    description: "Account rotation, reset, all-limited alarm, secret-free metadata and CLI refusal paths run against a temporary local secret store. The test file and node are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-claude-token-pool-golden-chain"
+    description: "The CLI walks add, resolve, mark-limited, all-limited and reset through the contract-declared handler with fake tokens. The test file and node are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC71"]
+  - id: "dod-omn17427-claude-token-pool-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's token-pool contract, handler and CLI using git and Python's standard library. The merge base has no node. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          import subprocess
+
+          root = "src/omnimarket/nodes/node_claude_token_pool_effect/"
+          def committed(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + root + path], text=True)
+
+          contract = committed("contract.yaml")
+          assert "class: HandlerClaudeTokenPool" in contract
+          assert "input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolRequest" in contract
+          handler = ast.parse(committed("handlers/handler_claude_token_pool.py"))
+          pool = next(node for node in handler.body if isinstance(node, ast.ClassDef) and node.name == "HandlerClaudeTokenPool")
+          assert {"handle", "_add", "_resolve", "_mark"} <= {node.name for node in pool.body if isinstance(node, ast.FunctionDef)}
+          cli = ast.parse(committed("__main__.py"))
+          assert {"main", "_pasted"} <= {node.name for node in cli.body if isinstance(node, ast.FunctionDef)}
+          print("Claude token pool artifact probe: PASS")
+          PY
   - id: "dod-omn17427-ac65-ci-red-watcher-facts-only"
     description: "The default runtime handler and compatibility reader retain watcher facts and withhold incomplete observations without raw GitHub subprocesses."
     source: "manual"
