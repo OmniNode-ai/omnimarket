@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeCodexHookRegistrationEffect (OMN-18759)
+#
+# Merges the shipped Codex hook registration into the user hooks file,
+# preserving existing hooks and backing up the original before applying.
+
+name: node_codex_hook_registration_effect
+version: "1.0.0"
+contract_name: node_codex_hook_registration_effect
+node_name: node_codex_hook_registration_effect
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: EFFECT_GENERIC
+
+description: >
+  Merges missing shipped Codex hook commands into the user hooks file.
+  Dry runs report the commands to add; applying backs up any existing file
+  and atomically replaces it while preserving existing hook groups.
+
+input_model:
+  name: ModelCodexHookRegistrationRequest
+  module: omnimarket.nodes.node_codex_hook_registration_effect.models
+
+output_model:
+  name: ModelCodexHookRegistrationResult
+  module: omnimarket.nodes.node_codex_hook_registration_effect.models
+
+handler:
+  module: omnimarket.nodes.node_codex_hook_registration_effect.handlers.handler_codex_hook_registration
+  class: HandlerCodexHookRegistration
+  input_model: omnimarket.nodes.node_codex_hook_registration_effect.models.ModelCodexHookRegistrationRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCodexHookRegistration
+        module: omnimarket.nodes.node_codex_hook_registration_effect.handlers.handler_codex_hook_registration
+      event_model:
+        name: ModelCodexHookRegistrationRequest
+        module: omnimarket.nodes.node_codex_hook_registration_effect.models
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+capabilities:
+  - name: hook.codex.registration_apply
+    description: Merge missing shipped hook commands into a Codex user hooks file
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.codex-hook-registration.v1
+  publish_topics:
+    - onex.evt.omnimarket.codex-hook-registration-applied.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.codex-hook-registration.v1
+  terminal_events:
+    success: onex.evt.omnimarket.codex-hook-registration-applied.v1
+
+terminal_event: onex.evt.omnimarket.codex-hook-registration-applied.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-18759
+  maturity: alpha
+  tags:
+    - effect
+    - hooks
+    - codex
