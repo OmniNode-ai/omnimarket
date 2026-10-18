@@ -61,6 +61,10 @@ from omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate import
     DoneWriteReceiptRefusedError,
     enforce_done_write_receipt,
 )
+from omnimarket.nodes.node_linear_triage.services.local_github_pr_reads import (
+    LocalGitHubPrReads,
+    LocalGitHubStateError,
+)
 
 # Known OmniNode repos used for PR lookup
 KNOWN_REPOS = [
@@ -1320,10 +1324,15 @@ class HandlerLinearTriage:
         return LinearHttpClient(await self._resolve_credential("LINEAR_API_KEY", store))
 
     async def _get_github_client(
-        self, store: ProtocolSecretStore | None = None
+        self,
+        store: ProtocolSecretStore | None = None,
+        *,
+        github_source: str = "api",
     ) -> GitHubClientProtocol:
         if self._github_client is not None:
             return self._github_client
+        if github_source == "local":
+            return LocalGitHubPrReads()
         return GitHubHttpClient(await self._resolve_credential("GITHUB_TOKEN", store))
 
     def _get_occ_receipt_probe(self) -> OccReceiptProbe:
@@ -1390,7 +1399,16 @@ class HandlerLinearTriage:
                 else None
             )
             client = await self._get_client(store)
-            gh = await self._get_github_client(store)
+            gh = await self._get_github_client(
+                store, github_source=request.github_source
+            )
+        except LocalGitHubStateError as exc:
+            return ModelLinearTriageResult(
+                status="error",
+                dry_run=request.dry_run,
+                flag_only=request.flag_only,
+                validation_errors=[str(exc)],
+            )
         except SecretResolutionError as exc:
             return ModelLinearTriageResult(
                 status="error",

@@ -535,6 +535,12 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # OMN-17427 (operator ruling 2026-10-08T23:48:01Z): lab models first for
+      # appropriate tasks. Refuses a class routed to a cloud model first (tier
+      # order, entry share or model pin) unless the task-class contract records a
+      # measurement below the bar for it. SYNC with pre-commit hook 'lab-first-routing'.
+      - name: Lab-first routing gate (OMN-17427)
+        run: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -n 0 -p no:randomly --no-cov
       # OMN-17104: SYNC with pre-commit hook 'delegation-wire-public-models'.
       - name: Delegation public models match loader and inference contract
         run: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
