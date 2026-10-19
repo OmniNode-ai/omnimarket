@@ -63,3 +63,10 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_omn_19528_merged_pr_merge_sha_fallback.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-merged-pr-merge-commit-deploy-ac3"
+    description: "The deployed gateway source at the fix commit carries the GraphQL merge-commit fallback in read_merged_pr."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/read_operations.py?ref=dc0435518376c09f333ad589b173bc890b30ab91 --jq .content | base64 -d | grep -c 'if merged and not isinstance(merge_sha, str):'"
+    binds_ac: ["AC3"]
