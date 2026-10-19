@@ -440,6 +440,74 @@ def test_an_unchanged_ticket_is_released_at_its_terminal_cooldown(outcome: str) 
     assert decision.detail == f"cooldown-elapsed:{outcome}:lab-fill-omn5-10070400"
 
 
+def _two_blocked_lanes() -> tuple[str, ...]:
+    return _lab_fill(5, "2026-10-06T04:00", "partial", "10060400") + _lab_fill(
+        5, "2026-10-06T22:00", "blocked", "10062200"
+    )
+
+
+@pytest.mark.parametrize("now", ["2026-10-07T05:00:00Z", "2026-10-09T06:00:00Z"])
+def test_a_ticket_two_lanes_left_unchanged_is_not_released_by_the_cooldown(
+    now: str,
+) -> None:
+    """OMN-17427: OMN-18931 took 14 partial lanes, OMN-20035 and OMN-20117 six each, because the
+    cooldown re-opened a ticket nothing had changed. Two same-outcome lanes in a row end that."""
+    rows = _two_blocked_lanes()
+    first = _select(
+        (_candidate("OMN-5", ticket_updated_at="2026-10-05T00:00:00Z"),), rows
+    )
+    decision = _select(
+        (_candidate("OMN-5", ticket_updated_at="2026-10-05T00:00:00Z"),),
+        rows,
+        now=now,
+        baselines=first.baselines,
+    ).decisions[0]
+    assert decision.reason is EnumLabFillSkipReason.UNCHANGED_INPUT
+    assert decision.caller_reason == "unchanged-input:blocked:repeated:2"
+
+
+def test_a_repeated_unchanged_ticket_is_released_when_the_ticket_is_updated() -> None:
+    """OMN-17427: the hold is on the input; an update read against the baseline releases it."""
+    rows = _two_blocked_lanes()
+    first = _select(
+        (_candidate("OMN-5", ticket_updated_at="2026-10-05T00:00:00Z"),), rows
+    )
+    decision = _select(
+        (_candidate("OMN-5", ticket_updated_at="2026-10-08T01:00:00Z"),),
+        rows,
+        now="2026-10-09T06:00:00Z",
+        baselines=first.baselines,
+    ).decisions[0]
+    assert decision.reason is None
+    assert decision.detail == "input-changed:ticket_updated_at"
+
+
+def test_a_done_lane_between_two_blocked_ones_restarts_the_repeat_count() -> None:
+    """OMN-17427: only consecutive same-outcome lanes count; progress resets the count."""
+    rows = (
+        _lab_fill(5, "2026-10-04T04:00", "blocked", "10040400")
+        + _lab_fill(5, "2026-10-05T04:00", "done", "10050400")
+        + _lab_fill(5, "2026-10-06T04:00", "blocked", "10060400")
+    )
+    decision = _select(
+        (_candidate("OMN-5", ticket_updated_at="2026-10-03T00:00:00Z"),),
+        rows,
+        now="2026-10-09T06:00:00Z",
+    ).decisions[0]
+    assert decision.reason is None
+    assert decision.detail.startswith("cooldown-elapsed:blocked")
+
+
+def test_the_repeat_limit_is_the_request_s() -> None:
+    decision = _select(
+        (_candidate("OMN-5", ticket_updated_at="2026-10-03T00:00:00Z"),),
+        _two_blocked_lanes(),
+        now="2026-10-09T06:00:00Z",
+        repeat_limit=3,
+    ).decisions[0]
+    assert decision.reason is None
+
+
 def test_a_longer_cooldown_keeps_the_blocked_ticket_held() -> None:
     """OMN-17427: the request controls the cooldown duration."""
     rows = _lab_fill(5, "2026-10-07T04:00", "blocked", "10070400")

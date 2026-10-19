@@ -424,6 +424,11 @@ requirements:
     acceptance:
       - id: "AC78"
         statement: "AC78: the review class declares lab_rubric verdict fail with its 25 of 60 measurement for Qwen3.8-27B, the recorded verdict is the one that measurement earns against the policy bar, and the shipped contracts still pass the lab-first routing check -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov -k review_measurement fails while the class reads unmeasured"
+  - id: "req-lab-fill-repeat-limit"
+    statement: "Lab-fill stops re-dispatching a ticket whose last repeat_limit lanes all ended blocked, partial or no-op: the cooldown no longer releases it, and only a change to the ticket or its pull requests does, for ordinary tickets and for DoD-verify lanes alike."
+    acceptance:
+      - id: "AC76"
+        statement: "AC76: a ticket two of whose consecutive lab-fill lanes ended blocked or partial stays held under unchanged-input with the repeated count in its caller reason long after the six-hour cooldown, is released by a ticket update read against the baseline, and is taken as a DoD-verify lane only after the ticket is updated; one unchanged lane is still retried after the cooldown and a done lane between two resets the count -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -k 'repeat or unchanged' -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1547,3 +1552,18 @@ dod_evidence:
           print("review lab rubric deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac76-lab-fill-repeat-limit"
+    description: "The lab-fill repeat-limit hold passes for ordinary tickets and DoD-verify lanes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -k 'repeat or unchanged' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC76"]
+  - id: "dod-omn17427-lab-fill-repeat-limit-deploy-probe"
+    description: "Deploy probe. GitHub serves the lab-fill selection handler at the checked-out HEAD with the repeat count. It fails at the merge base, which has no repeat count, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_selection_compute/handlers/handler_lab_fill_selection.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_repeat_count", "repeat_limit", "_updated_after")); print("lab-fill repeat-limit deploy probe: PASS")'
