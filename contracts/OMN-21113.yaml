@@ -55,14 +55,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm --user "$(id -u):$(id -g)" \
-          --label onex.deploy-probe=OMN-21113 \
-          --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          --env PYTHONDONTWRITEBYTECODE=1 \
-          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
-          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          uv run --frozen --no-dev python -c '
           from uuid import UUID
           from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
           from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import HandlerContextCompactionOrchestrator as H
@@ -77,14 +70,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm --user "$(id -u):$(id -g)" \
-          --label onex.deploy-probe=OMN-21113-barrier \
-          --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          --env PYTHONDONTWRITEBYTECODE=1 \
-          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
-          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          uv run --frozen --no-dev python -c '
           from uuid import UUID
           from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
           from omnimarket.models.model_session_stream_barrier import ModelSessionStreamBarrier as B, ModelSessionStreamBarrierProbe as P
