@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18389"
+title: "The delegation projection does not dead-letter the runtime's boundary failure terminal"
+summary: >-
+  A delegate-skill command refused at the runtime boundary is answered with a boundary failure terminal on the delegate-skill-failed topic. The delegation projection treated it as a malformed delegation terminal (task_type missing) and wrote it to the projection-delegation-malformed sink. The projection recognises the terminal by the payload_type the emitter stamps on the wire envelope, skips it and advances the offset; a delegation terminal missing task_type is still dead-lettered and no field of the terminal model is relaxed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-boundary-terminal-not-malformed"
+    statement: "The delegation projection does not dead-letter the runtime's boundary failure terminal and still dead-letters a genuinely malformed delegation terminal."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a delegate-skill-failed delivery whose wire envelope payload_type is ModelBoundaryFailureTerminal is neither written to the malformed sink nor to the database, and the offset advances -- falsifier: uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q -n 0 -k boundary_terminal_is_not_dead_lettered"
+      - id: "AC2"
+        statement: "AC2: the same payload without that payload_type, or with another one, is still routed to the malformed sink naming task_type, while the boundary terminal is skipped -- falsifier: uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Boundary failure terminal handling in the delegation projection for OMN-18389."
+    command: "uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18389-ac1-boundary-terminal-skipped"
+    description: "A boundary failure terminal on the delegate-skill-failed topic reaches neither the malformed sink nor the database; the offset advances. The test fails on the parent commit with the sink written once."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q -n 0 -k boundary_terminal_is_not_dead_lettered"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18389-ac2-malformed-still-dead-lettered"
+    description: "The boundary terminal is skipped while the payload with no payload_type and with a different payload_type is still dead-lettered. Run the boundary regression together with both negative controls so this distinction fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn18389-deploy-probe"
+    description: "Deploy probe: the envelope helper read from GitHub at the checked-out commit defines the boundary failure terminal check. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/envelope.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def is_boundary_failure_terminal'"
+        cwd: "${OMNI_HOME}/omnimarket"
