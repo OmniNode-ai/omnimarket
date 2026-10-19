@@ -1,0 +1,79 @@
+TLC2 Version 2026.10.13.164326 (rev: 210df3a)
+Running breadth-first search Model-Checking with fp 84 and seed -6594065073336790482 with 8 workers on 4 cores with 3641MB heap and 64MB offheap memory [pid: 597701] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 25.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file AgentCallAdapter.tla
+Parsing file /tmp/tlc-6549547582449400962/Naturals.tla (jar:file:tla2tools.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tlc-6549547582449400962/FiniteSets.tla (jar:file:tla2tools.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /tmp/tlc-6549547582449400962/Sequences.tla (jar:file:tla2tools.jar!/tla2sany/StandardModules/Sequences.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module AgentCallAdapter
+Linting of module AgentCallAdapter
+Starting... (2026-10-17 18:15:03)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Computed 8 initial states...
+Computed 16 initial states...
+Computed 32 initial states...
+Finished computing initial states: 36 distinct states generated at 2026-10-17 18:15:03.
+Error: Invariant RequiredAllowlistedNeverNative is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ adSeen = {}
+/\ ad = "idle"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = {}
+/\ nextId = 1
+/\ serverMode = "observe"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> FALSE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "required"
+/\ evts = {}
+
+State 2: <BindStart line 103, col 5 to line 108, col 58 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = {}
+/\ nextId = 1
+/\ serverMode = "observe"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> FALSE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "required"
+/\ evts = {}
+
+330 states generated, 247 distinct states found, 172 states left on queue.
+The depth of the complete state graph search is 3.
+Finished in 00s at (2026-10-17 18:15:03)
+exit=12

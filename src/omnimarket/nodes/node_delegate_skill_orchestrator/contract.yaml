@@ -150,14 +150,6 @@ inputs:
     description: >
       Canonical typed origin and traffic classification. Synthetic provenance
       requires a named source_surface. Omit for legacy/unclassified traffic.
-  client_call:
-    type: object
-    required: false
-    description: >
-      Identity of the client tool call that asked for this delegation: client,
-      session_id, tool_use_id, client_host and client_max_mode. Omitted for every
-      caller that is not a client call, which keeps the delivery-keyed behaviour
-      unchanged.
   cwd:
     type: str
     required: false
@@ -483,6 +475,10 @@ event_bus:
     # One event per step of a run, numbered by this node; appended so the
     # entries above keep their positions.
     - onex.evt.omnimarket.delegation-run-step.v1
+    # OMN-21098 (plan TB.3): one admission decision per client call, published
+    # after the admission commit and before any dispatch; appended so the
+    # entries above keep their positions. Carries no prompt text.
+    - onex.evt.omnimarket.delegate-skill-admission-decided.v1
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 
@@ -496,6 +492,15 @@ published_events:
   - event_type: DelegationRunStep
     topic: onex.evt.omnimarket.delegation-run-step.v1
     description: One numbered step of one delegation run, in the order this node took it.
+  - event_type: DelegateSkillAdmissionDecided
+    topic: onex.evt.omnimarket.delegate-skill-admission-decided.v1
+    description: Admission decision for one client call, with the effective mode, before any dispatch.
+
+# OMN-21098: the admission decision is consumed by the Claude Code adapter's
+# receipt-mode client, which awaits it by correlation id; no omnimarket contract
+# subscribes to it.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegate-skill-admission-decided.v1
 
 cross_repo_dependencies:
   - repo: omnimarket

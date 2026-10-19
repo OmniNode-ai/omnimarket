@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Admission event of a client call (``delegate-skill-admission-decided.v1``).
+"""Admission decision for one client call (plan TB.3, OMN-21098).
 
-Published by the orchestrator after the admission decision is committed and
-before any dispatch. It is an event topic, so it carries ids, hashes, the
-verdict and the effective mode only; the prompt never appears on it.
+Published on ``onex.evt.omnimarket.delegate-skill-admission-decided.v1`` after
+the admission commit and before any dispatch. It is an evt topic and carries no
+prompt text: the only free text is the admission ``reason``, a short code.
 """
 
 from __future__ import annotations
@@ -13,21 +13,32 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.enums.enum_delegation_client_mode import EnumDelegationClientMode
+from omnimarket.models.claude_code_binding import EnumClientMaxMode
+
+_SHA256_HEX = r"^[0-9a-f]{64}$"
 
 
 class ModelDelegateSkillAdmissionDecided(BaseModel):
-    """What the server decided about one client call."""
+    """What admission decided for one client call, and under which mode."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    correlation_id: UUID
-    client_call_key: str = Field(min_length=1)
-    request_fingerprint: str = Field(min_length=1)
-    admitted: bool
-    task_type: str = Field(min_length=1)
-    reason: str = Field(min_length=1)
-    effective_mode: EnumDelegationClientMode
+    correlation_id: UUID = Field(..., description="The command's correlation id.")
+    client_call_key: str = Field(
+        ..., pattern=_SHA256_HEX, description="Identity of the client call."
+    )
+    request_fingerprint: str = Field(
+        ..., pattern=_SHA256_HEX, description="Fingerprint of the canonical request."
+    )
+    admitted: bool = Field(..., description="Whether the call may be dispatched.")
+    task_type: str | None = Field(
+        default=None, description="Task class admission resolved, if any."
+    )
+    reason: str = Field(..., min_length=1, description="Short admission reason code.")
+    effective_mode: EnumClientMaxMode = Field(
+        ...,
+        description="min(client_max_mode, server mode for the client host).",
+    )
 
 
-__all__ = ["ModelDelegateSkillAdmissionDecided"]
+__all__: list[str] = ["ModelDelegateSkillAdmissionDecided"]

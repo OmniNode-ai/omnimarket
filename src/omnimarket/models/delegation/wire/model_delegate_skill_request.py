@@ -28,9 +28,6 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
-from omnimarket.models.delegation.wire.model_delegate_skill_client_call import (
-    ModelDelegateSkillClientCall,
-)
 from omnimarket.models.delegation.wire.model_delegation_output_files import (
     ModelDeclaredOutputs,
 )
@@ -104,15 +101,6 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Typed ingress provenance carried unchanged through delegation state "
             "and terminal evidence. None is legacy/unclassified, never synthetic."
-        ),
-    )
-    client_call: ModelDelegateSkillClientCall | None = Field(
-        default=None,
-        exclude_if=lambda value: value is None,
-        description=(
-            "Identity of the client tool call that asked for this delegation "
-            "(session, tool-use id, host, maximum mode). None for every other "
-            "caller, which keeps the delivery-keyed behaviour unchanged."
         ),
     )
     cwd: str | None = Field(default=None, description="Caller current directory.")

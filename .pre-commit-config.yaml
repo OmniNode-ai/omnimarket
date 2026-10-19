@@ -619,6 +619,16 @@ repos:
         always_run: true
         stages: [pre-commit]
 
+      # OMN-17427: a change to the hostile reviewer or its eval set is scored against
+      # the set's baseline; CI's reviewer-eval job also holds the base branch ratchet.
+      - id: reviewer-eval
+        name: The hostile reviewer holds its eval baseline (OMN-17427)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_reviewer_eval_effect --reviewer-ref pre-commit
+        files: ^(\.github/workflows/(hostile-reviewer|reviewer-eval)\.yml|src/omnimarket/nodes/(node_reviewer_eval_effect|node_review_finding_veto_effect)/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Shell hygiene gate (OMN-14761 / F-22). Fail-closed shellcheck over changed
       # shell scripts; same script the shellcheck-gate CI job runs, so local and CI
       # enforcement cannot drift. The tracked tree is held to --severity=error.
@@ -1697,6 +1707,18 @@ repos:
         language: system
         entry: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
         files: ^(formal/ci_red_triage/|tests/formal/(test_ci_red_triage_model\.py|ci_red_triage_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-21096: the Agent-call adapter model passes its design config, each
+      # invariant fails on a one-knob mutation, and the TLC results match the
+      # committed model, configs and outputs. Check-only. SYNC with the ci.yml
+      # lint step "Agent-call adapter model (OMN-21096)".
+      - id: agent-call-adapter-model
+        name: Agent-call adapter model (OMN-21096)
+        language: system
+        entry: uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/agent_call_adapter/|tests/formal/(test_agent_call_adapter_model\.py|agent_call_adapter_tlc\.sh)$)
         pass_filenames: false
         stages: [pre-commit]
 

@@ -152,6 +152,14 @@ _CALLER_IDENTITY_WIRE_KEYS: frozenset[str] = frozenset(
 )
 
 
+#: The terminal keys that echo a client call's admission and identity (OMN-21098,
+#: plan TB.3): whether it was admitted, the mode it ran under, and the call key
+#: and request fingerprint the client verdict compute compares with its own.
+CLIENT_CALL_ECHO_WIRE_KEYS: frozenset[str] = frozenset(
+    {"admitted", "effective_mode", "client_call_key", "request_fingerprint"}
+)
+
+
 class ModelDelegateSkillAttemptRecord(BaseModel):
     """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
 
@@ -904,6 +912,29 @@ class ModelDelegateSkillResponse(BaseModel):
         undeclared = {
             key
             for key in _CALLER_IDENTITY_WIRE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
+
+    # OMN-21098, step 1 of 2: a CONSUMER that decodes the client-call echo
+    # (``admitted``, ``effective_mode``, ``client_call_key``,
+    # ``request_fingerprint``) before any producer on this package emits it.
+    # The Wire Compatibility Gate refuses declaring the keys while the pinned
+    # consumer forbids extras, so this release tolerates and drops them and
+    # step 2 declares them once a release carrying this is pinned. Dropping is
+    # safe: the client verdict compute refuses a terminal whose echo does not
+    # equal the caller's, so an absent echo never becomes an answer. Only an
+    # undeclared key is dropped, so a subclass that declares one keeps it.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_client_call_echo_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in CLIENT_CALL_ECHO_WIRE_KEYS
             if key in data and key not in cls.model_fields
         }
         if not undeclared:
