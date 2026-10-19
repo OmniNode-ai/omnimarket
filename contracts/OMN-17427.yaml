@@ -1622,7 +1622,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
-  - id: "dod-omn17427-ac91-automation-liveness-overlay-check"
+  - id: "dod-omn17427-ac91-liveness-overlay-check"
     description: "The overlay completeness check node and its console script pass the focused suite."
     source: "manual"
     checks:
@@ -1630,7 +1630,7 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC91"]
-  - id: "dod-omn17427-automation-liveness-overlay-check-deploy-probe"
+  - id: "dod-omn17427-liveness-overlay-check-deploy-probe"
     description: "Deploy probe. GitHub serves the overlay check node contract at the checked-out HEAD with its console script declared. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
