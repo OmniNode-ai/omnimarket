@@ -118,6 +118,15 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # token); it publishes nothing and subscribes to no topic, so it has no
     # onex.nodes entry point.
     "node_claude_token_pool_effect",
+    # OMN-17427: the lab secret-store override edits an ephemeral render copy on
+    # the caller's own filesystem, so the lab apply script runs it in process
+    # from its console script; it subscribes to no topic and has no onex.nodes
+    # entry point.
+    "node_lab_secret_store_override_effect",
+    # OMN-17427: the legacy worktree audit reads the host's own worktrees, so
+    # its console script runs it from the command line; it subscribes to no
+    # topic and has no onex.nodes entry point.
+    "node_legacy_worktree_audit_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry

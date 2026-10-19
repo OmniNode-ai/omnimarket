@@ -475,6 +475,11 @@ requirements:
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-rehome-lab-secret-store-and-worktree-audit"
+    statement: "The lab secret-store override and the legacy worktree audit run as omnimarket nodes with their behaviour, refusals and console scripts unchanged."
+    acceptance:
+      - id: "AC98"
+        statement: "AC98: the lab secret-store override reproduces its frozen legacy transform, refuses blank arguments and a non-list patches value without writing, and declares no event bus block; the legacy worktree audit classifies worktrees as before through the onex-legacy-worktree-audit console script -- falsifier: uv run pytest tests/nodes/node_lab_secret_store_override_effect/test_lab_secret_store_override_node.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit_characterization.py -q"
   - id: "req-rehome-lab-nodes-slice-3"
     statement: "The hourly tick effect, the lab disk growth effect and the lab fill receipt table compute live in the portable node package with their handlers, contracts and bus topics."
     acceptance:
@@ -688,6 +693,9 @@ evidence_requirements:
     description: "AC81: check-suite run provenance and unreadable workflow-runs files in the external sweep."
     command: >-
       uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
+  - kind: "tests"
+    description: "AC98: the lab secret-store override and legacy worktree audit nodes pass their frozen-behaviour and contract tests."
+    command: "uv run pytest tests/nodes/node_lab_secret_store_override_effect/test_lab_secret_store_override_node.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit_characterization.py -q -p no:randomly --no-cov"
   - kind: "tests"
     description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
@@ -1839,6 +1847,17 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac93-rehome-nodes"
+    description: "The lab secret-store override reproduces its frozen legacy transform and refusals, declares no event bus block, and the legacy worktree audit classifies worktrees through its console script. The generated relation inventory includes their source-derived readers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_secret_store_override_effect/test_lab_secret_store_override_node.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit_characterization.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC98"]
   - id: "dod-omn17427-ac94-rehome-lab-nodes-slice-3"
     description: "The hourly tick, lab disk growth and lab fill receipt table nodes pass their focused suites in the portable package."
     source: "manual"
@@ -1892,6 +1911,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_hostile_reviewer_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_fallback_route", "fallback_engine", "fallback_for")); print("hostile-reviewer codex fallback deploy probe: PASS")'
+  - id: "dod-omn17427-rehome-nodes-deploy-probe"
+    description: "Deploy probe. The checked-out package declares both rehomed console scripts and carries their target modules. The hosted runner needs only Python and this checkout; the probe fails when either node is absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast, pathlib, tomllib
+          root = pathlib.Path(".")
+          project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
+          scripts = project["scripts"]
+          expected = {
+              "onex-secret-store-override": "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main",
+              "onex-legacy-worktree-audit": "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main",
+          }
+          for name, target in expected.items():
+              assert scripts[name] == target, (name, scripts.get(name))
+              module, symbol = target.split(":")
+              tree = ast.parse((root / "src" / (module.replace(".", "/") + ".py")).read_text())
+              assert any(isinstance(node, ast.FunctionDef) and node.name == symbol for node in tree.body), target
+          print("rehomed console scripts deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac76-dead-occ-observers"
     description: "The two OCC observer node packages, their tests and their entry points are absent and the companion effect node remains."
     source: "manual"
