@@ -72,6 +72,9 @@ task_classes:
       # (no prompt, so no stated limit), so it is recorded SKIPPED and changes no
       # score below.
       - within_sentence_limit
+      # OMN-17427: mirrors the shipped contract; scored with no prompt, so it is
+      # recorded SKIPPED and changes no score below.
+      - within_word_limit
       - semantic_adequacy
       # OMN-18297: mirrors the shipped contract. The calibration corpus scores
       # with no grounding source, so this check is recorded SKIPPED and excluded
