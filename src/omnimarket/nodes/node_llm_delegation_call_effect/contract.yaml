@@ -180,6 +180,8 @@ event_bus:
     - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
     - "onex.evt.omnimarket.delegation-model-degraded.v1"
+    # OMN-20910: one cost record per provider attempt of a Hostile Review call.
+    - "onex.evt.omnimarket.review-call-cost-recorded.v1"
     # OMN-17445: the address the consume boundary answers at when a record on
     # either subscribed topic fails for good. APPENDED, never prepended: the
     # dispatch-result applier resolves this contract's SUCCESS terminal as the
@@ -209,6 +211,9 @@ event_bus:
     "onex.evt.omnimarket.delegation-model-degraded.v1":
       schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event.ModelLlmDelegationModelDegradedEvent"
       description: "Emitted when a model exceeds the escalation rate threshold for a task type."
+    "onex.evt.omnimarket.review-call-cost-recorded.v1":
+      schema_ref: "omnimarket.models.review_cost.model_review_call_cost_recorded.ModelReviewCallCostRecorded"
+      description: "OMN-20910: usage, outcome and priced cost of one provider attempt of a Hostile Review call, made at the per-attempt observation boundary and idempotent on (call id, attempt). Emitted only for a call whose request names its review."
     "onex.evt.omnibase-infra.inference-response.v1":
       schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceResponseData"
       description: "Inference response published to the orchestrator's subscribe topic after handling ModelInferenceIntent."
@@ -267,6 +272,10 @@ runtime_dispatch:
     failure: "onex.evt.omnibase-infra.inference-response-failed.v1"
 
 externally_consumed_topics:
+  # OMN-20910: the review cost record. The projection that subscribes to it is a
+  # separate node (its table needs the deployment topology's grants first), so
+  # until it lands the topic leaves the node graph here.
+  - "onex.evt.omnimarket.review-call-cost-recorded.v1"
   - "onex.evt.omnimarket.delegation-call-completed.v1"
   - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
   - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
