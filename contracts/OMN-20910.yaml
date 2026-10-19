@@ -252,10 +252,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
   - id: "dod-omn20910-ac7-review-step-key"
-    description: "No step carries ANTHROPIC_API_KEY from an Actions secret; the positive control plants it on the review step and is caught."
+    description: "The newest-dev-tag clone retains the tenant-only key boundary: the resolver and branch-tip controls run together with the no-Actions-key checks and their planted-key control. The merge base's SHA clone fails this combined requirement even though it already carries no Actions key."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov -k 'claude_api_key or key_on_the_review_step or provider_key'"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
