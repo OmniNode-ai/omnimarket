@@ -63,7 +63,7 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn19972-partial-mirror-preserves-legacy-writes"
+  - id: "dod-omn19972-partial-mirror-keeps-legacy-writes"
     binds_ac: ["AC3"]
     description: "A partial tenant mirror cannot disable the closed historical slug fallback. Registry drift still refuses, and unknown UUIDs retain the bounded catch-up wait. This covers compatibility of the shared write-time resolver used by run-trace and delegation writers."
     source: "manual"
