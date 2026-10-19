@@ -46,6 +46,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -231,6 +232,9 @@ _CONTRACT_YAML_PATH_RE = re.compile(r"^contracts/[^/]+\.yaml$")
 # fetch under egress saturation) fails fast instead of wedging the fix-effect
 # path — the same un-timed-subprocess hang class fixed in the inventory node.
 _GIT_TIMEOUT_SECONDS = 120
+# Total clone attempts, first included: 2, not 3, keeps the product with
+# _GIT_TIMEOUT_SECONDS below the contract descriptor timeout_ms (300000).
+_CLONE_MAX_ATTEMPTS = 2
 
 _OCC_REPO = OCC_REPO
 # OMN-20074: every product repository on change control calls the autobind
@@ -4251,16 +4255,29 @@ class OccCompanionEmitter:
         # HTTPS x-access-token clone/push (OMN-13990): the effects container has
         # no SSH identity. The token is redacted from any surfaced git error by
         # occ_git_transport.run_git.
-        self._run_git(
-            [
-                "git",
-                "clone",
-                "--depth=1",
-                authenticated_occ_url(token, self._occ_repo),
-                str(clone_dir),
-            ],
-            cwd=tmpdir,
-        )
+        for attempt in range(1, _CLONE_MAX_ATTEMPTS + 1):
+            try:
+                self._run_git(
+                    [
+                        "git",
+                        "clone",
+                        "--depth=1",
+                        authenticated_occ_url(token, self._occ_repo),
+                        str(clone_dir),
+                    ],
+                    cwd=tmpdir,
+                )
+                break
+            except subprocess.TimeoutExpired as exc:
+                if attempt == _CLONE_MAX_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "OCC clone attempt %d/%d timed out after %s seconds; retrying",
+                    attempt,
+                    _CLONE_MAX_ATTEMPTS,
+                    exc.timeout,
+                )
+                shutil.rmtree(clone_dir, ignore_errors=True)
         self._run_git(
             ["git", "config", "user.name", self._git_author_name],
             cwd=str(clone_dir),
