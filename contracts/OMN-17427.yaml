@@ -490,6 +490,11 @@ requirements:
     acceptance:
       - id: "AC83"
         statement: "AC83: a model replacement at the same endpoint completes without waiting for cache expiry, while an unreadable or mismatching refresh sends no completion request -- falsifier: the cached_model_list and cached_mismatch regression tests fail before the reconciliation change"
+  - id: "req-delegate-skill-trace-id-stored"
+    statement: "delegation_events.trace_id is written from the delegate-skill terminal's own trace_id by both projection writers, and a later terminal that carries none keeps the stored value."
+    acceptance:
+      - id: "AC93"
+        statement: "AC93: the sync and async delegate-skill row builders store the terminal's trace_id as text, leave the column NULL when the terminal carries none, and keep a stored trace_id across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1846,4 +1851,20 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac93-delegate-skill-trace-id"
+    description: "Both projection writers store a delegate-skill terminal's trace_id. Before the change 5 of the 7 tests fail (the trace is dropped); after it all pass. A lab replay of a real delegate-skill-failed terminal through the sync writer stores its trace_id at the head and NULL at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC93"]
+  - id: "dod-omn17427-delegate-skill-trace-id-deploy-probe"
+    description: "Deploy probe. The checked-out source of both delegate-skill row builders names the terminal's trace_id column. It fails at the merge base, where neither builder writes it, and needs only a shell and this checkout on the hosted runner; the behavioural proof stays in the test_passes check bound to AC93."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq "row[\"trace_id\"] = str(event.trace_id)" "$f"; done; echo "delegate-skill trace_id deploy probe: PASS"'
         cwd: "${OMNI_HOME}/omnimarket"
