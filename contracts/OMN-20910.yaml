@@ -38,12 +38,12 @@ requirements:
     statement: "node_review_replay_set_effect freezes 40 merged diffs stratified by repo and size under a manifest hash."
     acceptance:
       - id: "AC12"
-        statement: "AC12: the set holds the target count balanced across repo x size strata, the same inputs give the same manifest hash, a changed diff or seed changes it, pinned items are always in, and a tampered frozen manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_replay_set_effect -q -p no:randomly --no-cov fails at the merge base"
+        statement: "AC12: the set holds the target count balanced across repo x size strata, the same inputs give the same manifest hash, a changed diff or seed changes it, pinned items are always in, and a tampered frozen manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_replay_set_effect/test_review_replay_set.py -q -p no:randomly --no-cov fails at the merge base"
   - id: "req-claude-review-batch-node"
     statement: "node_claude_review_batch_effect submits replay items through admission and records a cost and a verdict per item."
     acceptance:
       - id: "AC13"
-        statement: "AC13: each item goes admission, call, parse, verdict with an event per step in order; a refused item is never submitted; a failed call releases its reservation; a truncated, unparseable or empty answer is degraded and never passed; a diff that no longer matches the manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_claude_review_batch_effect -q -p no:randomly --no-cov fails at the merge base"
+        statement: "AC13: each item goes admission, call, parse, verdict with an event per step in order; a refused item is never submitted; a failed call releases its reservation; a truncated, unparseable or empty answer is degraded and never passed; a diff that no longer matches the manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -130,7 +130,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_review_replay_set_effect -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/unit/nodes/node_review_replay_set_effect/test_review_replay_set.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC12"]
   - id: "dod-omn20910-ac13-claude-review-batch-node"
@@ -138,6 +138,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]

@@ -37,7 +37,12 @@ _CONTRACT = Path(__file__).parent.parent / "contract.yaml"
 
 
 class BusEventSink:
-    """Publish handler events from the handler's worker thread onto the bus."""
+    """Publish handler events from the handler's worker thread onto the bus.
+
+    The handler runs under ``asyncio.to_thread``, so the loop stays free to run
+    each publish while the worker waits on it. A publish from the loop's own
+    thread would wait on itself, so it is refused rather than left to hang.
+    """
 
     def __init__(
         self,
@@ -48,6 +53,15 @@ class BusEventSink:
         self._bus, self._loop, self._correlation = bus, loop, correlation
 
     def publish(self, topic: str, event: BaseModel) -> None:
+        try:
+            on_loop_thread = asyncio.get_running_loop() is self._loop
+        except RuntimeError:
+            on_loop_thread = False
+        if on_loop_thread:
+            raise RuntimeError(
+                "BusEventSink.publish was called on the event loop's thread; "
+                "run the handler with asyncio.to_thread"
+            )
         value = envelope_bytes_for(
             topic, event.model_dump(mode="json"), self._correlation
         )

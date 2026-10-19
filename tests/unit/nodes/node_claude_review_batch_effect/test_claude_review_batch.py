@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
-from collections.abc import Sequence
+import uuid
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,9 @@ from pydantic import BaseModel
 from omnimarket.models.review_replay.model_replay_manifest import (
     ModelReplayItem,
     ModelReplayManifest,
+)
+from omnimarket.nodes.node_claude_review_batch_effect.handlers.adapter_lane_bus import (
+    BusEventSink,
 )
 from omnimarket.nodes.node_claude_review_batch_effect.handlers.handler_claude_review_batch import (
     HandlerClaudeReviewBatch,
@@ -480,3 +485,64 @@ def test_the_runtime_builds_the_handler_with_no_arguments_and_it_refuses_every_i
         "admission_refused: no admission is wired"
     }
     assert transport_calls.submitted == []
+
+
+class _RecordingBus:
+    def __init__(self) -> None:
+        self.published: list[tuple[str, bytes | None, bytes]] = []
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+        headers: Any = None,
+    ) -> None:
+        self.published.append((topic, key, value))
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: Any = None,
+        on_message: Callable[[Any], Awaitable[None]] | None = None,
+        *,
+        group_id: str | None = None,
+    ) -> Callable[[], Awaitable[None]]:
+        raise NotImplementedError
+
+
+class _SinkEvent(BaseModel):
+    item_id: str
+
+
+def test_bus_event_sink_publishes_from_a_worker_thread() -> None:
+    async def run() -> None:
+        bus = _RecordingBus()
+        correlation = uuid.uuid4()
+        sink = BusEventSink(bus, asyncio.get_running_loop(), correlation)
+        event = _SinkEvent(item_id="item-1")
+
+        await asyncio.to_thread(sink.publish, TOPICS[0], event)
+
+        assert len(bus.published) == 1
+        topic, key, value = bus.published[0]
+        assert topic == TOPICS[0]
+        assert key == str(correlation).encode()
+        envelope = json.loads(value)
+        assert envelope["correlation_id"] == str(correlation)
+        assert envelope["payload"] == event.model_dump(mode="json")
+
+    asyncio.run(run())
+
+
+def test_bus_event_sink_refuses_a_publish_on_the_loop_thread() -> None:
+    async def run() -> None:
+        bus = _RecordingBus()
+        sink = BusEventSink(bus, asyncio.get_running_loop(), uuid.uuid4())
+
+        with pytest.raises(RuntimeError, match="event loop's thread"):
+            sink.publish(TOPICS[0], _SinkEvent(item_id="item-1"))
+
+        assert bus.published == []
+
+    asyncio.run(run())
