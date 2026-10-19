@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Live node-dispatch adapter for pr_lifecycle_fix_effect.
 
-Spawns detached workers for PR review-fix and CodeRabbit auto-reply flows.
+Spawns detached workers for PR review-fix flows.
 Review-fix now dispatches the real ``node_pr_polish`` CLI so the node owns
 repo/worktree resolution and result persistence. Related: OMN-9284, OMN-10180.
 """
@@ -88,7 +88,7 @@ def _default_spawner(
 
 
 class PrPolishDispatchAdapter:
-    """Dispatch market-owned PR polish and CodeRabbit triage node workers.
+    """Dispatch market-owned PR polish node workers.
 
     Each dispatch:
       * Creates ``$ONEX_STATE_DIR/pr-polish/{repo_slug}-{pr}-{run_id}/`` and
@@ -126,9 +126,6 @@ class PrPolishDispatchAdapter:
         self, repo: str, pr_number: int, ticket_id: str | None
     ) -> str:
         return self._spawn_review_fix(repo, pr_number, ticket_id)
-
-    async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
-        return self._spawn_coderabbit_reply(repo, pr_number)
 
     def _spawn_review_fix(
         self,
@@ -172,42 +169,6 @@ class PrPolishDispatchAdapter:
             cwd=str(self._repo_root),
         )
         return f"dispatched review-fix agent on {repo}#{pr_number} run_id={run_id}"
-
-    def _spawn_coderabbit_reply(self, repo: str, pr_number: int) -> str:
-        run_id = uuid.uuid4().hex[:12]
-        run_dir = self._make_run_dir(repo, pr_number, run_id)
-        log_path = run_dir / "worker.log"
-        argv = [
-            self._python_bin,
-            "-m",
-            "omnimarket.nodes.node_coderabbit_triage",
-            "--repo",
-            repo,
-            "--pr",
-            str(pr_number),
-        ]
-        env = os.environ.copy()
-        existing_pythonpath = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = (
-            f"{self._src_root}{os.pathsep}{existing_pythonpath}"
-            if existing_pythonpath
-            else str(self._src_root)
-        )
-        self._spawn_process(
-            kind="coderabbit-reply",
-            repo=repo,
-            pr_number=pr_number,
-            ticket_id=None,
-            run_id=run_id,
-            run_dir=run_dir,
-            log_path=log_path,
-            argv=argv,
-            env=env,
-            cwd=str(self._repo_root),
-        )
-        return (
-            f"dispatched coderabbit-reply agent on {repo}#{pr_number} run_id={run_id}"
-        )
 
     def _spawn_process(
         self,

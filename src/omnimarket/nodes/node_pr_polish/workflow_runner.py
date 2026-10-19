@@ -27,11 +27,6 @@ from pathlib import Path
 from typing import TypedDict
 from uuid import uuid4
 
-from omnimarket.nodes.node_coderabbit_triage.handlers.handler_coderabbit_triage import (
-    HandlerCoderabbitTriage,
-    ModelCoderabbitTriageCommand,
-    ModelCoderabbitTriageResult,
-)
 from omnimarket.nodes.node_dispatch_worker import (
     EnumWorkerRole,
     ModelDispatchWorkerCommand,
@@ -223,14 +218,6 @@ def run_live_pr_polish(
         )
         payload["phase_results"] = phase_results
 
-        coderabbit_result = _run_coderabbit_triage(
-            command.repo,
-            command.pr_number,
-            correlation_id=str(command.correlation_id),
-            dry_run=command.dry_run or command.no_push,
-        )
-        payload["coderabbit_triage"] = coderabbit_result.model_dump(mode="json")
-
         if command.no_push or command.dry_run:
             payload["push_status"] = "skipped"
             payload["auto_merge_status"] = "skipped"
@@ -254,9 +241,7 @@ def run_live_pr_polish(
                     "post-push SHA mismatch: "
                     f"local HEAD {local_sha[:8]} != remote PR head {remote_sha[:8]}"
                 )
-            if coderabbit_result.has_blockers:
-                payload["auto_merge_status"] = "blocked_by_coderabbit"
-            elif command.no_automerge:
+            if command.no_automerge:
                 payload["auto_merge_status"] = "skipped"
             else:
                 _enable_auto_merge(command.repo, command.pr_number)
@@ -652,7 +637,7 @@ def _run_market_polish_phases(
         results.append(
             {
                 "phase": "address_comments",
-                "status": "handled_by_market_coderabbit_triage",
+                "status": "not_automated",
             }
         )
 
@@ -859,24 +844,6 @@ def _enable_auto_merge(repo: str, pr_number: int) -> None:
         ],
         cwd=_REPO_ROOT,
         timeout=30,
-    )
-
-
-def _run_coderabbit_triage(
-    repo: str,
-    pr_number: int,
-    *,
-    correlation_id: str,
-    dry_run: bool,
-) -> ModelCoderabbitTriageResult:
-    handler = HandlerCoderabbitTriage()
-    return handler.handle(
-        ModelCoderabbitTriageCommand(
-            repo=repo,
-            pr_number=pr_number,
-            correlation_id=correlation_id,
-            dry_run=dry_run,
-        )
     )
 
 
