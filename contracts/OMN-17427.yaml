@@ -332,6 +332,11 @@ requirements:
         statement: "AC70: node_review_finding_veto_effect drops a blocking finding whose title claims a Python, YAML or JSON file is invalid when ast.parse, yaml.safe_load_all or json.loads accepts that file at the head, turns a verdict that rested only on such findings into passed, and logs the reason -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py -q -k 'pr4063 or yaml_and_json' fails at the merge base"
       - id: "AC71"
         statement: "AC71: a syntax claim stays blocking when the file does not parse or cannot be read at the head, names another file or language, or is about text parsed at run time, and findings of other classes and warnings are never examined; the hostile-reviewer workflow runs the veto from the base commit before it reads the verdict -- falsifier: uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_veto.py tests/ci/test_hostile_reviewer_parse_veto_omn17427.py -q fails at the merge base"
+  - id: "req-remove-coderabbit"
+    statement: "CodeRabbit is removed from the review-gate code: the coderabbit-triage node, skills and registrations are gone, and no arm gate, merge-state, fix-routing, comment-resolution or inventory path counts, waits on or parses CodeRabbit threads."
+    acceptance:
+      - id: "AC81"
+        statement: "AC81: node_coderabbit_triage and its skills are deleted, ModelArmCandidate and the lifecycle inventory carry no coderabbit_unresolved, EnumPrBlockReason has no CODERABBIT and the fix handler no dispatch_coderabbit_reply, and the arm gate withholds on six criteria -- falsifier: uv run pytest tests/unit/nodes/node_pr_arm_gate_compute/test_handler_arm_gate.py tests/unit/nodes/node_pr_arm_gate_compute/test_arm_gate_head_check_verdict_composition.py tests/test_golden_chain_pr_lifecycle_fix_effect.py tests/test_omn_13987_pr_lifecycle_arm_activation.py -q fails at the merge base"
   - id: "req-core-pin-compatibility"
     statement: "The omnibase-core dependency and override floors must fit the newest recorded omnibase_infra pin, and the recorded incompatible incident pair must be refused."
     acceptance:
@@ -342,11 +347,6 @@ requirements:
     acceptance:
       - id: "AC63"
         statement: "AC63: node_session_capability_digest_effect prints the cached digest inside a registry root, prints nothing outside every root, prints a STALE line with its launchd fix for a missing or over-45-minute digest, prints one pointer line on a compact restart, opens no socket and exits 0 on every input -- falsifier: uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
-  - id: "req-remove-coderabbit"
-    statement: "CodeRabbit is removed from the review-gate code: the coderabbit-triage node, skills and registrations are gone, and no arm gate, merge-state, fix-routing, comment-resolution or inventory path counts, waits on or parses CodeRabbit threads."
-    acceptance:
-      - id: "AC70"
-        statement: "AC70: node_coderabbit_triage and its skills are deleted, ModelArmCandidate and the lifecycle inventory carry no coderabbit_unresolved, EnumPrBlockReason has no CODERABBIT and the fix handler no dispatch_coderabbit_reply, and the arm gate withholds on six criteria -- falsifier: uv run pytest tests/unit/nodes/node_pr_arm_gate_compute/test_handler_arm_gate.py tests/unit/nodes/node_pr_arm_gate_compute/test_arm_gate_head_check_verdict_composition.py tests/test_golden_chain_pr_lifecycle_fix_effect.py tests/test_omn_13987_pr_lifecycle_arm_activation.py -q fails at the merge base"
   - id: "req-ci-red-watcher-facts-only"
     statement: "The CI-red triage reader uses watcher facts without launching gh, and incomplete observations record facts-unavailable without starting an effect."
     acceptance:
@@ -367,6 +367,11 @@ requirements:
     acceptance:
       - id: "AC68"
         statement: "AC68: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
+  - id: "req-reviewer-eval-gate"
+    statement: "The hostile reviewer is scored on every change to it against an eval set from recorded history (true catches a later fix confirmed, blocks later overturned, merged heads with no revert), as recall on true catches and the false-block rate on clean heads, and the change fails when either score is worse than the set's baseline or the set shrinks, relabels a case or lowers its baseline; the score is published as an event."
+    acceptance:
+      - id: "AC80"
+        statement: "AC80: node_reviewer_eval_effect scores the recorded set at recall 1.0 and false-block rate 0.25 and regresses on a missed true catch, a new block on a clean head, a case with no verdict, a dropped case, a flipped label or a lowered baseline, and publishes the score on onex.evt.omnimarket.reviewer-eval-scored.v1 -- falsifier: uv run pytest tests/unit/nodes/node_reviewer_eval_effect/test_reviewer_eval.py -q fails at the merge base"
   - id: "req-review-finding-dispositions"
     statement: "A fix worker's result carries a typed disposition (fixed, wrong, intentional, not_applicable) with the finding's id and class for each hostile-reviewer finding it answered, published as events; a pure compute folds them with the review pass signal into per-repo noise share, one-round pass share and rounds-to-pass, and names each finding class that appears on three distinct PRs inside seven days with one stable dedupe key."
     acceptance:
@@ -434,6 +439,11 @@ requirements:
     acceptance:
       - id: "AC79"
         statement: "AC79: the summarization definition of done carries within_word_limit when the prompt states an at-most-N-words limit, an answer over that limit is refused, an answer at the limit and a prompt with no limit pass, and no other task class carries the check -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py -q fails"
+  - id: "req-hostile-reviewer-overflow-deadline-pin"
+    statement: "The Hostile Reviewer clones omniintelligence at the revision whose overflow endpoint is bounded by the vote deadline, not by its chunk share, and skips an endpoint that already failed over in the same vote."
+    acceptance:
+      - id: "AC80"
+        statement: "AC80: the hostile-reviewer workflow clones omniintelligence at 921b322b8e43f695961a06a04759dc88bb3e88ff and at no other sha -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q fails at the merge base, which pins aeba95945f22b3027d4010b53cb01b3f1217923c"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1425,7 +1435,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_pr_arm_gate_compute/test_handler_arm_gate.py tests/unit/nodes/node_pr_arm_gate_compute/test_arm_gate_head_check_verdict_composition.py tests/test_golden_chain_pr_lifecycle_fix_effect.py tests/test_omn_13987_pr_lifecycle_arm_activation.py tests/nodes/node_auto_merge_effect/test_handler_auto_merge_effect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC70"]
+    binds_ac: ["AC81"]
   - id: "dod-omn17427-remove-coderabbit-deploy-probe"
     description: "Deploy probe. GitHub serves the arm-gate event model at the checked-out HEAD without the CodeRabbit thread count. It fails at the merge base, which carries the field, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
@@ -1433,6 +1443,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/events/pr_arm_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "coderabbit" not in source.lower() and "ModelArmCandidate" in source; print("remove-coderabbit deploy probe: PASS")'
+  - id: "dod-omn17427-ac80-reviewer-eval"
+    description: "The reviewer eval scores the recorded set and refuses every kind of drop."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_reviewer_eval_effect/test_reviewer_eval.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC80"]
+  - id: "dod-omn17427-reviewer-eval-deploy-probe"
+    description: "Deploy probe. GitHub serves the reviewer eval handler and its case set at the checked-out HEAD with the overturned omnimarket#4063 block in the set. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_reviewer_eval_effect/eval_cases.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("reviewer_eval_cases.v1", "d25be197856ff515cd1fd1d5e13396f03a54a91f", "true_catch", "known_clean")); print("reviewer eval deploy probe: PASS")'
   - id: "dod-omn17427-ac63-review-finding-dispositions"
     description: "The review finding disposition golden chain passes: noise share, convergence shares, recurring-class detection and the worker result field."
     source: "manual"
@@ -1597,3 +1622,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "- within_word_limit"
+  - id: "dod-omn17427-ac80-hr-overflow-pin"
+    description: "The hostile-reviewer workflow pins omniintelligence at the overflow-deadline revision, and a workflow at the previous pin is caught."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC80"]
+  - id: "dod-omn17427-hr-overflow-pin-probe"
+    description: "Deploy probe. GitHub serves the hostile-reviewer workflow at the checked-out HEAD cloning omniintelligence at the overflow-deadline revision. The probe fails at the merge base, which pins aeba95945f22, and needs only GitHub access on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
