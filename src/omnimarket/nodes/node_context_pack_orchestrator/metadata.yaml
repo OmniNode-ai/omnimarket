@@ -1,0 +1,24 @@
+name: node_context_pack_orchestrator
+version: "1.0.0"
+description: "Resolves a context profile, reads its tiers through ProtocolContextTierSource, builds and renders one context package"
+omnibase_core_compat: ">=0.47.46,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_context_pack_orchestrator: "omnimarket.nodes.node_context_pack_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.46,<0.48.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "context-pack", "deterministic"]
+pack: "pipeline"
+display_name: "Context Pack Orchestrator"
+node_role: "orchestrator"
+tickets: ["OMN-21110"]

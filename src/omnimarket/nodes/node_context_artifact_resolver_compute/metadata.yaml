@@ -1,6 +1,6 @@
 name: node_context_artifact_resolver_compute
-version: "1.0.0"
-description: "Pure deterministic context-artifact resolver (materialises per-factor content map)"
+version: "2.0.0"
+description: "Pure deterministic context-artifact resolver (pre-read sources to pack-builder artifacts)"
 omnibase_core_compat: ">=0.44.0,<0.45.0"
 entry_points:
   onex.nodes:

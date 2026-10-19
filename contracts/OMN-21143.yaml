@@ -26,7 +26,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Synthetic scorer and runtime-adapter checks only; the live evaluation report is pending."
-    command: "uv run --frozen pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov"
+    command: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -38,28 +38,28 @@ dod_evidence:
     binds_ac: ["DoD1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'recall_tokens or incomplete_or_ambiguous or profile_scores or baseline'"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'recall_tokens or incomplete_or_ambiguous or profile_scores or baseline'"
   - id: "dod-omn21143-scorer-required"
     description: "Supports AC2: invalid recorded packages yield errors and no scored rows or recommendations. Real recorded packages have not yet been collected."
     source: "manual"
     binds_ac: ["DoD2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'invalid_packages or budget_overflow or required_sources or labels_may_not'"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'invalid_packages or budget_overflow or required_sources or labels_may_not'"
   - id: "dod-omn21143-scorer-eligibility"
     description: "Supports AC3: a single repeat below baseline blocks eligibility; parse failures and unavailable queries are counted separately and are ineligible. No routing recommendation is promoted."
     source: "manual"
     binds_ac: ["DoD3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'one_repeat or parse_failure or unavailable or profile_scores'"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'one_repeat or parse_failure or unavailable or profile_scores'"
   - id: "dod-omn21143-alternatives-unmeasured"
     description: "Supports AC4's measurement boundary only: alternatives are explicitly not_evaluated. TF-IDF and Jaccard measurement remains pending."
     source: "manual"
     binds_ac: ["DoD4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'recall_tokens or input_rejects'"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'recall_tokens or input_rejects'"
   - id: "dod-omn21143-deploy-probe"
     description: "Hosted source-artifact deploy probe: the published contract at this head declares the evaluation handler and its distinct command topic. Live model experiments remain pending."
     source: "manual"
