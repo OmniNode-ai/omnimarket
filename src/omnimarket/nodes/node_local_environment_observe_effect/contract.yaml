@@ -38,6 +38,8 @@ handler_routing:
         name: HandlerLocalEnvironmentObserve
         module: omnimarket.nodes.node_local_environment_observe_effect.handlers.handler_local_environment_observe
       output_fields: [events]
+metadata:
+  transport_type: http
 config:
   local_environment_observe:
     catalog_dir: /app/docker/catalog
