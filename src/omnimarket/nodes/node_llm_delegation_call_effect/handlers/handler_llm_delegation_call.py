@@ -838,6 +838,12 @@ class HandlerLlmDelegationCall:
         # model_id, the call never reaches the network — this repo's own
         # config no longer silently attributes to a model that isn't running.
         served_ids = _get_served_model_ids(endpoint_url)
+        if served_ids is not None and request.model_id not in served_ids:
+            # Reconcile a possible model replacement before refusing the call.
+            # An unreadable refresh retains the known mismatch evidence.
+            served_ids = (
+                transport.get_served_model_ids(endpoint_url, refresh=True) or served_ids
+            )
         served_model_id: str | None = None
         if served_ids is not None:
             if request.model_id not in served_ids:

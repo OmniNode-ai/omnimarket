@@ -449,6 +449,11 @@ requirements:
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-served-model-cache-reconciliation"
+    statement: "Both inference boundaries refresh a cached served-model mismatch before refusing a call after a provider replaces its model, and retain the refusal when the refresh is unreadable or still mismatches."
+    acceptance:
+      - id: "AC83"
+        statement: "AC83: a model replacement at the same endpoint completes without waiting for cache expiry, while an unreadable or mismatching refresh sends no completion request -- falsifier: the cached_model_list and cached_mismatch regression tests fail before the reconciliation change"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1671,4 +1676,19 @@ dod_evidence:
           assert gate["_load_workflow_runs"](handle.name) is None
           print("external sweep provenance deploy probe: PASS")
           PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac83-served-model-cache-reconciliation"
+    description: "Both inference boundaries reconcile a cached model mismatch and retain a refusal without fresh matching evidence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py tests/unit/nodes/node_llm_delegation_call_effect/test_handler_llm_delegation_call.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC83"]
+  - id: "dod-omn17427-served-model-cache-deploy-probe"
+    description: "Deploy probe. A real loopback provider replaces its served model at the same endpoint, and the inference handler completes with the new model before cache expiry. An unreadable or mismatching model listing still refuses the call. The hosted runner needs uv and this checkout, with no external provider or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
         cwd: "${OMNI_HOME}/omnimarket"
