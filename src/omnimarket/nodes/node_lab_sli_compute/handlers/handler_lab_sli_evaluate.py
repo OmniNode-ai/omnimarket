@@ -13,12 +13,14 @@ this node exists to show, so it is never folded into ``ok``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from omnimarket.enums.enum_lab_sli import EnumLabSliComparator, EnumLabSliStatus
+from omnimarket.handlers.lab_sli_pack_gate import require_lab_sli_pack
 from omnimarket.models.lab_sli import (
     ModelLabSliDefinition,
     ModelLabSliEvaluated,
@@ -121,10 +123,17 @@ def evaluate_one(
 class HandlerLabSliEvaluate:
     """One verdict per indicator in the contract table, in table order."""
 
-    def __init__(self, table: tuple[ModelLabSliDefinition, ...] | None = None) -> None:
+    def __init__(
+        self,
+        table: tuple[ModelLabSliDefinition, ...] | None = None,
+        *,
+        environ: Mapping[str, str] | None = None,
+    ) -> None:
+        self._environ = environ
         self._table = table if table is not None else _contract_table()
 
     def handle(self, request: ModelLabSliReadingBatch) -> ModelLabSliEvaluationBatch:
+        require_lab_sli_pack("node_lab_sli_compute", self._environ)
         known = {d.sli_id for d in self._table}
         readings: dict[str, ModelLabSliReading] = {}
         rejected: list[str] = []

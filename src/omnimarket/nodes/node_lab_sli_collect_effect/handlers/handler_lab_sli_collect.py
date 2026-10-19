@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -22,6 +22,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.lab_sli_pack_gate import require_lab_sli_pack
 from omnimarket.models.lab_sli import (
     ModelLabSliReading,
     ModelLabSliReadingBatch,
@@ -216,13 +217,17 @@ class HandlerLabSliCollect:
         self,
         probe: ProtocolLabSliProbe | None = None,
         config: ModelLabSliCollectConfig | None = None,
+        *,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
+        self._environ = environ
         self._probe: ProtocolLabSliProbe = (
             probe if probe is not None else LocalLabSliProbe()
         )
         self._config = config if config is not None else _contract_config()
 
     def handle(self, request: ModelLabSliCollectRequest) -> ModelLabSliReadingBatch:
+        require_lab_sli_pack("node_lab_sli_collect_effect", self._environ)
         readings: list[ModelLabSliReading] = []
         errors: list[str] = []
         host = request.collector_host

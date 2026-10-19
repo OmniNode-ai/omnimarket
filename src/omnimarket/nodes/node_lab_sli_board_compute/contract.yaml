@@ -21,6 +21,9 @@ description: >
   each, and renders one page (HTML and markdown) listing every indicator with
   its severity, status, latest value against target, worst subject, action and
   a trend of its kept history. Rows sort by severity, breaches first.
+  This node belongs to the lab SLI pack, is off by default and refuses until
+  a deployment enables the pack with `status: enabled` in
+  <root>/lab_sli_pack/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
 
 handler:
   module: omnimarket.nodes.node_lab_sli_board_compute.handlers.handler_lab_sli_board

@@ -455,6 +455,8 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: node_lab_sli_compute returns one verdict per row of its contract sli_table (ok, breach, unknown or not_applicable) with the row's own severity, an indicator with no reading is unknown and never ok, and a reading for an unknown or repeated indicator is rejected; node_lab_sli_alert_effect pushes the operator and requests a fix lane for SEV1, requests a fix lane for SEV2, batches SEV3 and dark indicators into one fix lane, never acts on SEV4, suppresses a still-firing indicator inside its severity's renotify window and records each delivery; node_lab_sli_collect_effect reads the PR watcher state, host probes and the scheduler and lists any unreadable source; node_lab_sli_board_compute keeps the per-indicator history and renders every indicator with its severity and trend -- falsifier: uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q fails at the merge base"
+      - id: "AC107"
+        statement: "AC107: with no lab_sli_pack overlay, or one whose status is disabled, each of node_lab_sli_collect_effect, node_lab_sli_compute, node_lab_sli_alert_effect and node_lab_sli_board_compute constructs and then refuses handle() with LabSliPackDisabledError before any probe or push; status enabled runs the node; any other status is refused as a broken overlay -- falsifier: uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q fails at the merge base"
   - id: "req-review-lab-rubric-measured"
     statement: "The review task class records the lab model's measured adequacy against the lab-first bar."
     acceptance:
@@ -747,6 +749,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: the lab SLI golden and error chains pass: one verdict per table row with its own severity, dark sources unknown, severity-driven actions with per-indicator dedup, collector readings, and the board with history and trend."
     command: "uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q"
+  - kind: "tests"
+    description: "AC107: the lab SLI pack constructs but refuses handle before any probe or push unless a deployment explicitly enables its overlay, and rejects a broken status."
+    command: "uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q"
   - kind: "tests"
     description: "AC104: the occ-autobind producer retries a timed-out OCC clone once and no other clone failure."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q"
@@ -2004,6 +2009,14 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC105"]
+  - id: "dod-omn17427-ac107-lab-sli-pack-opt-in"
+    description: "The lab SLI pack constructs but refuses handle before any probe or push when absent or disabled, runs when explicitly enabled, and refuses every other status as a broken overlay."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC107"]
   - id: "dod-omn17427-lab-sli-deploy-probe"
     description: "Deploy probe. GitHub serves node_lab_sli_compute's contract at the checked-out HEAD with an sli_table using all four severities. It fails at the merge base, which has no such node, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
