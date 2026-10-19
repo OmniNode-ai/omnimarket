@@ -1,0 +1,355 @@
+TLC2 Version 2026.10.13.164326 (rev: 210df3a)
+Running breadth-first search Model-Checking with fp 97 and seed -5301192853199282735 with 8 workers on 4 cores with 3641MB heap and 64MB offheap memory [pid: 595745] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 25.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file AgentCallAdapter.tla
+Parsing file /tmp/tlc-10871287812611682143/Naturals.tla (jar:file:tla2tools.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tlc-10871287812611682143/FiniteSets.tla (jar:file:tla2tools.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /tmp/tlc-10871287812611682143/Sequences.tla (jar:file:tla2tools.jar!/tla2sany/StandardModules/Sequences.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module AgentCallAdapter
+Linting of module AgentCallAdapter
+Starting... (2026-10-17 18:15:00)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Computed 8 initial states...
+Computed 16 initial states...
+Computed 32 initial states...
+Finished computing initial states: 36 distinct states generated at 2026-10-17 18:15:01.
+Error: Invariant NativeOnlyWhenConfirmedNotDispatched is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ adSeen = {}
+/\ ad = "idle"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = {}
+/\ nextId = 1
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> FALSE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 2: <BindStart line 103, col 5 to line 108, col 58 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "received"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = {}
+/\ nextId = 1
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> FALSE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 3: <AdResolve line 111, col 5 to line 121, col 42 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "published"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = {}
+/\ nextId = 1
+/\ serverMode = "required"
+/\ inflight = [orig |-> 1, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 4: <AdTimeout line 153, col 5 to line 158, col 58 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = {}
+/\ nextId = 1
+/\ serverMode = "required"
+/\ inflight = [orig |-> 1, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 5: <Consume line 230, col 9 to line 238, col 46 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "none",
+  fp |-> 0,
+  gen |-> 0,
+  lease |-> FALSE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = { [ c |-> "orig",
+    gen |-> 0,
+    eff |-> "none",
+    adm |-> FALSE,
+    term |-> "none",
+    pc |-> "claim",
+    id |-> 1,
+    acked |-> FALSE ] }
+/\ nextId = 2
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 6: <HandlerStep line 394, col 5 to line 396, col 93 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "claimed",
+  fp |-> 1,
+  gen |-> 1,
+  lease |-> TRUE,
+  eff |-> "none",
+  adm |-> FALSE,
+  term |-> "none" ]
+/\ handlers = { [ c |-> "orig",
+    gen |-> 1,
+    eff |-> "none",
+    adm |-> FALSE,
+    term |-> "none",
+    pc |-> "admit",
+    id |-> 1,
+    acked |-> TRUE ] }
+/\ nextId = 2
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 7: <HandlerStep line 394, col 5 to line 396, col 93 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "admitted",
+  fp |-> 1,
+  gen |-> 1,
+  lease |-> TRUE,
+  eff |-> "selective",
+  adm |-> TRUE,
+  term |-> "none" ]
+/\ handlers = { [ c |-> "orig",
+    gen |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    term |-> "none",
+    pc |-> "pubAdm",
+    id |-> 1,
+    acked |-> TRUE ] }
+/\ nextId = 2
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = {}
+
+State 8: <HandlerStep line 394, col 5 to line 396, col 93 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "admitted",
+  fp |-> 1,
+  gen |-> 1,
+  lease |-> TRUE,
+  eff |-> "selective",
+  adm |-> TRUE,
+  term |-> "none" ]
+/\ handlers = { [ c |-> "orig",
+    gen |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    term |-> "none",
+    pc |-> "intent",
+    id |-> 1,
+    acked |-> TRUE ] }
+/\ nextId = 2
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = { [ fp |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    kind |-> "adm",
+    src |-> "orig",
+    corr |-> 1,
+    status |-> "none" ] }
+
+State 9: <HandlerStep line 394, col 5 to line 396, col 93 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {}
+/\ expiries = 0
+/\ row = [ state |-> "dispatch_intended",
+  fp |-> 1,
+  gen |-> 1,
+  lease |-> TRUE,
+  eff |-> "selective",
+  adm |-> TRUE,
+  term |-> "none" ]
+/\ handlers = { [ c |-> "orig",
+    gen |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    term |-> "none",
+    pc |-> "dispatch",
+    id |-> 1,
+    acked |-> TRUE ] }
+/\ nextId = 2
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = { [ fp |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    kind |-> "adm",
+    src |-> "orig",
+    corr |-> 1,
+    status |-> "none" ] }
+
+State 10: <HandlerStep line 394, col 5 to line 396, col 93 of module AgentCallAdapter>
+/\ adSeen = {}
+/\ ad = "native"
+/\ reruns = 0
+/\ allowlisted = TRUE
+/\ redeliveries = 0
+/\ dispatchLog = {[c |-> "orig", gen |-> 1, eff |-> "selective", id |-> 1]}
+/\ expiries = 0
+/\ row = [ state |-> "dispatch_intended",
+  fp |-> 1,
+  gen |-> 1,
+  lease |-> TRUE,
+  eff |-> "selective",
+  adm |-> TRUE,
+  term |-> "none" ]
+/\ handlers = { [ c |-> "orig",
+    gen |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    term |-> "none",
+    pc |-> "await",
+    id |-> 1,
+    acked |-> TRUE ] }
+/\ nextId = 2
+/\ serverMode = "required"
+/\ inflight = [orig |-> 0, conf |-> 0]
+/\ chainRes = "none"
+/\ crashes = 0
+/\ modeChanges = 0
+/\ published = [orig |-> TRUE, conf |-> FALSE]
+/\ sensitive = FALSE
+/\ clientMax = "selective"
+/\ evts = { [ fp |-> 1,
+    eff |-> "selective",
+    adm |-> TRUE,
+    kind |-> "adm",
+    src |-> "orig",
+    corr |-> 1,
+    status |-> "none" ] }
+
+318993 states generated, 114180 distinct states found, 65003 states left on queue.
+The depth of the complete state graph search is 10.
+Finished in 02s at (2026-10-17 18:15:03)
+exit=12
