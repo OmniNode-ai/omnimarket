@@ -63,6 +63,14 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19972-partial-mirror-preserves-legacy-writes"
+    binds_ac: ["AC3"]
+    description: "A partial tenant mirror cannot disable the closed historical slug fallback. Registry drift still refuses, and unknown UUIDs retain the bounded catch-up wait. This covers compatibility of the shared write-time resolver used by run-trace and delegation writers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18198_mirror_catchup_race.py -q -p no:cacheprovider --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-tenant-context-regression"
     binds_ac: ["AC3"]
     description: "The OMN-15797 Runs exposure test reads a slug-named tenant and serves only rows stamped with its UUID. This binds only the product serving-path half of AC3; the dedicated-lab readback separately proves the full criterion."
