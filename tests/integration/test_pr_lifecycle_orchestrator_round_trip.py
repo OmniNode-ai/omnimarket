@@ -266,7 +266,6 @@ def _green_pr(pr_number: int, repo: str = "OmniNode-ai/omnimarket") -> PrRecord:
         # below continue to pass under the merge-queue governor's fail-closed
         # arm gate.
         is_draft=False,
-        coderabbit_unresolved=0,
         merge_state_status="CLEAN",
     )
 

@@ -467,7 +467,15 @@ async def async_resolve_write_tenant_uuid(
     if not tenant_identity or not tenant_identity.strip():
         return None
     registry_uuid = await async_registry_tenant_uuid(db, tenant_identity)
-    if registry_uuid is None and event_timestamp is not None:
+    # A partial mirror must not turn the closed historical fallback into a
+    # lag refusal. The registry lookup still runs first, so a conflicting row
+    # reaches the drift check below. Only identities neither source knows
+    # need the bounded catch-up window.
+    if (
+        registry_uuid is None
+        and event_timestamp is not None
+        and _legacy_tenant_uuid(tenant_identity) is None
+    ):
         registry_uuid = await _await_mirror_catchup(
             db, tenant_identity, event_timestamp
         )

@@ -22,11 +22,14 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from omnimarket.cli import cli_secret
+from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+    BLOCK_BOUNDARY_MARKER,
     CHAT_ROUTE,
+    GATEWAY_PLAN,
     MODELS_ROUTE,
     SHARED_SECRET_ENV,
     SIGNATURE_HEADER,
@@ -109,13 +112,20 @@ class FakeOutcome:
         success: bool = True,
         failure_class: EnumDelegationFailureClass | None = None,
         error_message: str | None = None,
+        content: str = "ok",
+        stop_reason: EnumAnthropicStopReason | None = EnumAnthropicStopReason.END_TURN,
+        cache_creation_input_tokens: int = 0,
+        cache_read_input_tokens: int = 0,
     ) -> None:
         self.success = success
-        self.content = "ok" if success else None
+        self.content = content if success else None
         self.failure_class = failure_class
         self.error_message = error_message
         self.tokens_in = 10
         self.tokens_out = 2
+        self.stop_reason = stop_reason
+        self.cache_creation_input_tokens = cache_creation_input_tokens
+        self.cache_read_input_tokens = cache_read_input_tokens
 
 
 class FakeCall:
@@ -179,8 +189,8 @@ def _for(repository: str | None) -> dict[str, Any]:
     return payload
 
 
-def _ok() -> FakeOutcome:
-    return FakeOutcome()
+def _ok(**fields: Any) -> FakeOutcome:
+    return FakeOutcome(**fields)
 
 
 def _fail(kind: EnumDelegationFailureClass, message: str = "") -> FakeOutcome:
@@ -231,11 +241,147 @@ def test_key_choice_translation_pins_the_model_and_drops_sampling() -> None:
     assert request.model_id == _MODEL
     assert request.endpoint_ref == _URL
     assert request.secret_ref == "cred_ref"
-    assert request.system_prompt == "You review code."
-    assert request.prompt == "review this"
+    assert request.inference_protocol == "anthropic_messages"
+    assert [b.text for b in request.system_blocks] == ["You review code."]
+    assert [b.text for m in request.messages for b in m.blocks] == ["review this"]
+    assert request.prompt == ""
+    assert request.system_prompt == ""
     assert request.max_tokens == 64
     assert request.temperature == 1.0
     assert request.provider == "anthropic"
+    assert request.tool_schema is None
+    assert request.tool_choice is None
+
+
+# --- OMN-20910: native Messages protocol behind the same voter surface -------
+
+
+def _marked_payload(**extra: Any) -> dict[str, Any]:
+    marker = BLOCK_BOUNDARY_MARKER
+    return {
+        **_PAYLOAD,
+        "messages": [
+            {
+                "role": "system",
+                "content": f"instructions and catalog\n{marker}\nstanding rules",
+            },
+            {
+                "role": "user",
+                "content": f"the diff\n{marker}\npersona focus: correctness",
+            },
+        ],
+        **extra,
+    }
+
+
+def _translate(payload: dict[str, Any]) -> ModelLlmDelegationCallRequest:
+    return translate_chat_request(
+        payload,
+        model=_MODEL,
+        endpoint_url=_URL,
+        secret_ref="cred_ref",
+        timeout_seconds=30.0,
+    )
+
+
+def test_blocks_split_at_the_boundary_with_the_persona_last_and_uncached() -> None:
+    request = _translate(_marked_payload())
+    assert [(b.text, b.cache_ttl) for b in request.system_blocks] == [
+        ("instructions and catalog", "1h"),
+        ("standing rules", "1h"),
+    ]
+    (message,) = request.messages
+    assert [(b.text, b.cache_ttl) for b in message.blocks] == [
+        ("the diff", "5m"),
+        ("persona focus: correctness", None),
+    ]
+
+
+def test_surplus_parts_join_the_last_block_so_breakpoints_stay_within_four() -> None:
+    marker = BLOCK_BOUNDARY_MARKER
+    payload = _marked_payload()
+    payload["messages"][0]["content"] = f"a\n{marker}\nb\n{marker}\nc"
+    payload["messages"][1]["content"] = f"d\n{marker}\ne\n{marker}\nf"
+    request = _translate(payload)
+    assert [b.text for b in request.system_blocks] == ["a", "b\n\nc"]
+    assert [b.text for b in request.messages[0].blocks] == ["d", "e\n\nf"]
+
+
+def test_json_schema_response_format_becomes_a_forced_tool() -> None:
+    schema = {"type": "object", "properties": {"f": {"type": "array"}}}
+    request = _translate(
+        _marked_payload(
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "verdict", "schema": schema},
+            }
+        )
+    )
+    assert request.tool_schema is not None
+    assert request.tool_schema["name"] == "verdict"
+    assert request.tool_schema["input_schema"] == schema
+    assert request.tool_choice == {"type": "tool", "name": "verdict"}
+
+
+def test_json_object_response_format_calls_no_tool() -> None:
+    request = _translate(_marked_payload(response_format={"type": "json_object"}))
+    assert request.tool_schema is None
+    assert request.tool_choice is None
+
+
+def test_a_max_tokens_stop_is_answered_as_length_never_a_shortened_stop() -> None:
+    gateway, _values, _call = _gateway(
+        [_row("key-a")],
+        [_ok(stop_reason=EnumAnthropicStopReason.MAX_TOKENS, content='{"f":[{"c":')],
+    )
+    status, reply = asyncio.run(gateway.complete(_PAYLOAD))
+    assert status == 200
+    assert reply["choices"][0]["finish_reason"] == "length"
+    assert reply["choices"][0]["message"]["content"] == '{"f":[{"c":'
+
+
+def test_a_normal_end_is_answered_as_stop_with_cache_usage_in_the_reply() -> None:
+    gateway, _values, _call = _gateway(
+        [_row("key-a")],
+        [
+            _ok(
+                stop_reason=EnumAnthropicStopReason.TOOL_USE,
+                cache_creation_input_tokens=5,
+                cache_read_input_tokens=7,
+            )
+        ],
+    )
+    status, reply = asyncio.run(gateway.complete(_PAYLOAD))
+    assert status == 200
+    assert reply["choices"][0]["finish_reason"] == "stop"
+    assert reply["usage"]["cache_read_input_tokens"] == 7
+    assert reply["usage"]["cache_creation_input_tokens"] == 5
+    assert reply["usage"]["prompt_tokens_details"] == {"cached_tokens": 7}
+
+
+def test_a_review_with_no_user_message_is_a_400_before_any_key_is_read() -> None:
+    gateway, values, call = _gateway([_row("key-a")], [_ok()])
+    payload = {**_PAYLOAD, "messages": [{"role": "system", "content": "only system"}]}
+    status, reply = asyncio.run(gateway.complete(payload))
+    assert status == 400
+    assert reply["error"]["type"] == "invalid_request"
+    assert call.calls == []
+    assert values.reads == []
+
+
+def test_the_gateway_resolves_the_native_plan_and_not_the_default_row() -> None:
+    from omnimarket.routing.byok_provider_backends import (
+        resolve_byok_provider_backend,
+    )
+
+    native = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
+    default = resolve_byok_provider_backend("anthropic")
+    assert native is not None
+    assert default is not None
+    assert native.endpoint_url.endswith("/v1/messages")
+    assert native.inference_protocol == "anthropic_messages"
+    assert default.endpoint_url.endswith("/v1/chat/completions")
+    assert default.inference_protocol == "openai_chat"
 
 
 # --- AC2: 503 and fail-over ---------------------------------------------------

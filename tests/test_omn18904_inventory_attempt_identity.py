@@ -108,7 +108,6 @@ def _handler(
 
     handler = HandlerPrLifecycleInventory()
     monkeypatch.setattr(handler, "_run_gh", run)
-    monkeypatch.setattr(handler, "_collect_coderabbit_unresolved", lambda *_args: 0)
     return handler, calls
 
 

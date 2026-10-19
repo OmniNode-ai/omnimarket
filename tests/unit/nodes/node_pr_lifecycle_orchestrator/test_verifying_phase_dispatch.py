@@ -69,7 +69,6 @@ _ENFORCE_KWARGS: dict[str, Any] = {
 }
 _ARM_READY_FACTS: dict[str, Any] = {
     "is_draft": False,
-    "coderabbit_unresolved": 0,
     "merge_state_status": "CLEAN",
 }
 

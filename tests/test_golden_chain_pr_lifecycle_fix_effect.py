@@ -47,17 +47,12 @@ class _MockGitHubAdapter:
 class _MockAgentDispatchAdapter:
     def __init__(self) -> None:
         self.review_fix_calls: list[tuple[str, int, str | None]] = []
-        self.coderabbit_calls: list[tuple[str, int]] = []
 
     async def dispatch_review_fix(
         self, repo: str, pr_number: int, ticket_id: str | None
     ) -> str:
         self.review_fix_calls.append((repo, pr_number, ticket_id))
         return f"[mock] dispatched review-fix on {repo}#{pr_number}"
-
-    async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
-        self.coderabbit_calls.append((repo, pr_number))
-        return f"[mock] dispatched coderabbit-reply on {repo}#{pr_number}"
 
 
 class _MockOccContractAdapter:
@@ -150,22 +145,6 @@ class TestPrLifecycleFixEffectGoldenChain:
         assert result.block_reason == EnumPrBlockReason.CHANGES_REQUESTED
         assert "review-fix" in result.fix_action
         assert agent.review_fix_calls == [("OmniNode-ai/omnimarket", 42, "OMN-8085")]
-
-    async def test_coderabbit_routes_to_coderabbit_reply(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """coderabbit block reason -> agent dispatch_coderabbit_reply."""
-        gh = _MockGitHubAdapter()
-        agent = _MockAgentDispatchAdapter()
-        handler = HandlerPrLifecycleFix(github_adapter=gh, agent_dispatch_adapter=agent)
-        command = _make_command(block_reason=EnumPrBlockReason.CODERABBIT)
-
-        result = await handler.handle(command)
-
-        assert result.fix_applied is True
-        assert result.block_reason == EnumPrBlockReason.CODERABBIT
-        assert "coderabbit-reply" in result.fix_action
-        assert agent.coderabbit_calls == [("OmniNode-ai/omnimarket", 42)]
 
     async def test_dry_run_uses_noop_adapters(
         self, event_bus: EventBusInmemory

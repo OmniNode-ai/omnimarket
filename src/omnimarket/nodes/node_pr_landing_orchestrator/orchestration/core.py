@@ -285,11 +285,6 @@ class PrLandingOrchestratorConfig:
     # Until the producer builds op=verify (T10 treats it as derive), the tick
     # does not verify open companions; companion merged waits for T12.
     verify_open_companions_on_tick: bool = False
-    # Repositories whose base branch requires no conversation resolution, so an
-    # unresolved review thread cannot block the merge an arm requests. The arm
-    # gate reads that as zero blocking threads; every other repository leaves
-    # the count unknown and the gate withholds.
-    review_threads_not_required_repos: frozenset[str] = frozenset()
     # Repositories whose PR-state observations (the PR watcher's feed) prompt
     # a read, as a push prompt does. Every other repository's observation is
     # dropped.
@@ -546,12 +541,6 @@ class _Leg:
             repo=state.repository,
             pr_number=state.pr_number,
             is_draft=state.draft,
-            # The workflow reads no review threads: zero blocking threads only
-            # where the base requires no conversation resolution, else unknown,
-            # which withholds (fail closed).
-            coderabbit_unresolved=0
-            if state.repository in self.config.review_threads_not_required_repos
-            else None,
             merge_state_status=merge_state.upper() if merge_state else None,
             # Only called for a GREEN verdict of the head-check classifier.
             head_check_verdict=EnumHeadCheckVerdict.GREEN,

@@ -80,7 +80,6 @@ def _green() -> tuple[PrRecord, TriageRecord, ReducerIntent]:
             checks_status="success",
             review_status="approved",
             is_draft=False,
-            coderabbit_unresolved=0,
             merge_state_status="CLEAN",
         ),
         TriageRecord(pr_number=_GREEN_PR, repo=_REPO, category=EnumPrCategory.GREEN),

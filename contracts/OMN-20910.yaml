@@ -59,6 +59,16 @@ requirements:
     acceptance:
       - id: "AC13"
         statement: "AC13: each item goes admission, call, parse, verdict with an event per step in order; a refused item is never submitted; a failed call releases its reservation; a truncated, unparseable or empty answer is degraded and never passed; a diff that no longer matches the manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov fails at the merge base"
+
+  - id: "req-native-messages-protocol"
+    statement: "node_llm_delegation_call_effect calls the native Anthropic Messages API for the api_native BYOK row, with prompt caching of the catalog and persona blocks and a typed stop_reason, and node_claude_review_gateway_effect serves the voter surface over it; a call naming no plan still uses the compatibility row."
+    acceptance:
+      - id: "AC30"
+        statement: "AC30: two calls differing only in the persona block report the diff's tokens as cache_read_input_tokens on the second -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k 'second_persona_reads_the_diff_from_cache or two_voter_calls' fails at the merge base"
+      - id: "AC31"
+        statement: "AC31: stop_reason max_tokens reaches the review parser as a typed stop reason and the gateway answers finish_reason length -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn20910_native_messages_protocol.py tests/unit/nodes/node_claude_review_gateway_effect -q -n 0 --no-cov -k 'max_tokens' fails at the merge base"
+      - id: "AC32"
+        statement: "AC32: a call naming no plan still uses the compatibility row and the OpenAI-compatible chat shape -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k TestCallsNamingNoPlanKeepTheCompatibilityRow"
   - id: "req-defect-catalog-node"
     statement: "node_review_defect_catalog_compute validates the review defect-code catalog, refuses a duplicate or reused code, a family-letter mismatch, an enforced_by entry with no validator version and a section over its token budget, and renders the reviewer's catalog section and allowed-code set for one repository."
     acceptance:
@@ -185,6 +195,39 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]
+
+  - id: "dod-omn20910-ac30-native-prompt-cache"
+    description: "Over a provider that simulates the prompt cache from the wire payload, the second of two calls differing only in the persona block reads the tool, both system blocks and the diff from the cache, through the call effect and through the gateway."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k 'second_persona_reads_the_diff_from_cache or two_voter_calls'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn20910-ac31-typed-stop-reason"
+    description: "A max_tokens stop is a typed EnumAnthropicStopReason on the result, the compact-strict parser refuses it as truncated, and the gateway answers finish_reason length."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py tests/unit/nodes/node_claude_review_gateway_effect -q -n 0 --no-cov -k 'max_tokens'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
+  - id: "dod-omn20910-ac32-compat-row-default"
+    description: "The catalogue resolves the compatibility row for a caller naming no plan, and a request naming no protocol posts the chat shape with a Bearer key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k TestCallsNamingNoPlanKeepTheCompatibilityRow"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]
+  - id: "dod-omn20910-deploy-native-messages-smoke"
+    description: "Run the checked-out native Messages tests in a disposable container: the call effect posts the block layout with cache breakpoints, the key in x-api-key, the typed stop_reason and cache usage, and a call naming no plan keeps the chat shape. No key, no network and no lab service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/native-messages-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/test_omn20910_native_messages_protocol.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/native-messages-tests
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20910-ac8-defect-catalog-node"
     description: "The defect-code catalog node validates and renders the packaged catalog; every refusal has a positive control."
     source: "manual"

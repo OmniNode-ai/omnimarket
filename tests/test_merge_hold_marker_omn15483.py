@@ -394,7 +394,6 @@ def _inventory(title: str) -> InventoryResult:
                 review_status="approved",
                 has_conflicts=False,
                 is_draft=False,
-                coderabbit_unresolved=0,
                 merge_state_status="CLEAN",
             ),
         ),
