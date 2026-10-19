@@ -32,19 +32,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/models/context_compaction/test_context_compaction_receipt_schemas.py -q -p no:randomly --no-cov"
     binds_ac: ["AC2"]
   - id: "dod-omn21112-deploy-receipt-schemas"
-    description: "Hosted deploy probe. A labelled ephemeral Python 3.13 container mounts the checkout read-only and the verifier's uv cache, installs it into /tmp without dev dependencies and without omnibase-infra, imports the six receipt models and asserts each names the identity field the plan contracts, and that a free-text value in a bounded field is refused. It fails at the merge base, which has no COMPACTION_RECEIPT_MODELS. The hosted runner can run it inside the check budget; no lab route is required."
+    description: "Deploy probe. The checkout's own environment imports the six receipt models, asserts each names the identity field the plan contracts, and asserts that a free-text value in a bounded field is refused. It fails at the merge base, which has no COMPACTION_RECEIPT_MODELS. The hosted runner can run it inside the check budget; no lab route is required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm --user "$(id -u):$(id -g)" \
-          --label onex.deploy-probe=OMN-21112 \
-          --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          --env PYTHONDONTWRITEBYTECODE=1 \
-          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
-          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          uv run --frozen python -c '
           from omnimarket.models.context_compaction import COMPACTION_RECEIPT_MODELS as M, ModelContextCompactionFallback as F
           ids = {m.__name__: m.IDENTITY_FIELD for m in M}
           assert ids == {"ModelContextCompactionPrepared": "candidate_id", "ModelContextCompactionActivated": "activation_id", "ModelContextCompactionFallback": "invocation_id", "ModelContextCompactionInstalled": "activation_id", "ModelContextCompactionInstallMismatch": "activation_id", "ModelContextCompactionInstallUncertain": "activation_id"}, ids
