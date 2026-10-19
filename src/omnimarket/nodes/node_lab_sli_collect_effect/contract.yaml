@@ -25,6 +25,9 @@ description: >
   whose last exit is nonzero). A source it cannot read is listed in
   source_errors and its indicators carry no reading, so they evaluate unknown.
   Indicators with no reader on this host yet carry no reading either.
+  This node belongs to the lab SLI pack, is off by default and refuses until
+  a deployment enables the pack with `status: enabled` in
+  <root>/lab_sli_pack/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
 input_model:
   name: "ModelLabSliCollectRequest"
   module: "omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect"

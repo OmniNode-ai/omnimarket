@@ -25,6 +25,9 @@ description: >
   alert state goes in and comes out, so the node itself holds none. Each
   push's delivery (published, or the error) and each requested fix lane are on
   the lab-sli-alerted terminal event.
+  This node belongs to the lab SLI pack, is off by default and refuses until
+  a deployment enables the pack with `status: enabled` in
+  <root>/lab_sli_pack/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
 
 handler:
   module: omnimarket.nodes.node_lab_sli_alert_effect.handlers.handler_lab_sli_alert
