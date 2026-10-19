@@ -3,7 +3,7 @@ name: projection_work_ledger
 contract_version: {major: 1, minor: 1, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
+input_model: omnimarket.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
 description: >
   OMN-19513, stage 1 of retiring the manual markdown work ledger. Folds the
   eleven typed row events (one topic per canonical row type, declared under

@@ -3,5 +3,8 @@
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
     HandlerContextCompactionOrchestrator,
 )
+from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_session_barrier_wait import (
+    HandlerSessionBarrierWait,
+)
 
-__all__ = ["HandlerContextCompactionOrchestrator"]
+__all__ = ["HandlerContextCompactionOrchestrator", "HandlerSessionBarrierWait"]
