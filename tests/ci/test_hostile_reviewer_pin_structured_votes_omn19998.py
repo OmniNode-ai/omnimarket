@@ -29,7 +29,7 @@ WORKFLOW = (
     / "hostile-reviewer.yml"
 )
 # OMN-20910: the chunk-scaled review deadline revision descends from the prior fix.
-STRUCTURED_VOTES_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
+STRUCTURED_VOTES_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
 PRE_STRUCTURED_VOTES_PIN = "3fcbf795087a79081c0ceeb676216bf64c5d49ae"
 _PIN = re.compile(
     r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"
