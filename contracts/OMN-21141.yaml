@@ -1,0 +1,95 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21141"
+title: "Round-one evaluation scorer for the compaction rungs (plan task TE.4)"
+summary: >-
+  A pure compute node, node_context_round_one_eval_compute, scores recorded rung
+  runs against the TE.1 labels: proposition-rule recall per case and in total,
+  every negative control per rung, whole against chunked, the positive control,
+  next action and duplicate work against the native and no-events baselines,
+  precision, latency and token cost, candidate and assembly identity across
+  rungs, and replay hashes. The live round-one run waits on plan task TE.3
+  (rungs and recording), which has no PR.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-te4-round-one-scorer"
+    statement: "Plan task TE.4 scores recorded rung runs against the TE.1 labels with the section 5.5 rules."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the scorer gives each rung's metrics 1 to 5 per case and in total, with the native baseline and the package-without-events control alongside -- falsifier: a rung, metric or control missing"
+      - id: "AC2"
+        statement: "AC2: per case, a candidate_id or assembly_hash that differs between rungs is reported, and a recorded final hash that does not reproduce on replay is reported -- falsifier: either difference not reported"
+      - id: "AC3"
+        statement: "AC3: recall is scored by the proposition rule and every negative control labelled in TE.1 is reported per rung -- falsifier: an item credited on overlap alone, or a control missing from the report"
+      - id: "AC4"
+        statement: "AC4: a rung that passes recall whole and fails it chunked, or the reverse, is reported, and a rung evaluated in one mode where its window allows both is a falsifier -- falsifier: either case unreported"
+      - id: "AC5"
+        statement: "AC5: a positive control run with a known ruling removed scores the miss, and a zero metric without a scored positive control is a falsifier -- falsifier: recall unchanged, or a zero without one"
+      - id: "AC6"
+        statement: "AC6: recall and precision carry a deterministic 95 percent Wilson interval -- falsifier: an interval that varies between runs"
+evidence_requirements:
+  - kind: "tests"
+    description: "Round-one scorer rules for OMN-21141."
+    command: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21141-ac1-metrics-and-baselines"
+    description: "The golden chain scores two rungs with per-case and total metrics beside both baselines; next action must meet both baselines."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'eligible_rung or next_action or latency'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21141-ac2-identity-and-replay"
+    description: "Identity differences across rungs and replay mismatches are reported and falsified."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'identity_mismatch or replay'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21141-ac3-proposition-rule-and-controls"
+    description: "Overlap and wrong kind score nothing; every control is reported per rung; the TE.1 labels convert without loss."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'overlap_kind or corrected_ruling or controls_count or te1_fixture'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21141-ac4-whole-and-chunked"
+    description: "Whole against chunked disagreement is a finding; a single mode where the window allows both is a falsifier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'whole_chunked or single_mode'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21141-ac5-positive-control"
+    description: "A removed ruling must score as a miss; zero metrics need a scored positive control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'positive_control or zero_'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21141-ac6-wilson"
+    description: "The Wilson interval matches its formula and is order-independent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'wilson or input_order'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21141-deploy-probe"
+    description: "Deploy probe: the node contract read from GitHub at the checked-out commit declares the round-one command topic."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_round_one_eval_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c ''context-round-one-eval-requested'''
+        cwd: "${OMNI_HOME}/omnimarket"
