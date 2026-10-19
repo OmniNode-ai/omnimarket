@@ -514,6 +514,15 @@ requirements:
         statement: "AC96: an untagged packaged commit after a dev merge tag still ages against the 24-hour limit, and malformed dev tag names do not cover stale debt."
       - id: "AC97"
         statement: "AC97: changing the dev tag matcher to ignore valid dev merge tags makes the workflow's devtag positive control refuse the measurement."
+  - id: "req-anthropic-protocol-variant-registration"
+    statement: "An explicitly selected protocol variant does not trigger billing-plan detection during ordinary Anthropic credential registration."
+    acceptance:
+      - id: "AC98"
+        statement: "AC98: models add anthropic validates the key through the provider model list, refuses an invalid key without storing it, and stores the discovered model when no plan is named."
+      - id: "AC99"
+        statement: "AC99: register-tenant-key anthropic preserves the discovered model and expiry through its catalog event when no plan is named."
+      - id: "AC100"
+        statement: "AC100: api_native can still be named explicitly, automatic Anthropic plan detection makes no provider request, and GLM detection still refuses a Coding Plan-only key."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1983,4 +1992,35 @@ dod_evidence:
               print(name + ": PASS")
           print("release staleness deploy probe: PASS")
           PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-anthropic-models-add"
+    description: "The existing shard-17 regressions validate Anthropic keys and preserve model discovery when the catalogue also offers the native protocol. Four of these tests fail before this fix."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC98"]
+  - id: "dod-omn17427-anthropic-tenant-registration"
+    description: "The two shard-6 expiry cases reach the credential catalog with their discovered model; both fail before this fix."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov -k anthropic_expires"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC99"]
+  - id: "dod-omn17427-explicit-native-and-plan-refusals"
+    description: "Native selection remains available and does not become an automatic key probe; genuine billing-product detection retains its refusal controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_byok_plan_detection.py tests/unit/cli/test_omn20990_models_add_anthropic.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC100"]
+  - id: "dod-omn17427-anthropic-registration-deploy-probe"
+    description: "Deploy probe. Execute both credential CLI entry points against temporary credential stores and simulated provider model lists, including refused keys and tenant expiry. The hosted runner needs the locked dependencies and this checkout, with no provider credentials or external service. This checks the packaged CLI path, not a running application deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
