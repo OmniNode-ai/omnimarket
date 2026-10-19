@@ -864,6 +864,41 @@ class TestModelAttributionMismatchGuard:
         _served_models_cache.clear()
 
     @pytest.mark.unit
+    @pytest.mark.parametrize("fresh_model", ["new-model", "old-model", None])
+    def test_cached_mismatch_requires_fresh_matching_evidence(
+        self, monkeypatch: pytest.MonkeyPatch, fresh_model: str | None
+    ) -> None:
+        endpoint = "http://localhost:8000"
+        _served_models_cache[endpoint] = (
+            time.monotonic(),
+            frozenset({"old-model"}),
+        )
+        probe = MagicMock(
+            return_value=frozenset({fresh_model}) if fresh_model else None
+        )
+        monkeypatch.setattr(transport, "probe_served_models", probe)
+        posted = _patch_post(monkeypatch, json_body=_make_api_response())
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            for _ in range(2):
+                result = handler(_make_request(model_id="new-model"))
+                if fresh_model == "new-model":
+                    assert result.success
+                    assert result.served_model_id == "new-model"
+                else:
+                    assert not result.success
+                    assert result.failure_class is (
+                        EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH
+                    )
+
+        if fresh_model == "new-model":
+            assert posted["payload"]["model"] == "new-model"
+            assert probe.call_count == 1
+        else:
+            assert not posted
+
+    @pytest.mark.unit
     def test_configured_model_absent_from_served_ids_fails_closed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class NodeLaneBriefSectionCompute(
     NodeCompute[ModelLaneBriefSectionRequest, ModelLaneBriefSectionResult]
 ):
-    """Compute node: renders section 3a of a lane brief from the lane_brief profile's factors."""
+    """Compute node: renders section 3a of a lane brief from the lane_brief_section profile's factors."""
 
     def __init__(self, container: ModelONEXContainer) -> None:
         super().__init__(container)

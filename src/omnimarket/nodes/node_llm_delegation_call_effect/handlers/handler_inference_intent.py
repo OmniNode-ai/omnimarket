@@ -1049,6 +1049,10 @@ class HandlerInferenceIntent:
         # ``/v1/models`` at this origin) and leaves behaviour unchanged.
         served_ids = transport.get_served_model_ids(base_url)
         if served_ids is not None and intent.model not in served_ids:
+            served_ids = (
+                transport.get_served_model_ids(base_url, refresh=True) or served_ids
+            )
+        if served_ids is not None and intent.model not in served_ids:
             raise ModelAttributionMismatchError(
                 f"model_attribution_mismatch: configured model_name="
                 f"{intent.model!r} is not in the served ids "

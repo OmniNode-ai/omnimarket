@@ -24,7 +24,7 @@ runtime_profiles: [main]
 
 description: >
   Pure render of a lane brief's section 3a from the three required factors of the
-  lane_brief profile (LANE_RULES, OPERATOR_RULINGS, OPEN_WORK), each as the source
+  lane_brief_section profile (LANE_RULES, OPERATOR_RULINGS, OPEN_WORK), each as the source
   result a context source returned. Ten numbered parts in the lane-brief standard's
   order, each reader's output fenced verbatim. A required factor that did not
   resolve, a missing entry slot, or a cited ruling stamp that no OPERATOR_RULINGS
@@ -63,7 +63,7 @@ descriptor:
 
 capabilities:
   - name: context.lane_brief.section_3a
-    description: Render section 3a of a lane brief from the lane_brief profile's factors
+    description: Render section 3a of a lane brief from the lane_brief_section profile's factors
     version: 1.0.0
 
 event_bus:

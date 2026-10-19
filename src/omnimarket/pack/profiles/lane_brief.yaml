@@ -1,39 +1,27 @@
-# Context profile for a lane brief's section 3a (plan task TA.17, section 4.4).
-# Inline binding: the lane-brief skill at dispatch, to the lane-brief standard.
-# Parity scope (TA.17 note): the v5 optional tiers (task-kind shapes, exemplars,
-# cited plan excerpts, capability digest) are excluded, so the comparison with the
-# script's section 3a is like for like; TC.10 enables them after their evaluation.
-# Budget: 12000 covers the largest of the 12 recent briefs measured for TA.17
-# (section 3a about 7.6k to 11.8k tokens, median about 8.5k at 4 characters per
-# token). The median would refuse a required factor on half of them with
-# TOKEN_BUDGET_EXCEEDED, so the first value is the measured maximum rounded up;
-# TC.9 and TC.12 tune it by a data PR that cites their measurement.
-model_id: lane-brief
+# Context profile for a lane brief built at dispatch (TA.9 replay evaluation finding).
+# Inline: the dispatcher builds the pack itself and pastes it into the brief; no hook is
+# involved. The same pack nodes serve it as every other profile; only this data differs.
+# Values are first values: the 2026-10-19 replay evaluation built a 677-token lane-brief
+# pack (559 lane_rules, 118 operator_rulings), with every required item present, and
+# a profile changes only through a data PR that cites measured evidence.
+model_id: claude-code-subagent
 profile_version: 1.0.0
-injection_point: lane_brief
 binding_kind: inline
 required_factors:
   - lane_rules
+optional_factors:
   - operator_rulings
-  - open_work
-excluded_factors:
-  - invariants
-  - canonical_shapes
-  - exemplar
   - plan_excerpts
-  - capability_digest
-# Authority order, section 4.2: rules, rulings, state.
+# Authority order, section 4.2: standing rules, then the rulings the brief cites, then plans.
 factor_precedence:
   - lane_rules
   - operator_rulings
-  - open_work
+  - plan_excerpts
 stable_factors:
   - lane_rules
-token_budget: 12000
-selection_task_class: context_selection
-# Window data (port item AP-B5): the consumer's window minus its reserved output and
-# system shares. The reserved shares are the plan's first values for a dispatched lane,
-# measured by TC.12.
+token_budget: 4000
+# Window data (port item AP-B5): a lane brief is read by the same subagent consumer as the
+# agent_spawn profile, so it declares the same window and reserved shares.
 context_window_tokens: 200000
 reserved_output_tokens: 32000
 reserved_system_tokens: 76738

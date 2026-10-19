@@ -213,21 +213,29 @@ _SERVED_MODELS_CACHE_TTL_SECONDS = 60
 served_models_cache: dict[str, tuple[float, frozenset[str] | None]] = {}
 
 
-def get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
+def get_served_model_ids(
+    endpoint_url: str, *, refresh: bool = False
+) -> frozenset[str] | None:
     """Return cached (or freshly probed) served model ids for ``endpoint_url``.
 
     The cache wrapper around ``probe_served_models`` that backs the fail-closed
     model-attribution guard at both effect boundaries (OMN-16419,
-    OMN-17098). ``None`` is "no evidence", never a mismatch.
+    OMN-17098). ``None`` is "no evidence", never a mismatch. Before refusing
+    a cached mismatch, callers refresh the list: a provider may have replaced
+    its model or restarted at the same address within the cache TTL. A failed
+    refresh retains existing evidence so an unreadable listing cannot erase
+    a known mismatch.
     """
     now = time.monotonic()
     cached = served_models_cache.get(endpoint_url)
-    if cached is not None:
+    if cached is not None and not refresh:
         ts, served_ids = cached
         if now - ts < _SERVED_MODELS_CACHE_TTL_SECONDS:
             return served_ids
 
     served_ids = probe_served_models(endpoint_url)
+    if refresh and served_ids is None and cached is not None:
+        return cached[1]
     served_models_cache[endpoint_url] = (now, served_ids)
     return served_ids
 

@@ -1,0 +1,24 @@
+name: node_review_replay_set_effect
+version: "1.0.0"
+description: "Freezes merged PR diffs stratified by repo and size under a manifest hash for the review replay"
+omnibase_core_compat: ">=0.47.0,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_review_replay_set_effect: "omnimarket.nodes.node_review_replay_set_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: file_write
+dependencies:
+  - "omnibase_core>=0.47.0"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "review", "hostile-reviewer", "replay"]
+pack: "review"
+display_name: "Review Replay Set Effect"
+node_role: "effect"

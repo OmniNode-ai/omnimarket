@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerLaneBriefSection: the `lane_brief` profile's factors -> a brief's section 3a (OMN-21118, TA.17).
+"""HandlerLaneBriefSection: the `lane_brief_section` profile's factors -> a brief's section 3a (OMN-21118, TA.17).
 
 Pure and definition-B: ``handle(ModelLaneBriefSectionRequest) -> ModelLaneBriefSectionResult``,
 no event envelope. The layout is the lane-brief standard's section 3a: ten numbered parts in
@@ -86,7 +86,7 @@ def _refuse(
 
 
 class HandlerLaneBriefSection:
-    """Render section 3a from the `lane_brief` profile's required factors."""
+    """Render section 3a from the `lane_brief_section` profile's required factors."""
 
     def handle(
         self, request: ModelLaneBriefSectionRequest

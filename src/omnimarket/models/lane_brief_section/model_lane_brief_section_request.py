@@ -24,7 +24,7 @@ SLOT_HOLDS = "holds"
 
 
 class ModelLaneBriefSectionRequest(BaseModel):
-    """The three required factors of the `lane_brief` profile, as sources returned them.
+    """The three required factors of the `lane_brief_section` profile, as sources returned them.
 
     Each factor is a `ModelContextSourceResult`; its entries are placed by `source_ref`
     slot. Header values (the reader return codes, the pinned T0, the lane and model) are
