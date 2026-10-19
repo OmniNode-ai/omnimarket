@@ -523,6 +523,11 @@ requirements:
         statement: "AC99: register-tenant-key anthropic preserves the discovered model and expiry through its catalog event when no plan is named."
       - id: "AC100"
         statement: "AC100: api_native can still be named explicitly, automatic Anthropic plan detection makes no provider request, and GLM detection still refuses a Coding Plan-only key."
+  - id: "req-metering-shared-lane-refresh"
+    statement: "On a shared lane every tenant with delegation_events gets metering_summary rows: a delegation terminal and a contract-declared runtime-tick schedule publish a refresh command naming tenants and days, and the metering projection reads each tenant's runs under its own row-level-security context and folds them, because a fold request carrying a large tenant's runs exceeds the bus's 1 MiB message limit."
+    acceptance:
+      - id: "AC92"
+        statement: "AC92: node_metering_summary_refresh_compute turns a delegation terminal into a refresh of its tenant's UTC day and turns one runtime tick per interval into a whole refresh of every tenant, on the command node_projection_metering_summary subscribes, and that node folds every tenant with runs into day and all-time rows and refolds only the named day once the all-time row exists -- falsifier: uv run pytest tests/nodes/node_metering_summary_refresh_compute/test_metering_summary_refresh_producer.py tests/nodes/node_metering_summary_refresh_compute/test_golden_chain_metering_summary_refresh.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2024,3 +2029,18 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac92-metering-shared-lane-refresh"
+    description: "The metering refresh producer and the projection's store refresh pass: a terminal requests its tenant's day, the schedule requests every tenant whole once per interval, and the projection folds each tenant's runs into day and all-time rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_metering_summary_refresh_compute/test_metering_summary_refresh_producer.py tests/nodes/node_metering_summary_refresh_compute/test_golden_chain_metering_summary_refresh.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC92"]
+  - id: "dod-omn17427-metering-refresh-deploy-probe"
+    description: "Deploy probe. GitHub serves the metering projection contract at the checked-out HEAD subscribing the store refresh command and naming node_metering_summary_refresh_compute as its producer. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_metering_summary/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "store_refresh_command_topic" in source and "node_metering_summary_refresh_compute" in source; print("metering shared-lane refresh deploy probe: PASS")'
