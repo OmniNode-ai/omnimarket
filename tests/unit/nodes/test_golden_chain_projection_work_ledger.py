@@ -14,11 +14,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
+from omnimarket.handlers.work_ledger_fold import (
     apply_ops,
     fold_row,
 )
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request import (
+from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
 )
 
