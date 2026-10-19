@@ -34,6 +34,11 @@ requirements:
     acceptance:
       - id: "AC9"
         statement: "AC9: each fail-closed case has a failed result with no findings, the valid verdict is the positive control, and the v1 reply passes unchanged -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-review-cost-events"
+    statement: "Every provider attempt of a Hostile Review call, including one cut off by a cancellation, leaves one cost record from the delegation call effect's per-attempt observation boundary, carrying the review provenance the gateway passes in the request."
+    acceptance:
+      - id: "AC11"
+        statement: "AC11: a review call records one cost event per provider attempt with its usage, outcome and review provenance, an attempt that was cut off is recorded as cancelled, a call that names no review records nothing, and the gateway copies the review identity from the request metadata -- falsifier: uv run pytest tests/test_omn20910_review_call_cost_events.py tests/test_omn20910_review_gateway_provenance.py -q -p no:randomly --no-cov fails at the merge base"
   - id: "req-review-replay-set-node"
     statement: "node_review_replay_set_effect freezes 40 merged diffs stratified by repo and size under a manifest hash."
     acceptance:
@@ -125,6 +130,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn20910-ac11-review-cost-events"
+    description: "One cost event per provider attempt from the effect's observation boundary (including a cancelled attempt), and the gateway's review provenance."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_review_call_cost_events.py tests/test_omn20910_review_gateway_provenance.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
   - id: "dod-omn20910-ac12-review-replay-set-node"
     description: "The replay set freezes a stratified set under a stable manifest hash."
     source: "manual"

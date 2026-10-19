@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: compact_package_read_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Reads an installed compaction out of a session transcript. The newest
+  compact_boundary record and every record after it are returned exactly as the
+  harness wrote them, so the content capture journals them unmodified. A boundary
+  quoted inside a tool result is not one. PostCompact can fire before the harness
+  has flushed the transcript, so the read polls briefly. The onex plugin's
+  hook_content_capture.py loads the handler module by file path, because a
+  per-tool-call hook cannot pay a package import or a bus round-trip; the module
+  level imports the standard library only.
+input_model: omnimarket.nodes.node_compact_package_read_effect.models.ModelCompactPackageReadRequest
+output_model: omnimarket.nodes.node_compact_package_read_effect.models.ModelCompactPackageReadResult
+handler:
+  module: omnimarket.nodes.node_compact_package_read_effect.handlers.handler_compact_package_read
+  class: HandlerCompactPackageRead
+  input_model: omnimarket.nodes.node_compact_package_read_effect.models.ModelCompactPackageReadRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerCompactPackageRead
+      module: omnimarket.nodes.node_compact_package_read_effect.handlers.handler_compact_package_read
+    event_model:
+      name: ModelCompactPackageReadRequest
+      module: omnimarket.nodes.node_compact_package_read_effect.models
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 8000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.compact-package-read-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.compact-package-read-start.v1
+  publish_topics:
+  - onex.evt.omnimarket.compact-package-read-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.compact-package-read-start.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.compact-package-read-completed.v1
+metadata:
+  transport_type: kafka
+inputs:
+  transcript_path:
+    type: string
+    required: true
+    description: The session transcript (transcript_path of the PostCompact hook input).
+  tail_bytes:
+    type: integer
+    required: false
+    description: How much of the transcript's end is searched for the boundary.
+  attempts:
+    type: integer
+    required: false
+    description: How many times the transcript is read before giving up.
+  pause_s:
+    type: number
+    required: false
+    description: Seconds between reads.
+outputs:
+  found:
+    type: boolean
+    description: True when the tail holds a compact_boundary record.
+  package:
+    type: string
+    description: The newest boundary line and every line after it, verbatim, each
+      ending in a newline; empty when none was found.
+  detail:
+    type: string
+    description: What was found, or why nothing was.
