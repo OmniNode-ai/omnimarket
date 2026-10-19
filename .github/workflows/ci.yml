@@ -555,6 +555,8 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      - name: Registered BYOK escalation (OMN-20607)
+        run: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py -q -n 0 -p no:randomly --no-cov
       # OMN-17427 (operator ruling 2026-10-08T23:48:01Z): lab models first for
       # appropriate tasks. Refuses a class routed to a cloud model first (tier
       # order, entry share or model pin) unless the task-class contract records a
