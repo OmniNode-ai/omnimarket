@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The completeness check of the private automation-liveness overlay: the overlay and every
+# installer in every registry repository are held to each other. Pure: the node is handed the
+# overlay text, the sources declaration text and the scanned files; the console script walks the
+# clones and hands them over. The overlay data itself stays in the private repository and is
+# passed in by path (--internal-root), never shipped here.
+name: node_automation_liveness_overlay_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Validates the private automation-liveness overlay through the seam's own model, finds every
+  unit file, launchd template, cron.d file and installer in the supplied registry files, and
+  returns a finding for each unit or installer the overlay and its sources declaration do not
+  cover, each declared source that no longer exists, and each lifecycle state its installers
+  contradict.
+
+handler:
+  module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
+  class: HandlerAutomationLivenessOverlayCheck
+  input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+  output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: scan_installers
+      handler:
+        name: HandlerAutomationLivenessInstallerScan
+        module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_installer_scan
+      input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_installer_scan_request.ModelAutomationLivenessInstallerScanRequest
+      output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_installer_scan_result.ModelAutomationLivenessInstallerScanResult
+    - operation: check_overlay
+      handler:
+        name: HandlerAutomationLivenessOverlayCheck
+        module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
+      input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+      output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
+
+entry_points:
+  console_scripts:
+    onex-automation-liveness-check: omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+
+runtime_dispatch:
+  external_trigger: "The onex-automation-liveness-check console script invokes the local node with the overlay, the sources declaration and the scanned installer files it read from the checkouts."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+  description: "Pure compute node: completeness check of the private automation-liveness overlay"
+  author: "OmniNode Platform Team"

@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_automation_liveness_deadman_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-20807. The automation-liveness dead-man's durable half. One tick takes
+  the ledger rows the dead-man compute returned, oldest first, and appends
+  each to the ledger once: a key its store holds, or one the ledger already
+  carries, is recorded as written and not appended again. The first failed
+  append stops the tick so the rows behind it stay in order in the backlog.
+  Every row written becomes a recorded event carrying its ledger line, and the
+  tick beats the dead-man's heartbeat with its consumed offset, its backlog,
+  its last ledger write and a self-test that plants a stale and a fresh
+  primary heartbeat through the real compute. The ledger writer and the
+  broker sink plug in through protocols.
+
+input_model: omnimarket.nodes.node_automation_liveness_deadman_effect.models.model_deadman_record.ModelDeadmanRecordRequest
+output_model: omnimarket.nodes.node_automation_liveness_deadman_effect.models.model_deadman_record.ModelDeadmanRecordResult
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerAutomationLivenessDeadmanEffect
+        module: omnimarket.nodes.node_automation_liveness_deadman_effect.handlers.handler_automation_liveness_deadman_effect
+      event_model:
+        name: ModelDeadmanRecordRequest
+        module: omnimarket.nodes.node_automation_liveness_deadman_effect.models
+
+handler:
+  module: omnimarket.nodes.node_automation_liveness_deadman_effect.handlers.handler_automation_liveness_deadman_effect
+  class: HandlerAutomationLivenessDeadmanEffect
+  input_model: omnimarket.nodes.node_automation_liveness_deadman_effect.models.model_deadman_record.ModelDeadmanRecordRequest
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.automation-liveness-deadman-recorded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.automation-liveness-deadman-record-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.automation-liveness-alarm-recorded.v1
+    - onex.evt.omnimarket.automation-heartbeat.v1
+    - onex.evt.omnimarket.automation-liveness-deadman-recorded.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-liveness-deadman-record-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.automation-liveness-alarm-recorded.v1
+  - onex.evt.omnimarket.automation-heartbeat.v1
+  - onex.evt.omnimarket.automation-liveness-deadman-recorded.v1
+
+metadata:
+  transport_type: kafka
+  description: "Effect node: dead-man ledger rows once per episode phase, recorded events and the dead-man heartbeat"
+  author: "OmniNode Platform Team"
+  created: "2026-10-17"
+  tags:
+    - "effect"
+    - "liveness"
+    - "deadman"

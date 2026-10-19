@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeTranscriptParseCompute (OMN-21129, plan task TC.6)
+
+name: node_transcript_parse_compute
+version: "1.0.0"
+contract_name: node_transcript_parse_compute
+node_name: node_transcript_parse_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure parse of one Claude Code transcript's JSONL text into typed turns: role, record uuid, parent uuid, session id, promptId, timestamp, the record's character offsets in the text, its text as the archive extractor read it, and the operator-typed flag by the P8a transcript-form rule (promptSource present; not meta, not a compact summary, no tool result). Ported from the archive session extractor (extract_session_archive.py) without its SQLite writes or default directory. No I/O; the caller supplies the text.
+
+input_model:
+  name: ModelTranscriptParseRequest
+  module: omnimarket.models.transcript_parse
+
+output_model:
+  name: ModelTranscriptParseResult
+  module: omnimarket.models.transcript_parse
+
+handler:
+  module: omnimarket.nodes.node_transcript_parse_compute.handlers.handler_transcript_parse
+  class: HandlerTranscriptParse
+  input_model: omnimarket.models.transcript_parse.ModelTranscriptParseRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerTranscriptParse
+        module: omnimarket.nodes.node_transcript_parse_compute.handlers.handler_transcript_parse
+      event_model:
+        name: ModelTranscriptParseRequest
+        module: omnimarket.models.transcript_parse
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+capabilities:
+  - name: transcript.parse
+    description: Parse Claude Code transcript JSONL text into typed turns with the P8a operator-typed flag
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.transcript-parse-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.transcript-parsed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.transcript-parse-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.transcript-parsed.v1
+
+terminal_event: onex.evt.omnimarket.transcript-parsed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21129
+  maturity: alpha
+  tags:
+    - transcript
+    - parse
