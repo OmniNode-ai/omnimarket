@@ -179,17 +179,19 @@ class TestTheCompanionContractSurvivesTheConsumingRepoFormatter:
     """AC1 — byte-identical under the consuming repo's own yamlfmt, any input."""
 
     @pytest.mark.parametrize("conf", _yamlfmt_configs())
-    @pytest.mark.parametrize("pr_number", [10000, _FIVE_DIGIT_PR])
     def test_the_longest_repo_at_a_five_digit_pr_is_a_fixpoint(
-        self, pr_number: int, conf: Path, tmp_path: Path
+        self, conf: Path, tmp_path: Path
     ) -> None:
         """Cover both ends of the five-digit range used by live companions."""
-        _assert_fixpoint(
-            _contract(_LONGEST_REPO, pr_number),
-            conf,
-            tmp_path,
-            f"the compute companion contract for {_LONGEST_REPO}#{pr_number}",
-        )
+        for pr_number in (10000, _FIVE_DIGIT_PR):
+            pr_dir = tmp_path / str(pr_number)
+            pr_dir.mkdir()
+            _assert_fixpoint(
+                _contract(_LONGEST_REPO, pr_number),
+                conf,
+                pr_dir,
+                f"the compute companion contract for {_LONGEST_REPO}#{pr_number}",
+            )
 
     @pytest.mark.parametrize("conf", _yamlfmt_configs())
     def test_the_omn_18669_recurrence_is_a_fixpoint(
