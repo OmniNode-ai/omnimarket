@@ -470,6 +470,11 @@ requirements:
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-rehome-lab-nodes-slice-3"
+    statement: "The hourly tick effect, the lab disk growth effect and the lab fill receipt table compute live in the portable node package with their handlers, contracts and bus topics."
+    acceptance:
+      - id: "AC94"
+        statement: "AC94: each of the three nodes resolves its onex.nodes entry point to the omnimarket package, runs its handler through the declared contract, and keeps the topics it declared in the source repository under the omnimarket namespace -- falsifier: uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q fails when a node is absent"
   - id: "req-ruling-guard-paths-spelled"
     statement: "The park ladder handler and the operator capture handlers are spelled by path in a required lint step and a pre-commit hook, so the ruling audit reads the rulings they carry as wired."
     acceptance:
@@ -490,6 +495,11 @@ requirements:
     acceptance:
       - id: "AC83"
         statement: "AC83: a model replacement at the same endpoint completes without waiting for cache expiry, while an unreadable or mismatching refresh sends no completion request -- falsifier: the cached_model_list and cached_mismatch regression tests fail before the reconciliation change"
+  - id: "req-delegate-skill-trace-id-stored"
+    statement: "delegation_events.trace_id is written from the delegate-skill terminal's own trace_id by both projection writers, and a later terminal that carries none keeps the stored value."
+    acceptance:
+      - id: "AC93"
+        statement: "AC93: the sync and async delegate-skill row builders store the terminal's trace_id as text, leave the column NULL when the terminal carries none, and keep a stored trace_id across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q fails at the merge base"
   - id: "req-evidence-comment-class"
     statement: "A done-evidence comment is drafted on the lab rung as the internal evidence_comment task class, and a draft that cites an identifier absent from the lane report, skips or reorders a criterion, or restates a criterion as its evidence is refused before use."
     acceptance:
@@ -1792,6 +1802,29 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac94-rehome-lab-nodes-slice-3"
+    description: "The hourly tick, lab disk growth and lab fill receipt table nodes pass their focused suites in the portable package."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC94"]
+  - id: "dod-omn17427-rehome-lab-nodes-slice-3-deploy-probe"
+    description: "Deploy probe. The checked-out package lists the three nodes as onex.nodes entry points and their contracts parse. It fails at the merge base, where the nodes are absent, and needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import pathlib, yaml
+          for name in ("node_hourly_tick_effect", "node_lab_disk_growth_effect", "node_lab_fill_receipt_table_compute"):
+              contract = yaml.safe_load(pathlib.Path(f"src/omnimarket/nodes/{name}/contract.yaml").read_text())
+              assert contract["name"] == name, name
+              assert f"{name} = " in pathlib.Path("pyproject.toml").read_text(), name
+          print("rehome lab nodes slice 3 deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac80-ruling-guard-paths"
     description: "The park ladder wiring tests require the handler path in the lint step and hook names, and the operator capture nodes pass their tests."
     source: "manual"
@@ -1851,6 +1884,22 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac93-delegate-skill-trace-id"
+    description: "Both projection writers store a delegate-skill terminal's trace_id. Before the change 5 of the 7 tests fail (the trace is dropped); after it all pass. A lab replay of a real delegate-skill-failed terminal through the sync writer stores its trace_id at the head and NULL at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC93"]
+  - id: "dod-omn17427-delegate-skill-trace-id-deploy-probe"
+    description: "Deploy probe. The checked-out source of both delegate-skill row builders names the terminal's trace_id column. It fails at the merge base, where neither builder writes it, and needs only a shell and this checkout on the hosted runner; the behavioural proof stays in the test_passes check bound to AC93."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq "row[\"trace_id\"] = str(event.trace_id)" "$f"; done; echo "delegate-skill trace_id deploy probe: PASS"'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac92-evidence-comment-class"
     description: "The evidence_comment class chain passes: the class is internal, local only and never selected from a prompt, a faithful draft is accepted, and a draft with an identifier absent from the report, a missing or reordered criterion, a restated criterion or an entry with no report token is refused."

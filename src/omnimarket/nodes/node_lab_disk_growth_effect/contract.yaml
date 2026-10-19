@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_lab_disk_growth_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+runtime_profiles: [effects]
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Reclaims old plugin snapshots while protecting live lanes and colocates the uv cache
+  with worktrees so their environments can share hardlinked files.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evict_plugin_snapshots
+      handler:
+        name: HandlerLabPluginSnapshotEvict
+        module: omnimarket.nodes.node_lab_disk_growth_effect.handlers.handler_lab_plugin_snapshot_evict
+      input_model: omnimarket.nodes.node_lab_disk_growth_effect.models.model_lab_plugin_snapshot_evict_request.ModelLabPluginSnapshotEvictRequest
+      output_model: omnimarket.nodes.node_lab_disk_growth_effect.models.model_lab_plugin_snapshot_evict_result.ModelLabPluginSnapshotEvictResult
+    - operation: colocate_uv_cache
+      handler:
+        name: HandlerLabUvCacheColocate
+        module: omnimarket.nodes.node_lab_disk_growth_effect.handlers.handler_lab_uv_cache_colocate
+      input_model: omnimarket.nodes.node_lab_disk_growth_effect.models.model_lab_uv_cache_colocate_request.ModelLabUvCacheColocateRequest
+      output_model: omnimarket.nodes.node_lab_disk_growth_effect.models.model_lab_uv_cache_colocate_result.ModelLabUvCacheColocateResult
+
+terminal_event: onex.evt.omnimarket.lab-disk-growth-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-disk-growth-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-disk-growth-completed.v1
+
+descriptor:
+  runtime_profiles: [effects]
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - renames then removes plugin snapshot trees under the plugins directory
+    - writes the cache-dir and link-mode keys of one uv.toml and creates the cache directory
+
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.lab-disk-growth-requested.v1]
+  publish_topics: [onex.evt.omnimarket.lab-disk-growth-completed.v1]
+
+metadata:
+  ticket: OMN-17427
+  transport_type: cli
+lifecycle: experimental

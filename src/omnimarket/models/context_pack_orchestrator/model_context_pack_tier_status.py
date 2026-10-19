@@ -25,6 +25,8 @@ class ModelContextPackTierStatus(BaseModel):
     entry_count: int = Field(default=0, ge=0)
     token_estimate: int = Field(default=0, ge=0)
     included: bool = False
+    #: Entries the source answered that selection inside the tier left out (OMN-21111).
+    trimmed_entry_count: int = Field(default=0, ge=0)
 
 
 __all__ = ["ModelContextPackTierStatus"]
