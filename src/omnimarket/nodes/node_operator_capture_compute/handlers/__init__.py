@@ -14,10 +14,14 @@ from omnimarket.nodes.node_operator_capture_compute.handlers.handler_ruling_drif
 from omnimarket.nodes.node_operator_capture_compute.handlers.handler_utterance_classify import (
     HandlerUtteranceClassify,
 )
+from omnimarket.nodes.node_operator_capture_compute.handlers.handler_words_promotion import (
+    HandlerWordsPromotion,
+)
 
 __all__: list[str] = [
     "HandlerCaptureRows",
     "HandlerOpenAsks",
     "HandlerRulingDrift",
     "HandlerUtteranceClassify",
+    "HandlerWordsPromotion",
 ]

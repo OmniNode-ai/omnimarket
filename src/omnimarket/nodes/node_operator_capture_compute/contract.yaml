@@ -15,6 +15,8 @@
 #   build_capture_rows   items -> one ledger STATUS row each, verbatim words
 #   detect_ruling_drift  a decision -> the earlier rulings it re-rules
 #   fold_open_asks       ledger rows -> open asks and the digest
+#   promote_operator_words  items + the reply they answered -> one RULING,
+#                        OPERATOR-CONSENT or orchestrator inbox MSG (OMN-19513)
 name: "node_operator_capture_compute"
 node_type: "COMPUTE_GENERIC"
 contract_version:
@@ -22,7 +24,7 @@ contract_version:
   minor: 1
   patch: 0
 node_version: "0.1.0"
-description: "Pure decisions of the operator capture: classify, rows, drift, open asks."
+description: "Pure decisions of the operator capture: classify, rows, drift, open asks, promotion."
 lifecycle: experimental
 input_model:
   name: "ModelUtteranceClassifyRequest"
@@ -61,6 +63,10 @@ handler_routing:
       handler:
         name: "HandlerOpenAsks"
         module: "omnimarket.nodes.node_operator_capture_compute.handlers.handler_open_asks"
+    - operation: "promote_operator_words"
+      handler:
+        name: "HandlerWordsPromotion"
+        module: "omnimarket.nodes.node_operator_capture_compute.handlers.handler_words_promotion"
 dod_evidence:
   PYTEST:
     description: "operator capture decisions on this week's sample messages, closure and drift"

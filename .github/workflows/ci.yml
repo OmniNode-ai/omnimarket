@@ -563,6 +563,9 @@ jobs:
       # OMN-20910: paired with the review-voter-model-from-overlay hook.
       - name: Review voter model comes from the overlay (OMN-20910)
         run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
+      # OMN-20910: paired with the contract-prerequisite-verifier-host-tools hook.
+      - name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
+        run: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
       # OMN-20967: paired with the anthropic-key-prefix-workflows hook.
       - name: No Anthropic key value in a workflow (OMN-20967)
         run: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
@@ -641,6 +644,11 @@ jobs:
       # connected. SYNC with pre-commit hook 'red-ci-event-chain'.
       - name: red CI bus chain stays connected (OMN-20730)
         run: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
+      # OMN-17427: ruling 2026-10-14T03:57:46Z (item 5), a component alarm starts a fix lane, one
+      # per cause. handler_dev_cause_lane_start.py starts one lane per dispatch_key and never a
+      # second for a redelivery or a restart. SYNC with pre-commit hook 'dev-cause-lane-receiver'.
+      - name: dev cause-lane receiver starts one lane per dispatch key (OMN-17427)
+        run: uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect -q -p no:randomly --no-cov
       # OMN-20914: the gh shim refuses a lane's gh write only while the contract
       # operations and the onex scm verb table it reads stay readable and served
       # (ruling 2026-10-10T18:32:46Z). SYNC with pre-commit hook 'gh-shim-coverage-table'.
