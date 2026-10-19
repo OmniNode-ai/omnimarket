@@ -63,7 +63,7 @@ class HandlerClaimResolver:
     def __init__(self, command_runner: CommandRunner | None = None) -> None:
         self._run = command_runner or _default_runner
 
-    def verify(
+    def handle(
         self, request: ModelClaimResolutionRequest
     ) -> ModelClaimResolutionResponse:
         """Resolve all claims and return failed claims as mismatches."""
