@@ -20,7 +20,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_each_contract_reports_a_rate_and_counts_for_every_failure_class\" -q"
+        check_value: "uv run pytest \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_each_contract_reports_a_rate_and_counts_for_every_failure_class\" \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_contract_rates_and_failure_counts_stay_independent_with_unmeasured_trials\" -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn-18700-ac3-contract-failure-not-bar-miss"
@@ -28,7 +28,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_a_rejected_local_answer_on_the_contract_is_a_contract_failure_not_a_bar_miss\" -q"
+        check_value: "uv run pytest \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_a_rejected_local_answer_on_the_contract_is_a_contract_failure_not_a_bar_miss\" \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_later_local_acceptances_do_not_erase_the_first_contract_rejection\" -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
 context:
