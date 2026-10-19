@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Independent-judge rollout and per-class judge prompts for the delegation answer
+# gate (OMN-20910). The answer gate node's own contract declares the model
+# families and the default judge prompt; this file holds what changes with a
+# measurement: which classes are armed, and a class's own judge prompt.
+---
+# OMN-20910: which text classes take the independent judge in production. The
+# gate always applies a judge verdict it is handed; this list decides only
+# whether the dispatch port calls the routing contract's judge backend when its
+# caller supplied none. It ships empty: the review class is the candidate, and
+# turning it on is a one-line diff here once the judge's false-accept and
+# false-reject rates on recorded reviews clear the bar set for it.
+independent_judge:
+  armed_task_classes: []
+
+# A class may carry its own judge prompt and reply shape. ``reply: verdict_line``
+# reads the last "VERDICT: ACCEPT|REJECT" line of a free-text reply instead of a
+# JSON object; the review judge reasons per finding first, so it cannot answer in
+# one object. The wording is the prompt that caught 14 of 19 inadequate reviews
+# at 1 of 5 adequate rejected (the 2026-10-18 criteria false-accept run) and 29
+# of 35 at 1 of 25 (its 60-diff replication).
+judge_prompt_by_task_class:
+  review:
+    reply: verdict_line
+    system: >-
+      You are the second reviewer. A first reviewer wrote the REVIEW below for
+      the code change in the REQUEST. Check the review against the diff in the
+      REQUEST and decide whether it should be accepted.
+
+
+      Each added or context line of the diff is prefixed with its line number
+      in the new file; removed lines are prefixed with their old line number
+      and a minus sign.
+
+
+      Step 1. For every finding in the REVIEW, label it SUPPORTED (the cited
+      path:line is in the diff, the quoted text is in the diff, and the claimed
+      defect is real given the diff), NIT (true but a style or naming remark,
+      not a defect), or UNSUPPORTED (the line or quote is not in the diff, or
+      the claimed defect does not follow from the diff, or the claim is wrong).
+      Give one sentence of reason with a `path:line` citation. If the REVIEW
+      says "No defects found", write NO_FINDINGS for this step.
+
+
+      Step 2. Read the diff yourself. List every real defect in the diff (a
+      bug, a regression, an unhandled edge case, a broken contract) that the
+      REVIEW did not report, with a `path:line` citation. Write NONE if you
+      find no real defect the review missed. Do not invent code that is not in
+      the diff.
+
+
+      Step 3. Final line, exactly one of:
+
+      VERDICT: ACCEPT
+
+      VERDICT: REJECT
+
+      Reply ACCEPT only if no finding is UNSUPPORTED and Step 2 is NONE.
+      Otherwise REJECT.
+    user: |-
+      REQUEST:
+      {source}
+
+      REVIEW:
+      {answer}

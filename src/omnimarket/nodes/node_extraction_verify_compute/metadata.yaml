@@ -1,0 +1,24 @@
+name: node_extraction_verify_compute
+version: "1.0.0"
+description: "Deterministic verifier that admits model-proposed transcript extractions only as verbatim, sentence-widened operator words"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_extraction_verify_compute: "omnimarket.nodes.node_extraction_verify_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-pack", "transcript-extraction", "deterministic"]
+pack: "pipeline"
+display_name: "Extraction Verify Compute"
+node_role: "compute"
+tickets: ["OMN-21139"]

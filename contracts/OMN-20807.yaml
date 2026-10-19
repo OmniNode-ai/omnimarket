@@ -1,0 +1,92 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20807"
+title: "Automation-liveness dead-man: PRIMARY_SILENT on the direct route, one ledger row per episode phase, and the daily canary check"
+summary: "node_automation_liveness_deadman_compute is the dead-man's pure half: given the primary watchdog's last heartbeat, the broker's reachability, the alarm episodes opened and closed since the last tick, the delivered and recorded events and the canary days to judge, it returns the alarms the dead-man owns (PRIMARY_SILENT, BUS_SILENT seen from its host, ALARM_PATH_BROKEN), the delivery route and one FRICTION ledger row per opened and closed episode, oldest event first and stamped with the episode's own time. node_automation_liveness_deadman_effect appends each row to the ledger once, publishes a recorded event with the ledger line, and beats the dead-man's heartbeat with its consumed offset, backlog, last ledger write and a self-test."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-deadman"
+    statement: "The dead-man raises PRIMARY_SILENT and ALARM_PATH_BROKEN from typed facts, records every opened and closed episode in the ledger exactly once and in order, and beats a heartbeat that carries its backlog and self-test."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a primary heartbeat older than its bound raises PRIMARY_SILENT on the direct route with the bus unreachable -- falsifier: uv run pytest tests/nodes/node_automation_liveness_deadman_compute/test_deadman_primary_silent_direct.py -q -p no:randomly"
+      - id: "AC2"
+        statement: "AC2: each opened and closed episode becomes one ledger row carrying process=, verdict=, episode= and action=, and a duplicate delivery writes none -- falsifier: uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_alarm_ledger_row_once.py -q -p no:randomly"
+      - id: "AC3"
+        statement: "AC3: across three folded days of canary runs, each day opens and closes its own episode, and a day missing either the delivered or the recorded event raises ALARM_PATH_BROKEN -- falsifier: uv run pytest tests/nodes/node_automation_liveness_deadman_compute/test_deadman_canary_daily_episodes.py -q -p no:randomly"
+      - id: "AC4"
+        statement: "AC4: episodes opened during a bus outage are recorded in order when the bus returns -- falsifier: uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_records_after_outage.py -q -p no:randomly"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: a primary heartbeat older than its bound raises PRIMARY_SILENT on the direct route with the bus unreachable."
+    command: "uv run pytest tests/nodes/node_automation_liveness_deadman_compute/test_deadman_primary_silent_direct.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC2: each opened and closed episode becomes one ledger row carrying process=, verdict=, episode= and action=, and a duplicate delivery writes none."
+    command: "uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_alarm_ledger_row_once.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC3: across three folded days of canary runs, each day opens and closes its own episode, and a day missing either the delivered or the recorded event raises ALARM_PATH_BROKEN."
+    command: "uv run pytest tests/nodes/node_automation_liveness_deadman_compute/test_deadman_canary_daily_episodes.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC4: episodes opened during a bus outage are recorded in order when the bus returns."
+    command: "uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_records_after_outage.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20807-ac1-primary-silent-direct"
+    description: "AC1: a primary heartbeat older than its bound raises PRIMARY_SILENT on the direct route with the bus unreachable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_deadman_compute/test_deadman_primary_silent_direct.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20807-ac2-ledger-row-once"
+    description: "AC2: each opened and closed episode becomes one ledger row carrying process=, verdict=, episode= and action=, and a duplicate delivery writes none."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_alarm_ledger_row_once.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20807-ac3-canary-daily-episodes"
+    description: "AC3: across three folded days of canary runs, each day opens and closes its own episode, and a day missing either the delivered or the recorded event raises ALARM_PATH_BROKEN."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_deadman_compute/test_deadman_canary_daily_episodes.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20807-ac4-records-after-outage"
+    description: "AC4: episodes opened during a bus outage are recorded in order when the bus returns."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_records_after_outage.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20807-contract-and-selftest"
+    description: "Both contracts route their handlers and declare every topic they use, and the dead-man heartbeat's self-test passes and fails when the compute goes blind."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_deadman_effect/test_deadman_contract.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20807-deploy-registration-compute"
+    description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers node_automation_liveness_deadman_compute under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_automation_liveness_deadman_compute = ' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20807-deploy-registration-effect"
+    description: "Deploy probe: at the commit the check runs against, omnimarket's pyproject.toml registers node_automation_liveness_deadman_effect under the onex.nodes entry points, read from the repository over the GitHub content API, so the check goes red on any commit that lacks the registration."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cE '^node_automation_liveness_deadman_effect = ' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"

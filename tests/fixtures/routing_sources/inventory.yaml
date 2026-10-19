@@ -148,6 +148,8 @@ not_routing_configs:
     reason: per-class rubric text
   - path: src/omnimarket/configs/delegation_judge_rubrics.v1.yaml
     reason: judge rubric text
+  - path: src/omnimarket/configs/delegation_independent_judge.v1.yaml
+    reason: which task classes arm the independent judge and a class's judge prompt text; the judge backend still comes from the routing contract
   - path: src/omnimarket/configs/delegation_response_contract_conformance.v1.json
     reason: response shape conformance schema
   - path: src/omnimarket/configs/delegation_rung_eval.v1.yaml

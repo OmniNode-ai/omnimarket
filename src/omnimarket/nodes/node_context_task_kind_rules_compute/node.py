@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from omnibase_core.nodes.node_compute import NodeCompute
 
-from omnimarket.nodes.node_context_task_kind_rules_compute.models import (
+from omnimarket.models.context_task_kind_rules import (
     ModelContextTaskKindRulesRequest,
     ModelContextTaskKindRulesResult,
 )
