@@ -9,6 +9,7 @@ builder writes. Every session, prompt and ledger row below is synthetic.
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -46,7 +47,9 @@ from omnimarket.nodes.node_session_context_sources_effect.handlers.carry_rule im
     carry,
 )
 from omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources import (
+    LEDGER_PATH_ENV,
     REPLAY_ROOT_ENV,
+    TRANSCRIPT_ROOT_ENV,
     HandlerSessionContextSources,
 )
 from omnimarket.nodes.node_session_context_sources_effect.models import (
@@ -477,9 +480,162 @@ def test_live_repo_state_is_unavailable_and_never_read_from_a_cwd() -> None:
     assert result.entries == ()
 
 
-def test_live_operator_words_are_refused_until_the_live_reader_exists() -> None:
-    result = read(None, "watermark-1", scopes=("session:s-1",))
-    assert failure_of(result) == EnumSessionSourceFailure.LIVE_MODE_NOT_BUILT
+# ---------------------------------------------------------------------------------------------
+# Live mode (OMN-21111): the session transcript and the markdown ledger
+
+LIVE_SESSION = "0d1e2f30-live"
+LIVE_UNRECORDED = "keep the canary lane on the lab pool until Friday"
+LIVE_RULED = "Let's make sure to test the context packs"
+LIVE_ENCODED = "use one lab reviewer"
+
+
+def _user(uuid: str, clock: str, content: Any, **extra: Any) -> str:
+    return json.dumps(
+        {
+            "type": "user",
+            "uuid": uuid,
+            "promptId": f"p-{uuid}",
+            "timestamp": f"2026-10-19T{clock}.000Z",
+            "sessionId": LIVE_SESSION,
+            "message": {"role": "user", "content": content},
+            **extra,
+        }
+    )
+
+
+def write_live(tmp_path: Path, ledger_rows: tuple[str, ...] = ()) -> dict[str, str]:
+    transcripts = tmp_path / "transcripts"
+    transcripts.mkdir()
+    lines = [
+        _user("u1", "07:00:00", LIVE_UNRECORDED),
+        json.dumps(
+            {
+                "type": "assistant",
+                "timestamp": "2026-10-19T07:00:05.000Z",
+                "message": {"role": "assistant", "content": "ok"},
+            }
+        ),
+        _user("u2", "07:01:00", [{"type": "tool_result", "content": "tool output"}]),
+        _user("u3", "07:02:00", f"{LIVE_RULED}, this should transfer, right?"),
+        _user("u4", "07:03:00", "meta words", isMeta=True),
+        _user(
+            "u5",
+            "07:04:00",
+            "Summary of the earlier conversation",
+            isCompactSummary=True,
+        ),
+        _user("u6", "07:05:00", "subagent prompt", isSidechain=True),
+        _user("u7", "07:06:00", "<local-command-stdout>done</local-command-stdout>"),
+        _user("u8", "07:07:00", [{"type": "text", "text": LIVE_ENCODED}]),
+        _user("u9", "07:08:00", "cited by a covers row"),
+        _user("u10", "09:00:00", "after the watermark"),
+    ]
+    (transcripts / f"{LIVE_SESSION}.jsonl").write_text("\n".join(lines) + "\n", "utf-8")
+    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger.write_text("# ledger\n\n" + "\n".join(ledger_rows) + "\n", "utf-8")
+    return {TRANSCRIPT_ROOT_ENV: str(transcripts), LEDGER_PATH_ENV: str(ledger)}
+
+
+def read_live(
+    env: dict[str, str],
+    *,
+    revision: str = "2026-10-19T08:00:00Z",
+    session: str = LIVE_SESSION,
+    factor: EnumContextFactor = OWU,
+) -> ModelContextSourceResult:
+    return HandlerSessionContextSources(env=env).handle(
+        ModelContextSourceRequest(
+            factor=factor,
+            scopes=(f"session:{session}",),
+            access=ModelContextAccess(tenant_id="tenant-a"),
+            revision=revision,
+        )
+    )
+
+
+RULING_ROW = (
+    "2026-10-19T07:30:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision"
+    f' | "{LIVE_RULED}" | recorded'
+)
+ENCODED_ROW = (
+    "2026-10-19T07:31:00Z | RULING | lane=orch | ticket=OMN-1 | kind=process"
+    f" | verbatim=encoded | %22{LIVE_ENCODED}%22 | recorded"
+)
+COVERS_ROW = (
+    "2026-10-19T07:32:00Z | STATUS | lane=orch | ticket=OMN-1 | prompt_id=p-u9"
+    " | covers=0:21 | recorded by citation"
+)
+LATE_RULING = (
+    "2026-10-19T08:30:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision"
+    f' | "{LIVE_UNRECORDED}" | after the watermark'
+)
+
+
+def test_live_operator_words_carry_every_unrecorded_typed_prompt(
+    tmp_path: Path,
+) -> None:
+    result = read_live(write_live(tmp_path))
+    assert result.status is EnumContextSourceStatus.RESOLVED
+    # Tool results, meta, compaction summaries, sidechains and command echoes are never
+    # operator prompts; a prompt after the watermark is not read.
+    assert texts(result) == [
+        LIVE_UNRECORDED,
+        f"{LIVE_RULED}, this should transfer, right?",
+        LIVE_ENCODED,
+        "cited by a covers row",
+    ]
+    assert result.entries[0].source_ref == f"{LIVE_SESSION}.jsonl#u1"
+    assert result.entries[0].as_of == datetime(2026, 10, 19, 7, 0, 0, tzinfo=UTC)
+
+
+def test_live_ruling_quotes_and_covers_rows_record_the_words(tmp_path: Path) -> None:
+    env = write_live(tmp_path, (RULING_ROW, ENCODED_ROW, COVERS_ROW, LATE_RULING))
+    result = read_live(env)
+    # The ruling quotes part of u3, so the rest of u3 still carries whole; the %22-encoded
+    # ruling and the covers row record u8 and u9 entirely; the late ruling is past the
+    # watermark and records nothing.
+    assert texts(result) == [
+        LIVE_UNRECORDED,
+        f"{LIVE_RULED}, this should transfer, right?",
+    ]
+    assert result.entry_counts["recorded"] == 2
+    assert result.entry_counts["carried"] == 2
+
+
+def test_live_a_ruling_quoting_a_whole_prompt_drops_it(tmp_path: Path) -> None:
+    row = (
+        "2026-10-19T07:40:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision"
+        f' | "{LIVE_UNRECORDED}" | recorded'
+    )
+    result = read_live(write_live(tmp_path, (row,)))
+    assert LIVE_UNRECORDED not in texts(result)
+
+
+def test_live_without_a_transcript_root_is_refused() -> None:
+    assert (
+        failure_of(read(None, "watermark-1", scopes=("session:s-1",)))
+        == EnumSessionSourceFailure.TRANSCRIPT_ROOT_MISSING
+    )
+
+
+def test_live_an_unknown_or_unsafe_session_id_is_refused(tmp_path: Path) -> None:
+    env = write_live(tmp_path)
+    for session in ("missing", "../transcripts/x"):
+        assert (
+            failure_of(read_live(env, session=session))
+            == EnumSessionSourceFailure.TRANSCRIPT_NOT_FOUND
+        )
+
+
+def test_live_without_a_ledger_is_refused(tmp_path: Path) -> None:
+    env = write_live(tmp_path)
+    env[LEDGER_PATH_ENV] = str(tmp_path / "absent.md")
+    assert failure_of(read_live(env)) == EnumSessionSourceFailure.LEDGER_MISSING
+
+
+def test_live_a_factor_it_does_not_serve_is_refused(tmp_path: Path) -> None:
+    result = read_live(write_live(tmp_path), factor=EnumContextFactor.OPEN_WORK)
+    assert failure_of(result) == EnumSessionSourceFailure.FACTOR_NOT_SERVED
 
 
 @pytest.mark.parametrize(

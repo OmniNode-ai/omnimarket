@@ -76,6 +76,14 @@ the request bytes changed. ``request_hash`` and ``prompt_hash`` were captured fr
 the pre-change instruction the same capture reproduces the previously recorded
 hashes exactly. The RESPONSE bytes are untouched.
 
+OMN-19401 re-recorded the REQUEST side a fourth time, by the same procedure: the
+``test`` system prompt no longer demands ``@pytest.mark.unit`` on every test; it
+tells the model to follow the markers, fixtures and naming of the repository's
+tests, so the request bytes changed. ``request_hash`` and ``prompt_hash`` were
+captured from ``canonical_request_hash`` / ``canonical_prompt_hash`` over the live
+payload; with the pre-change prompt the same capture reproduces the previously
+recorded hashes exactly. The RESPONSE bytes are untouched.
+
 Neither half weakens the harness: the wrong-model and tier-name-as-model proofs
 below still fail closed, and they are what make a green replay here probative.
 """

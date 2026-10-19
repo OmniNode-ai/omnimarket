@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_local_alert_compute
+version: "1.0.0"
+description: Verdicts and open alerts for the local environment's services, with the rules declared in the contract
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, alerting, local, environment]
+node_role: compute
+pack: "data"
+display_name: "Local Alert Compute"

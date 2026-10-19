@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: context_source_work_state_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-source-work-state-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-source-work-state-completed.v1
+input_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+output_model: omnibase_core.models.context.model_context_source_result.ModelContextSourceResult
+description: >
+  The work-state context source (ProtocolContextSource). Answers open_work and
+  orchestration_state at a ledger watermark for the lanes a request names (the
+  caller scope's lane and the `session:<id>` scope). open_work is every MSG row
+  addressed to one of those lanes that no ACK answers (with open_work_senders
+  self, written by one of them too); orchestration_state is
+  every CLAIM row whose lane or parent is one of them and that no TERMINAL or
+  RELEASE has closed. Both are folded through the work-ledger projection's own
+  fold, both drop rows older than the contract's horizon before the watermark,
+  and every entry's text is the ledger row whole. A tenant the binding does not
+  list is denied; a failed read is unavailable, never an empty resolved.
+handler:
+  module: omnimarket.nodes.node_context_source_work_state_effect.handlers.handler_context_source_work_state
+  class: HandlerContextSourceWorkState
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: context_source_work_state_requested
+      topic: onex.cmd.omnimarket.context-source-work-state-requested.v1
+      message_category: command
+      event_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+      handler_module: omnimarket.nodes.node_context_source_work_state_effect.handlers.handler_context_source_work_state
+      handler:
+        name: HandlerContextSourceWorkState
+        module: omnimarket.nodes.node_context_source_work_state_effect.handlers.handler_context_source_work_state
+terminal_event: onex.evt.omnimarket.context-source-work-state-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.context-source-work-state-requested.v1]
+  publish_topics: [onex.evt.omnimarket.context-source-work-state-completed.v1]
+  dlq_topics: [onex.dlq.omnimarket.context-source-work-state-malformed.v1]
+# The same live relation and binding shape the work-ledger source reads.
+context_source_ledger:
+  ledger_source:
+    relation: omninode_internal.work_ledger_rows
+    binding_ref: omninode_runtime_service
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    # Tenants are overlay data: the deploy overlay lists the one lab tenant.
+    # An empty list denies every request.
+    tenant_ids: []
+context_source_work_state:
+  # A message or claim opened longer ago than this before the watermark is
+  # not current work; it is counted as stale and left out.
+  horizon_hours: 24
+  # open_work senders: `self` keeps the messages a named lane wrote to a named
+  # lane (its own handoff notes); `any` keeps every sender's.
+  open_work_senders: self
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+golden_path:
+  - "Command arrives with the factor, caller scope, session scope, access and a ledger watermark"
+  - "Read every row up to the watermark, whole, by row id"
+  - "Fold through the work-ledger projection's fold"
+  - "Return each open message to, or open claim of, the named lanes on terminal_event"
+dod_evidence:
+  - test: tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py::test_open_work_is_every_unanswered_message_to_the_lane
+    description: "An ACKed message leaves open_work; an unanswered one comes back as its whole row"
+  - test: tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py::test_orchestration_state_is_every_open_child_claim
+    description: "A claim closed by TERMINAL leaves orchestration_state; an open child claim comes back whole"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-21111]

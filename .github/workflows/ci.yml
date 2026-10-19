@@ -333,6 +333,14 @@ jobs:
               exit 0
             fi
           done <<< "$markers"
+          # OMN-19998: while the dev merge queue ruleset is off no merge_group
+          # producer can exist; stay strict whenever a merge_queue rule is active on dev.
+          queue_rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/dev?per_page=100" \
+            --jq '[.[] | select(.type == "merge_queue")] | length')"
+          if [ "$queue_rules" = "0" ]; then
+            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the full suite ran on the pull request. Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
+            exit 0
+          fi
           echo "::error::No verified full-suite pass for this dev tree; heavy tests stay in the queue."
           exit 1
 

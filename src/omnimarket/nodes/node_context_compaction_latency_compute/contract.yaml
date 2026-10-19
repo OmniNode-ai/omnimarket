@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction build latency qualification (OMN-21114), plan task TA.12.
+# The runner that drives 20 cold and 20 warm round trips through the adapter on three
+# session sizes from two hosts is the caller; this node only tabulates and proposes.
+# Requests carry timings and labels only, no session text.
+name: context_compaction_latency_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Tabulate p50, p95 and max per session size, host and temperature for the
+  deterministic build and the model-written section, and propose the
+  context_compaction class ceiling and the precompute deadline from the worst
+  measured total p95; withhold both when a size, host or cell is missing.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: qualify_latency
+      handler:
+        name: HandlerLatencyQualification
+        module: omnimarket.nodes.node_context_compaction_latency_compute.handlers.handler_latency_qualification
+      input_model: omnimarket.nodes.node_context_compaction_latency_compute.models.model_latency_qualification.ModelLatencyQualificationRequest
+      output_model: omnimarket.nodes.node_context_compaction_latency_compute.models.model_latency_qualification.ModelLatencyQualificationResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.context-compaction-latency-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.context-compaction-latency-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-compaction-latency-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.context-compaction-latency-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-compaction-latency-completed.v1
+
+metadata:
+  ticket: OMN-21114
+  transport_type: kafka

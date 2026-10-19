@@ -101,7 +101,9 @@ def records_for_all_ledger_row_types() -> tuple[ModelWorkLedgerRecord, ...]:
         ModelWorkHoldReleased(
             **_base(8), releases=hold_id, surface_result=None, surface_restored=None
         ),
-        ModelWorkRulingRecorded(**_base(9), operator_words="proceed"),
+        ModelWorkRulingRecorded(
+            **_base(9), operator_words="proceed", question="Proceed with the change?"
+        ),
         ModelWorkStatusRecorded(**_base(10), verdict="GREEN"),
         ModelWorkResultRecorded(
             **_base(11),

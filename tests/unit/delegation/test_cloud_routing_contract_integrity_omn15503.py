@@ -113,12 +113,12 @@ def _selected_backend_refs_by_task(
 
 
 @pytest.mark.unit
-def test_delegate_contract_owns_exactly_fifteen_declared_task_classes() -> None:
+def test_delegate_contract_owns_exactly_sixteen_declared_task_classes() -> None:
     allowed = _allowed_task_types()
     task_classes = _yaml_mapping(_TASK_CONTRACT_PATH).get("task_classes")
 
-    assert len(allowed) == 15
-    assert len(set(allowed)) == 15
+    assert len(allowed) == 16
+    assert len(set(allowed)) == 16
     assert isinstance(task_classes, dict)
     assert set(allowed).issubset(task_classes)
 

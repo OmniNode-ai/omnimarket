@@ -141,6 +141,7 @@ _DelegateTaskType = Literal[
     "escalation",
     "documentation",
     "validator_generation",
+    "brief_drafting",
 ]
 _DelegateSource = Literal["claude-code", "codex"]
 
