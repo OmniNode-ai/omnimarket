@@ -30,9 +30,8 @@ WORKFLOW = (
 )
 HEAD_SHA_EXPR = "${{ github.event.pull_request.head.sha }}"
 HEAD_SHA_ARG = '--head-sha "$HEAD_SHA"'
-# OMN-20910: the chunk-scaled review deadline revision descends from the existing
-# receipt-substitution revision and retains the exact-head receipt boundary.
-SUBSTITUTE_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
+# OMN-20910: omniintelligence is read at its newest dev-* tag, resolved at run time.
+NEWEST_DEV_TAG_REF = '"refs/tags/${OMNIINTELLIGENCE_TAG}"'
 
 
 def review_step(workflow_text: str) -> dict[str, Any]:
@@ -74,10 +73,11 @@ def test_a_review_step_without_the_head_sha_is_caught() -> None:
     ]
 
 
-def test_omniintelligence_is_cloned_at_the_substitute_revision() -> None:
+def test_omniintelligence_is_cloned_at_its_newest_dev_tag() -> None:
+    """The receipt-substitution revision is read through the newest dev-* tag."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    pins = re.findall(
-        r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})",
+    refs = re.findall(
+        r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA (\S+)",
         text,
     )
-    assert pins == [SUBSTITUTE_PIN]
+    assert refs == [NEWEST_DEV_TAG_REF]

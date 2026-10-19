@@ -187,9 +187,12 @@ def test_retry_budget_reads_the_overlay() -> None:
     assert OVERLAY_ARG in str(_step("Validate retry-budget invariant")["run"])
 
 
-def test_omniintelligence_is_pinned_to_a_full_sha() -> None:
+def test_omniintelligence_is_read_at_a_resolved_dev_tag() -> None:
     run = str(_step("Clone omniintelligence")["run"])
-    assert re.search(r"clone_with_retry omniintelligence \S+ \S+ [0-9a-f]{40}\b", run)
+    assert re.search(
+        r'clone_with_retry omniintelligence \S+ \S+ "refs/tags/\$\{OMNIINTELLIGENCE_TAG\}"',
+        run,
+    )
 
 
 def test_preflight_runs_in_the_installed_environment() -> None:
