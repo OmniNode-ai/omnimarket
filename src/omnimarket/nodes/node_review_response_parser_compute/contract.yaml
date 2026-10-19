@@ -6,14 +6,18 @@
 # instances. Wraps the A1-rehomed omnimarket.review.response_parser primitive.
 ---
 name: node_review_response_parser_compute
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   Pure COMPUTE: tolerant-parses one model's raw review response (JSON array,
   markdown-fenced JSON, legacy {findings: [...]}, or bracket extraction) into
-  normalized ModelReviewFinding instances. No I/O; deterministic.
+  normalized ModelReviewFinding instances. Mode compact_strict (OMN-20910)
+  fails closed on anything but a complete, schema-valid v2 compact verdict: a
+  cut reply, schema failure, done absent, more true, an X or R finding without
+  a family, an unknown R id or an abnormal stop reason gives a failed result
+  with no findings; a mandatory R finding is critical. No I/O; deterministic.
 
 input_model:
   name: ModelReviewResponseParserRequest
@@ -77,3 +81,4 @@ metadata:
   related_tickets:
     - "OMN-13210"
     - "OMN-13205"
+    - "OMN-20910"
