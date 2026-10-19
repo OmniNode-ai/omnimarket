@@ -46,9 +46,6 @@ known_entrypointless:
   - contract: build_dispatch_effect
     handler: DispatchHistoryStore
     module: omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store
-  - contract: claim_resolver
-    handler: HandlerClaimResolver
-    module: omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver
   - contract: data_verification
     handler: PostgresDataSource
     module: omnimarket.nodes.node_data_verification.handlers.datasource_postgres
