@@ -150,6 +150,14 @@ inputs:
     description: >
       Canonical typed origin and traffic classification. Synthetic provenance
       requires a named source_surface. Omit for legacy/unclassified traffic.
+  client_call:
+    type: object
+    required: false
+    description: >
+      Identity of the client tool call that asked for this delegation: client,
+      session_id, tool_use_id, client_host and client_max_mode. Omitted for every
+      caller that is not a client call, which keeps the delivery-keyed behaviour
+      unchanged.
   cwd:
     type: str
     required: false
