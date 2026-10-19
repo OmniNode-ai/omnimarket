@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeContextPackOrchestrator (OMN-21110, plan task TA.8)
+
+name: node_context_pack_orchestrator
+version: "1.0.0"
+contract_name: node_context_pack_orchestrator
+node_name: node_context_pack_orchestrator
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: ORCHESTRATOR_GENERIC
+runtime_profiles: [effects]
+
+description: >
+  The one callable path to a context package. Resolves the named profile, reads
+  each tier it selects from the source bound to that factor through
+  ProtocolContextTierSource, passing the caller scope and the envelope's access into
+  every source request, builds the pack and renders it. A required tier that is
+  not resolved fails REQUIRED_FACTOR_MISSING; an optional tier's other statuses
+  are listed per tier and the tier is omitted; optional tiers that do not fit
+  the budget are listed in excluded_by_budget. Required tiers still over budget
+  are selected inside their share of it, cited entries first and then the
+  newest, whole entries only; operator_words_unrecorded is carried whole, and a
+  cited entry that does not fit fails TOKEN_BUDGET_EXCEEDED. Each tier is read
+  at its own revision when the request names one in tier_revisions. Returns candidate_id, assembly_hash,
+  final_pack_hash, body_hash and stable_prefix_hash. The result carries package
+  text, so it is published only on the restricted omniintelligence command
+  family declared under event_bus, never on an event topic.
+
+input_model:
+  name: ModelContextPackCommand
+  module: omnimarket.models.context_pack_orchestrator
+
+output_model:
+  name: ModelContextPackBuilt
+  module: omnimarket.models.context_pack_orchestrator
+
+handler:
+  module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator
+  class: HandlerContextPackOrchestrator
+  input_model: omnimarket.models.context_pack_orchestrator.ModelContextPackCommand
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextPackOrchestrator
+        module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator
+      event_model:
+        name: ModelContextPackCommand
+        module: omnimarket.models.context_pack_orchestrator
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+dependencies:
+  - name: node_context_profile_resolver_effect
+    type: node
+    optional: false
+  - name: node_context_pack_builder_compute
+    type: node
+    optional: false
+  - name: node_context_pack_render_compute
+    type: node
+    optional: false
+
+capabilities:
+  - name: context.pack.build
+    description: Build and render one context package for a named profile
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.context-pack-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.context-pack-built.v1
+
+# The reply is awaited by the caller that published the command (the onex skill
+# context_pack remote locus and inline consumers), not by another node.
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.context-pack-built.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+  terminal_events:
+    success: onex.cmd.omniintelligence.context-pack-built.v1
+
+terminal_event: onex.cmd.omniintelligence.context-pack-built.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21110
+  maturity: alpha
+  tags:
+    - context-pack
+    - orchestrator

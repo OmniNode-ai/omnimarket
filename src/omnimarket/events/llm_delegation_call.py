@@ -12,9 +12,25 @@ against (OMN-14534 / OMN-9263 precedent).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.models.delegation.prompt_text_block import (
+    ModelPromptMessage,
+    ModelPromptTextBlock,
+)
+from omnimarket.models.review_cost.model_review_call_provenance import (
+    ModelReviewCallProvenance,
+)
+
+#: Anthropic allows at most four cache breakpoints in one request.
+MAX_CACHE_BREAKPOINTS = 4
+#: Headers a caller may never put in ``provider_headers``: the credential is
+#: attached at the effect boundary and nowhere else.
+_CREDENTIAL_HEADERS = frozenset(
+    {"authorization", "x-api-key", "api-key", "proxy-authorization", "cookie"}
+)
 
 
 class ModelLlmDelegationCallRequest(BaseModel):
@@ -52,8 +68,11 @@ class ModelLlmDelegationCallRequest(BaseModel):
     endpoint_ref: str
     """Routing-supplied endpoint URL for this call."""
 
-    prompt: str
-    """Raw prompt. In-memory only — never persisted or published to Kafka."""
+    prompt: str = ""
+    """Raw prompt. In-memory only — never persisted or published to Kafka.
+
+    Empty only when ``system_blocks`` or ``messages`` carry the prompt (OMN-20910).
+    """
 
     prompt_hash: str
     """SHA-256 of prompt. Stored in events for correlation and deduplication."""
@@ -137,3 +156,85 @@ class ModelLlmDelegationCallRequest(BaseModel):
     fallback at the effect boundary when ``secret_ref``'s dotted convention
     mapping misses — distinct from ``secret_ref``, never a substitute for it.
     ``None`` when the backend config declares no ``api_key_env``."""
+
+    review: ModelReviewCallProvenance | None = Field(default=None)
+    """OMN-20910: the Hostile Review run this call is made for, copied by the
+    review gateway from the review's request metadata. When set, the effect
+    records the cost of every provider attempt of this call under it. ``None``
+    (the default) records nothing, so no other caller is affected."""
+
+    # OMN-20910: the native Anthropic Messages protocol. ``openai_chat`` (the
+    # default) is the OpenAI-compatible path every caller used before; a call
+    # that names no protocol is byte-for-byte unchanged.
+    inference_protocol: Literal["openai_chat", "anthropic_messages"] = "openai_chat"
+    """Wire protocol of ``endpoint_ref``; ``anthropic_messages`` posts to ``/v1/messages``."""
+
+    system_blocks: tuple[ModelPromptTextBlock, ...] = ()
+    """Ordered system text blocks, each with an optional cache breakpoint and TTL."""
+
+    messages: tuple[ModelPromptMessage, ...] = ()
+    """Ordered conversation turns of text blocks, each with an optional breakpoint."""
+
+    tool_schema: dict[str, Any] | None = Field(default=None)
+    """One tool (``name``, ``description``, ``input_schema``) the reply is returned through."""
+
+    tool_choice: dict[str, Any] | None = Field(default=None)
+    """Native ``tool_choice``; ``{"type": "tool", "name": ...}`` forces the schema."""
+
+    provider_headers: dict[str, str] = Field(default_factory=dict)
+    """Non-secret provider headers only (``anthropic-workspace-id``); never a credential."""
+
+    @model_validator(mode="after")
+    def _one_representation_per_protocol(self) -> Self:
+        native_fields = [
+            name
+            for name, present in (
+                ("system_blocks", bool(self.system_blocks)),
+                ("messages", bool(self.messages)),
+                ("tool_schema", self.tool_schema is not None),
+                ("tool_choice", self.tool_choice is not None),
+            )
+            if present
+        ]
+        if native_fields and self.inference_protocol != "anthropic_messages":
+            raise ValueError(
+                f"{', '.join(native_fields)} need inference_protocol "
+                "'anthropic_messages'"
+            )
+        if self.inference_protocol == "anthropic_messages":
+            if self.system_blocks or self.messages:
+                if self.prompt or self.system_prompt:
+                    raise ValueError(
+                        "system_blocks/messages replace prompt and system_prompt; "
+                        "a call has one representation"
+                    )
+                if not self.messages:
+                    raise ValueError("system_blocks need at least one message")
+            if self.response_format is not None:
+                raise ValueError(
+                    "response_format is the OpenAI-compatible directive; the native "
+                    "protocol returns a schema through tool_schema and tool_choice"
+                )
+            if self.tool_choice is not None and self.tool_schema is None:
+                raise ValueError("tool_choice needs tool_schema")
+        breakpoints = sum(
+            block.cache_ttl is not None
+            for block in (
+                *self.system_blocks,
+                *(b for message in self.messages for b in message.blocks),
+            )
+        )
+        if breakpoints > MAX_CACHE_BREAKPOINTS:
+            raise ValueError(
+                f"{breakpoints} cache breakpoints; the provider allows at most "
+                f"{MAX_CACHE_BREAKPOINTS}"
+            )
+        credential = _CREDENTIAL_HEADERS.intersection(
+            name.lower() for name in self.provider_headers
+        )
+        if credential:
+            raise ValueError(
+                f"provider_headers carries non-secret headers only; got "
+                f"{', '.join(sorted(credential))}"
+            )
+        return self

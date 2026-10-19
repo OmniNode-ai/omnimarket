@@ -16,7 +16,10 @@ description: >
   unified diff via the GitHub REST API (application/vnd.github.v3.diff). For a
   file_path it reads the local file's content. The GitHub token is resolved at
   the effect boundary from the contract-declared api_key_ref via the canonical
-  secret-store resolver. No subprocess shell-out.
+  secret-store resolver. No subprocess shell-out. A pull request result also
+  carries an immutable target snapshot (head sha, base sha and diff digest read
+  together; the head and base are read before and after the diff and must agree);
+  when they cannot be read together the snapshot is unavailable with a reason.
 
 input_model:
   name: ModelGithubDiffCommand
@@ -90,3 +93,4 @@ metadata:
   related_tickets:
     - "OMN-13210"
     - "OMN-13205"
+    - "OMN-21189"

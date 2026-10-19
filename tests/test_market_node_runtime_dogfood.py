@@ -122,6 +122,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # entry point land with the node, which removes this line and the
     # MIGRATION_ONLY_NODE_DIRS entry together.
     "node_projection_local_environment",
+    # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
+    # pool it is (the remote-lane runner at lane start, the operator adding a
+    # token); it publishes nothing and subscribes to no topic, so it has no
+    # onex.nodes entry point.
+    "node_claude_token_pool_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
@@ -346,7 +351,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-20275's node_work_ledger_render_effect is hosted by the process that
     # owns its rendered markdown file, not by a runtime, so it is experimental
     # with no handler_routing: 21 -> 22.
-    assert summary["skipped"] == 22
+    # node_work_ledger_landing_mirror is hosted by the same ledger serve
+    # process and has no handler_routing either: 22 -> 23.
+    assert summary["skipped"] == 23
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

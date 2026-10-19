@@ -35,6 +35,15 @@ graph does not have::
 
 There is no ``allow_missing`` switch and no exemption list. If a topic has no declared
 publisher, the contract graph is wrong and the fix is in the contract, not here.
+
+ONE COPY FLEET-WIDE
+-------------------
+The parsing, the publisher index and the alias derivation live in
+:class:`omnibase_infra.testing.publisher_contract_fixture.PublisherContractCorpus`,
+which reads the same union of declaration shapes as the contract topic graph. This
+module only chooses WHICH contracts form omnimarket's corpus (the installed
+distributions below) and keeps the module-level helpers the golden chains import. It
+holds no parser of its own, so it cannot drift from the infra fixture again.
 """
 
 from __future__ import annotations
@@ -43,9 +52,10 @@ import importlib.util
 from functools import lru_cache
 from pathlib import Path
 
-from omnibase_infra.event_bus.topic_constants import derive_event_type_alias_for_topic
-
-from omnimarket.validators.contract_topic_graph import parse_contract
+from omnibase_infra.testing.publisher_contract_fixture import (
+    PublisherContractCorpus,
+    PublisherTopicError,
+)
 
 # Packages whose contract.yaml files are read to resolve a topic's publisher. These are
 # resolved from the INSTALLED distribution (they are all pip/uv dependencies of
@@ -81,63 +91,39 @@ def _package_root(package: str) -> Path | None:
     return Path(next(iter(spec.submodule_search_locations)))
 
 
+def contract_paths() -> tuple[Path, ...]:
+    """Every ``contract.yaml`` of omnimarket and the installed publisher packages."""
+    roots = [
+        root
+        for root in (
+            _package_root(package) for package in ("omnimarket", *_PUBLISHER_PACKAGES)
+        )
+        if root is not None
+    ]
+    return tuple(sorted(p for root in roots for p in root.rglob("contract.yaml")))
+
+
 @lru_cache(maxsize=1)
-def _publisher_index() -> tuple[dict[str, tuple[str, ...]], int]:
-    """Map every declared topic to the contract names that publish it.
-
-    Uses the REAL parser (:func:`contract_topic_graph.parse_contract`), so the fixture
-    reads the same dozen declaration shapes the graph oracle reads and cannot drift
-    from it.
-    """
-    roots: dict[str, Path] = {}
-    own = _package_root("omnimarket")
-    if own is not None:
-        roots["omnimarket"] = own
-    for package in _PUBLISHER_PACKAGES:
-        root = _package_root(package)
-        if root is not None:
-            roots[package] = root
-
-    producers: dict[str, list[str]] = {}
-    scanned = 0
-    for package, root in roots.items():
-        for path in sorted(root.rglob("contract.yaml")):
-            try:
-                node = parse_contract(path, package)
-            except RuntimeError:
-                continue
-            if node is None:
-                continue
-            scanned += 1
-            for topic in node.publish_topics:
-                producers.setdefault(topic, []).append(node.name)
-            # A node's runtime_dispatch.command_topic IS a declared producer: the CLI
-            # dispatcher is what publishes to it. contract_topic_graph.is_reachable
-            # treats it the same way, so the fixture and the graph oracle agree on what
-            # counts as "something can put a message here".
-            if node.command_topic is not None:
-                producers.setdefault(node.command_topic, []).append(
-                    f"{node.name} (runtime_dispatch.command_topic — CLI dispatcher)"
-                )
-    return {t: tuple(sorted(set(n))) for t, n in producers.items()}, scanned
+def _corpus() -> tuple[PublisherContractCorpus, int]:
+    """The infra corpus over omnimarket's contracts, and how many files it was given."""
+    paths = contract_paths()
+    return PublisherContractCorpus.from_paths(paths), len(paths)
 
 
 def declared_publishers(topic: str) -> tuple[str, ...]:
     """Contract names that declare ``topic`` as a publish topic. Never raises."""
-    index, _ = _publisher_index()
-    return index.get(topic, ())
+    return _corpus()[0].publishers_of(topic)
 
 
 def publisher_event_type(topic: str) -> str:
     """The ``event_type`` the runtime stamps for ``topic``, proven publishable.
 
     Raises:
-        NoDeclaredPublisherError: no contract in the corpus publishes ``topic``.
+        NoDeclaredPublisherError: no contract in the corpus publishes ``topic``, or the
+            topic derives no event type the runtime would stamp.
     """
-    index, scanned = _publisher_index()
-    if topic not in index:
-        raise NoDeclaredPublisherError(topic, scanned)
-    alias = derive_event_type_alias_for_topic(topic)
-    if alias is None:
-        raise NoDeclaredPublisherError(topic, scanned)
-    return alias
+    corpus, scanned = _corpus()
+    try:
+        return corpus.event_type_for(topic)
+    except PublisherTopicError as exc:
+        raise NoDeclaredPublisherError(topic, scanned) from exc

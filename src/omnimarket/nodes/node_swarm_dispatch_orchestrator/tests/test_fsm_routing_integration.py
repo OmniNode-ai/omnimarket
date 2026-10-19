@@ -92,24 +92,26 @@ _HEALTH_EVENT: dict[str, Any] = {
 
 _DECOMPOSITION_EVENT: dict[str, Any] = {
     "run_id": _RUN_ID,
-    "subtasks": [
-        {
-            "subtask_id": "st-A",
-            "description": "Define data models",
-            "model_affinity": "",
-            "depends_on": [],
-            "estimated_tokens": 120,
-            "category": "code",
-        },
-        {
-            "subtask_id": "st-B",
-            "description": "Implement API routes",
-            "model_affinity": "",
-            "depends_on": ["st-A"],
-            "estimated_tokens": 200,
-            "category": "code",
-        },
-    ],
+    "decomposition": {
+        "subtasks": [
+            {
+                "subtask_id": "st-A",
+                "description": "Define data models",
+                "model_affinity": "",
+                "depends_on": [],
+                "estimated_tokens": 120,
+                "category": "code",
+            },
+            {
+                "subtask_id": "st-B",
+                "description": "Implement API routes",
+                "model_affinity": "",
+                "depends_on": ["st-A"],
+                "estimated_tokens": 200,
+                "category": "code",
+            },
+        ],
+    },
 }
 
 _ENDPOINTS_SELECTED_EVENT: dict[str, Any] = {
@@ -123,9 +125,9 @@ _FANOUT_COMPLETED_EVENT: dict[str, Any] = {
         {
             "subtask_id": "st-A",
             "endpoint_id": "ep-1",
-            "status": "succeeded",
+            "execution_status": "succeeded",
             "latency_ms": 800,
-            "result_text": "models done",
+            "response_text": "models done",
             "failure_reason": "",
             "wave": 0,
             "model_id": "qwen3",
@@ -134,9 +136,9 @@ _FANOUT_COMPLETED_EVENT: dict[str, Any] = {
         {
             "subtask_id": "st-B",
             "endpoint_id": "ep-2",
-            "status": "succeeded",
+            "execution_status": "succeeded",
             "latency_ms": 1200,
-            "result_text": "routes done",
+            "response_text": "routes done",
             "failure_reason": "",
             "wave": 1,
             "model_id": "deepseek",

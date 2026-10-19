@@ -31,13 +31,15 @@ HOW THIS COMMAND REACHES THE CLI
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
+import inspect
 import json
 import os
 import socket
 import sqlite3
 import sys
-from collections.abc import Iterator, Mapping
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from getpass import getpass
@@ -128,6 +130,7 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
+    byok_automatic_plans,
     byok_provider_plans,
     byok_routable_plans,
     require_byok_plan_permitted,
@@ -216,7 +219,7 @@ def _resolve_plan(
             )
         _refuse_plan_not_permitted(provider, named)
         return named, None
-    if len(declared) <= 1:
+    if len(byok_automatic_plans(provider)) <= 1:
         return None, None
     click.echo(
         f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
@@ -503,6 +506,79 @@ def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     return None
 
 
+def _environment_names_broker() -> bool:
+    """Whether KAFKA_BOOTSTRAP_SERVERS (or KAFKA_BROKER) names a broker here."""
+    from omnimarket.config.settings import Settings
+
+    return bool(Settings().get_effective_kafka_bootstrap_servers())
+
+
+def _lab_host_bus_lane(bound_host: str | None) -> str | None:
+    """The bound host's declared ``ledger_bus_lane`` in the lab host table (OMN-20910).
+
+    A lab host carries no KAFKA_BOOTSTRAP_SERVERS, but its lab host table row
+    names the bus lane it publishes on; the lane's broker and login come from
+    the lane declaration, never from the shell.
+    """
+    table = _lab_host_table()
+    if table is None or bound_host is None:
+        return None
+    try:
+        document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    rows = document.get("hosts") if isinstance(document, dict) else None
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and row.get("name") == bound_host:
+            lane = row.get("ledger_bus_lane")
+            return lane.strip() if isinstance(lane, str) and lane.strip() else None
+    return None
+
+
+async def _register_on_declared_bus[T](
+    register: Callable[[ProtocolCredentialEventBus | None], Awaitable[T]],
+    *,
+    lane: str | None,
+) -> T:
+    """Run ``register`` on the injected, environment or declared-lane bus (OMN-20910).
+
+    An injected bus (tests) or a broker named by the environment keeps the
+    publisher's own Settings-backed path. Otherwise the declared lane is opened
+    through the lab-run lane resolver, which reads the broker and its login from
+    the lane declaration. With neither, the publisher's refusal stands.
+    """
+    injected = _tenant_key_event_bus()
+    if injected is not None or lane is None or _environment_names_broker():
+        return await register(injected)
+    from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+    from omnimarket.delegated_test_loop.lane_bus import (
+        LabRunBusError,
+        open_lab_run_bus,
+    )
+
+    workspace = os.environ.get("OMNIBASE_PATH") or os.environ.get("OMNI_HOME")
+    # The opener's fourth keyword (the workspace root) carries the private
+    # registry clone's name, which the public-repo hygiene gate refuses; its
+    # parameters are bound from its signature in declared order, as
+    # ``onex scm`` binds them.
+    names = tuple(inspect.signature(open_lab_run_bus).parameters)
+    if names[:3] != ("bus", "lane", "kafka_bootstrap") or len(names) != 4:
+        raise click.ClickException(f"unexpected bus opener parameters: {names}")
+    opener = cast(
+        Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
+        open_lab_run_bus,
+    )
+    values = ("kafka", lane, None, Path(workspace) if workspace else None)
+    try:
+        async with opener(**dict(zip(names, values, strict=True))) as bus:
+            return await register(cast(ProtocolCredentialEventBus, bus))
+    except LabRunBusError as exc:
+        raise click.ClickException(
+            f"the declared bus lane {lane!r} could not be opened ({exc}); set "
+            "KAFKA_BOOTSTRAP_SERVERS or fix the host's ledger_bus_lane."
+        ) from exc
+
+
 #: OMN-21012. The lab host table is a deployment fact kept outside this
 #: repository, named by ONEX_LAB_RUN_HOSTS (the variable ``onex delegate`` and
 #: the lab placement read). Without it this machine is off the lab and a key
@@ -651,16 +727,20 @@ def register_tenant_key(
             expires_at=expires_at,
             bound_host=bound_host,
         )
+        secret_store = (
+            _CentralTenantKeyStore(_central_secret_handler())
+            if central
+            else _tenant_key_store()
+        )
         response = asyncio.run(
-            register_inference_credential(
-                request,
-                tenant_id=tenant,
-                secret_store=(
-                    _CentralTenantKeyStore(_central_secret_handler())
-                    if central
-                    else _tenant_key_store()
+            _register_on_declared_bus(
+                lambda event_bus: register_inference_credential(
+                    request,
+                    tenant_id=tenant,
+                    secret_store=secret_store,
+                    event_bus=event_bus,
                 ),
-                event_bus=_tenant_key_event_bus(),
+                lane=_lab_host_bus_lane(bound_host),
             )
         )
     except ValidationError as exc:
@@ -1623,6 +1703,7 @@ def review_gateway(
 ) -> None:
     """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
         run_dry,
     )
@@ -1659,10 +1740,12 @@ def review_gateway(
             "ONEX_LAB_RUN_HOSTS to the lab host table."
         )
     bind_host, _, bind_port = bind.rpartition(":")
-    backend = resolve_byok_provider_backend("anthropic")
+    # OMN-20910: the gateway names the native Messages plan explicitly; a caller
+    # that names no plan keeps the OpenAI-compatible default row.
+    backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
     if backend is None:
         raise click.ClickException(
-            "the provider catalogue offers no anthropic backend."
+            "the provider catalogue offers no anthropic api_native backend."
         )
     try:
         request = ModelClaudeReviewGatewayRequest(

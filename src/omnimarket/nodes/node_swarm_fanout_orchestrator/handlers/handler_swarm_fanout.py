@@ -412,6 +412,8 @@ class HandlerSwarmFanout:
                         if success
                         else EnumExecutionStatus.FAILED
                     ),
+                    # delegation-call-completed carries the answer as ``content``.
+                    response_text=str(event.get("content") or ""),
                     failure_reason=""
                     if success
                     else str(event.get("failure_class", "")),

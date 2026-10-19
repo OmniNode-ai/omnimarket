@@ -184,7 +184,7 @@ inputs:
     default: true
   enable_trivial_comment_resolution:
     type: bool
-    description: "Auto-resolve trivial CodeRabbit or bot review threads before merge"
+    description: "Auto-resolve trivial bot review threads before merge"
     required: false
     default: true
   verify:
@@ -671,6 +671,8 @@ externally_consumed_topics:
   # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py
   - onex.evt.omnimarket.pr-lifecycle-verification-completed.v1
   # OMN-20730: the lane-dispatching host's runner takes the request (the remote-lane runner runs
-  # there, not in a shared runtime); the decision is read by queue-status and the ledger views.
+  # there, not in a shared runtime): node_dev_cause_lane_receiver_effect, served there, takes it as
+  # its runtime_dispatch command topic (OMN-17427), so no shared-runtime node subscribes. The
+  # decision is read by queue-status and the ledger views.
   - onex.cmd.omnimarket.dev-cause-lane-requested.v1
   - onex.evt.omnimarket.dev-head-red-decided.v1

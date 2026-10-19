@@ -9,7 +9,9 @@ over the bus; it never calls the generation consumer in-process.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.pack.model_context_pack_artifact import ModelContextPackArtifact
 
 
 class ModelContextRoiTask(BaseModel):
@@ -129,6 +131,17 @@ class ModelContextRoiRunRequest(BaseModel):
             "content-resolver effect before dispatch."
         ),
     )
+    artifacts: tuple[ModelContextPackArtifact, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "OMN-21137: resolved artifacts from "
+            "node_context_artifact_resolver_compute, passed whole to "
+            "node_context_pack_builder_compute for each arm whose factor "
+            "subset names their factor. The builder owns selection, budget "
+            "and the pack hash; the runner never trims these. A factor may "
+            "come from this tuple or from artifact_content_map, not both."
+        ),
+    )
     target_endpoint: str = Field(
         default="",
         description=(
@@ -143,6 +156,19 @@ class ModelContextRoiRunRequest(BaseModel):
             "to no tier degrades to normal routing (never crashes the run)."
         ),
     )
+
+    @model_validator(mode="after")
+    def _one_source_per_factor(self) -> ModelContextRoiRunRequest:
+        overlap = sorted(
+            {artifact.factor.value for artifact in self.artifacts}
+            & set(self.artifact_content_map)
+        )
+        if overlap:
+            raise ValueError(
+                "factor(s) supplied by both artifacts and artifact_content_map: "
+                + ", ".join(overlap)
+            )
+        return self
 
 
 __all__ = [

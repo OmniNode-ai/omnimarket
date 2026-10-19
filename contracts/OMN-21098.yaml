@@ -27,10 +27,36 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: answer appears only for an admitted terminal that completed, passed its quality gate, carries no failure cause and echoes the caller's client_call_key and request_fingerprint, and a required column never proceeds natively for an allowlisted task type -- falsifier: uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -k "answer_requires_terminal or required_allowlisted_never_proceeds_native or identity_mismatch or terminal_acceptance_condition"
+  - id: "req-delegate-skill-request-decodes-client-call"
+    statement: |-
+      Step 1 of the client_call request field: ModelDelegateSkillRequest reads the key before the field is declared, so the wire compatibility gate still grades it against the last release.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a null client_call decodes and is dropped from the serialised request, and a set client_call is refused by name rather than dropped -- falsifier: uv run pytest tests/unit/delegation/test_omn21098_client_call_decode_first.py -k "null_client_call or set_client_call"
+  - id: "req-delegate-skill-client-call-wire-step1"
+    statement: |-
+      The delegate-skill command and terminal decode the client-call keys before they are declared (step 1 of the consumer-first order), the client-call identity and the admission decision have their own wire models, and the orchestrator contract publishes the admission-decided topic.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: a delegate-skill terminal carrying admitted, effective_mode, client_call_key or request_fingerprint decodes without emitting them, and an unknown key is still refused -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k "terminal"
+      - id: "AC5"
+        statement: |-
+          AC5: client_call_key is sha256 of client:session_id:tool_use_id, a call with an absent or empty id is refused, and the admission event carries exactly correlation_id, client_call_key, request_fingerprint, admitted, task_type, reason and effective_mode with no prompt field -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k "client_call_key or never_fabricates or refuses_empty or admission_event"
+      - id: "AC6"
+        statement: |-
+          AC6: node_delegate_skill_orchestrator publishes onex.evt.omnimarket.delegate-skill-admission-decided.v1 as event type DelegateSkillAdmissionDecided and does not subscribe to it -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k "contract_publishes or admission_topic"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: the client verdict table test over the full product of outcome, client maximum, echoed mode, allowlist, echo and terminal acceptance."
     command: "uv run pytest tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC3: the delegate-skill request decodes the client_call key before it is declared."
+    command: "uv run pytest tests/unit/delegation/test_omn21098_client_call_decode_first.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC3 to AC6: the step-1 wire decoders, the client-call and admission models, and the contract topic."
+    command: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -q -n 0 -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -59,3 +85,50 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_client_verdict_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^  - \{row: inconsistent_observation, mode: (observe|selective|required), action: refuse' | grep -qx 3
+  - id: "dod-omn21098-ac3-client-call-decode-first"
+    description: "AC3: a null client_call decodes and is not emitted; a set client_call is refused with a message naming the key; a request without the key serialises as before; an unrelated extra key is still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21098_client_call_decode_first.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21098-ac3-request-step1"
+    description: "AC3: a null client_call is dropped, a client call is refused by name."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k \"request_without_client_call or request_with_client_call\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21098-ac4-terminal-step1"
+    description: "AC4: the terminal decodes the four echo keys without emitting them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k terminal -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21098-ac5-identity-and-event"
+    description: "AC5: the client-call key, the refusal of absent ids and the admission event's field set."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k \"client_call_key or never_fabricates or refuses_empty or admission_event\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21098-ac6-topic"
+    description: "AC6: the orchestrator contract publishes the admission-decided topic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_step1.py -k \"contract_publishes or admission_topic\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21098-deploy-admission-topic"
+    description: "Deploy probe: read the orchestrator contract.yaml at the checked-out commit from GitHub and require the admission-decided topic. The base lacks the topic and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^    - onex.evt.omnimarket.delegate-skill-admission-decided.v1$' | grep -qx 1

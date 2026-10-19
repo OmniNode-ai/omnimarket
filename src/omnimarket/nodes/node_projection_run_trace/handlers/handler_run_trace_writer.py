@@ -23,6 +23,9 @@ from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_isolation import TENANT_GUC
+from omnimarket.projection.tenant_registry_resolution import (
+    async_resolve_write_tenant_uuid,
+)
 
 # A step is stored once. A redelivery conflicts on the key and returns no row,
 # so nothing is rewritten.
@@ -139,12 +142,20 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
         # ValidationError must reach the runtime's POISON/DLQ classifier.
         step = self._derive.handle(ModelDelegationRunStep.model_validate(payload))
         async with self.db.pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config($1, $2, true)", TENANT_GUC, step.tenant_id
+            # OMN-19972: resolve on write, as the delegation writer does. A
+            # bundle's dispatch port stamps the install's tenant slug, and every
+            # reader scopes by the uuid the tenant mirror holds for it. An
+            # identity nobody can resolve raises, which reaches the runtime's
+            # POISON path; it is never stored under a default.
+            tenant = await async_resolve_write_tenant_uuid(
+                conn, step.tenant_id, event_timestamp=step.started_at
             )
+            if tenant is None:
+                raise ValueError("a run step must name its tenant")
+            await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant)
             inserted = await conn.fetch(
                 _INSERT_STEP,
-                step.tenant_id,
+                tenant,
                 step.correlation_id,
                 step.step_sequence,
                 step.step_kind.value,
@@ -167,7 +178,7 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
                 # published again; the delta is an upsert on the same key.
                 stored = await conn.fetch(
                     _SELECT_STORED_STEP,
-                    step.tenant_id,
+                    tenant,
                     step.correlation_id,
                     step.step_sequence,
                 )
@@ -179,13 +190,11 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
                 self._snapshot_exposure,
                 op="upsert",
                 row=row,
-                source_event_id=(
-                    f"{step.tenant_id}:{step.correlation_id}:{step.step_sequence}"
-                ),
+                source_event_id=f"{tenant}:{step.correlation_id}:{step.step_sequence}",
                 source_topic=meta.topic,
                 source_partition=meta.partition,
                 source_offset=meta.offset,
-                tenant_id=step.tenant_id,
+                tenant_id=tenant,
             )
         return row if inserted else None
 

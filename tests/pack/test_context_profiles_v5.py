@@ -13,25 +13,34 @@ import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
 from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
+    ModelContextProfileResolveRequest,
+)
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_result import (
+    EnumContextProfileResolveStatus,
+)
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
 )
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import (
-    ModelContextProfileResolveRequest,
-)
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_result import (
-    EnumContextProfileResolveStatus,
-)
 from omnimarket.pack.model_context_profile import ModelContextProfile
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.usefixtures("promoted_context_profile_routing"),
+]
 
 F = EnumContextFactor
 SRC = Path(__file__).resolve().parents[2] / "src" / "omnimarket"
 PROFILES_DIR = SRC / "pack" / "profiles"
 PROFILE_NAMES = sorted(path.stem for path in PROFILES_DIR.glob("*.yaml"))
 SECTION_4_4_PROFILES = frozenset(
-    {"compaction_orchestrator", "session_start", "agent_spawn", "per_prompt"}
+    {
+        "compaction_orchestrator",
+        "lane_brief",
+        "session_start",
+        "agent_spawn",
+        "per_prompt",
+    }
 )
 
 

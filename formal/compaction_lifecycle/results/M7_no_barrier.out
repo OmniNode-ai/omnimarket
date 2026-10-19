@@ -1,0 +1,122 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 13 and seed -8168040384667033770 with 12 workers on 32 cores with 9102MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CompactionLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CompactionLifecycle
+Starting... (2026-10-17 22:21:58)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-17 22:21:59.
+Error: Invariant NoBuildOverIncompleteSources is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ cand = <<99, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"idle", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {}
+/\ trig = <<"none", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 2: <Turn line 167, col 5 to line 170, col 105 of module CompactionLifecycle>
+/\ cand = <<99, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"idle", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {}
+/\ trig = <<"none", "none">>
+/\ tr = <<[kind |-> "turn", act |-> 0, altered |-> FALSE, tv |-> 99]>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 3: <Start line 180, col 5 to line 187, col 84 of module CompactionLifecycle>
+/\ cand = <<10, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"started", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {}
+/\ trig = <<"precompute", "none">>
+/\ tr = <<[kind |-> "turn", act |-> 0, altered |-> FALSE, tv |-> 99]>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 4: <Build line 229, col 5 to line 234, col 91 of module CompactionLifecycle>
+/\ cand = <<10, 99>>
+/\ holding = 0
+/\ overGap = {1}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"built", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {[c |-> 10, x |-> 0, k |-> "prepared", a |-> 0]}
+/\ trig = <<"precompute", "none">>
+/\ tr = <<[kind |-> "turn", act |-> 0, altered |-> FALSE, tv |-> 99]>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+199 states generated, 184 distinct states found, 141 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 8 (minimum is 4, the maximum 11 and the 95th percentile is 11).
+Finished in 00s at (2026-10-17 22:21:59)
+exit=12

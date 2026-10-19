@@ -116,6 +116,23 @@ def test_the_fold_is_deterministic() -> None:
     assert first.model_dump(mode="json") == second.model_dump(mode="json")
 
 
+def test_the_fold_is_identical_whatever_order_the_producer_lists_its_records() -> None:
+    event = _event()
+    reordered = copy.deepcopy(event)
+    reordered["records"] = list(reversed(event["records"]))
+    assert [r["record_key"] for r in reordered["records"]] != [
+        r["record_key"] for r in event["records"]
+    ]
+
+    in_listed_order = _fold(event)
+    in_reversed_order = _fold(reordered)
+
+    assert in_listed_order == in_reversed_order
+    assert [row.record_key for row in in_reversed_order.rows] == sorted(
+        record["record_key"] for record in event["records"]
+    )
+
+
 def test_every_row_carries_the_window_the_peak_window_and_the_ci_runs() -> None:
     event = _event()
     result = _fold(event)

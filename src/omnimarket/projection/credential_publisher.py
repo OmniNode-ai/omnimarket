@@ -79,6 +79,7 @@ from omnimarket.routing.byok_plan_detection import (
 )
 from omnimarket.routing.byok_provider_backends import (
     ByokCatalogError,
+    byok_automatic_plans,
     byok_provider_plans,
     byok_routable_plans,
     customer_provider_catalogue,
@@ -704,9 +705,9 @@ async def _resolve_registration_plan(
     if request.plan is not None:
         require_byok_plan_permitted(request.provider, request.plan)
         return request.plan, None
-    # Every DECLARED plan counts here: a provider with one routable plan and one
-    # detection-only plan still needs its key tried to tell which it holds.
-    if len(byok_provider_plans(request.provider)) <= 1:
+    # Detection-only products count; explicitly selected protocol variants do
+    # not turn a single-product provider into a multi-product key probe.
+    if len(byok_automatic_plans(request.provider)) <= 1:
         return None, None
     detection = await plan_detector(request.provider, request.key_value)
     if detection.refused_plan is not None:

@@ -27,6 +27,7 @@ Multi-topic routing (OMN-12003):
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -74,6 +75,15 @@ _FAILED_STATUSES = frozenset(
         EnumSubtaskStatus.CONTEXT_WINDOW_EXCEEDED,
     }
 )
+
+_TERMINAL_STATES = frozenset(
+    {EnumSwarmOrchestratorState.COMPLETED, EnumSwarmOrchestratorState.FAILED}
+)
+
+# The endpoint_status the health effect reports for an endpoint that answered its
+# health path; every other status (unreachable, timeout, auth_failed, unknown) is
+# an endpoint no subtask can be sent to.
+_HEALTHY_ENDPOINT_STATUS = "reachable"
 
 # (topic, payload) pairs queued by transition methods
 _PendingPublish = tuple[str, dict[str, Any]]
@@ -411,6 +421,17 @@ class HandlerSwarmDispatchOrchestrator:
                 f"No FSM state for run_id={run_id!r} on topic={topic!r}"
             )
 
+        if state.fsm_state in _TERMINAL_STATES:
+            # A redelivered or late phase event for a finished run: the terminal
+            # event was already published, a second one would double-count the run.
+            logger.warning(
+                "[SWARM-DISPATCH] route_event: run_id=%s already %s, ignoring topic=%s",
+                run_id,
+                state.fsm_state.value,
+                topic,
+            )
+            return state
+
         logger.info(
             "[SWARM-DISPATCH] route_event run_id=%s topic=%s routing_key=%s "
             "current_state=%s",
@@ -422,20 +443,37 @@ class HandlerSwarmDispatchOrchestrator:
 
         publishes: list[_PendingPublish]
 
-        if routing_key == "health_checked":
-            state, publishes = self.transition_health_checked(state, payload)
-        elif routing_key == "decomposed":
-            state, publishes = self.transition_decomposed(state, payload)
-        elif routing_key == "endpoints_selected":
-            state, publishes = self.transition_endpoints_selected(state, payload)
-        elif routing_key == "dispatching":
-            state, publishes = self.transition_dispatching(state, payload)
-        elif routing_key == "aggregating":
-            # aggregation-completed advances through AGGREGATING → COMPLETED in one shot
-            state, _ = self.transition_aggregating(state, payload)
-            state, publishes = self.transition_completed(state)
-        else:
-            raise ValueError(f"Unhandled routing_key: {routing_key!r}")
+        try:
+            if routing_key == "health_checked":
+                state, publishes = self.transition_health_checked(state, payload)
+            elif routing_key == "decomposed":
+                state, publishes = self.transition_decomposed(state, payload)
+            elif routing_key == "endpoints_selected":
+                state, publishes = self.transition_endpoints_selected(state, payload)
+            elif routing_key == "dispatching":
+                state, publishes = self.transition_dispatching(state, payload)
+            elif routing_key == "aggregating":
+                # aggregation-completed advances through AGGREGATING → COMPLETED
+                # in one shot
+                state, _ = self.transition_aggregating(state, payload)
+                state, publishes = self.transition_completed(state)
+            else:
+                raise ValueError(f"Unhandled routing_key: {routing_key!r}")
+        except (KeyError, TypeError, ValueError) as exc:
+            # A phase result this orchestrator cannot read (pydantic's
+            # ValidationError is a ValueError) would otherwise leave the run in
+            # its last state with no terminal event, ever. An out-of-order event
+            # (InvalidFSMTransitionError) still raises: it is a redelivery, not a
+            # reason to end a run that is progressing.
+            logger.error(
+                "[SWARM-DISPATCH] route_event: unreadable %s event run_id=%s: %s",
+                routing_key,
+                run_id,
+                exc,
+            )
+            state, publishes = self.transition_failed(
+                state, f"unreadable {routing_key} event: {exc}"
+            )
 
         await self._persist_state(state)
         await self._flush(publishes)
@@ -474,6 +512,19 @@ class HandlerSwarmDispatchOrchestrator:
         self._assert_state(state, EnumSwarmOrchestratorState.RECEIVED)
         endpoint_health = self._parse_health_event(health_event)
         state = state.with_health(endpoint_health)
+
+        if not any(
+            h.status == _HEALTHY_ENDPOINT_STATUS for h in endpoint_health.values()
+        ):
+            # Nothing to send a subtask to: end the run here, before decompose,
+            # select and fan-out spend work on it.
+            probed = ", ".join(
+                f"{eid}={h.status}" + (f" ({h.error})" if h.error else "")
+                for eid, h in sorted(endpoint_health.items())
+            )
+            return self.transition_failed(
+                state, f"no healthy endpoint: {probed or 'none probed'}"
+            )
 
         endpoint_ids = tuple(endpoint_health.keys())
         # ModelSwarmDecomposeRequest requires min_length=1 on planner_output/hash.
@@ -579,7 +630,7 @@ class HandlerSwarmDispatchOrchestrator:
         )
         cmd = ModelSwarmAggregateCommand(
             subtasks=state.subtasks,
-            dispatches_json=str([d.model_dump() for d in dispatches]),
+            dispatches_json=self._dispatches_json(dispatches),
             mode=mode,
             synthesis_output=synthesis_output,
             correlation_id=state.correlation_id,
@@ -710,7 +761,9 @@ class HandlerSwarmDispatchOrchestrator:
         return result
 
     def _parse_decompose_event(self, event: dict[str, Any]) -> tuple[ModelSubtask, ...]:
-        raw: list[dict[str, Any]] = event.get("subtasks", [])
+        # node_swarm_decomposer_compute publishes ModelSwarmDecomposeResult, which
+        # nests the subtasks under ``decomposition``.
+        raw: list[dict[str, Any]] = event["decomposition"]["subtasks"]
         return tuple(
             ModelSubtask(
                 subtask_id=s["subtask_id"],
@@ -735,15 +788,37 @@ class HandlerSwarmDispatchOrchestrator:
             ModelSubtaskDispatch(
                 subtask_id=d["subtask_id"],
                 endpoint_id=d.get("endpoint_id", ""),
-                status=d.get("status", "failed"),
+                # node_swarm_fanout_orchestrator publishes ModelSwarmFanoutResult,
+                # whose per-subtask outcome is ``execution_status``.
+                status=d["execution_status"],
                 latency_ms=d.get("latency_ms", 0),
-                result_text=d.get("result_text", ""),
+                result_text=d.get("response_text", ""),
                 failure_reason=d.get("failure_reason", ""),
                 wave=d.get("wave", 0),
                 model_id=d.get("model_id", ""),
                 base_url=d.get("base_url", ""),
             )
             for d in raw
+        )
+
+    @staticmethod
+    def _dispatches_json(dispatches: tuple[ModelSubtaskDispatch, ...]) -> str:
+        """Serialise dispatches as JSON in the shape node_swarm_aggregator_compute reads."""
+        return json.dumps(
+            [
+                {
+                    "subtask_id": d.subtask_id,
+                    "endpoint_id": d.endpoint_id,
+                    "model_id": d.model_id,
+                    "base_url": d.base_url,
+                    "status": d.status,
+                    "result": {"response_text": d.result_text},
+                    "failure_reason": d.failure_reason,
+                    "latency_ms": d.latency_ms,
+                    "wave": d.wave,
+                }
+                for d in dispatches
+            ]
         )
 
     # ------------------------------------------------------------------

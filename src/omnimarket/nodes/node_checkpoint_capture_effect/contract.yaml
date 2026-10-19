@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: checkpoint_capture_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Journals a written session checkpoint as a checkpoint content record.
+  The checkpoint file's bytes are piped unchanged to the onex plugin's
+  hook_content_capture.py --kind checkpoint, which owns the opt-out, the drainer
+  refusal, the size policy and the content topic. The entry is the first usable
+  of an explicit override, each installed onex plugin with its plugin-data venv
+  (newest install first), then the omniclaude clone under OMNI_HOME with its
+  venv. The session checkpoint writer loads the handler module by file path,
+  because a per-tool-call hook cannot pay a package import or a bus round-trip;
+  the module level imports the standard library only.
+input_model: omnimarket.nodes.node_checkpoint_capture_effect.models.ModelCheckpointCaptureRequest
+output_model: omnimarket.nodes.node_checkpoint_capture_effect.models.ModelCheckpointCaptureResult
+handler:
+  module: omnimarket.nodes.node_checkpoint_capture_effect.handlers.handler_checkpoint_capture
+  class: HandlerCheckpointCapture
+  input_model: omnimarket.nodes.node_checkpoint_capture_effect.models.ModelCheckpointCaptureRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerCheckpointCapture
+      module: omnimarket.nodes.node_checkpoint_capture_effect.handlers.handler_checkpoint_capture
+    event_model:
+      name: ModelCheckpointCaptureRequest
+      module: omnimarket.nodes.node_checkpoint_capture_effect.models
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 8000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.checkpoint-capture-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.checkpoint-capture-start.v1
+  publish_topics:
+  - onex.evt.omnimarket.checkpoint-capture-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.checkpoint-capture-start.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.checkpoint-capture-completed.v1
+metadata:
+  transport_type: kafka
+inputs:
+  checkpoint_path:
+    type: string
+    required: true
+    description: The written checkpoint file; its bytes are piped unchanged.
+  session_id:
+    type: string
+    required: true
+    description: The session the checkpoint belongs to; passed as the capture's
+      session id and correlation id.
+  home:
+    type: string
+    required: false
+    description: The home directory whose .claude/plugins is searched; the
+      process home when absent.
+  registry_root:
+    type: string
+    required: false
+    description: The registry root whose omniclaude clone is the last candidate;
+      OMNI_HOME when absent.
+  capture_script:
+    type: string
+    required: false
+    description: An explicit hook_content_capture.py; OMNI_CONTENT_CAPTURE_PY
+      when absent.
+  capture_python:
+    type: string
+    required: false
+    description: The interpreter for capture_script; OMNI_CONTENT_CAPTURE_PYTHON,
+      else this interpreter, when absent.
+  timeout_s:
+    type: number
+    required: false
+    description: Seconds the capture may take, under the hook's own timeout.
+outputs:
+  status:
+    type: string
+    description: ok, skipped (no usable capture entry) or failed (the capture
+      exited non-zero, timed out or could not be started).
+  detail:
+    type: string
+    description: The capture's last stderr line, or why it was skipped or failed.
+  capture_script:
+    type: string
+    description: The capture entry that ran, when one ran.
+  capture_python:
+    type: string
+    description: The interpreter that ran it, when one ran.
+  returncode:
+    type: integer
+    description: The capture's exit code, when it exited.

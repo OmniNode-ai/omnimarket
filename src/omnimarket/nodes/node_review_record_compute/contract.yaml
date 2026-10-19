@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Record Compute (OMN-21188)
+#
+# Pure COMPUTE: one review invocation that ran one or more routes becomes one
+# ModelReviewRecord per arm, all under the invocation's id, each finding wrapped
+# in the ModelRecordedFinding envelope. Every record is published to the topic
+# declared under event_bus.publish_topics; the handler reads it from here.
+---
+name: node_review_record_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE that turns one review invocation into typed review records, one
+  per arm. A record carries the requested and served route, the rubric hash, the
+  prompt template, the target snapshot, the verdict, the findings wrapped in the
+  recorded-finding envelope, cost without price, the execution status with its
+  reason, and the reviewing principal and lane. Ids are derived from the
+  invocation, so a redelivered invocation yields the same records. No I/O and no
+  clock.
+
+input_model:
+  name: ModelReviewInvocation
+  module: omnimarket.nodes.node_review_record_compute.models.model_review_invocation
+  description: "One review invocation: target, template, principal and one result per arm."
+
+output_model:
+  name: ModelReviewRecord
+  module: omnimarket.models.review_record.model_review_record
+  description: "One record per arm, published once each to the review-recorded topic."
+
+handler:
+  module: omnimarket.nodes.node_review_record_compute.handlers.handler_review_record
+  class: HandlerReviewRecordCompute
+  input_model: omnimarket.nodes.node_review_record_compute.models.model_review_invocation.ModelReviewInvocation
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: review_record
+      handler:
+        name: HandlerReviewRecordCompute
+        module: omnimarket.nodes.node_review_record_compute.handlers.handler_review_record
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-record-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-recorded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-record-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-recorded.v1
+
+terminal_event: onex.evt.omnimarket.review-recorded.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Typed review record, one per arm of a review invocation - pure COMPUTE"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "review"
+    - "record"
+  related_tickets:
+    - "OMN-21188"

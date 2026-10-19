@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17974"
+title: "runtime closeout refuses success on an unadjudicated proof matrix"
+summary: >-
+  The runtime closeout receipt adjudicates the requested proof matrix: a missing, contradictory, unobserved or non-passing cell holds, a required-only run is bounded to internal-integration, and customer-beta needs a full requested matrix. This change applies the preserved fix 34bfeb3359b4. The declared proof-matrix completion publisher (the node that emits closeout-proof-matrix-completed) is not part of this change.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+requirements:
+  - id: "req-closeout-adjudication"
+    statement: "A runtime closeout never recommends success from an unadjudicated proof matrix."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a completed closeout whose proof matrix has a missing, duplicate, contradictory, non-PASS or unobserved cell recommends HOLD -- falsifier: uv run pytest tests/test_golden_chain_runtime_closeout_orchestrator.py -q -n 0 -k 'unproved or requires_every_requested_cell or non_success_phase'"
+      - id: "AC2"
+        statement: "AC2: a required-only run is bounded to internal-integration and only a full requested matrix recommends customer-beta -- falsifier: uv run pytest tests/test_golden_chain_runtime_closeout_orchestrator.py -q -n 0 -k 'full_pass_customer_beta or required_scope_caps'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Runtime closeout receipt adjudication for OMN-17974."
+    command: "uv run pytest tests/test_golden_chain_runtime_closeout_orchestrator.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17974-ac1-hold"
+    description: "An unproved, partial, duplicated or contradicted matrix, and a blocked or failed phase with full proof, each recompute to HOLD."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_runtime_closeout_orchestrator.py -q -n 0 -k 'unproved or requires_every_requested_cell or non_success_phase'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn17974-ac2-bounded"
+    description: "A required-only receipt, even with extra canonical proof, recomputes to INTERNAL_INTEGRATION; a full matrix recomputes to CUSTOMER_BETA."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_runtime_closeout_orchestrator.py -q -n 0 -k 'full_pass_customer_beta or required_scope_caps'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn17974-deploy-container-hold"
+    description: "Hosted deploy probe. A labelled ephemeral Python 3.13 container, the interpreter the hosted verifier syncs with, mounts the checkout read-only and the uv cache the verifier already synced from uv.lock so its wheels are reused, uses uv sync --frozen --no-dev to install it into /tmp without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the receipt model does not import, builds a completed full-scope closeout receipt with no proof cells and asserts the receipt recomputes to HOLD. It fails at the merge base, whose receipt has no proof_set field and recomputes an empty matrix to internal-integration. The hosted runner can run it inside the 30s check budget; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --user "$(id -u):$(id -g)" \
+          --label onex.deploy-probe=OMN-17974 \
+          --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          from uuid import uuid4
+          from omnimarket.events.runtime_closeout import EnumCloseoutPhase, EnumCloseoutRecommendation, EnumProofSet, ModelCloseoutReceipt
+          from omnimarket.events.runtime_deployment import EnumRuntimeLane
+          r = ModelCloseoutReceipt(correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV, proof_set=EnumProofSet.FULL, final_phase=EnumCloseoutPhase.COMPLETED)
+          assert r.recompute_recommendation() is EnumCloseoutRecommendation.HOLD, r
+          print(r.recompute_recommendation().value)'

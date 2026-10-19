@@ -1,0 +1,82 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19360"
+title: "Pytest failure digest compute node: junit XML to a typed, capped, fingerprinted failure digest"
+summary: "Evidence-only contract for the merged pytest failure digest compute node (omnimarket #2825, b8c34a60d). It carries the acceptance-criterion bindings a second lane accepted for AC1 to AC4. The ticket's AC1 falsifier names src/omnimarket/nodes/node_pytest_failure_digest_compute/tests, which does not exist; the tests live at tests/nodes/node_pytest_failure_digest_compute. Touches no runtime path."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "The pytest failure digest compute node tests pass."
+    command: "uv run pytest tests/nodes/node_pytest_failure_digest_compute/test_handler_pytest_failure_digest.py tests/nodes/node_pytest_failure_digest_compute/test_pytest_failure_digest_regressions_omn19360.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+context:
+  ac_binding_provenance:
+    "dod-omn19360-ac1-fixtures-map-to-outcomes":
+      - label: "AC1"
+        criterion_hash: "5618025de8dab40b0df2de4690b377be82890a2819afbb0e0fc0a5a4ceb8a5bd"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
+    "dod-omn19360-ac2-empty-junit-is-infra-error":
+      - label: "AC2"
+        criterion_hash: "cee4306be9b7551d18e6a43d4a9ede17818563962a6bf347fd8a4198a320634f"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
+    "dod-omn19360-ac3-no-envelope-import":
+      - label: "AC3"
+        criterion_hash: "368e4851f8c59e1f0e38850a63b92a87e7fdf8a9a9c57b406fe9bf99dc9f2ebc"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
+    "dod-omn19360-ac4-timing-free-fingerprint":
+      - label: "AC4"
+        criterion_hash: "bf69b484cd18c9b179900b5ab8ccfcbdc77cc25766588a1af59982eb20aa2582"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
+dod_evidence:
+  - id: "dod-omn19360-ac1-fixtures-map-to-outcomes"
+    description: "AC1: every fixture junit file maps to its outcome, including the exit-code-5 empty run (no_tests), and an empty, whitespace, truncated or non-XML junit string (how the node receives a missing file) maps to infra_error. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: all 24 digest tests passed. The node and its tests do not exist at the parent of the implementing merge."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pytest_failure_digest_compute/test_handler_pytest_failure_digest.py tests/nodes/node_pytest_failure_digest_compute/test_pytest_failure_digest_regressions_omn19360.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pytest_failure_digest_compute/test_pytest_failure_digest_regressions_omn19360.py::test_fixture_outcomes_and_counts_accept_a_single_testsuite_root -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19360-ac2-empty-junit-is-infra-error"
+    description: "AC2: the four parametrized cases (empty, whitespace, truncated XML, non-XML) each digest to infra_error and never to passed. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: 4 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pytest_failure_digest_compute/test_handler_pytest_failure_digest.py::test_a_missing_empty_or_broken_junit_file_is_infra_error_never_passed tests/nodes/node_pytest_failure_digest_compute/test_pytest_failure_digest_regressions_omn19360.py::test_invalid_junit_cannot_be_rescued_by_a_nonzero_or_missing_exit_code -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19360-ac3-no-envelope-import"
+    description: "AC3: the test reads every non-test .py source under the node, asserts there is at least one, and asserts none contains ModelEventEnvelope. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pytest_failure_digest_compute/test_handler_pytest_failure_digest.py::test_the_handler_imports_no_envelope_type -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19360-ac4-timing-free-fingerprint"
+    description: "AC4: two junit reports differing only in time, hostname and timestamp (asserted unequal as text) produce equal fingerprints. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pytest_failure_digest_compute/test_handler_pytest_failure_digest.py::test_two_reports_differing_only_in_timing_have_the_same_fingerprint tests/nodes/node_pytest_failure_digest_compute/test_pytest_failure_digest_regressions_omn19360.py::test_timing_in_failure_message_and_traceback_does_not_change_fingerprint -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19360-deploy-probe"
+    description: "Deploy probe: the installed digest package classifies empty junit as infra_error and a zero-test report with exit code 5 as no_tests. Runs on the hosted runner without external services."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python -c 'from omnimarket.nodes.node_pytest_failure_digest_compute.handlers.handler_pytest_failure_digest import digest_pytest_run; from omnimarket.nodes.node_pytest_failure_digest_compute.models.model_pytest_failure_digest import ModelPytestRunReport, EnumPytestRunOutcome; empty = digest_pytest_run(ModelPytestRunReport(junit_xml="", exit_code=0)); no_tests = digest_pytest_run(ModelPytestRunReport(junit_xml="<testsuite tests=\"0\" errors=\"0\" failures=\"0\" skipped=\"0\"/>", exit_code=5)); assert empty.outcome is EnumPytestRunOutcome.INFRA_ERROR, empty; assert no_tests.outcome is EnumPytestRunOutcome.NO_TESTS, no_tests; print("empty junit: infra_error; exit 5 zero-test junit: no_tests")'
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -1,0 +1,69 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21121"
+title: "Capture kind checkpoint: the producer call as an omnimarket node (plan task TA.20a)"
+summary: >-
+  node_checkpoint_capture_effect journals a written session checkpoint as a checkpoint content record: its stdlib-only handler, which the session checkpoint writer loads by file path, pipes the file's exact bytes to the onex plugin's hook_content_capture.py --kind checkpoint, found as an explicit override, the newest installed onex plugin with its plugin-data venv, or the omniclaude clone under OMNI_HOME, and reports ok, skipped or failed in one line. The capture keeps the opt-out, the drainer refusal, the size policy and the topic. The writer's own call is a later thin-shim change in its repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21121-checkpoint-capture-node"
+    statement: "node_checkpoint_capture_effect hands a written checkpoint to the onex content capture with its exact bytes and says what the capture did."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the file's bytes reach the capture unchanged with --kind checkpoint and the session id, the opt-out reaches it unchanged, and PYTHONPATH does not -- falsifier: uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'byte_for_byte or opt_out'"
+      - id: "AC2"
+        statement: "AC2: a non-zero capture, a missing file and no usable entry return failed, failed and skipped without raising, and only failed warns -- falsifier: uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'failed or skipped'"
+      - id: "AC3"
+        statement: "AC3: the newest installed onex plugin with its data venv is used, an install missing its script or interpreter is not, and the omniclaude clone is the last candidate -- falsifier: uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'installed or missing_a_half or clone'"
+      - id: "AC4"
+        statement: "AC4: the handler module imports only the standard library at module level and handle returns the typed result -- falsifier: uv run pytest tests/test_checkpoint_capture_effect.py tests/test_golden_chain_checkpoint_capture_effect.py -q --no-cov -k 'standard_library or golden_chain or error_chain'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Checkpoint capture effect tests for OMN-21121."
+    command: "uv run pytest tests/test_checkpoint_capture_effect.py tests/test_golden_chain_checkpoint_capture_effect.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21121-ac1-bytes"
+    description: "The capture receives the file's exact bytes, --kind checkpoint, the session id and the opt-out, and no PYTHONPATH."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'byte_for_byte or opt_out'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21121-ac2-outcomes"
+    description: "A failed capture, a missing file and no usable entry each return their status without raising."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'failed or skipped'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21121-ac3-discovery"
+    description: "Entry discovery takes the newest whole onex install, then the omniclaude clone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'installed or missing_a_half or clone'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21121-ac4-shape"
+    description: "Stdlib-only module level, typed handle, and a request without a session refused by the model."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py tests/test_golden_chain_checkpoint_capture_effect.py -q --no-cov -k 'standard_library or golden_chain or error_chain'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21121-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines capture_checkpoint. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_checkpoint_capture_effect/handlers/handler_checkpoint_capture.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def capture_checkpoint'"
+        cwd: "${OMNI_HOME}/omnimarket"
