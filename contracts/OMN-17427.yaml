@@ -439,11 +439,21 @@ requirements:
     acceptance:
       - id: "AC80"
         statement: "AC80: the hostile-reviewer workflow clones omniintelligence at 921b322b8e43f695961a06a04759dc88bb3e88ff and at no other sha -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q fails at the merge base, which pins aeba95945f22b3027d4010b53cb01b3f1217923c"
+  - id: "req-rehome-automation-liveness-overlay-check"
+    statement: "The automation-liveness overlay completeness check lives in the portable node package; the private overlay data stays in the private repository and is passed in by path."
+    acceptance:
+      - id: "AC91"
+        statement: "AC91: the node scans installers, reports a finding for each unit, installer, missing source and contradicted lifecycle state the overlay does not cover, and its console script reads a private checkout's overlay by path -- falsifier: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q fails when the node is absent"
   - id: "req-ci-summary-sweep-provenance-and-unreadable-runs"
     statement: "CI Summary's external sweep reads a check-run's Actions run id from its check suite when its URLs carry none, and an unreadable or malformed workflow-runs file exempts nothing instead of crashing the gate."
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-ruling-guard-paths-spelled"
+    statement: "The park ladder handler and the operator capture handlers are spelled by path in a required lint step and a pre-commit hook, so the ruling audit reads the rulings they carry as wired."
+    acceptance:
+      - id: "AC82"
+        statement: "AC82: the lint step and the pre-commit hook of the landing decision park ladder name handler_pr_landing_decision.py, and the operator-capture-nodes step and hook run the two capture test directories and name handler_capture_process.py and handler_utterance_classify.py -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_ladder_wiring fails at the merge base"
   - id: "req-hostile-reviewer-codex-fallback"
     statement: "When a hostile-reviewer run's requested review routes produce no review output, the review runs on the Codex route the node contract declares, the completed event records which engine reviewed and which routes it replaced, and a run where no engine reviewed returns FAILED instead of a clean pass."
     acceptance:
@@ -614,6 +624,9 @@ evidence_requirements:
     description: "AC81: check-suite run provenance and unreadable workflow-runs files in the external sweep."
     command: >-
       uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
+  - kind: "tests"
+    description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1631,6 +1644,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
+  - id: "dod-omn17427-ac91-liveness-overlay-check"
+    description: "The overlay completeness check node and its console script pass the focused suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC91"]
+  - id: "dod-omn17427-liveness-overlay-check-deploy-probe"
+    description: "Deploy probe. GitHub serves the overlay check node contract at the checked-out HEAD with its console script declared. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); assert "onex-automation-liveness-check" in c["entry_points"]["console_scripts"]; print("automation liveness overlay check deploy probe: PASS")'
   - id: "dod-omn17427-ac79-sweep-provenance-unreadable-runs"
     description: "The external sweep reads run provenance from the check suite and an unreadable or malformed workflow-runs file still sweeps an unregistered red. The tests fail against the dev gate, which reads only URLs and raises on a malformed payload."
     source: "manual"
@@ -1657,6 +1685,21 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac80-ruling-guard-paths"
+    description: "The park ladder wiring tests require the handler path in the lint step and hook names, and the operator capture nodes pass their tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC82"]
+  - id: "dod-omn17427-ac80-ruling-paths-probe"
+    description: "Deploy probe. GitHub serves the pre-commit config at the checked-out HEAD with the operator-capture-nodes hook naming handler_capture_process.py. It fails at the merge base, where the hook does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.pre-commit-config.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "id: operator-capture-nodes" in source and "handler_capture_process.py" in source; print("ruling guard paths deploy probe: PASS")'
   - id: "dod-omn17427-ac72-hostile-reviewer-codex-fallback"
     description: "The hostile-reviewer Codex fallback chain passes: an offline primary is reviewed by Codex and the engine is recorded, a healthy primary never touches the fallback, both engines offline is FAILED, and a silent primary counts as offline."
     source: "manual"
