@@ -95,3 +95,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_tier_skip_omn15803.py -q --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn18831-linear-ac4-attempt-tier-agrees-with-serving-backend"
+    description: "AC4 falsifier. A local dispatch that escalates to a cloud tier records every attempt under a routing tier that declares the attempt's backend and model, and calls the effect with that same tier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_tier_skip_omn15803.py::test_every_attempt_tier_declares_the_backend_and_model_that_served_it -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
