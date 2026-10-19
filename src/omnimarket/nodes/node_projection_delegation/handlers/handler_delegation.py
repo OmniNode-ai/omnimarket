@@ -2045,6 +2045,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
+        # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
+        if event.trace_id is not None:
+            row["trace_id"] = str(event.trace_id)
         # OMN-20755: the routing tier, by the sync builder's rule.
         _stamp_routing_tier(row, reduction.attempt_history)
         # Same rule as the sync builder: a terminal that was never scored names

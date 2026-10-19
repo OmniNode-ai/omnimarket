@@ -582,6 +582,7 @@ providers:
   # content blocks with cache breakpoints, a forced tool for schema output.
   - provider: anthropic
     plan: api_native
+    auto_detect_plan: false
     inference_protocol: anthropic_messages
     mirrors_house_rung: false
     backend_id: byok-anthropic-native

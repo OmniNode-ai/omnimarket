@@ -306,10 +306,14 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_hourly_tick_effect = "omnimarket.nodes.node_hourly_tick_effect"
+node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
+node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_table_compute"
 node_friction_synthesis_effect = "omnimarket.nodes.node_friction_synthesis_effect"
 node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
 node_patch_apply_dispatch_effect = "omnimarket.nodes.node_patch_apply_dispatch_effect"
 node_internal_release_path_guard_compute = "omnimarket.nodes.node_internal_release_path_guard_compute"
+node_lab_claude_token_effect = "omnimarket.nodes.node_lab_claude_token_effect"
 node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
 node_secret_store_effect = "omnimarket.nodes.node_secret_store_effect"
@@ -423,6 +427,7 @@ node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_g
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_glm_allowance_compute = "omnimarket.nodes.node_glm_allowance_compute"
 node_claude_review_budget_compute = "omnimarket.nodes.node_claude_review_budget_compute"
+node_review_defect_catalog_compute = "omnimarket.nodes.node_review_defect_catalog_compute"
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
@@ -455,6 +460,7 @@ node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_
 node_context_install_confirm_compute = "omnimarket.nodes.node_context_install_confirm_compute"
 node_context_pack_orchestrator = "omnimarket.nodes.node_context_pack_orchestrator"
 node_context_pack_render_compute = "omnimarket.nodes.node_context_pack_render_compute"
+node_lane_brief_section_compute = "omnimarket.nodes.node_lane_brief_section_compute"
 node_transcript_parse_compute = "omnimarket.nodes.node_transcript_parse_compute"
 node_transcript_read_effect = "omnimarket.nodes.node_transcript_read_effect"
 node_retrieval_eval_compute = "omnimarket.nodes.node_retrieval_eval_compute"
@@ -962,6 +968,7 @@ node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_d
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 
 [project.scripts]
+onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"
 onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.handler_host_thermal_cli:main"
 onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
@@ -1044,6 +1051,10 @@ lab-archive = "omnimarket.nodes.node_lab_history_archive_effect.cli:lab_archive_
 # `onex lab-story-log` -- write one ISO week of the work ledger as a sanitized story log for the
 # lab-journey article series; run weekly by a host tick. Discovered over installed distributions.
 lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_command"
+# OMN-19998: `onex lab claude-token` -- store, deploy, probe and rotate a lab
+# host's Claude token by reference (node_lab_claude_token_effect). Discovered
+# over installed distributions like the groups above.
+lab = "omnimarket.nodes.node_lab_claude_token_effect.cli:lab_group"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry

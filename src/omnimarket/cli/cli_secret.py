@@ -130,6 +130,7 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
+    byok_automatic_plans,
     byok_provider_plans,
     byok_routable_plans,
     require_byok_plan_permitted,
@@ -218,7 +219,7 @@ def _resolve_plan(
             )
         _refuse_plan_not_permitted(provider, named)
         return named, None
-    if len(declared) <= 1:
+    if len(byok_automatic_plans(provider)) <= 1:
         return None, None
     click.echo(
         f"{provider} has more than one plan ({', '.join(declared)}). Trying your "

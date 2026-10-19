@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_lab_fill_receipt_table_compute
+version: 1.0.0
+description: Per-lane lab-fill receipt table with each refusal's reason verbatim and one capacity retry plan.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+pack: routing
+node_role: compute
+display_name: Lab Fill Receipt Table Compute
+entry_points:
+  onex.nodes:
+    node_lab_fill_receipt_table_compute: omnimarket.nodes.node_lab_fill_receipt_table_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies: []
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, lab-fill, receipts]

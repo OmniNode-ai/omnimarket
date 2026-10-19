@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,9 @@ from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus
 from omnibase_core.models.context.model_context_caller_scope import (
     ModelContextCallerScope,
+)
+from omnibase_core.models.context.model_context_source_entry import (
+    ModelContextSourceEntry,
 )
 from omnibase_core.models.context.model_context_source_request import (
     ModelContextSourceRequest,
@@ -40,6 +45,7 @@ from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_cont
 )
 
 from .conftest import (
+    AS_OF,
     COMPACTION_REQUIRED,
     FixtureSource,
     command,
@@ -318,3 +324,139 @@ def test_payload_refuses_a_tenant_field() -> None:
 def test_pinned_mode_requires_its_manifest_case() -> None:
     with pytest.raises(ValidationError):
         ModelContextPackRequest(profile_name="lane_brief", mode="pinned")
+
+
+# OMN-21111: selection inside a required tier, and a revision per tier.
+
+
+class ManySource(FixtureSource):
+    """A source answering several entries, one per (text, as_of, source_ref)."""
+
+    def __init__(
+        self,
+        factor: EnumContextFactor,
+        rows: tuple[tuple[str, datetime, str], ...],
+    ) -> None:
+        super().__init__(factor)
+        self.rows = rows
+
+    def handle(self, request: ModelContextSourceRequest) -> ModelContextSourceResult:
+        self.requests.append(request)
+        return ModelContextSourceResult(
+            status=EnumContextSourceStatus.RESOLVED,
+            entries=tuple(
+                ModelContextSourceEntry(
+                    factor=self.factor,
+                    text=text,
+                    source_ref=ref,
+                    text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    status=EnumContextSourceStatus.RESOLVED,
+                    as_of=as_of,
+                )
+                for text, as_of, ref in self.rows
+            ),
+        )
+
+
+def _open_work_rows(count: int = 5) -> tuple[tuple[str, datetime, str], ...]:
+    # Each row is about 100 tokens; day N is newer than day N-1.
+    return tuple(
+        (
+            f"2026-10-1{day}T00:00:00Z | MSG | lane=orchestrator-bb1a | day-{day} "
+            + "w" * 360,
+            datetime(2026, 10, 10 + day, tzinfo=UTC),
+            f"row/{day}",
+        )
+        for day in range(1, count + 1)
+    )
+
+
+def _carried(built_text: str) -> set[str]:
+    return {f"day-{day}" for day in range(1, 6) if f"day-{day} " in built_text}
+
+
+def test_required_tier_over_budget_keeps_cited_then_newest() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows())
+    )
+    built = orchestrator(bound).handle(
+        command(token_budget_override=300, cited_refs=("row/1",))
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    text = "\n".join(m.text for m in built.messages)
+    assert _carried(text) == {"day-1", "day-5"}
+    tier = {t.factor: t for t in built.tier_statuses}[EnumContextFactor.OPEN_WORK]
+    assert tier.included
+    assert tier.entry_count == 2
+    assert tier.trimmed_entry_count == 3
+    assert sum(built.factor_token_estimates.values()) <= 300
+
+
+def test_required_tier_trim_cites_a_row_by_its_stamp() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows())
+    )
+    built = orchestrator(bound).handle(
+        command(token_budget_override=300, cited_refs=("2026-10-12T00:00:00Z",))
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    text = "\n".join(m.text for m in built.messages)
+    assert _carried(text) == {"day-2", "day-5"}
+
+
+def test_required_tier_trim_without_citations_keeps_newest_first() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows())
+    )
+    built = orchestrator(bound).handle(command(token_budget_override=300))
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    text = "\n".join(m.text for m in built.messages)
+    assert _carried(text) == {"day-4", "day-5"}
+
+
+def test_cited_entries_over_the_tier_budget_fail_never_dropped() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows())
+    )
+    cited = tuple(f"row/{day}" for day in range(1, 6))
+    built = orchestrator(bound).handle(
+        command(token_budget_override=300, cited_refs=cited)
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.FAILED
+    assert built.failure_class is EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED
+    assert any("cited" in error for error in built.errors)
+
+
+def test_operator_words_unrecorded_is_carried_whole_never_trimmed() -> None:
+    rows = tuple(
+        (f"prompt-{n} " + "p" * 400, AS_OF, f"prompt/{n}") for n in range(1, 4)
+    )
+    bound = sources(
+        operator_words_unrecorded=ManySource(
+            EnumContextFactor.OPERATOR_WORDS_UNRECORDED, rows
+        )
+    )
+    built = orchestrator(bound).handle(command(token_budget_override=200))
+    assert built.status is EnumContextPackOrchestratorStatus.FAILED
+    assert built.failure_class is EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED
+
+
+def test_each_tier_reads_its_own_revision() -> None:
+    bound = sources()
+    revisions = {
+        EnumContextFactor.OPERATOR_RULINGS: "2026-10-19T07:36:00Z",
+        EnumContextFactor.OPERATOR_WORDS_UNRECORDED: "a" * 64,
+    }
+    built = orchestrator(bound).handle(command(tier_revisions=revisions))
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    for factor, source in bound.items():
+        for request in source.requests:
+            assert request.revision == revisions.get(factor, "turn-9")
+
+
+def test_tier_revisions_change_the_candidate() -> None:
+    plain = orchestrator().handle(command())
+    pinned = orchestrator().handle(
+        command(tier_revisions={EnumContextFactor.OPERATOR_RULINGS: "r-1"})
+    )
+    assert plain.candidate_id != pinned.candidate_id

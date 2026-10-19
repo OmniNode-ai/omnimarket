@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# The per-lane receipt table: lab-fill's verify step and the throughput tick's dispatch lines
+# render one row per lane from the lane's own receipt, with the reason verbatim (OMN-17427).
+name: node_lab_fill_receipt_table_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Read each dispatched lane's own receipt into a row of lane, ticket, model, host, state
+  (placed, refused, preparing, never-started, no-host, host-limited) and the reason quoted
+  verbatim, classify each refusal as capacity, policy, limit or other, render the markdown
+  table, and plan one retry on another admitting host for each unpinned capacity refusal.
+  Pure: reads no files and has no clock. Run on a host with
+  python -m omnimarket.nodes.node_lab_fill_receipt_table_compute.
+input_model:
+  name: ModelLaneReceiptTableRequest
+  module: omnimarket.nodes.node_lab_fill_receipt_table_compute.models.model_lab_fill_receipt_table
+output_model:
+  name: ModelLaneReceiptTableResult
+  module: omnimarket.nodes.node_lab_fill_receipt_table_compute.models.model_lab_fill_receipt_table
+handler:
+  module: omnimarket.nodes.node_lab_fill_receipt_table_compute.handlers.handler_lab_fill_receipt_table
+  class: HandlerLabFillReceiptTable
+  input_model: omnimarket.nodes.node_lab_fill_receipt_table_compute.models.model_lab_fill_receipt_table.ModelLaneReceiptTableRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: tabulate_lane_receipts
+      handler:
+        name: HandlerLabFillReceiptTable
+        module: omnimarket.nodes.node_lab_fill_receipt_table_compute.handlers.handler_lab_fill_receipt_table
+      input_model: omnimarket.nodes.node_lab_fill_receipt_table_compute.models.model_lab_fill_receipt_table.ModelLaneReceiptTableRequest
+      output_model: omnimarket.nodes.node_lab_fill_receipt_table_compute.models.model_lab_fill_receipt_table.ModelLaneReceiptTableResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+terminal_event: onex.evt.omnimarket.lab-fill-receipt-table-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-fill-receipt-table-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-fill-receipt-table-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-fill-receipt-table-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-fill-receipt-table-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Per-lane lab-fill receipt table
+  author: OmniNode Team
+  created: "2026-10-18"
+  related_tickets: [OMN-17427]

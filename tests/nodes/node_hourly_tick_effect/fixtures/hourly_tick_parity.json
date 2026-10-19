@@ -1,0 +1,2568 @@
+{
+  "source": "pre-conversion hourly tick",
+  "source_commit": "fb45651168a1bb5390f5120ceee0fe61b36111d3",
+  "cases": [
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": null,
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing n/a, accepted n/a, held n/a, phase=completed; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "completed",
+        "class": null
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "completed",
+        "class": null,
+        "needing": null,
+        "accepted": null,
+        "held": null,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": null,
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing n/a, accepted n/a, held n/a, phase=completed; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "completed",
+        "class": null
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "completed",
+        "class": null,
+        "needing": null,
+        "accepted": null,
+        "held": null,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {},
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing n/a, accepted n/a, held n/a, phase=completed; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "completed",
+        "class": null
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "completed",
+        "class": null,
+        "needing": null,
+        "accepted": null,
+        "held": null,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {},
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing n/a, accepted n/a, held n/a, phase=completed; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "completed",
+        "class": null
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "completed",
+        "class": null,
+        "needing": null,
+        "accepted": null,
+        "held": null,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "collected": 5,
+        "needing": 3,
+        "accepted": 0,
+        "held": 3,
+        "held_by_class": {
+          "floor_refused": 2,
+          "transport": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected 5, needing 3, accepted 0, held 3, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 3,
+        "accepted": 0,
+        "held": 3,
+        "held_by_class": {
+          "floor_refused": 2,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "collected": 5,
+        "needing": 3,
+        "accepted": 0,
+        "held": 3,
+        "held_by_class": {
+          "floor_refused": 2,
+          "transport": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected 5, needing 3, accepted 0, held 3, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 3,
+        "accepted": 0,
+        "held": 3,
+        "held_by_class": {
+          "floor_refused": 2,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "collected": 5,
+        "needing": 3,
+        "accepted": 1,
+        "held": 2,
+        "linear_file": "draft.md"
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected 5, needing 3, accepted 1, held 2, phase=completed; drafts draft.md; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "completed",
+        "class": null
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "completed",
+        "class": null,
+        "needing": 3,
+        "accepted": 1,
+        "held": 2,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "collected": 5,
+        "needing": 3,
+        "accepted": 1,
+        "held": 2,
+        "linear_file": "draft.md"
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected 5, needing 3, accepted 1, held 2, phase=completed; drafts draft.md; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "completed",
+        "class": null
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "completed",
+        "class": null,
+        "needing": 3,
+        "accepted": 1,
+        "held": 2,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 1,
+        "accepted": 0
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 1, accepted 0, held n/a, phase=degraded class=unclassified; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unclassified"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unclassified",
+        "needing": 1,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 1,
+        "accepted": 0
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 1, accepted 0, held n/a, phase=degraded class=unclassified; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unclassified"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unclassified",
+        "needing": 1,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": null
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "floor_refused": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "floor_refused": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "truncated": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "truncated": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "unsourced": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "unsourced": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=transport; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "transport"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "transport",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=transport; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "transport"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "transport",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=transport; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "transport"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "transport",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "transport": 1,
+          "timeout": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=transport; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "transport"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "transport",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "transport": 1,
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "floor_refused": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=floor_refused; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "floor_refused"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "floor_refused",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "floor_refused": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "truncated": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=truncated; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "truncated"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "truncated",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "truncated": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "unsourced": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=unsourced; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "unsourced"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "unsourced",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "unsourced": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=transport; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "transport"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "transport",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1,
+          "transport": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=transport; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "transport"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "transport",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1,
+          "transport": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1
+        }
+      },
+      "run_id": "",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=unrecorded: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=timeout; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "timeout"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "timeout",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    },
+    {
+      "state": {
+        "now": "2026-09-16T21:40:57Z",
+        "prev": "2026-09-16T21:27:48Z",
+        "sweepSince": "2026-09-16T21:27:48Z",
+        "rows": 6,
+        "terminal": 2,
+        "lanes": "lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800",
+        "ledgerTotal": 754,
+        "tail": [
+          "- first fact",
+          "second fact"
+        ]
+      },
+      "sweep": {
+        "needing": 2,
+        "accepted": 0,
+        "held_by_class": {
+          "timeout": 1
+        }
+      },
+      "run_id": "fire-123",
+      "checkpoint": "- 2026-09-16T21:40:57Z 60m checkpoint: ledger rows since 2026-09-16T21:27:48Z: 6; TERMINAL 2 [lane=omn18484-admission-labelled-ac-2005,lane=sweep-corpus-git-files-1800]; sweep since=2026-09-16T21:27:48Z",
+      "completion": "- 2026-09-16T21:40:57Z hourly-tick run=fire-123: checkpoint rows 6 / TERMINAL 2; sweep since=2026-09-16T21:27:48Z collected n/a, needing 2, accepted 0, held n/a, phase=degraded class=timeout; drafts none; NOT POSTED (per-message operator approval required)",
+      "outcome": {
+        "phase": "degraded",
+        "class": "timeout"
+      },
+      "result": {
+        "fire_id": "fire-123",
+        "workflow": "hourly-tick",
+        "phase": "degraded",
+        "class": "timeout",
+        "needing": 2,
+        "accepted": 0,
+        "held": null,
+        "held_by_class": {
+          "timeout": 1
+        }
+      },
+      "facts": "Ground-truth facts, derived from the most recent orchestration checkpoint lines, oldest first.\nEach line is a timestamped statement of what a lane reported or what the operator ruled.\nCite only what appears below. Anything not here is not a fact you may state.\n\n- first fact\n- second fact"
+    }
+  ]
+}
