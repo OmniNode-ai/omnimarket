@@ -14,6 +14,10 @@ requirements:
         statement: "AC1: every declared tenant relation reaches SQL without a bound authority, through the real adapter and topology -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q finds a relation whose operation is refused for missing authority"
       - id: "AC4"
         statement: "AC4: a tenant refusal on a projection write fails the dispatch and is never acked -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q finds the unattributed terminal's TenantRequiredError DLQ'd and acked, a terminal published, or a row stored"
+      - id: "AC2"
+        statement: "AC2: a tenant-classified projection write reaches SQL attributed to the tenant the producer recorded on the consumed event, with no bound authority as a precondition and no tenant derived, defaulted or invented by the runtime -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k \"every_tenant_relation_reaches_sql or a_tenant_refusal_on_the_projection_write\" -q finds a relation refused for missing authority, an unattributed terminal that stores a row, or a registered terminal that stores none"
+      - id: "AC5"
+        statement: "AC5: every relation the registry classifies as TENANT domain is enumerated from the real topology with the operations its declared access implies, and each reaches SQL -- falsifier: uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k \"every_tenant_relation_reaches_sql or names_every_delegation_relation\" -q finds a relation dropped from the enumeration, one refused for missing authority, or generation_events enumerated as tenant"
 evidence_requirements:
   - kind: "tests"
     description: "AC4 hosted probe. The unattributed delegation terminal fails the real dispatch with its typed refusal and stores no row; the same terminal with a registered tenant stores exactly one."
@@ -21,6 +25,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The chain gate test passes at the head, and the new test is absent at the merge base."
     command: "env -u PYTHONPATH uv run pytest tests/chains/test_event_chain_gate_projection_write.py -q"
+  - kind: "tests"
+    description: "AC5 hosted probe. The enumeration of tenant relations names every delegation relation by its resolved domain, and each enumerated operation reaches SQL without a bound authority."
+    command: "env -u PYTHONPATH uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k \"every_tenant_relation_reaches_sql or names_every_delegation_relation\" -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -61,3 +68,19 @@ dod_evidence:
         check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn16831-ac2-attributed-without-authority"
+    description: "AC2 hosted probe. Every enumerated tenant relation operation reaches SQL with no authority bound, and the delegation terminal is stored only under the tenant the producer recorded: the unattributed terminal fails the dispatch and stores no row, the registered one stores exactly one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k \"every_tenant_relation_reaches_sql or a_tenant_refusal_on_the_projection_write\" -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn16831-ac5-tenant-relations-enumerated"
+    description: "AC5 hosted probe. The tenant-relation enumeration resolved from topology lists the delegation_events, delegation_shadow_comparisons, delegation_judge_verdict_events and delegation_budget_state operations and omits generation_events; every enumerated operation reaches SQL. Fails when the enumeration drops a named relation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/test_event_chain_gate_projection_write.py -k \"every_tenant_relation_reaches_sql or names_every_delegation_relation\" -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
