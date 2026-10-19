@@ -148,7 +148,7 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k TestCallsNamingNoPlanKeepTheCompatibilityRow"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC32"]
-  - id: "dod-omn20910-deploy-native-messages-container-smoke"
+  - id: "dod-omn20910-deploy-native-messages-smoke"
     description: "Run the checked-out native Messages tests in a disposable container: the call effect posts the block layout with cache breakpoints, the key in x-api-key, the typed stop_reason and cache usage, and a call naming no plan keeps the chat shape. No key, no network and no lab service."
     source: "manual"
     checks:
