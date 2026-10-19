@@ -139,6 +139,7 @@ _DelegateTaskType = Literal[
     "summarization",
     "agent_delegation",
     "escalation",
+    "evidence_comment",
     "documentation",
     "validator_generation",
 ]

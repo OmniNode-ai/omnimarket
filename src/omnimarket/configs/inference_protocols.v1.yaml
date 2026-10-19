@@ -345,6 +345,7 @@ profiles:
       - "code_review"
       - "planning"
       - "escalation"
+      - "evidence_comment"
       - "complex_reasoning"
     directive:
       placement: user_prefix
