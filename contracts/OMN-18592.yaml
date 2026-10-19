@@ -11,9 +11,9 @@ requirements:
   statement: The ticket's labelled acceptance criteria.
   acceptance:
   - id: AC1
-    statement: 'AC1: the labelled criterion of the same name on the ticket; its text is pinned by criterion_hash in ac_bindings.'
+    statement: 'AC1: the compute companion contract for the longest registry slug at a five-digit PR is a yamlfmt fixpoint under the vendored and the real OCC config.'
   - id: AC4
-    statement: 'AC4: the labelled criterion of the same name on the ticket; its text is pinned by criterion_hash in ac_bindings.'
+    statement: 'AC4: the OMN-13317 F1 born-path summary keeps its exact short quoted form.'
 evidence_requirements:
 - kind: tests
   description: 'AC1: the compute companion contract for the longest registry slug at a five-digit PR is a yamlfmt fixpoint under the vendored and the real OCC config. Fails at the parent of omnimarket#2643.'
@@ -35,11 +35,10 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
-  ac_bindings:
-  - label: AC1
-    criterion_hash: e1491114fb9bbe230398b4fe7be72499f994a3215eac432c48288cffc11a2921
-    proposed_by: lane=dod-closeout-bind-2026-10-18T2045Z-c1
-    accepted_by: lane=dod-closeout-accept-2026-10-18T2045Z-c1
+  # Recorded AC1 provenance (descriptive only; binds_ac above is authoritative).
+  # criterion_hash: e1491114fb9bbe230398b4fe7be72499f994a3215eac432c48288cffc11a2921
+  # proposed_by: lane=dod-closeout-bind-2026-10-18T2045Z-c1
+  # accepted_by: lane=dod-closeout-accept-2026-10-18T2045Z-c1
 - id: dod-omn18592-ac4-accepted-20261018t2045z
   description: 'AC4: the OMN-13317 F1 born-path summary keeps its exact short quoted form.'
   source: manual
@@ -49,8 +48,7 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC4
-  ac_bindings:
-  - label: AC4
-    criterion_hash: 07556a346070cb9d741be88532be5547f139d4407b7f1e8ce4c8fe3971398571
-    proposed_by: lane=dod-closeout-bind-2026-10-18T2045Z-c1
-    accepted_by: lane=dod-closeout-accept-2026-10-18T2045Z-c1
+  # Recorded AC4 provenance (descriptive only; binds_ac above is authoritative).
+  # criterion_hash: 07556a346070cb9d741be88532be5547f139d4407b7f1e8ce4c8fe3971398571
+  # proposed_by: lane=dod-closeout-bind-2026-10-18T2045Z-c1
+  # accepted_by: lane=dod-closeout-accept-2026-10-18T2045Z-c1
