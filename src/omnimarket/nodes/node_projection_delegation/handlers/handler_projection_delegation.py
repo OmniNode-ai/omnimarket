@@ -284,7 +284,8 @@ class ModelProjectionGenerationCompletedEvent(BaseModel):
     corpus_checked: bool = Field(default=False)
     corpus_passed: bool = Field(default=False)
     corpus_errors: list[str] = Field(default_factory=list)
-    cost_inference_usd: float = Field(default=0.0)
+    # OMN-20834: None when the run's model is unpriced; stored as NULL, never 0.
+    cost_inference_usd: float | None = Field(default=None)
     timestamp: str | None = Field(default=None, description="ISO 8601 timestamp.")
     # OMN-12780 (Wave 1C): full generated output — empty string is the
     # failed/incomplete-generation sentinel, never coerced to NULL, never truncated.
