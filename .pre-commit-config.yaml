@@ -1722,6 +1722,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21104: the compaction lifecycle model passes its design configs, each
+      # property fails on a one-knob mutation, the TLC results match the committed
+      # model, configs and outputs, and VERDICT.txt approves the model's digest.
+      # Check-only. SYNC with the ci.yml lint step "Compaction lifecycle model and
+      # verdict (OMN-21104)".
+      - id: compaction-lifecycle-model
+        name: Compaction lifecycle model and verdict (OMN-21104)
+        language: system
+        entry: uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/compaction_lifecycle/|tests/formal/(test_compaction_lifecycle_model\.py|compaction_lifecycle_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20601: routing decisions come from overlays, never from omnimarket code.
       # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
       # precedence and routing-in-code ratchet (OMN-20601)".

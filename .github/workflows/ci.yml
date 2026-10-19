@@ -668,6 +668,12 @@ jobs:
       # 'agent-call-adapter-model'.
       - name: Agent-call adapter model (OMN-21096)
         run: uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-21104: the compaction lifecycle model (formal/compaction_lifecycle) passes
+      # its design configs, each property fails on a one-knob mutation, the results
+      # match the committed model, configs and outputs, and the verdict approves the
+      # model's digest. SYNC with pre-commit hook 'compaction-lifecycle-model'.
+      - name: Compaction lifecycle model and verdict (OMN-21104)
+        run: uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-20601: routing decisions come from overlays, never from omnimarket code
       # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
       # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
