@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.enums.enum_context_task_kind_priority import (
     EnumContextTaskKindPriority,
 )
-from omnimarket.nodes.node_context_task_kind_rules_compute.models.model_context_task_kind_condition_outcome import (
+from omnimarket.models.context_task_kind_rules.model_context_task_kind_condition_outcome import (
     ModelContextTaskKindConditionOutcome,
 )
 
