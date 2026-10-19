@@ -636,6 +636,12 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # required context on dev. Same single-job-over-reusable naming as above.
     "public-repo-hygiene / deployment-config",
     "receipt-honesty",
+    # OMN-17427 (reviewer-eval.yml): scores the hostile reviewer against its
+    # eval set and fails on a recall or false-block regression, a case with no
+    # verdict, or a dropped case, flipped label or lowered baseline against the
+    # base branch's copy. An ordinary job, so the check-run carries the job's own
+    # name; no `paths:` filter, so it reports on every pull-request shape.
+    "reviewer-eval",
     # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
     # model for two message categories. Same workflow file and same L4 reasoning as
     # handler-event-type-source above.
@@ -1907,6 +1913,12 @@ EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
             ("pull_request", "merge_group", "schedule"),
             (),
             ("required-check-skip-guard / check-skip-vectors",),
+        ),
+        (
+            "reviewer-eval.yml",
+            ("pull_request",),
+            (),
+            ("reviewer-eval",),
         ),
         (
             "routing-tier-bindability.yml",

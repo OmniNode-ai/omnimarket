@@ -3,6 +3,9 @@
 
 """Handlers for node_context_selection_policy_compute (OMN-12843 / M3)."""
 
+from omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_evaluation import (
+    HandlerContextSelectionEvaluation,
+)
 from omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_context_selection_policy import (
     ContextSelectionPolicyError,
     HandlerContextSelectionPolicy,
@@ -10,5 +13,6 @@ from omnimarket.nodes.node_context_selection_policy_compute.handlers.handler_con
 
 __all__ = [
     "ContextSelectionPolicyError",
+    "HandlerContextSelectionEvaluation",
     "HandlerContextSelectionPolicy",
 ]

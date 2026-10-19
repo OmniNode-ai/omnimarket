@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: "node_reviewer_eval_effect"
+# Run by .github/workflows/reviewer-eval.yml on every change to the hostile reviewer:
+# `python -m omnimarket.nodes.node_reviewer_eval_effect` scores the reviewer against
+# eval_cases.yaml and publishes the score for the lab SLI board.
+lifecycle: experimental
+contract_name: node_reviewer_eval_effect
+node_name: node_reviewer_eval_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Scores the hostile reviewer against an eval set taken from recorded history: heads the
+  reviewer blocked that a later fix confirmed (true catches), heads it blocked whose finding
+  was shown wrong (overturned blocks), and heads that merged with no revert since (known
+  clean). Recall is the share of true catches blocked; the false-block rate is the share of
+  clean heads blocked. A case with no verdict scores nothing and marks the run incomplete.
+  The score regresses when recall falls below the set's baseline, the false-block rate rises
+  above it, or a change drops a case, flips a label or lowers the baseline. The scoring
+  handler is pure; the entry point reads the set and the rerun results and publishes the score.
+
+input_model: omnimarket.nodes.node_reviewer_eval_effect.models.model_reviewer_eval.ModelReviewerEvalRequest
+
+output_model:
+  name: ModelReviewerEvalScored
+  module: omnimarket.nodes.node_reviewer_eval_effect.models.model_reviewer_eval
+  description: Recall, false-block rate, each case's outcome, and whether the score regressed.
+
+handler:
+  module: omnimarket.nodes.node_reviewer_eval_effect.handlers.handler_reviewer_eval
+  class: HandlerReviewerEval
+  input_model: omnimarket.nodes.node_reviewer_eval_effect.models.model_reviewer_eval.ModelReviewerEvalRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reviewer_eval.score
+      handler:
+        name: HandlerReviewerEval
+        module: omnimarket.nodes.node_reviewer_eval_effect.handlers.handler_reviewer_eval
+      handler_module: omnimarket.nodes.node_reviewer_eval_effect.handlers.handler_reviewer_eval
+      event_model: omnimarket.nodes.node_reviewer_eval_effect.models.model_reviewer_eval.ModelReviewerEvalRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.reviewer-eval-scored.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.reviewer-eval-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.reviewer-eval-scored.v1"
+
+published_events:
+  - event_type: ModelReviewerEvalScored
+    topic: onex.evt.omnimarket.reviewer-eval-scored.v1
+    description: "The reviewer's recall and false-block rate on the eval set, for the lab SLI board."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.reviewer-eval-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.reviewer-eval-scored.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.reviewer-eval-scored.v1
+
+dod_evidence:
+  PYTEST:
+    description: "the reviewer eval scores recall and false-block rate and fails a drop"
+    command: "uv run pytest tests/unit/nodes/node_reviewer_eval_effect -q"
+    pass_criteria: >
+      the recorded set scores recall 1.0 and false-block rate 0.25; a reviewer that misses a true
+      catch, blocks a clean head or leaves a case without a verdict regresses; a change that drops a
+      case, flips a label or lowers the baseline regresses.
+
+metadata:
+  transport_type: kafka
