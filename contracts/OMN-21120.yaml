@@ -1,0 +1,58 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21120
+title: "Bash tool-result reduction safety compute (AC1 slice)"
+summary: >-
+  Add the definition-B Bash compute before any storage or client replacement.
+  Preserve the exit status and all non-empty output lines, without guessing
+  which lines are errors. Only successful outputs' long runs of empty LF lines
+  may shrink; failed output remains byte-for-byte after the status header.
+  original_sha256 hashes the original UTF-8 bytes. original_record_id is null:
+  this slice writes no original and advertises no retrieval command.
+  AC2 (stored original and tool_result_read) and AC3 (lab client transcript
+  replacement and retrieval) remain unimplemented; this contract binds AC1 only.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [events]
+requirements:
+  - id: req-bash-result-safety
+    statement: "Bash result reduction preserves command failure and every diagnostic line."
+    acceptance:
+      - id: AC1
+        statement: "AC1: exit status and every error line of the original are preserved; a failing command never reduces to a success-shaped result -- falsifier: a fixture with a non-zero exit whose reduced result lacks the exit code."
+evidence_requirements:
+  - kind: tests
+    description: "Failure, arbitrary diagnostic text, and successful reduction controls through the contract-dispatched handler."
+    command: "uv run pytest tests/nodes/node_tool_result_reduce_compute/test_tool_result_reduce.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-bash-result-safety
+    description: >-
+      AC1: non-zero and signal exit statuses, output without an error keyword,
+      duplicate errors, and successful commands with diagnostic output retain
+      their status and every non-empty line. Missing code fails at collection
+      at the merge base. The lab executes this focused file on h202.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_tool_result_reduce_compute/test_tool_result_reduce.py -q --no-cov"
+    binds_ac: [AC1]
+  - id: dod-bash-result-published-handler
+    description: >-
+      AC1 compute-only publication probe: read the handler source from GitHub
+      at the checked-out commit and require the explicit request exit-status
+      assignment. The handler is absent at the merge base, so a missing or
+      unpublished commit, missing handler, or missing assignment fails.
+      This checks the published compute artifact; client replacement and
+      stored-original retrieval remain outside this AC1 slice.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api
+          "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_tool_result_reduce_compute/handlers/handler_tool_result_reduce.py?ref=$(git rev-parse HEAD)"
+          --jq .content | base64 --decode | grep -Fq "exit_status=request.exit_status,"'

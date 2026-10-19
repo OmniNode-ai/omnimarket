@@ -12,10 +12,18 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: a failed build replies `native` and publishes `fallback` with the class and the command's `invocation_id` -- falsifier: a package reply."
+  - id: "req-compaction-barrier"
+    statement: "A compaction package is built only after the session barrier the command carries is met on both capture streams."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a barrier not met at the end of the wait replies `native` with `SOURCE_NOT_CAUGHT_UP`, and a fixture in which the newest prompt is projected while an earlier tool result is still journalled is not built until that result is projected -- falsifier: a package built while any stream is below the barrier's high-water."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 in the handler tests and the contract tests of node_context_compaction_orchestrator."
     command: "uv run pytest tests/nodes/node_context_compaction_orchestrator -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC2 in the session barrier wait tests of node_context_compaction_orchestrator."
+    command: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_session_barrier_wait.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -28,6 +36,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py -q -p no:randomly --no-cov -k 'failed_build or raising_build or unwired_default'"
     binds_ac: ["AC1"]
+  - id: "dod-omn21113-ac2"
+    description: "AC2: a barrier not met at the deadline, or not yet projected, replies native with source_not_caught_up; a delayed tool result is not built until it is projected; reversed and duplicated records do not delay the build; a session with content capture off falls back source_disabled."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_session_barrier_wait.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC2"]
   - id: "dod-omn21113-contracts"
     description: "The node contract declares its command, package reply and receipt topics, resolves its handler and models, is an onex.nodes entry point and imports no event envelope."
     source: "manual"
@@ -55,4 +70,37 @@ dod_evidence:
           r = H().handle(Q(invocation_id=i, session_id="s", cwd="/w", trigger="manual", input_messages_hash="0" * 64))
           assert r.reply.action.value == "native" and r.reply.messages == () and r.reply.invocation_id == i, r
           assert r.fallback is not None and r.fallback.invocation_id == i and r.fallback.failure_class.value == "pack_builder_unavailable", r
+          print(r.fallback.model_dump_json())'
+  - id: "dod-omn21113-deploy-container-barrier"
+    description: "Hosted deploy probe, same labelled ephemeral container as the fallback probe. It sends one compaction command carrying a barrier through the product handler with the product barrier wait over a source whose lineage stream is one record behind its barrier at every read, with a build that would succeed, and asserts a native reply with no messages, a fallback carrying source_not_caught_up and the command's invocation_id, and that the build was never called. It fails at the merge base, whose handler takes no barrier wait."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm --user "$(id -u):$(id -g)" \
+          --label onex.deploy-probe=OMN-21113-barrier \
+          --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          from uuid import UUID
+          from omnimarket.models.context_compaction import ModelContextCompactionRequested as Q
+          from omnimarket.models.model_session_stream_barrier import ModelSessionStreamBarrier as B, ModelSessionStreamBarrierProbe as P
+          from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import HandlerContextCompactionOrchestrator as H
+          from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_session_barrier_wait import HandlerSessionBarrierWait as W
+          class S:
+              def read(self, session_id, barrier_id):
+                  return P(session_id=session_id, barrier_id=barrier_id, barriers=(B(stream="lineage", barrier_id=barrier_id, high_water=2), B(stream="content", barrier_id=barrier_id, high_water=2)), applied={"lineage": (1,), "content": (1, 2)})
+          class K:
+              calls = 0
+              def build(self, request):
+                  K.calls += 1
+                  raise AssertionError("built below the barrier")
+          i = UUID("11111111-1111-4111-8111-111111111111")
+          r = H(K(), barrier_wait=W(S(), deadline_s=0.0, poll_interval_s=0.0)).handle(Q(invocation_id=i, session_id="s", cwd="/w", trigger="manual", input_messages_hash="0" * 64, barrier_id="b"))
+          assert r.reply.action.value == "native" and r.reply.messages == () and r.reply.invocation_id == i, r
+          assert r.fallback is not None and r.fallback.invocation_id == i and r.fallback.failure_class.value == "source_not_caught_up", r
+          assert K.calls == 0
           print(r.fallback.model_dump_json())'
