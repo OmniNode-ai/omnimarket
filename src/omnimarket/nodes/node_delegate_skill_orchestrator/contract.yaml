@@ -130,9 +130,6 @@ allowed_task_types:
   - escalation
   - documentation
   - validator_generation
-  - extraction_proposer
-  - context_compaction
-  - context_selection
 
 inputs:
   prompt:

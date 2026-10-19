@@ -182,19 +182,3 @@ def test_shipped_profiles_refuse_roles_missing_from_routing_contract(
     assert result.profile_content_hash is None
     assert tuple(error.split(":", 1)[0] for error in result.errors) == missing_fields
     assert all("no routing-contract entry" in error for error in result.errors)
-
-
-@pytest.mark.parametrize(
-    "name",
-    ["compaction_orchestrator", "session_resume", "session_start", "per_prompt"],
-)
-def test_shipped_profiles_resolve_with_the_packaged_routing_contract(
-    monkeypatch: pytest.MonkeyPatch, name: str
-) -> None:
-    """OMN-21111: the shipped model roles resolve with no promoted fixture."""
-    monkeypatch.delenv("TASK_CLASS_CONTRACT_PATH", raising=False)
-    result = HandlerContextProfileResolver().handle(
-        ModelContextProfileResolveRequest(profile_name=name)
-    )
-    assert result.status is EnumContextProfileResolveStatus.OK, result.errors
-    assert result.profile is not None

@@ -175,11 +175,6 @@ tiers:
           # contracts) rather than a tier accident.
           - documentation
           - summarization
-          # OMN-21111: the context-pack model roles, prose over supplied context
-          # like summarization above, so this inherits that placement.
-          - extraction_proposer
-          - context_compaction
-          - context_selection
         fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: null
