@@ -1,0 +1,1 @@
+{"claims": [{"evidence": [], "expected": null, "kind": "pr_merged", "ref": "unqualified"}, {"evidence": [], "expected": null, "kind": "pr_opened", "ref": "unqualified"}, {"evidence": [], "expected": null, "kind": "ci_passing", "ref": "unqualified"}], "repo_hint": null, "repo_root": null}
