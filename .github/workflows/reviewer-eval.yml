@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# reviewer-eval.yml — OMN-17427
+#
+# Scores the hostile reviewer against its eval set on every pull request. The
+# reviewer is the gate workflow (its omniintelligence pin carries the prompts
+# and the voting code; its verdict parse is the rule), the finding veto node and
+# the eval itself. No `paths:` filter: this context is asserted in CI Summary's
+# EXPECTED_EXTERNAL_CONTEXTS, and an asserted context must report on every pull
+# request shape or CI Summary waits on it. node_reviewer_eval_effect reports recall on true
+# catches and the false-block rate on clean heads, and fails when either is worse
+# than the set's baseline, when a case has no verdict, or when the change drops a
+# case, flips a label or lowers the baseline against the base branch's copy.
+#
+# This job scores the verdicts the gate recorded for each case and holds the
+# set's ratchet. A rerun of the reviewer over the cases is scored by the same
+# command with --observed-dir pointing at one cli_review result per case.
+#
+# [OMN-17427]
+
+name: Reviewer Eval
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  reviewer-eval:
+    name: reviewer-eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      - name: Sync omnimarket environment
+        run: uv sync
+      - name: Score the reviewer against the eval set
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          RUN_ID: ${{ github.repository }}#${{ github.event.pull_request.number }}@${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          CASES=src/omnimarket/nodes/node_reviewer_eval_effect/eval_cases.yaml
+          PRIOR="${RUNNER_TEMP}/prior_eval_cases.yaml"
+          if ! git show "${BASE_SHA}:${CASES}" > "${PRIOR}"; then
+            echo "the base has no eval set; the ratchet starts with this one"
+            rm -f "${PRIOR}"
+          fi
+          PIN="$(sed -n 's/^ *clone_with_retry omniintelligence [^ ]* [^ ]* \([0-9a-f]\{40\}\)$/\1/p' .github/workflows/hostile-reviewer.yml)"
+          RULES="$(git hash-object .github/workflows/hostile-reviewer.yml)"
+          uv run python -m omnimarket.nodes.node_reviewer_eval_effect \
+            --reviewer-ref "omniintelligence@${PIN:-unpinned} hostile-reviewer.yml@${RULES}" \
+            --cases "${CASES}" \
+            --prior-cases "${PRIOR}" \
+            --correlation-id "${RUN_ID}"
