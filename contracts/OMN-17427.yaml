@@ -1677,7 +1677,7 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-ac83-served-model-cache-reconciliation"
+  - id: "dod-omn17427-ac83-served-model-cache"
     description: "Both inference boundaries reconcile a cached model mismatch and retain a refusal without fresh matching evidence."
     source: "manual"
     checks:
