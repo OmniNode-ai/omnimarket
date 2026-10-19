@@ -418,6 +418,7 @@ node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_g
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_glm_allowance_compute = "omnimarket.nodes.node_glm_allowance_compute"
 node_claude_review_budget_compute = "omnimarket.nodes.node_claude_review_budget_compute"
+node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_acceptance_judge_compute = "omnimarket.nodes.node_delegation_acceptance_judge_compute"
