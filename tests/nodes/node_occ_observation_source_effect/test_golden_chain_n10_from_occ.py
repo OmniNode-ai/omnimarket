@@ -101,7 +101,7 @@ def _fail_soft_record(
 
 
 def _durably_write(checkout_dir: Path, record: ModelOccObservationRecord) -> None:
-    """Stands in for node_occ_observation_effect's git-append-write: the SAME
+    """Stands in for the retired observation writer's git-append-write: the SAME
     deterministic path convention + deterministic render, materialized to disk."""
     relpath = occ_observation_record_relpath(record)
     path = checkout_dir / relpath
