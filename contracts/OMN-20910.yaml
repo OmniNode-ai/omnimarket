@@ -99,7 +99,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
-  - id: "dod-omn20910-ac7-container-check-docker-less-writer"
+  - id: "dod-omn20910-ac7-docker-less-writer"
     description: "On a writer host with no docker, a container check passes the contract prerequisite and prose does not."
     source: "manual"
     checks:
