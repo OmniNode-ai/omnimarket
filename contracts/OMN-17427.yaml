@@ -572,6 +572,11 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
+  - id: "req-compaction-pack-build-over-pack-orchestrator"
+    statement: "The compaction orchestrator's package build has a live port over the context-pack orchestrator: it requests the compaction_orchestrator profile at the command's session barrier for the envelope tenant, installs the built package with the pack's identities, and falls back pack_build_failed on any failed or incomplete build."
+    acceptance:
+      - id: "AC109"
+        statement: "AC109: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -758,6 +763,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
+  - kind: "tests"
+    description: "AC109: the compaction pack build over the context-pack orchestrator installs, shares one candidate across invocations, and falls back pack_build_failed."
+    command: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2240,4 +2248,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac109-compaction-pack-build"
+    description: "The compaction orchestrator builds through HandlerCompactionPackBuild over the context-pack orchestrator with fixture sources: install with the pack identities, one candidate for two invocations, reads at the barrier for the access tenant, and pack_build_failed on a failed or incomplete build. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC109"]
+  - id: "dod-omn17427-compaction-pack-build-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the compaction orchestrator wired with HandlerCompactionPackBuild over HandlerContextPackOrchestrator and fixture sources replies install for a compaction command. It fails at the merge base, which has no such module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov -k test_compaction_installs_the_pack_built_through_the_adapter"
         cwd: "${OMNI_HOME}/omnimarket"
