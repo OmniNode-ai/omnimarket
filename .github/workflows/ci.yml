@@ -667,6 +667,12 @@ jobs:
       # digest. SYNC with pre-commit hook 'ci-red-triage-model'.
       - name: Red CI triage model and verdict (OMN-20730)
         run: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-21096: the Agent-call adapter model (formal/agent_call_adapter) passes its
+      # design config, each invariant fails on a one-knob mutation, and the results
+      # match the committed model, configs and outputs. SYNC with pre-commit hook
+      # 'agent-call-adapter-model'.
+      - name: Agent-call adapter model (OMN-21096)
+        run: uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-20601: routing decisions come from overlays, never from omnimarket code
       # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
       # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
