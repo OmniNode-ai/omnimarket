@@ -69,4 +69,4 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/read_operations.py?ref=dc0435518376c09f333ad589b173bc890b30ab91 --jq .content | base64 -d | grep -c 'if merged and not isinstance(merge_sha, str):'"
-    binds_ac: ["AC3"]
+        cwd: "${OMNI_HOME}/omnimarket"
