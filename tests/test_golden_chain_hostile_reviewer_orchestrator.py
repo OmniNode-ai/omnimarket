@@ -164,8 +164,9 @@ class TestHostileReviewerOrchestratorGoldenChain:
 
         # Preserved ModelHostileReviewerCompletedEvent shape (OMN-13210 replay),
         # extended by OMN-15152 with per-route status fields (additive, with
-        # defaults, so old replayed events without these keys still parse), and
-        # by OMN-17427 with the review-engine fallback record.
+        # defaults, so old replayed events without these keys still parse), by
+        # OMN-21189 with the target snapshot and per-route served-model provenance,
+        # and by OMN-17427 with the review-engine fallback record.
         assert set(payload) == {
             "correlation_id",
             "final_phase",
@@ -178,6 +179,8 @@ class TestHostileReviewerOrchestratorGoldenChain:
             "findings",
             "models_succeeded",
             "models_failed",
+            "target_snapshot",
+            "route_provenance",
             "fallback_engine",
             "fallback_for",
         }

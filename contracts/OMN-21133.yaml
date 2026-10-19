@@ -1,0 +1,57 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21133"
+title: "TC.10 Inline consumers on the v5 tiers (omnimarket part: the lane_brief profile)"
+summary: "Carries the omnimarket half of TC.10 and the lane_brief profile data that its dependency TA.17 never shipped: pack/profiles/lane_brief.yaml with the section 4.4 required factors (LANE_RULES, OPERATOR_RULINGS, OPEN_WORK) and the v5 optional tiers (INVARIANTS, CANONICAL_SHAPES, EXEMPLAR, PLAN_EXCERPTS, CAPABILITY_DIGEST), placed in the section 4.2 order, with a missing required factor refused as REQUIRED_FACTOR_MISSING. The session_start and session_resume profiles already carry their v5 tiers (TC.8, TA.18) and are checked against the same order. NOT in this change: AC1 (TC.9's report does not exist) and AC2 (the pack orchestrator, TA.8, and the `onex skill context_pack` entry are not on dev, so the session-start skill has nothing to call); the Claude Code-side skill changes wait for them. Tests: tests/pack/test_lane_brief_profile.py."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-lane-brief-v5-tiers"
+    statement: "The lane_brief profile carries the v5 optional tiers in the section 4.2 order and keeps the refuse-on-missing rule."
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a lane brief built with the v5 tiers keeps the refuse-on-missing rule and places the v5 tiers in the section 4.2 order -- falsifier: a brief rendered with a missing cited RULING, or a tier out of order.
+evidence_requirements:
+  - kind: "tests"
+    description: "AC3 at the profile and builder level: tests/pack/test_lane_brief_profile.py and the existing v5 profile tests."
+    command: "uv run pytest tests/pack -q -p no:randomly --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21133-ac3-refuse-on-missing"
+    description: "AC3: a lane_brief pack missing the cited operator ruling, the standing rules or the open work is refused as REQUIRED_FACTOR_MISSING and renders no pack; with only the required tiers it renders."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_lane_brief_profile.py -q -p no:randomly --no-cov -n 0 -k 'missing or without_the_optional'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21133-ac3-section-4-2-order"
+    description: "AC3: the lane_brief, session_resume and session_start profiles place their tiers in the section 4.2 order, artifacts handed over scrambled render in that order, and the order check fails a swapped profile."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_lane_brief_profile.py -q -p no:randomly --no-cov -n 0 -k 'order or stable_tiers or every_v5_tier'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21133-deploy-lane-brief-profile"
+    description: "Deploy probe on the hosted runner: an ephemeral Python 3.12 container mounts the checkout read-only and installs it with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the profile model does not import. At the checked-out commit pack/profiles/lane_brief.yaml validates as a context profile with the three required tiers first in the section 4.2 order and the plan excerpts last, and a pack with the cited ruling absent is refused; at the merge base the lane_brief profile does not exist and the probe fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          import yaml
+          from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import HandlerContextPackBuilder as B
+          from omnimarket.pack.model_context_pack_builder_request import ModelContextPackBuilderRequest as Q
+          from omnimarket.pack.model_context_profile import ModelContextProfile as P
+          p = P(**yaml.safe_load(open("src/omnimarket/pack/profiles/lane_brief.yaml")))
+          assert tuple(f.value for f in p.required_factors) == ("lane_rules", "operator_rulings", "open_work"), p.required_factors
+          assert p.factor_precedence[0].value == "lane_rules" and p.factor_precedence[-1].value == "plan_excerpts"
+          r = B().handle(Q(contract_hash="c", generated_at="2026-10-19T08:00:00+00:00", profile=p))
+          assert r.failure_class.value == "required_factor_missing", r
+          print(p.profile_version, len(p.factor_precedence), r.failure_class.value)'

@@ -1,26 +1,36 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-18831"
-title: "Identical deterministic floor failures across the attempted ladder stop further retries and escalation"
-summary: "Failed blocking declared deterministic rule names persist in attempt history. After one retry or tier escalation, identical failures across the attempted ladder terminate the workflow with a typed attempt naming the task class and review task classification."
+title: "The delegation task-class contract predicate routes a prose PR-body request to code_generation on the substring \"write a\", then grades it against Python compilation"
+summary: "The prose falsifier pair, predicate counter-signals, repeated deterministic floor termination, and recorded routing tiers are checked against the ticket's four unchanged criteria."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-repeated-floor-stops"
-    statement: "A repeated identical deterministic floor failure stops retries and escalation instead of climbing the whole ladder."
+  - id: "req-omn18831-prose-falsifier-pair"
+    statement: "AC1: the falsifier pair above is a test. The exact prompt opening quoted here classifies as `document`, and the rephrased variant classifies identically — a two-word difference must not change the class. -- falsifier: the pre-fix prompt classifies as `code_generation`; post-fix it does not."
     acceptance:
       - id: "AC1"
-        statement: "AC1: identical failed blocking rule names across the attempted ladder terminate the workflow -- falsifier: uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py -q"
-  - id: "req-escalation-skips-attempted-backend"
-    statement: "A quality escalation never climbs to a rung that declares the backend whose answer the gate just rejected."
+        statement: "AC1: the falsifier pair above is a test. The exact prompt opening quoted here classifies as `document`, and the rephrased variant classifies identically — a two-word difference must not change the class. -- falsifier: the pre-fix prompt classifies as `code_generation`; post-fix it does not."
+  - id: "req-omn18831-prose-counter-signals"
+    statement: "AC2: no task-class predicate decides a class on a bare substring that appears in ordinary prose, or the predicate is guarded by a counter-signal the prompt already carried (an explicit output format, a no-code instruction). State which was chosen and why. -- falsifier: a prose prompt carrying both the trigger phrase and an explicit markdown-output instruction classifies as prose."
     acceptance:
       - id: "AC2"
-        statement: "AC2: after the gate rejects an answer on one rung, the next-tier probe and the routing intent exclude that rung's backend, so a later tier label naming the same backend is not climbed to -- falsifier: uv run pytest tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py -q fails at the merge base, where the probe and the intent carry only transport-failed backends"
+        statement: "AC2: no task-class predicate decides a class on a bare substring that appears in ordinary prose, or the predicate is guarded by a counter-signal the prompt already carried (an explicit output format, a no-code instruction). State which was chosen and why. -- falsifier: a prose prompt carrying both the trigger phrase and an explicit markdown-output instruction classifies as prose."
+  - id: "req-omn18831-repeated-floor-stops"
+    statement: "AC3: an escalation does not climb against a deterministic floor it has already failed identically on every rung. Either the ladder stops and reports the misclassification, or the floor is re-derived per rung. -- falsifier: the run above escalates at most once, and its terminal message names the classification rather than the compile error."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: an escalation does not climb against a deterministic floor it has already failed identically on every rung. Either the ladder stops and reports the misclassification, or the floor is re-derived per rung. -- falsifier: the run above escalates at most once, and its terminal message names the classification rather than the compile error."
+  - id: "req-omn18831-serving-route-tier"
+    statement: "AC4: an attempt's recorded `tier` agrees with the backend that served it. -- falsifier: a run that escalates to the cloud records no attempt whose tier and model disagree."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: an attempt's recorded `tier` agrees with the backend that served it. -- falsifier: a run that escalates to the cloud records no attempt whose tier and model disagree."
 evidence_requirements:
   - kind: "tests"
-    description: "Run the repeated deterministic floor tests and the attempted-backend escalation tests."
-    command: "uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py -q"
+    description: "Run the prose classifier, deterministic floor, attempted-backend escalation, and recorded routing tier tests without skips."
+    command: "uv run pytest tests/unit/inference/test_task_class_selection_omn18831.py tests/unit/inference/test_task_class_prose_output_veto_omn18831.py tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_tier_skip_omn15803.py -q --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +55,51 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py" | grep -F "quality_rejected_backend_refs"'
     binds_ac: ["AC2"]
+  - id: "dod-omn18831-linear-ac1-falsifier-pair"
+    description: "Both the exact prompt opening and its rephrased variant resolve to document."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py::test_falsifier_pair_routes_to_document -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn18831-linear-ac2-prose-counter-signals"
+    description: "Ambiguous phrases require a declared qualifier; compilation-graded classes veto explicit prose artifacts. Genuine code requests remain reachable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_task_class_selection_omn18831.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference/test_task_class_prose_output_veto_omn18831.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn18831-linear-ac3-repeated-floor"
+    description: "The second identical blocking deterministic floor failure terminates with the task class and a classification-review instruction; an escalation excludes the rejected backend. Replaces the earlier evidence numbered AC1, which describes the ticket AC3."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn18831-ac1-repeated-floor"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_repeated_deterministic_floor_omn18831.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_escalation_skips_attempted_backend_omn18831.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn18831-linear-ac4-routing-tier"
+    description: "The local dispatch adapter records the routing-authority tier on attempts and the inference wire; escalation does not repeat a backend under a second tier label. Replaces the earlier AC2 evidence item, whose label differs from the ticket and whose source read does not exercise behavior."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn18831-ac2-attempted-backend"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_tier_skip_omn15803.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn18831-linear-ac4-attempt-tier-vs-backend"
+    description: "AC4 falsifier. A local dispatch that escalates to a cloud tier records every attempt under a routing tier that declares the attempt's backend and model, and calls the effect with that same tier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_tier_skip_omn15803.py::test_every_attempt_tier_declares_the_backend_and_model_that_served_it -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

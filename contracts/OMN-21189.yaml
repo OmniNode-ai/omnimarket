@@ -1,0 +1,98 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-21189
+title: Review learning - immutable target snapshot from the diff effect and served-model provenance in the inference result
+summary: The diff effect returns head sha, base sha and diff digest read together (unavailable with a reason when a push lands between the reads), the inference result carries the served model, settings and usage (unknown where unreported), and the hostile reviewer records both on its emitted record.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - events
+requirements:
+  - id: req-target-snapshot
+    statement: The diff effect returns an immutable target snapshot, or unavailable with the reason.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: The diff effect returns head sha, base sha and diff digest read together, and a push between reads yields unavailable with a reason -- falsifier: pytest over the diff effect with a stable fixture and a head-moved-between-reads fixture'
+  - id: req-served-provenance
+    statement: The inference result carries the served model, settings and usage.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: The inference result carries the served model, settings and usage, and a missing field reads unknown -- falsifier: pytest over the inference result with a complete fixture and a missing-usage fixture'
+  - id: req-producer-records
+    statement: A producer records the snapshot and the served-model fields on its review record.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: A producer records the snapshot and the served-model fields on its review record -- falsifier: pytest over a producer handler asserting both on the emitted record'
+evidence_requirements:
+  - kind: tests
+    description: Diff effect snapshot - stable, head-moved, base-moved, failed ref read, file target.
+    command: uv run pytest tests/unit/review/test_github_diff_target_snapshot.py -q --no-cov
+  - kind: tests
+    description: Inference result provenance - complete, missing usage, partial usage, text-only adapter, delegation route.
+    command: uv run pytest tests/unit/review/test_inference_served_provenance.py -q --no-cov
+  - kind: tests
+    description: Hostile reviewer completed event carries the snapshot and per-route provenance.
+    command: uv run pytest tests/unit/review/test_hostile_reviewer_records_provenance.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn-21189-ac1
+    description: Diff effect snapshot - stable and head-moved fixtures.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/review/test_github_diff_target_snapshot.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC1
+  - id: dod-omn-21189-ac2
+    description: Inference result provenance - complete and missing-usage fixtures.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/review/test_inference_served_provenance.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC2
+  - id: dod-omn-21189-ac3
+    description: Hostile reviewer emitted record carries the snapshot and served-model fields.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/review/test_hostile_reviewer_records_provenance.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC3
+  - id: dod-omn-21189-deploy-model-smoke
+    description: Hosted deploy artifact probe. A disposable Python 3.12 container imports the review snapshot and inference provenance models from this checkout, checks the diff digest, refuses an unavailable snapshot carrying a sha, and reads missing model and usage as unknown while preserving reported token usage. The command fails on a checkout without these models or with incorrect model behavior. This checks the runtime artifact without claiming a deployed lane rollout.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env PYTHONPATH=/workspace/src --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          uv run --no-project --with 'pydantic>=2,<3' python -c '
+          import hashlib
+          from pydantic import ValidationError
+          from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
+          from omnimarket.models.model_inference_provenance import ModelInferenceProvenance, ModelServedUsage
+          snapshot = ModelReviewTargetSnapshot.established(head_sha="a" * 40, base_sha="b" * 40, diff_text="reviewed diff")
+          assert snapshot.head_sha == "a" * 40 and snapshot.base_sha == "b" * 40
+          assert snapshot.diff_digest == "sha256:" + hashlib.sha256(b"reviewed diff").hexdigest()
+          unavailable = ModelReviewTargetSnapshot.unavailable("head moved")
+          assert unavailable.head_sha is None and unavailable.unavailable_reason == "head moved"
+          try:
+              ModelReviewTargetSnapshot(status="unavailable", head_sha="a" * 40, unavailable_reason="head moved")
+          except ValidationError:
+              pass
+          else:
+              raise AssertionError("unavailable snapshot accepted a sha")
+          missing = ModelInferenceProvenance.from_chat_completion({}, temperature=None, max_tokens=None)
+          assert missing.served_model == "unknown" and missing.usage == ModelServedUsage()
+          served = ModelInferenceProvenance.from_chat_completion({"model": "served-model", "usage": {"prompt_tokens": 7}}, temperature=0.0, max_tokens=64)
+          assert served.served_model == "served-model" and served.usage.input_tokens == 7
+          assert served.usage.output_tokens == "unknown" and served.settings.temperature == 0.0
+          print("OMN-21189 runtime artifact readback passed: snapshot digest, unavailable refusal, served model, unknown usage")'
