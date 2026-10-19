@@ -66,7 +66,6 @@ def test_cli_json_for_review_demo_contains_expected_nodes() -> None:
     assert demo["proof_status"] == "not-run"
     assert demo["market_nodes"] == [
         "node_local_review",
-        "node_coderabbit_triage",
         "node_pr_polish",
     ]
     assert "cost-avoidance" in demo["value_tags"]

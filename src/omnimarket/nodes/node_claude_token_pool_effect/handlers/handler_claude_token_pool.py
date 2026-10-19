@@ -11,16 +11,17 @@ This effect keeps several tokens per host instead:
   writes), under ``lab.claude-oauth.<label>``, the label naming its account;
 * the pool file beside the store lists the labels in the order they were added,
   with each one's fingerprint prefix and the time its limit ends (no value);
-* ``resolve`` hands the runner the first token whose limit has passed, so the
-  host stays placeable while any token has room, and ``mark_limited`` marks the
-  token a lane used, not the host;
+* ``resolve`` hands the runner the first unrevoked token whose limit has passed,
+  so the host stays placeable while any token has room, and ``mark_limited``
+  marks the token a lane used, not the host; ``mark_revoked`` skips a token
+  whose OAuth login was revoked until it is re-added;
 * every operation rewrites a one-line status mirror (labels and limit times,
   never a value) that the placement probe reads, so the pool status line shows
   the tokens per host, how many are limited and the next reset, with an alarm
-  when every token is limited.
+  when every token is limited or revoked.
 
 The token file stays the runner's fallback: an empty pool, or one whose every
-token is limited, resolves nothing and the runner keeps its old path.
+token is limited or revoked, resolves nothing and the runner keeps its old path.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ import json
 import os
 import re
 import socket
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -138,23 +139,27 @@ class HandlerClaudeTokenPool:
         self, request: ModelClaudeTokenPoolRequest
     ) -> ModelClaudeTokenPoolResult:
         with self._locked() as pool:
+            alert = None
             if request.operation == "add":
                 self._add(pool, request)
             elif request.operation == "mark_limited":
                 self._mark(pool, request)
+            elif request.operation == "mark_revoked":
+                alert = self._revoke(pool, request)
             chosen, token = (None, None)
             if request.operation == "resolve":
                 chosen, token = self._resolve(pool)
             if request.operation != "status":
                 _write_private(self._pool_path, pool)
-            result = self._result(request.operation, pool, chosen, token)
+            result = self._result(request.operation, pool, chosen, token, alert)
             _write_private(
                 self._status_path,
                 {
                     "host": self._host,
                     "at": _stamp(self._now()),
                     "tokens": [
-                        {"label": e.label, "until": e.until} for e in result.tokens
+                        {"label": e.label, "until": e.until, "revoked": e.revoked}
+                        for e in result.tokens
                     ],
                 },
             )
@@ -219,6 +224,7 @@ class HandlerClaudeTokenPool:
             "fingerprint": digest,
             "added_at": _stamp(self._now()),
             "until": None,
+            "revoked_at": None,
         }
         if known is not None:
             known.update(entry)
@@ -237,10 +243,26 @@ class HandlerClaudeTokenPool:
         until = _stamp(self._now() + timedelta(seconds=request.seconds))
         entry["until"] = max(until, entry.get("until") or "")
 
+    def _revoke(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> str | None:
+        label = self._label(request)
+        entry = next((t for t in pool["tokens"] if t["label"] == label), None)
+        if entry is None:
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        if entry.get("revoked_at"):
+            return None
+        entry["revoked_at"] = _stamp(self._now())
+        return (
+            f"ALERT claude-pool host={self._host} revoked={label}: its OAuth token "
+            "was revoked; re-add it with `python -m "
+            f"omnimarket.nodes.node_claude_token_pool_effect add --label {label} --force`"
+        )
+
     def _resolve(self, pool: dict[str, Any]) -> tuple[str | None, SecretStr | None]:
         now = _stamp(self._now())
         for entry in pool["tokens"]:
-            if (entry.get("until") or "") > now:
+            if entry.get("revoked_at") or (entry.get("until") or "") > now:
                 continue
             value = asyncio.run(
                 self._store.get_secret(SECRET_REF_PREFIX + entry["label"])
@@ -256,6 +278,7 @@ class HandlerClaudeTokenPool:
         pool: dict[str, Any],
         chosen: str | None,
         token: SecretStr | None,
+        alert: str | None = None,
     ) -> ModelClaudeTokenPoolResult:
         now = _stamp(self._now())
         entries = tuple(
@@ -265,32 +288,46 @@ class HandlerClaudeTokenPool:
                 added_at=t["added_at"],
                 until=t.get("until") if (t.get("until") or "") > now else None,
                 limited=(t.get("until") or "") > now,
+                revoked=bool(t.get("revoked_at")),
             )
             for t in pool["tokens"]
         )
+        revoked = tuple(e.label for e in entries if e.revoked)
         return ModelClaudeTokenPoolResult(
             operation=operation,
             host=self._host,
             tokens=entries,
             chosen=chosen,
             token=token,
-            **pool_summary(self._host, [(e.label, e.until) for e in entries], now),
+            revoked=revoked,
+            alert=alert,
+            **pool_summary(
+                self._host, [(e.label, e.until) for e in entries], now, revoked=revoked
+            ),
         )
 
 
 def pool_summary(
-    host: str, tokens: list[tuple[str, str | None]], now: str
+    host: str,
+    tokens: list[tuple[str, str | None]],
+    now: str,
+    *,
+    revoked: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Tokens, how many are limited at ``now``, the next reset and the status line, from labels and limit times."""
+    """Tokens, limits at ``now``, the next reset and the status line, including revoked labels."""
     untils = sorted(u for _, u in tokens if u and u > now)
     total, limited = len(tokens), len(untils)
-    every = total > 0 and limited == total
+    every = total > 0 and all(
+        (u or "") > now or label in revoked for label, u in tokens
+    )
     line = (
         f"claude-pool host={host} tokens={total} limited={limited} "
         f"next_reset={untils[0] if untils else 'none'}"
     )
+    if revoked:
+        line += f" revoked={','.join(revoked)}"
     if every:
-        line = f"ALARM {line} every token limited"
+        line = f"ALARM {line} every token limited{' or revoked' if revoked else ''}"
     return {
         "limited": limited,
         "all_limited": every,

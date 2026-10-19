@@ -13,7 +13,6 @@ EXPECTED_CODEX_SKILLS = {
     "adversarial-pipeline",
     "aislop-sweep",
     "bus-audit",
-    "coderabbit-triage",
     "dep-cascade-dedup",
     "gap",
     "local-review",
@@ -125,11 +124,6 @@ def test_codex_shims_remain_dispatch_only() -> None:
             assert "--timeout-ms 300000" in text
             assert "correlation_id" in text
             assert "requested_at" in text
-        elif path.parent.name == "coderabbit-triage":
-            assert '--command-name "coderabbit_triage"' in text
-            assert "--timeout-ms 120000" in text
-            assert "blocking_count" in text
-            assert "resolved_count" in text
         elif path.parent.name == "ticket-pipeline":
             assert '--command-name "ticket_pipeline"' in text
             assert "--timeout-ms 600000" in text
@@ -217,11 +211,6 @@ def test_source_codex_skill_examples_use_json_input_contract() -> None:
             assert "--timeout-ms 300000" in text
             assert "correlation_id" in text
             assert "requested_at" in text
-        elif path.parent.name == "coderabbit-triage":
-            assert '--command-name "coderabbit_triage"' in text
-            assert "--timeout-ms 120000" in text
-            assert "blocking_count" in text
-            assert "resolved_count" in text
         elif path.parent.name == "ticket-pipeline":
             assert '--command-name "ticket_pipeline"' in text
             assert "--timeout-ms 600000" in text

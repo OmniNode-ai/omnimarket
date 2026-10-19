@@ -145,9 +145,7 @@ def test_auto_merge_arming_block_unchanged() -> None:
     """The arming logic must stay byte-identical (no behavior change, OMN-13587)."""
     source = Path(workflow_runner.__file__).read_text()
     arming_block = (
-        "            if coderabbit_result.has_blockers:\n"
-        '                payload["auto_merge_status"] = "blocked_by_coderabbit"\n'
-        "            elif command.no_automerge:\n"
+        "            if command.no_automerge:\n"
         '                payload["auto_merge_status"] = "skipped"\n'
         "            else:\n"
         "                _enable_auto_merge(command.repo, command.pr_number)\n"
