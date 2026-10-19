@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: context_gate_cascade_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Score recorded gate cascades against an ungated winning extractor or selector.
+  Recommend only exact recall parity in every case and repeat with measured net
+  savings. Refuse private or unknown repository attribution for Jev. Gate prose
+  is not accepted or rendered. Caller owns model execution and evidence storage.
+handler:
+  module: omnimarket.nodes.node_context_gate_cascade_compute.handlers.handler_gate_cascade
+  class: HandlerContextGateCascade
+  input_model: omnimarket.nodes.node_context_gate_cascade_compute.models.model_gate_cascade.ModelGateCascadeRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evaluate_gate_cascade
+      handler:
+        name: HandlerContextGateCascade
+        module: omnimarket.nodes.node_context_gate_cascade_compute.handlers.handler_gate_cascade
+      input_model: omnimarket.nodes.node_context_gate_cascade_compute.models.model_gate_cascade.ModelGateCascadeRequest
+      output_model: omnimarket.nodes.node_context_gate_cascade_compute.models.model_gate_cascade.ModelGateCascadeResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+outputs:
+  profile_id: {type: str}
+  role: {type: str}
+  gate: {type: str}
+  winner_rung_id: {type: str}
+  winner_evidence_id: {type: str}
+  label_set_id: {type: str}
+  gate_training_evidence_id: {type: str, nullable: true}
+  observations: {type: array}
+  recall_equal_everywhere: {type: bool}
+  ungated_cost_usd: {type: str}
+  cascade_cost_usd: {type: str}
+  cost_saved_usd: {type: str}
+  recommended: {type: bool}
+terminal_event: onex.evt.omnimarket.context-gate-cascade-evaluated.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-gate-cascade-evaluate.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-gate-cascade-evaluated.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-gate-cascade-evaluate.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-gate-cascade-evaluated.v1
+metadata:
+  ticket: OMN-21144
+  transport_type: kafka

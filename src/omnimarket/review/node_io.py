@@ -15,11 +15,13 @@ enforced by tests/test_no_cross_node_reach_in.py).
 
 from __future__ import annotations
 
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_review_finding import EnumFindingCategory
+from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
 from omnimarket.review.prompt_builder import ModelPromptBuilderOutput
 from omnimarket.review.response_parser import ModelParseResult
 
@@ -53,8 +55,19 @@ class ModelReviewPromptBuilderRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class EnumReviewParseMode(StrEnum):
+    """Parser mode: tolerant for the frozen v1 format, strict for compact verdicts."""
+
+    TOLERANT = "tolerant"
+    COMPACT_STRICT = "compact_strict"
+
+
 class ModelReviewResponseParserRequest(BaseModel):
-    """Request to parse one model's raw review response into findings."""
+    """Request to parse one model's raw review response into findings.
+
+    ``mode`` defaults to ``tolerant``, which leaves every v1 caller unchanged.
+    The fields after ``mode`` apply to ``compact_strict`` only.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -62,6 +75,36 @@ class ModelReviewResponseParserRequest(BaseModel):
     raw_text: str = Field(..., description="Raw LLM response text to parse.")
     source_model: str = Field(
         ..., min_length=1, description="Logical model route key that produced the text."
+    )
+    mode: EnumReviewParseMode = Field(
+        default=EnumReviewParseMode.TOLERANT,
+        description="tolerant (v1 format) or compact_strict (v2 compact verdict).",
+    )
+    stop_reason: str | None = Field(
+        default=None,
+        description=(
+            "Provider stop or finish reason (compact_strict). When given, anything "
+            "other than tool_use, end_turn or stop is a truncated reply."
+        ),
+    )
+    known_codes: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Active catalog codes mapped to their family (compact_strict). A code "
+            "outside this map, 'X' and 'R:' ids is a schema failure."
+        ),
+    )
+    standing_rules: dict[str, bool] = Field(
+        default_factory=dict,
+        description=(
+            "Standing rule ids supplied to the review, mapped to their mandatory "
+            "flag (compact_strict). An unknown 'R:' id is a schema failure."
+        ),
+    )
+    max_findings: int = Field(
+        default=25,
+        ge=0,
+        description="Most findings a compact verdict may list (compact_strict).",
     )
 
 
@@ -113,6 +156,14 @@ class ModelGithubDiffResolvedEvent(BaseModel):
     file_path: str | None = Field(default=None)
     content: str = Field(..., description="Resolved unified diff or file content.")
     content_chars: int = Field(default=0, ge=0)
+    snapshot: ModelReviewTargetSnapshot | None = Field(
+        default=None,
+        description=(
+            "Head sha, base sha and diff digest read together (OMN-21189), or an "
+            "unavailable snapshot with the reason. None only on an event recorded "
+            "before the field existed."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +209,7 @@ class ModelConvergenceOutput(BaseModel):
 
 
 __all__: list[str] = [
+    "EnumReviewParseMode",
     "ModelConvergenceInput",
     "ModelConvergenceOutput",
     "ModelFindingLabel",

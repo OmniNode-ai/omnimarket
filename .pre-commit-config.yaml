@@ -498,6 +498,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: queue-run-once-policy
+        name: Queue full-suite admission policy (OMN-19998)
+        language: system
+        entry: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
+        files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
       # than one real message category leaves the off-category topics permanently
       # unroutable — handler_wiring stamps ONE category per entry and
@@ -617,6 +625,16 @@ repos:
         files: ^(config/validation/.*\.yaml|src/omnimarket/validators/(no_baseline_refreeze\.py|data/.*\.yaml))$
         pass_filenames: false
         always_run: true
+        stages: [pre-commit]
+
+      # OMN-17427: a change to the hostile reviewer or its eval set is scored against
+      # the set's baseline; CI's reviewer-eval job also holds the base branch ratchet.
+      - id: reviewer-eval
+        name: The hostile reviewer holds its eval baseline (OMN-17427)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_reviewer_eval_effect --reviewer-ref pre-commit
+        files: ^(\.github/workflows/(hostile-reviewer|reviewer-eval)\.yml|src/omnimarket/nodes/(node_reviewer_eval_effect|node_review_finding_veto_effect)/.*)$
+        pass_filenames: false
         stages: [pre-commit]
 
       # Shell hygiene gate (OMN-14761 / F-22). Fail-closed shellcheck over changed
@@ -1377,6 +1395,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # Paired with the Bash tool-result safety step in ci.yml.
+      - id: tool-result-reduction-safety
+        name: Bash tool-result reduction preserves diagnostics (OMN-21120)
+        language: system
+        entry: uv run pytest tests/nodes/node_tool_result_reduce_compute/test_tool_result_reduce.py -q --no-cov
+        files: ^(src/omnimarket/nodes/node_tool_result_reduce_compute/|tests/nodes/node_tool_result_reduce_compute/|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15909: a projection write-path diff (node_projection_*/handlers/**
       # or projection/runner.py) must ship an accompanying real-Postgres
       # @pytest.mark.integration test in the same diff -- closes the mock-DB
@@ -1516,6 +1543,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20910: a contract's container check is a command on a PR writer with
+      # no docker. SYNC with the ci.yml lint step "Container checks pass the
+      # PR-writer prerequisite without docker (OMN-20910)".
+      - id: contract-prerequisite-verifier-host-tools
+        name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
+        language: system
+        entry: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
+        files: ^(contracts/[^/]+\.yaml|src/omnimarket/nodes/node_dod_verify/services/(contract_prerequisite|evidence_collector)\.py|tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
       # lint step "No Anthropic key value in a workflow (OMN-20967)".
       - id: anthropic-key-prefix-workflows
@@ -1553,10 +1591,20 @@ repos:
       # the base head moves, and files one ticket on first stick. SYNC with
       # the ci.yml lint step "Landing decision park ladder (OMN-20890)".
       - id: landing-decision-park-ladder
-        name: Landing decision park ladder (OMN-20890)
+        name: Landing decision park ladder, decided by src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py (OMN-20890)
         language: system
         entry: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
         files: ^(src/omnimarket/nodes/node_pr_landing_decision_compute/|tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20905: operator decisions and asks are recorded from the bus by the capture nodes, not by
+      # hooks. SYNC with the ci.yml lint step of the same name.
+      - id: operator-capture-nodes
+        name: Operator capture nodes, src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_process.py and src/omnimarket/nodes/node_operator_capture_compute/handlers/handler_utterance_classify.py (OMN-20905)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_operator_capture_(effect|compute)/|src/omnimarket/models/operator_capture\.py$|tests/unit/nodes/node_operator_capture_(effect|compute)/|\.pre-commit-config\.yaml$)
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1568,6 +1616,19 @@ repos:
         language: system
         entry: uv run pytest tests/test_dod_verify_every_criterion_bound.py -q -p no:randomly --no-cov
         files: ^(src/omnimarket/nodes/node_dod_verify/|tests/test_dod_verify_every_criterion_bound\.py$|tests/unit/nodes/node_dod_verify/omn_20858_ticket_reader\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17427: the repo-evidence caller pins the receipt-gate reusable that
+      # refuses a verifier below 0.4.303, so a partly bound contract is refused here
+      # as in every repository (ruling 2026-10-10T11:04:11Z). Check-only. SYNC with
+      # the ci.yml lint step
+      # "call-repo-evidence-gate refuses a verifier below the floor (OMN-17427)".
+      - id: call-repo-evidence-gate-verifier-floor
+        name: call-repo-evidence-gate refuses a verifier below the floor (OMN-17427)
+        language: system
+        entry: uv run pytest tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py -q -p no:randomly --no-cov
+        files: ^(\.github/workflows/call-repo-evidence-gate\.yml|tests/ci/test_repo_evidence_caller_verifier_floor_omn20032\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1615,7 +1676,19 @@ repos:
         name: red CI bus chain stays connected (OMN-20730)
         language: system
         entry: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
-        files: ^(src/omnimarket/nodes/(node_pr_state_emit_effect|node_pr_lifecycle_orchestrator|node_pr_lifecycle_state_reducer)/(contract\.yaml|handlers/)|src/omnimarket/events/topics\.py$|tests/ci/test_red_ci_bus_chain_omn20730\.py$)
+        files: ^(src/omnimarket/nodes/(node_pr_state_emit_effect|node_pr_lifecycle_orchestrator|node_pr_lifecycle_state_reducer|node_dev_cause_lane_receiver_effect)/(contract\.yaml|handlers/)|src/omnimarket/events/topics\.py$|tests/ci/test_red_ci_bus_chain_omn20730\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17427: ruling 2026-10-14T03:57:46Z (item 5), a component alarm starts a fix lane, one
+      # per cause. handler_dev_cause_lane_start.py starts one lane per dispatch_key and never a
+      # second for a redelivery or a restart. Check-only. SYNC with the ci.yml lint step
+      # "dev cause-lane receiver starts one lane per dispatch key (OMN-17427)".
+      - id: dev-cause-lane-receiver
+        name: dev cause-lane receiver starts one lane per dispatch key (OMN-17427)
+        language: system
+        entry: uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_dev_cause_lane_receiver_effect/|tests/nodes/node_dev_cause_lane_receiver_effect/|src/omnimarket/models/dev_head_red\.py$)
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1675,6 +1748,31 @@ repos:
         language: system
         entry: uv run pytest tests/formal/test_ci_red_triage_model.py -q -n 0 -p no:randomly --no-cov
         files: ^(formal/ci_red_triage/|tests/formal/(test_ci_red_triage_model\.py|ci_red_triage_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-21096: the Agent-call adapter model passes its design config, each
+      # invariant fails on a one-knob mutation, and the TLC results match the
+      # committed model, configs and outputs. Check-only. SYNC with the ci.yml
+      # lint step "Agent-call adapter model (OMN-21096)".
+      - id: agent-call-adapter-model
+        name: Agent-call adapter model (OMN-21096)
+        language: system
+        entry: uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/agent_call_adapter/|tests/formal/(test_agent_call_adapter_model\.py|agent_call_adapter_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-21104: the compaction lifecycle model passes its design configs, each
+      # property fails on a one-knob mutation, the TLC results match the committed
+      # model, configs and outputs, and VERDICT.txt approves the model's digest.
+      # Check-only. SYNC with the ci.yml lint step "Compaction lifecycle model and
+      # verdict (OMN-21104)".
+      - id: compaction-lifecycle-model
+        name: Compaction lifecycle model and verdict (OMN-21104)
+        language: system
+        entry: uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/compaction_lifecycle/|tests/formal/(test_compaction_lifecycle_model\.py|compaction_lifecycle_tlc\.sh)$)
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1906,6 +2004,14 @@ repos:
         language: system
         entry: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427\.py|uv\.lock)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: patch-apply-dispatch
+        name: Patch apply dispatch node (OMN-17427)
+        language: system
+        entry: uv run --frozen pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_patch_apply_dispatch_effect/|tests/test_golden_chain_patch_apply_dispatch_effect\.py|pyproject\.toml|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit]
 

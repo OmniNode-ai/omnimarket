@@ -6,7 +6,7 @@
 # for merge-sweep. Runs `ruff format` + `ruff check --fix` inside a resolved
 # worktree, re-checks the denylist/blast-radius safety bar against the ACTUAL
 # diff produced, commits with a `delegated-by:` trailer, then re-enters the
-# EXISTING node_pr_polish gate/verify/push/coderabbit-triage/auto-merge-arm
+# EXISTING node_pr_polish gate/verify/push/auto-merge-arm
 # flow (never self-arms auto-merge). node_pr_lifecycle_fix_effect's
 # HandlerPrLifecycleFix routes CODE_FAILURE/CHANGES_REQUESTED here only after
 # its own eligibility + two-strike gate approves; RECEIPT_FAILURE never

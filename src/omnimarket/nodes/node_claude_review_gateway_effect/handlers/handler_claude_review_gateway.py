@@ -38,8 +38,20 @@ provider refuses or bills out (auth, billing, missing credential, or the
 credit-balance message) is set aside for the life of the process and the next
 key on the host serves the same request.
 
-Not here: a per-key budget ledger with a reserve, prompt caching on the native
-Messages API, and the overlay entry.
+**Native Messages protocol and prompt caching (OMN-20910).** The voters keep
+this OpenAI-compatible surface; behind it each review is one native Messages
+call (``api_native``, ``/v1/messages``) so the provider can cache the stable
+prefix. The system message is split on ``BLOCK_BOUNDARY_MARKER`` into cached
+system blocks (instructions and catalog, then the repository's standing rules)
+and the user message into the diff (cached for five minutes, so the next persona
+of the same review reads it) and the persona text (never cached), in that order.
+A ``json_schema`` ``response_format`` becomes a forced tool and the tool's input
+is returned as the message content. The provider's ``stop_reason`` rides back as
+``finish_reason`` (``length`` for ``max_tokens``, never a silently shortened
+body) and the cache usage rides back in ``usage``.
+
+Not here: a per-key budget ledger with a reserve, a sticky key per review run,
+and the overlay entry.
 """
 
 from __future__ import annotations
@@ -50,6 +62,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -58,8 +71,15 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_review_call_attempt_kind import EnumReviewCallAttemptKind
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.models.delegation.prompt_text_block import (
+    ModelPromptMessage,
+    ModelPromptTextBlock,
+)
+from omnimarket.models.review_cost import ModelReviewCallProvenance
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
     ModelReviewGatewayKey,
@@ -82,6 +102,15 @@ MODELS_ROUTE = "/v1/models"
 #: compatible endpoint with HTTP 400, so the voter's sampling is not forwarded.
 _CLAUDE_TEMPERATURE = 1.0
 _DEFAULT_MAX_TOKENS = 4096
+#: The line the prompt builder puts between the parts of a message that are cached
+#: apart: system instructions and catalog | standing rules, and diff | persona.
+BLOCK_BOUNDARY_MARKER = "<<onex-cache-boundary>>"
+#: The provider's backend plan this gateway names: Anthropic's native Messages API.
+GATEWAY_PLAN = "api_native"
+_SYSTEM_CACHE_TTL = "1h"
+_DIFF_CACHE_TTL = "5m"
+_DEFAULT_TOOL_NAME = "submit_verdict"
+_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 #: Failures that are about the key, not the request: set it aside and try the next.
 _KEY_FAILURES = frozenset(
     {
@@ -129,6 +158,12 @@ class ProtocolCallOutcome(Protocol):
     def tokens_in(self) -> int: ...
     @property
     def tokens_out(self) -> int: ...
+    @property
+    def stop_reason(self) -> EnumAnthropicStopReason | None: ...
+    @property
+    def cache_creation_input_tokens(self) -> int: ...
+    @property
+    def cache_read_input_tokens(self) -> int: ...
 
 
 class ProtocolReviewCall(Protocol):
@@ -153,6 +188,67 @@ def review_repository(payload: Mapping[str, Any]) -> str | None:
     if not isinstance(repository, str):
         return None
     return repository.strip() or None
+
+
+def _metadata_text(metadata: Mapping[str, Any], key: str) -> str | None:
+    value = metadata.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _metadata_count(metadata: Mapping[str, Any], key: str, default: int) -> int | None:
+    """A non-negative integer from metadata (a digit string counts), else ``None``."""
+    value = metadata.get(key, default)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return value if isinstance(value, int) and value >= 0 else None
+
+
+def review_provenance(payload: Mapping[str, Any]) -> ModelReviewCallProvenance | None:
+    """The review this call is made for, from metadata, or none (OMN-20910).
+
+    All of the repository, run, pull request, head, voter and persona must be
+    named; a call that names only part of it is served but not recorded as a
+    review's, so a cost record never carries a guessed identity.
+    """
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    texts = {
+        key: _metadata_text(metadata, key)
+        for key in ("repository", "review_run_id", "head_sha", "voter_id", "persona_id")
+    }
+    pr_number = _metadata_count(metadata, "pr", 0)
+    chunk_index = _metadata_count(metadata, "chunk_index", 0)
+    chunk_count = _metadata_count(metadata, "chunk_count", 1)
+    if (
+        any(value is None for value in texts.values())
+        or not pr_number
+        or chunk_index is None
+        or not chunk_count
+    ):
+        return None
+    try:
+        return ModelReviewCallProvenance(
+            review_run_id=str(texts["review_run_id"]),
+            repository=str(texts["repository"]),
+            pr_number=pr_number,
+            head_sha=str(texts["head_sha"]),
+            voter_id=str(texts["voter_id"]),
+            persona_id=str(texts["persona_id"]),
+            chunk_index=chunk_index,
+            chunk_count=chunk_count,
+            attempt_kind=EnumReviewCallAttemptKind(
+                _metadata_text(metadata, "attempt_kind") or "first"
+            ),
+            catalog_version=_metadata_text(metadata, "catalog_version") or "",
+            prompt_version=_metadata_text(metadata, "prompt_version") or "",
+        )
+    except ValueError:
+        return None
 
 
 def _not_expired(value: object, now: datetime) -> bool:
@@ -214,6 +310,62 @@ def _text(content: object) -> str:
     return ""
 
 
+def _parts(text: str) -> list[str]:
+    """The non-empty parts of ``text`` between boundary markers."""
+    return [part.strip() for part in text.split(BLOCK_BOUNDARY_MARKER) if part.strip()]
+
+
+def _merge_tail(parts: list[str], keep: int) -> list[str]:
+    """``parts`` as at most ``keep`` parts: the surplus joins the last kept one."""
+    if len(parts) <= keep:
+        return parts
+    return [*parts[: keep - 1], "\n\n".join(parts[keep - 1 :])]
+
+
+def _forced_tool(
+    response_format: object,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """The forced tool a ``json_schema`` response format asks for, else none.
+
+    The tool's input is the schema-valid reply, so the verdict can never come
+    back as free text. ``json_object`` and an absent format have no schema to
+    enforce and call no tool.
+    """
+    if not isinstance(response_format, Mapping):
+        return None, None
+    if response_format.get("type") != "json_schema":
+        return None, None
+    spec = response_format.get("json_schema")
+    if not isinstance(spec, Mapping) or not isinstance(spec.get("schema"), Mapping):
+        return None, None
+    raw_name = spec.get("name")
+    name = (
+        raw_name
+        if isinstance(raw_name, str) and _TOOL_NAME.match(raw_name)
+        else _DEFAULT_TOOL_NAME
+    )
+    description = spec.get("description")
+    tool = {
+        "name": name,
+        "description": description
+        if isinstance(description, str) and description
+        else "Submit the structured result.",
+        "input_schema": dict(spec["schema"]),
+    }
+    return tool, {"type": "tool", "name": name}
+
+
+def has_user_text(payload: Mapping[str, Any]) -> bool:
+    """Whether the review carries any user message text to send."""
+    messages = payload.get("messages")
+    return any(
+        isinstance(message, Mapping)
+        and message.get("role") != "system"
+        and _text(message.get("content")).strip()
+        for message in (messages if isinstance(messages, list) else [])
+    )
+
+
 def translate_chat_request(
     payload: Mapping[str, Any],
     *,
@@ -222,10 +374,12 @@ def translate_chat_request(
     secret_ref: str,
     timeout_seconds: float,
 ) -> ModelLlmDelegationCallRequest:
-    """The voter's chat call as one delegation call on this host's key.
+    """The voter's chat call as one native Messages call on this host's key.
 
-    System messages become the system prompt and the rest the prompt, in
-    order. The model is the gateway's own; the voter's sampling is dropped.
+    System messages become cached system blocks and the rest the user message,
+    in order, split at ``BLOCK_BOUNDARY_MARKER`` (see the module docstring for
+    the layout). A ``json_schema`` response format becomes a forced tool. The
+    model is the gateway's own; the voter's sampling is dropped.
     """
     messages = payload.get("messages")
     system_parts: list[str] = []
@@ -238,7 +392,21 @@ def translate_chat_request(
             system_parts.append(text)
         else:
             prompt_parts.append(text)
-    prompt = "\n\n".join(part for part in prompt_parts if part)
+    system = _merge_tail(_parts("\n\n".join(system_parts)), 2)
+    system_blocks = tuple(
+        ModelPromptTextBlock(text=part, cache_ttl=_SYSTEM_CACHE_TTL) for part in system
+    )
+    # Only the part before the last boundary is cached: it is what the next
+    # persona of the same review rereads. The last part is the persona's own.
+    prompt = _merge_tail(_parts("\n\n".join(part for part in prompt_parts if part)), 2)
+    user_blocks = tuple(
+        ModelPromptTextBlock(
+            text=part,
+            cache_ttl=_DIFF_CACHE_TTL if index < len(prompt) - 1 else None,
+        )
+        for index, part in enumerate(prompt)
+    )
+    tool_schema, tool_choice = _forced_tool(payload.get("response_format"))
     raw_max = payload.get("max_tokens", payload.get("max_completion_tokens"))
     max_tokens = (
         raw_max
@@ -253,9 +421,9 @@ def translate_chat_request(
         model_id=model,
         model_id_source="claude review gateway --model",
         endpoint_ref=endpoint_url,
-        prompt=prompt,
-        prompt_hash=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-        system_prompt="\n\n".join(part for part in system_parts if part),
+        prompt_hash=hashlib.sha256(
+            "\n\n".join([*system, *prompt]).encode("utf-8")
+        ).hexdigest(),
         task_type="code_review",
         max_tokens=max_tokens,
         temperature=_CLAUDE_TEMPERATURE,
@@ -263,21 +431,40 @@ def translate_chat_request(
         model_tier="cloud",
         provider=GATEWAY_PROVIDER,
         secret_ref=secret_ref,
+        inference_protocol="anthropic_messages",
+        system_blocks=system_blocks,
+        messages=(ModelPromptMessage(role="user", blocks=user_blocks),),
+        tool_schema=tool_schema,
+        tool_choice=tool_choice,
+        review=review_provenance(payload),
     )
 
 
 def describe_call(request: ModelLlmDelegationCallRequest) -> dict[str, Any]:
     """The parts of a call a dry run shows: no prompt text, no key value."""
+    blocks = [
+        *request.system_blocks,
+        *(block for message in request.messages for block in message.blocks),
+    ]
     return {
         "endpoint_ref": request.endpoint_ref,
+        "inference_protocol": request.inference_protocol,
         "model_id": request.model_id,
         "provider": request.provider,
         "secret_ref": request.secret_ref,
         "task_type": request.task_type,
         "max_tokens": request.max_tokens,
         "temperature": request.temperature,
-        "system_prompt_chars": len(request.system_prompt),
-        "prompt_chars": len(request.prompt),
+        "system_block_chars": [len(block.text) for block in request.system_blocks],
+        "prompt_block_chars": [
+            len(block.text) for message in request.messages for block in message.blocks
+        ],
+        "cache_breakpoints": [
+            block.cache_ttl for block in blocks if block.cache_ttl is not None
+        ],
+        "forced_tool": None
+        if request.tool_choice is None
+        else request.tool_choice.get("name"),
     }
 
 
@@ -307,6 +494,13 @@ def _error(status: int, kind: str, message: str) -> tuple[int, dict[str, Any]]:
 
 
 def _completion(model: str, outcome: ProtocolCallOutcome) -> dict[str, Any]:
+    # ``max_tokens`` is the output budget cutting the reply off: answered as
+    # ``length`` so the voter's parser sees a cut reply and never a finished one.
+    finish_reason = (
+        "length"
+        if outcome.stop_reason is EnumAnthropicStopReason.MAX_TOKENS
+        else "stop"
+    )
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
@@ -316,13 +510,16 @@ def _completion(model: str, outcome: ProtocolCallOutcome) -> dict[str, Any]:
             {
                 "index": 0,
                 "message": {"role": "assistant", "content": outcome.content or ""},
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
             }
         ],
         "usage": {
             "prompt_tokens": outcome.tokens_in,
             "completion_tokens": outcome.tokens_out,
             "total_tokens": outcome.tokens_in + outcome.tokens_out,
+            "prompt_tokens_details": {"cached_tokens": outcome.cache_read_input_tokens},
+            "cache_creation_input_tokens": outcome.cache_creation_input_tokens,
+            "cache_read_input_tokens": outcome.cache_read_input_tokens,
         },
     }
 
@@ -420,6 +617,19 @@ class ClaudeReviewGateway:
                 reason=refusal[1],
             )
         keys = self.candidate_keys()
+        if not has_user_text(payload):
+            return ModelReviewGatewayPlan(
+                host=self._request.host,
+                tenant_id=self._request.tenant_id,
+                model=self._request.model,
+                upstream_url=self._endpoint_url,
+                candidate_key_refs=tuple(key.api_key_ref for key in keys),
+                chosen_key_ref=None,
+                chosen_key_name=None,
+                translated_request={},
+                would_answer=400,
+                reason="the review has no user message",
+            )
         chosen: ModelReviewGatewayKey | None = None
         for key in keys:
             if await self._key_values.get_secret(key.api_key_ref):
@@ -455,6 +665,8 @@ class ClaudeReviewGateway:
         refusal = self._repository_refusal(payload)
         if refusal is not None:
             return _error(503, *refusal)
+        if not has_user_text(payload):
+            return _error(400, "invalid_request", "the review has no user message")
         keys = self.candidate_keys()
         if not keys:
             return _error(
@@ -609,7 +821,9 @@ def run_dry(
 
 
 __all__ = [
+    "BLOCK_BOUNDARY_MARKER",
     "CHAT_ROUTE",
+    "GATEWAY_PLAN",
     "GATEWAY_PROVIDER",
     "MODELS_ROUTE",
     "SHARED_SECRET_ENV",
@@ -623,6 +837,7 @@ __all__ = [
     "ProtocolReviewCall",
     "build_app",
     "describe_call",
+    "has_user_text",
     "normalize_repository",
     "review_repository",
     "run_dry",

@@ -264,6 +264,19 @@ class TestHealthFiltering:
         result = handler.handle(req)
         assert "t1" in result.unroutable_subtasks
 
+    @pytest.mark.parametrize("status", ["auth_failed", "unknown"])
+    def test_health_effect_only_statuses_are_accepted_and_unhealthy(
+        self, handler: HandlerSwarmRegistry, status: str
+    ) -> None:
+        """The health effect reports auth_failed and unknown; selection must take them."""
+        health = _all_healthy()
+        health["reason-ep"] = ModelEndpointHealth(
+            endpoint_id="reason-ep", status=status
+        )
+        req = _request([_subtask("t1", "math")], endpoint_health=health)
+        result = handler.handle(req)
+        assert "t1" in result.unroutable_subtasks
+
     def test_missing_health_entry_treated_as_unhealthy(
         self, handler: HandlerSwarmRegistry
     ) -> None:

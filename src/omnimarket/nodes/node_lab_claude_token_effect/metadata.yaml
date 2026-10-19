@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_claude_token_effect
+version: "1.0.0"
+description: "Stores, deploys, probes and rotates a lab host's Claude token by reference, never printing it"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "click>=8.1.0"
+  - "pyyaml>=6.0.2"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["lab", "claude", "credentials", "placement", "effect"]
+pack: operator_tooling
+display_name: "Lab Claude Token Effect"
+node_role: "effect"

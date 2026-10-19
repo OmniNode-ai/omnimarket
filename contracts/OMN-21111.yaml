@@ -20,10 +20,27 @@ requirements:
         statement: "AC4: the fallback share excludes control boundaries, and a zero fallback share without a control boundary exceeding its reduced budget is reported as a falsifier -- falsifier: a zero share accepted with no positive control."
       - id: "AC5"
         statement: "AC5: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its three handlers and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
+  - id: "req-lane-brief-profile"
+    statement: "A lane_brief context profile, data only, so the shared pack nodes build a lane-brief pack with a profile change and no bespoke code (finding of the 2026-10-19 replay evaluation)."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the lane_brief profile resolves by name with the packaged routing contract, the shared builder assembles lane_rules ahead of operator_rulings, and a build without lane_rules fails with required_factor_missing -- falsifier: a resolve failure, a different chunk order, or a pack built without lane_rules."
+  - id: "req-required-tier-selection"
+    statement: "Selection inside a required context tier and a revision per tier in node_context_pack_orchestrator (finding of the 2026-10-19 replay evaluation)."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: when the required tiers alone are over the budget, a required tier over its share keeps the entries the request cites (by source_ref or by ledger row stamp) first, then the newest, whole entries only, and its tier status reports trimmed_entry_count -- falsifier: a cited entry dropped, an older uncited entry kept ahead of a newer one, or a wrong trimmed count."
+      - id: "AC8"
+        statement: "AC8: cited entries that do not fit their tier's share fail the build TOKEN_BUDGET_EXCEEDED and are never dropped; operator_words_unrecorded is carried whole and never trimmed -- falsifier: a build that succeeds with a cited entry missing, or an operator_words_unrecorded tier trimmed."
+      - id: "AC9"
+        statement: "AC9: a tier named in tier_revisions is read at that revision and every other tier at the request-wide revision, and tier_revisions enter candidate_id only when set -- falsifier: a source request at the wrong revision, or the same candidate_id with and without tier_revisions."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC5 in the node tests and the golden chain."
     command: "uv run pytest tests/nodes/node_context_replay_eval_compute tests/test_golden_chain_context_replay_eval_compute.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC7 to AC9 in the orchestrator handler tests."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -64,6 +81,34 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_golden_chain_context_replay_eval_compute.py -q -p no:randomly --no-cov"
     binds_ac: ["AC5"]
+  - id: "dod-omn21111-ac6"
+    description: "AC6: the lane_brief profile resolves, builds rules first through the shared builder, and fails closed without lane_rules."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_lane_brief_profile.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21111-ac7"
+    description: "AC7: required tiers over budget keep cited entries by source_ref or ledger row stamp first, then the newest whole entries, and report trimmed_entry_count."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'required_tier_over_budget_keeps_cited_then_newest or required_tier_trim_cites_a_row_by_its_stamp or required_tier_trim_without_citations_keeps_newest_first'"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21111-ac8"
+    description: "AC8: cited entries that exceed their tier's share fail with TOKEN_BUDGET_EXCEEDED and are never dropped; operator_words_unrecorded is carried whole and never trimmed. The carry-rule test also passes at the merge base as a regression guard; the cited-overflow test is the one that fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'cited_entries_over_the_tier_budget_fail_never_dropped or operator_words_unrecorded_is_carried_whole_never_trimmed'"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21111-ac9"
+    description: "AC9: each tier reads its named revision or the request-wide revision, and tier_revisions change candidate_id only when set."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'each_tier_reads_its_own_revision or tier_revisions_change_the_candidate'"
+    binds_ac: ["AC9"]
   - id: "dod-omn21111-deploy-hosted-score"
     description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and sizes one over-budget boundary through the product handler, asserting the two oldest carried prompts are named and the re-sum reproduces, then scores one package that lacks an expected quote and asserts the case fails. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
@@ -86,3 +131,40 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_replay_eval_compute/handlers/handler_replay_eval.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class HandlerReviewRowSizing:\") and contains(\"class HandlerRulingPresence:\")' | grep -qx true"
+  - id: "dod-omn21111-deploy-hosted-tier-selection"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and builds an agent_spawn pack through the product orchestrator with a 300-token budget override, five lane_rules rows of about 100 tokens, cited_refs row/1 and tier_revisions for lane_rules; it asserts the build is ok, keeps rows 1, 4 and 5 with trimmed_entry_count 2, reads lane_rules at the named revision and invariants at head. It fails at the merge base, whose request model forbids cited_refs and tier_revisions. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c 'import hashlib
+          from datetime import UTC, datetime
+          from pathlib import Path
+          import omnimarket
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus as S
+          from omnibase_core.models.context.model_context_access import ModelContextAccess
+          from omnibase_core.models.context.model_context_source_entry import ModelContextSourceEntry as E
+          from omnibase_core.models.context.model_context_source_result import ModelContextSourceResult as R
+          from omnimarket.models.context_pack_orchestrator import ModelContextPackCommand as C, ModelContextPackRequest as Q
+          from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import HandlerContextPackOrchestrator as O
+          from omnimarket.nodes.node_context_pack_render_compute.handlers.handler_context_pack_render import RENDER_CONTRACT_VERSION as V
+          from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import HandlerContextProfileResolver as P
+          class Src:
+              synchronous_execution = True
+              def __init__(self, f, rows): self.f, self.rows, self.revisions = f, rows, []
+              def handle(self, req):
+                  self.revisions.append(req.revision)
+                  return R(status=S.RESOLVED, entries=tuple(E(factor=self.f, text=t, source_ref=ref, text_sha256=hashlib.sha256(t.encode()).hexdigest(), status=S.RESOLVED, as_of=at) for t, at, ref in self.rows))
+          at = datetime(2026, 10, 17, tzinfo=UTC)
+          src = {f: Src(f, ((f"{f.value} probe entry", at, f"probe/{f.value}"),)) for f in (F.INVARIANTS,)}
+          src[F.LANE_RULES] = Src(F.LANE_RULES, tuple((f"2026-10-1{d}T00:00:00Z | MSG | day-{d} " + "w" * 360, datetime(2026, 10, 10 + d, tzinfo=UTC), f"row/{d}") for d in range(1, 6)))
+          h = O(src, profile_resolver=P(Path(omnimarket.__file__).parent / "pack" / "profiles"), implementation_identity=lambda: {"omnimarket.version": "0.0.0"}, render_contract_version=V)
+          b = h.handle(C(request=Q.model_validate({"profile_name": "agent_spawn", "token_budget_override": 300, "cited_refs": ["row/1"], "tier_revisions": {"lane_rules": "2026-10-19T07:36:00Z"}}), access=ModelContextAccess(tenant_id="probe")))
+          text = "\n".join(m.text for m in b.messages)
+          kept = sorted(d for d in range(1, 6) if f"day-{d} " in text)
+          tier = {t.factor: t for t in b.tier_statuses}[F.LANE_RULES]
+          assert b.status.value == "ok" and kept == [1, 4, 5] and tier.trimmed_entry_count == 2, (b.status, b.errors, kept)
+          assert src[F.LANE_RULES].revisions == ["2026-10-19T07:36:00Z"] and src[F.INVARIANTS].revisions == ["head"], {f.value: s.revisions for f, s in src.items()}
+          print("kept", kept, "trimmed", tier.trimmed_entry_count, "revisions", {f.value: s.revisions for f, s in src.items()})
+          '

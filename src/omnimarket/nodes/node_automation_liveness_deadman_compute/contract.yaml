@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_automation_liveness_deadman_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-20807. The automation-liveness dead-man's pure half. The dead-man is the
+  watchdog in a narrow mode: given the primary watchdog's last heartbeat, the
+  broker's reachability, the alarm episodes opened and closed since the last
+  tick, the delivered and recorded events, the rows the effect already wrote
+  and the canary days to judge, it returns the alarms the dead-man owns
+  (PRIMARY_SILENT, BUS_SILENT seen from its host, ALARM_PATH_BROKEN), the
+  delivery route (direct when the broker is unreachable) and one FRICTION
+  ledger row per opened and closed episode, oldest event first and stamped
+  with the episode's own time. A row the store already holds is not returned
+  again. The effect half writes the rows and beats the dead-man's heartbeat.
+
+input_model: omnimarket.models.liveness.model_automation_liveness_deadman.ModelAutomationLivenessDeadmanRequest
+output_model: omnimarket.models.liveness.model_automation_liveness_deadman.ModelAutomationLivenessDeadmanResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evaluate
+      handler:
+        name: HandlerAutomationLivenessDeadman
+        module: omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman
+      event_model:
+        name: ModelAutomationLivenessDeadmanRequest
+        module: omnimarket.models.liveness.model_automation_liveness_deadman
+
+handler:
+  module: omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman
+  class: HandlerAutomationLivenessDeadman
+  input_model: omnimarket.models.liveness.model_automation_liveness_deadman.ModelAutomationLivenessDeadmanRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.automation-liveness-deadman-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.automation-liveness-deadman-evaluate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.automation-liveness-deadman-evaluated.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-liveness-deadman-evaluate-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.automation-liveness-deadman-evaluated.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: dead-man PRIMARY_SILENT, ledger rows once per episode phase and the daily canary check"
+  author: "OmniNode Platform Team"
+  created: "2026-10-17"
+  tags:
+    - "compute"
+    - "liveness"
+    - "deadman"
+    - "deterministic"

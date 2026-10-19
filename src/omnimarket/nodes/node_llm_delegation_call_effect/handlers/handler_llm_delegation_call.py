@@ -23,6 +23,7 @@ absent, unknown, or the registry is unavailable.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -41,6 +42,7 @@ from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
 from omnimarket.delegation.reasoning_preamble import strip_leading_inline_reasoning
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.provider_quota import (
@@ -88,7 +90,18 @@ from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
 )
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    anthropic_messages,
+    transport,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.review_cost_recorder import (
+    TOPIC_REVIEW_CALL_COST_RECORDED,
+    attempt_counter,
+    cache_usage_figures,
+    next_attempt,
+    record_cancelled_review_attempt,
+    record_finished_attempt,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
@@ -180,7 +193,11 @@ TOPIC_DELEGATION_MODEL_DEGRADED = _single_contract_topic(
     _publish, _DELEGATION_MODEL_DEGRADED_SUFFIX, "publish_topics"
 )
 
-__all__ = ["HandlerLlmDelegationCall"]
+__all__ = [
+    "TOPIC_REVIEW_CALL_COST_RECORDED",
+    "HandlerLlmDelegationCall",
+    "record_cancelled_review_attempt",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -546,6 +563,19 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
+        """Run one invocation, numbering its provider attempts from 1 (OMN-20910)."""
+        token = attempt_counter.set(iter(range(1, 1_000_000)))
+        try:
+            return self._execute_call_attempts(request, endpoint_url, event_publisher)
+        finally:
+            attempt_counter.reset(token)
+
+    def _execute_call_attempts(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
         """Execute the call, resolving a customer route's model from its key.
 
         OMN-20157. A customer's BYOK route (a tenant-shaped credential reference
@@ -783,19 +813,44 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
-        """Make one provider call and report it to the bound observer when it ends."""
-        result = self._post_one_call(request, endpoint_url, event_publisher)
-        _report_call(
-            ModelLlmDelegationCallObservation(
-                phase="finished",
-                model_id=request.model_id,
-                secret_source=result.secret_source,
-                success=result.success,
-                failure_class=result.failure_class,
-                http_status=result.http_status,
-                error_message=result.error_message or "",
-            )
+        """Make one provider call and report it to the bound observer when it ends.
+
+        OMN-20910: the same ``finished`` observation is the cost record's
+        source, so the attempt is recorded here, as it ends, whatever becomes of
+        the invocation after it.
+        """
+        attempt = next_attempt()
+        result = self._post_one_call(
+            request, endpoint_url, event_publisher, attempt=attempt
         )
+        observation = ModelLlmDelegationCallObservation(
+            phase="finished",
+            model_id=request.model_id,
+            attempt=attempt,
+            served_model_id=result.served_model_id,
+            secret_source=result.secret_source,
+            success=result.success,
+            failure_class=result.failure_class,
+            http_status=result.http_status,
+            error_message=result.error_message or "",
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_write_5m_tokens=result.cache_write_5m_tokens,
+            cache_write_1h_tokens=result.cache_write_1h_tokens,
+            finish_reason=(
+                result.finish_reason.value
+                if result.finish_reason is not EnumProviderFinishReason.ABSENT
+                else None
+            ),
+            latency_ms=result.latency_ms,
+            cost_usd=result.actual_cost_usd,
+            stop_reason=result.stop_reason,
+            cache_creation_input_tokens=result.cache_creation_input_tokens,
+            cache_read_input_tokens=result.cache_read_input_tokens,
+        )
+        _report_call(observation)
+        record_finished_attempt(request, endpoint_url, observation, event_publisher)
         return result
 
     def _post_one_call(
@@ -803,28 +858,38 @@ class HandlerLlmDelegationCall:
         request: ModelLlmDelegationCallRequest,
         endpoint_url: str,
         event_publisher: Any,
+        *,
+        attempt: int = 1,
     ) -> ModelLlmDelegationCallResult:
-        messages: list[dict[str, str]] = []
-        if request.system_prompt:
-            messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
-        payload: dict[str, Any] = {
-            "model": request.model_id,
-            "messages": messages,
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-        }
-        if request.provider_request_options:
-            payload.update(request.provider_request_options)
-        # OMN-15482: the caller's response-format directive is applied AFTER the
-        # inference-protocol options so a consumer requirement can never be
-        # silently overwritten by backend shaping. The two cannot actually
-        # collide today -- ``LocalDelegationDispatchPort`` reserves the
-        # ``response_format`` key against ``provider_request_options`` -- so
-        # this ordering is a belt-and-braces statement of precedence, not a
-        # live conflict resolution.
-        if request.response_format is not None:
-            payload["response_format"] = request.response_format
+        # OMN-20910: the native Messages protocol builds its own body (system and
+        # message blocks with cache breakpoints, a forced tool); every other call
+        # keeps the OpenAI-compatible body below, byte for byte.
+        native = request.inference_protocol == "anthropic_messages"
+        payload: dict[str, Any]
+        if native:
+            payload = anthropic_messages.build_messages_payload(request)
+        else:
+            messages: list[dict[str, str]] = []
+            if request.system_prompt:
+                messages.append({"role": "system", "content": request.system_prompt})
+            messages.append({"role": "user", "content": request.prompt})
+            payload = {
+                "model": request.model_id,
+                "messages": messages,
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+            }
+            if request.provider_request_options:
+                payload.update(request.provider_request_options)
+            # OMN-15482: the caller's response-format directive is applied AFTER
+            # the inference-protocol options so a consumer requirement can never
+            # be silently overwritten by backend shaping. The two cannot actually
+            # collide today -- ``LocalDelegationDispatchPort`` reserves the
+            # ``response_format`` key against ``provider_request_options`` -- so
+            # this ordering is a belt-and-braces statement of precedence, not a
+            # live conflict resolution.
+            if request.response_format is not None:
+                payload["response_format"] = request.response_format
 
         # OMN-16419: fail-closed model-attribution guard. A live GET
         # /v1/models reconciliation runs BEFORE the chat-completion POST —
@@ -837,7 +902,16 @@ class HandlerLlmDelegationCall:
         # ``served_ids`` IS available and does not contain the configured
         # model_id, the call never reaches the network — this repo's own
         # config no longer silently attributes to a model that isn't running.
-        served_ids = _get_served_model_ids(endpoint_url)
+        # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
+        # reconcile against; its reply names the model that served it instead,
+        # read below.
+        served_ids = None if native else _get_served_model_ids(endpoint_url)
+        if served_ids is not None and request.model_id not in served_ids:
+            # Reconcile a possible model replacement before refusing the call.
+            # An unreadable refresh retains the known mismatch evidence.
+            served_ids = (
+                transport.get_served_model_ids(endpoint_url, refresh=True) or served_ids
+            )
         served_model_id: str | None = None
         if served_ids is not None:
             if request.model_id not in served_ids:
@@ -876,6 +950,7 @@ class HandlerLlmDelegationCall:
             served_model_id = request.model_id
 
         secret_source: EnumSecretSource | None = None
+        request_left_at: float | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
             # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
@@ -889,9 +964,11 @@ class HandlerLlmDelegationCall:
                 ModelLlmDelegationCallObservation(
                     phase="started",
                     model_id=request.model_id,
+                    attempt=attempt,
                     secret_source=secret_source,
                 )
             )
+            request_left_at = time.monotonic()
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.
@@ -905,6 +982,19 @@ class HandlerLlmDelegationCall:
             )
             latency_ms = response.latency_ms
             response_json: dict[str, Any] = response.json_body
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # OMN-20910: the invocation ended while this attempt was in flight.
+            # Its usage is unknown, but it was made, so it is recorded as cancelled.
+            if request_left_at is not None:
+                record_cancelled_review_attempt(
+                    request,
+                    ModelLlmDelegationCallObservation(
+                        phase="started", model_id=request.model_id, attempt=attempt
+                    ),
+                    elapsed_ms=int((time.monotonic() - request_left_at) * 1000),
+                    event_publisher=event_publisher,
+                )
+            raise
         except httpx.TimeoutException:
             observation, _ = self._observe_quota(
                 request,
@@ -1114,6 +1204,16 @@ class HandlerLlmDelegationCall:
                 secret_source=secret_source,
             )
 
+        if native:
+            return self._finish_native_call(
+                request,
+                endpoint_url,
+                response_json,
+                latency_ms=latency_ms,
+                secret_source=secret_source,
+                event_publisher=event_publisher,
+            )
+
         choices = response_json.get("choices") or []
         if not choices:
             return self._failure_result(
@@ -1141,6 +1241,9 @@ class HandlerLlmDelegationCall:
         )
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
+        cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
+            response_json.get("usage") or {}
+        )
         actual_cost, opus_cost, savings, cost_basis = _compute_cost(
             request.model_id,
             tokens_in,
@@ -1164,6 +1267,9 @@ class HandlerLlmDelegationCall:
             output_hash=output_hash,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            cache_read_tokens=cache_read,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
             latency_ms=latency_ms,
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,
@@ -1187,6 +1293,91 @@ class HandlerLlmDelegationCall:
             event_publisher,
         )
 
+        return result
+
+    def _finish_native_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        response_json: dict[str, Any],
+        *,
+        latency_ms: int,
+        secret_source: EnumSecretSource | None,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """Turn one native Messages reply into the typed result (OMN-20910).
+
+        A ``max_tokens`` stop is a success with the cut text and the typed stop
+        reason, exactly as an OpenAI-compatible ``length`` is: the verdict on
+        whether a cut reply is usable belongs to the caller's parser, which
+        receives it typed and not as a string it would have to recognise.
+        """
+        reading = anthropic_messages.parse_messages_response(response_json)
+        if reading is None:
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.INVALID_JSON,
+                "API returned empty content array",
+                secret_source=secret_source,
+            )
+        content = reading.content
+        raw_response = ModelDelegationRawResponse.from_provider_content(
+            content, source_field=reading.source_field
+        )
+        content, reasoning_stripped_chars = strip_leading_inline_reasoning(
+            content, request.inline_reasoning_terminator
+        )
+        # Billed at the cache's own multipliers, not at the plain input price.
+        actual_cost, opus_cost, savings, cost_basis = _compute_cost(
+            request.model_id,
+            reading.input_price_equivalent_tokens,
+            reading.output_tokens,
+            model_tier=request.model_tier,
+            endpoint_url=endpoint_url,
+        )
+        cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
+            response_json.get("usage") or {}
+        )
+        result = ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref,
+            content=content,
+            raw_response=raw_response,
+            reasoning_stripped_chars=reasoning_stripped_chars,
+            output_hash=_sha256(content),
+            tokens_in=reading.prompt_tokens,
+            tokens_out=reading.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
+            latency_ms=latency_ms,
+            actual_cost_usd=actual_cost,
+            opus_equivalent_cost_usd=opus_cost,
+            savings_usd=savings,
+            usage_source=EnumUsageSource.MEASURED,
+            cost_basis=cost_basis,
+            quality_gate_passed=True,
+            endpoint_healthy=True,
+            served_model_id=reading.served_model,
+            finish_reason=reading.stop_reason.to_finish_reason(),
+            stop_reason=reading.stop_reason,
+            cache_creation_input_tokens=reading.cache_creation_input_tokens,
+            cache_creation_5m_input_tokens=reading.cache_creation_5m_input_tokens,
+            cache_creation_1h_input_tokens=reading.cache_creation_1h_input_tokens,
+            cache_read_input_tokens=reading.cache_read_input_tokens,
+            http_status=200,
+        )
+        observation, _ = self._observe_quota(
+            request, endpoint_url, succeeded=True, latency_ms=latency_ms
+        )
+        result = result.model_copy(update={"quota_observation": observation})
+        self._publish(
+            TOPIC_DELEGATION_CALL_COMPLETED,
+            self._build_completed_event(request, result),
+            event_publisher,
+        )
         return result
 
     def _build_completed_event(
@@ -1362,10 +1553,16 @@ class HandlerLlmDelegationCall:
         ``llm.*.api_key`` convention (which maps to ``LLM_*_API_KEY``) and the
         canonical env vars already defined in ``~/.omnibase/.env``.
         """
-        headers = dict(request.extra_headers)
         api_key, source = resolve_api_key_with_source_loop_safe(
             request.secret_ref, env_var_fallback=request.api_key_env
         )
+        if request.inference_protocol == "anthropic_messages":
+            # OMN-20910: the native API takes the key in ``x-api-key`` and needs
+            # ``anthropic-version``; a Bearer header is not accepted there.
+            return anthropic_messages.native_headers(
+                request, None if api_key is None else api_key.get_secret_value()
+            ), source
+        headers = {**request.extra_headers, **request.provider_headers}
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers, source

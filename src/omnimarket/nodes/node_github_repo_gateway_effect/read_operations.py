@@ -516,6 +516,11 @@ def read_pr_text(
         )
     body, body_cut = _cut(pr.get("body"))
     raw_count = pr.get("comments")
+    head = pr.get("head")
+    head_repo = (
+        _nested_str(head.get("repo") if isinstance(head, dict) else None, "full_name")
+        or None
+    )
     return ModelPrTextResult(
         repo=request.repo,
         pr_number=pr_number,
@@ -529,6 +534,9 @@ def read_pr_text(
         head_ref=_nested_str(pr.get("head"), "ref"),
         head_sha=_nested_str(pr.get("head"), "sha"),
         base_ref=_nested_str(pr.get("base"), "ref"),
+        head_repo=head_repo,
+        is_cross_repository=head_repo is None
+        or head_repo.lower() != request.repo.lower(),
         total_count=raw_count if isinstance(raw_count, int) else None,
         truncated=truncated,
         comments=comments,
@@ -670,6 +678,12 @@ def read_merged_pr(
     pr = _checked(pr_request, transport.send_sync(pr_request))
     merged = bool(pr.get("merged", False))
     merge_sha = pr.get("merge_commit_sha")
+    if merged and not isinstance(merge_sha, str):
+        # OMN-19528: REST leaves the key out of a merged PR on the deployed
+        # lane; GraphQL still names the merge commit.
+        merge_sha = transport.fetch_pr_detail(request.repo, pr_number).get(
+            "mergeCommitOid"
+        )
     merged_at = pr.get("merged_at")
     return ModelMergedPrResult(
         repo=request.repo,

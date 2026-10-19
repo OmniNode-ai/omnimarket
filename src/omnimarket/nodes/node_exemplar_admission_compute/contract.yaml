@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_exemplar_admission_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Pure TC.5 exemplar admission decisions (OMN-21128). Collects every violation from
+  caller-supplied classifications, source text, contract facts and test receipts,
+  then ranks admitted candidates within each archetype. Reads nothing and mutates nothing.
+input_model:
+  name: ModelExemplarAdmissionRequest
+  module: omnimarket.nodes.node_exemplar_admission_compute.models.model_exemplar_admission
+output_model:
+  name: ModelExemplarAdmissionResult
+  module: omnimarket.nodes.node_exemplar_admission_compute.models.model_exemplar_admission
+handler:
+  module: omnimarket.nodes.node_exemplar_admission_compute.handlers.handler_exemplar_admission
+  class: HandlerExemplarAdmission
+  input_model: omnimarket.nodes.node_exemplar_admission_compute.models.model_exemplar_admission.ModelExemplarAdmissionRequest
+  output_model: omnimarket.nodes.node_exemplar_admission_compute.models.model_exemplar_admission.ModelExemplarAdmissionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_exemplar_admission_compute.handlers.handler_exemplar_admission:HandlerExemplarAdmission
+  handlers:
+    - operation: decide_exemplar_admission
+      handler:
+        name: HandlerExemplarAdmission
+        module: omnimarket.nodes.node_exemplar_admission_compute.handlers.handler_exemplar_admission
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  candidates: {type: list, required: true, description: Candidate facts at the repository commit.}
+  rules: {type: object, required: false, description: Versioned admission policy.}
+outputs:
+  decisions: {type: list}
+  admitted_by_archetype: {type: object}
+  admitted_count: {type: int}
+  refused_count: {type: int}
+terminal_event: onex.evt.omnimarket.exemplar-admission-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.exemplar-admission-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.exemplar-admission-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.exemplar-admission-computed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.exemplar-admission-computed.v1
+metadata:
+  transport_type: inmemory
+  description: TC.5 exemplar admission decisions
+  author: OmniNode Team
+  created: "2026-10-18"
+  related_tickets: [OMN-21128]

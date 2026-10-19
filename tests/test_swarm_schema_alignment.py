@@ -213,13 +213,15 @@ class TestSwarmDispatchOrchestratorStateCoverage:
         decomposed, _ = handler.transition_decomposed(
             health_checked,
             {
-                "subtasks": [
-                    {
-                        "subtask_id": "st-1",
-                        "description": "implement route",
-                        "depends_on": [],
-                    }
-                ]
+                "decomposition": {
+                    "subtasks": [
+                        {
+                            "subtask_id": "st-1",
+                            "description": "implement route",
+                            "depends_on": [],
+                        }
+                    ]
+                }
             },
         )
         endpoints_selected, _ = handler.transition_endpoints_selected(
@@ -233,8 +235,8 @@ class TestSwarmDispatchOrchestratorStateCoverage:
                     {
                         "subtask_id": "st-1",
                         "endpoint_id": "ep-1",
-                        "status": "succeeded",
-                        "result_text": "done",
+                        "execution_status": "succeeded",
+                        "response_text": "done",
                     }
                 ]
             },

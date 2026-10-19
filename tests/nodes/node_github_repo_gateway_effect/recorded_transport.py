@@ -88,6 +88,10 @@ class RecordedGatewayTransport:
 
     exchanges: list[JsonExchange | BytesExchange]
     sent: list[ModelGithubHttpRequest] = field(default_factory=list)
+    # OMN-19528: the GraphQL PR detail per (repo, number), for the reads that
+    # fall back to it; a PR not named here is an unrecorded read.
+    pr_details: dict[tuple[str, int], dict[str, Any]] = field(default_factory=dict)
+    pr_detail_reads: list[tuple[str, int]] = field(default_factory=list)
 
     def _next(self, request: ModelGithubHttpRequest) -> JsonExchange | BytesExchange:
         self.sent.append(request)
@@ -156,7 +160,11 @@ class RecordedGatewayTransport:
         raise RecordedTransportMismatchError("fetch_branch_protection is not recorded")
 
     def fetch_pr_detail(self, repo: str, pr_number: int) -> dict[str, Any]:
-        raise RecordedTransportMismatchError("fetch_pr_detail is not recorded")
+        self.pr_detail_reads.append((repo, pr_number))
+        detail = self.pr_details.get((repo, pr_number))
+        if detail is None:
+            raise RecordedTransportMismatchError("fetch_pr_detail is not recorded")
+        return detail
 
 
 # --- documented response bodies ------------------------------------------------
@@ -257,7 +265,11 @@ def pull_request(number: int, *, body: str) -> dict[str, object]:
         "merged": False,
         "comments": 3,
         "user": {"login": "pr-author", "id": 2},
-        "head": {"ref": "jonah/omn-20912-example", "sha": HEAD},
+        "head": {
+            "ref": "jonah/omn-20912-example",
+            "sha": HEAD,
+            "repo": {"full_name": REPO},
+        },
         "base": {"ref": "dev", "sha": "0" * 40},
         "labels": [],
     }

@@ -466,6 +466,40 @@ def test_pr_text_reads_title_body_and_paged_comments() -> None:
     assert result.comments[0].author == "reviewer-bot"
     assert result.total_count == 3
     assert result.truncated is True
+    assert (result.head_repo, result.is_cross_repository) == (REPO, False)
+
+
+@pytest.mark.parametrize(
+    ("head_repo", "expected_repo", "expected_cross"),
+    [
+        ({"full_name": "someone/omnimarket"}, "someone/omnimarket", True),
+        ({"full_name": REPO.lower()}, REPO.lower(), False),
+        (None, None, True),
+    ],
+    ids=["fork", "same-repo-other-case", "head-repository-gone"],
+)
+def test_pr_text_reports_whether_the_head_is_cross_repository(
+    head_repo: dict[str, str] | None,
+    expected_repo: str | None,
+    expected_cross: bool,
+) -> None:
+    pr = pull_request(2962, body="b")
+    pr["head"] = {"ref": "feature", "sha": HEAD, "repo": head_repo}
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.PR_TEXT, pr_number=2962, limit=2),
+        [
+            JsonExchange(get(f"{_BASE}/pulls/2962"), json_response(pr)),
+            JsonExchange(
+                get(f"{_BASE}/issues/2962/comments?per_page=2"),
+                json_response([]),
+            ),
+        ],
+    )
+    assert isinstance(result, ModelPrTextResult)
+    assert (result.head_repo, result.is_cross_repository) == (
+        expected_repo,
+        expected_cross,
+    )
 
 
 # --- releases ---------------------------------------------------------------------

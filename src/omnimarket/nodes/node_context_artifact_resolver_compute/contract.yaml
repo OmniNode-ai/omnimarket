@@ -2,20 +2,22 @@
 # SPDX-License-Identifier: MIT
 ---
 name: node_context_artifact_resolver_compute
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 2, minor: 0, patch: 0}
 node_type: compute
 runtime_profiles: [main]
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 2, minor: 0, patch: 0}
 description: >
-  Pure deterministic resolver that materialises the per-factor
-  artifact_content_map the context-ROI runner (OMN-12798) injects. Turns
-  pre-read artifact sources (golden-chain YAML, exemplar files, CLAUDE.md /
-  architecture-doc bodies, local-failure notes) into real per-factor text,
-  reusing GuidanceSectionParser (OMN-12795) for markdown section selection and
-  node_context_pack_builder_compute for 16k token-budget + factor-precedence
-  enforcement. No filesystem/network I/O: the EFFECT boundary supplies file
-  content as strings. No hardcoded paths; artifact sources are declared in the
-  artifact_source_registry below by logical name + provenance + factor.
+  Pure deterministic resolver that turns pre-read artifact sources
+  (golden-chain YAML, exemplar files, CLAUDE.md / architecture-doc bodies,
+  local-failure notes) into ModelContextPackArtifact entries with provenance,
+  one per whole-body source and one per markdown section. Primitives only
+  (OMN-21137): section parsing and source resolution. It applies no section
+  selection, deduplication, token budget or pack hash; the context-ROI runner
+  passes its artifacts to node_context_pack_builder_compute, the one assembler
+  that selects, budgets and hashes. No filesystem/network I/O: the EFFECT
+  boundary supplies file content as strings. No hardcoded paths; artifact
+  sources are declared in the artifact_source_registry below by logical name +
+  provenance + factor.
 
 handler_routing:
   routing_strategy: operation_match
@@ -49,34 +51,18 @@ inputs:
     type: array
     required: true
     description: Pre-read artifact sources, one or more per factor.
-  token_budget:
-    type: int
-    required: false
-    description: Overall pack token budget (default 16000).
-  per_factor_token_budget:
-    type: int
-    required: false
-    description: Max tokens selected for a single sectioned-markdown factor.
 
 outputs:
   status:
     type: str
     enum: [ok, failed]
-  artifact_content_map:
-    type: object
-    description: EnumContextFactor value -> resolved factor text.
+  artifacts:
+    type: array
+    description: >
+      ModelContextPackArtifact entries in source order, then section order,
+      unselected and unbudgeted, for node_context_pack_builder_compute.
   resolved_factors:
     type: array
-  pack_hash:
-    type: str
-    required: false
-    nullable: true
-  total_token_estimate:
-    type: int
-  failure_class:
-    type: str
-    required: false
-    nullable: true
   errors:
     type: array
   warnings:
@@ -99,8 +85,8 @@ externally_consumed_topics:
 # factor, and how to resolve it. Logical source names only -- NEVER absolute
 # filesystem paths. The EFFECT boundary maps a logical name to a real file and
 # supplies its content as a string at resolve time.
-#   - sectioned: true  -> markdown body split into heading sections, top
-#                         sections selected within per_factor_token_budget.
+#   - sectioned: true  -> markdown body split into heading sections, one
+#                         artifact per section; the pack builder selects.
 #   - sectioned: false -> whole resolved body used as one artifact.
 artifact_source_registry:
   golden_chain:
@@ -126,7 +112,7 @@ artifact_source_registry:
 
 metadata:
   transport_type: kafka
-  description: "Context-artifact resolver -- materialises real per-factor content for the ROI runner"
+  description: "Context-artifact resolver -- resolves pre-read sources into pack-builder artifacts"
   author: "OmniNode Platform Team"
   tags:
     - "compute"
@@ -134,6 +120,7 @@ metadata:
     - "artifact-resolution"
     - "OMN-12948"
   related_tickets:
+    - "OMN-21137"
     - "OMN-12948"
     - "OMN-12798"
     - "OMN-12795"

@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: "node_review_replay_set_effect"
+# Phase 0 of the cost-shaped Hostile Reviewer rollout: the frozen set every later
+# replay, baseline and shadow sample is measured against.
+lifecycle: experimental
+contract_name: node_review_replay_set_effect
+node_name: node_review_replay_set_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Freezes merged PR diffs for the review replay: a target count (40 by default)
+  drawn round-robin across repo x size strata (changed lines: up to 199, 200 to
+  1,000, over 1,000), with pinned items (diffs already measured) taken first.
+  Diffs come from the canonical clones' landing-branch history with git, never
+  from GitHub. The manifest carries every diff's SHA-256, and its canonical-JSON
+  SHA-256 is the manifest hash; the set is written once under that hash and a
+  second freeze finds it intact or refuses.
+
+input_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_set.ModelReviewReplaySetRequest
+
+output_model:
+  name: ModelReviewReplaySetResult
+  module: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_set
+  description: The manifest hash and path, the item count, the shortfall and the items per stratum.
+
+handler:
+  module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set
+  class: HandlerReviewReplaySet
+  input_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_set.ModelReviewReplaySetRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set:HandlerReviewReplaySet
+  handlers:
+    - operation: review_replay_set.freeze
+      handler:
+        name: HandlerReviewReplaySet
+        module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set
+      handler_module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set
+      event_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_set.ModelReviewReplaySetRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-replay-set-freeze-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-replay-set-frozen.v1
+
+terminal_event: onex.evt.omnimarket.review-replay-set-frozen.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.review-replay-set-freeze-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.review-replay-set-frozen.v1"
+
+published_events:
+  - event_type: ModelReviewReplaySetResult
+    topic: onex.evt.omnimarket.review-replay-set-frozen.v1
+    description: "The frozen set's manifest hash, path, size and strata."
+
+side_effects:
+  reads:
+    - git
+  writes:
+    - filesystem
+  posts_to_github: false
+
+host_requirements:
+  tools: [git]
+  never_in: [ci-runner]
+
+dod_evidence:
+  PYTEST:
+    description: "the replay set freezes a stratified set under a stable manifest hash and refuses a tampered one"
+    command: "uv run pytest tests/unit/nodes/node_review_replay_set_effect -q"
+    pass_criteria: "40 items balanced across repo x size strata, same set same hash, changed diff or seed changes the hash, tampered frozen manifest refused"

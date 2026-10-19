@@ -11,17 +11,28 @@ import yaml
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import (
+from omnimarket.inference.delegation_config_provenance import resolve_path_config
+from omnimarket.inference.task_class_authority import load_task_class_authority
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
 )
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_result import (
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_result import (
     EnumContextProfileResolveStatus,
     ModelContextProfileResolveResult,
 )
 from omnimarket.pack.model_context_profile import ModelContextProfile
+from omnimarket.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
+)
 
 _PROFILES_DIR = Path(__file__).resolve().parents[3] / "pack" / "profiles"
 _PROFILE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+_MODEL_ROLE_FIELDS = (
+    "extraction_task_class",
+    "selection_task_class",
+    "summary_task_class",
+)
 
 
 def _failure(
@@ -33,6 +44,32 @@ def _failure(
         failure_class=failure_class,
         errors=tuple(errors),
     )
+
+
+def _model_role_errors(profile: ModelContextProfile) -> tuple[str, ...]:
+    roles = {
+        field: task_class
+        for field in _MODEL_ROLE_FIELDS
+        if (task_class := getattr(profile, field)) is not None
+    }
+    if not roles:
+        return ()
+    try:
+        path, _ = resolve_path_config(
+            TASK_CLASS_CONTRACT_PATH_ENV_KEY,
+            TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+        )
+        authority = load_task_class_authority(path)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        return (f"model-role routing contract could not be loaded: {exc}",)
+
+    errors: list[str] = []
+    for field, task_class in roles.items():
+        if task_class not in authority.task_classes:
+            errors.append(f"{field}: no routing-contract entry for {task_class!r}")
+        elif refusal := authority.unroutable_refusal(task_class):
+            errors.append(f"{field}: {refusal}")
+    return tuple(errors)
 
 
 class HandlerContextProfileResolver:
@@ -73,6 +110,8 @@ class HandlerContextProfileResolver:
                     for err in exc.errors()
                 ),
             )
+        if errors := _model_role_errors(profile):
+            return _failure(name, EnumContextPackFailure.INVALID_PROFILE, *errors)
         return ModelContextProfileResolveResult(
             status=EnumContextProfileResolveStatus.OK,
             profile_name=name,

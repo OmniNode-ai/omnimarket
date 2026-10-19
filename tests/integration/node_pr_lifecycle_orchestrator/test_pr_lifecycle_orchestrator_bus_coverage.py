@@ -308,7 +308,6 @@ def _inventory(pr_numbers: tuple[int, ...]) -> InventoryResult:
                 # fail-closed arm gate. Harmless for non-merge paths.
                 checks_status="success",
                 is_draft=False,
-                coderabbit_unresolved=0,
                 merge_state_status="CLEAN",
             )
             for n in pr_numbers

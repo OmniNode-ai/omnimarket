@@ -17,6 +17,13 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: the DoD routing read joins delegation rows to verdicts on a real PostgreSQL 16 database (one passing and one failing verdict give rate 0.5, excluding another tenant, another task type, an unlinked verdict and a run without a verdict), and a configured but unreachable database fails instead of skipping -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19528_dod_routing_read_real_postgres.py -q
+  - id: "req-merged-pr-merge-commit"
+    statement: |-
+      The gateway's merged_pr read must name a merged PR's merge commit when the REST body omits it, so a runtime's DoD verification reads a ticket's product contract at that commit.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a merged PR whose REST body carries no merge_commit_sha takes the merge commit from the GraphQL PR detail, a PR whose REST body carries it asks no GraphQL, an unmerged PR asks none, and a GraphQL failure fails the read -- falsifier: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_omn_19528_merged_pr_merge_sha_fallback.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The delegation-link tests pass at the head and the CLI flag does not exist at the merge base."
@@ -24,6 +31,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The real-Postgres join test passes at the head against the existing PostgreSQL fixture, with no skip."
     command: "env -u PYTHONPATH uv run pytest tests/test_omn19528_dod_routing_read_real_postgres.py -q"
+  - kind: "tests"
+    description: "The merged_pr read takes the merge commit from GraphQL only when REST omits it from a merged PR."
+    command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_omn_19528_merged_pr_merge_sha_fallback.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,3 +55,18 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19528_dod_routing_read_real_postgres.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-merged-pr-merge-commit-ac3"
+    description: "The tests prove the merge commit comes from GraphQL when REST omits it from a merged PR, and that a PR with the sha, an unmerged PR and a GraphQL failure behave as stated."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_omn_19528_merged_pr_merge_sha_fallback.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-merged-pr-merge-commit-deploy-ac3"
+    description: "The deployed gateway source at the fix commit carries the GraphQL merge-commit fallback in read_merged_pr."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_gateway_effect/read_operations.py?ref=dc0435518376c09f333ad589b173bc890b30ab91 --jq .content | base64 -d | grep -c 'if merged and not isinstance(merge_sha, str):'"
+        cwd: "${OMNI_HOME}/omnimarket"

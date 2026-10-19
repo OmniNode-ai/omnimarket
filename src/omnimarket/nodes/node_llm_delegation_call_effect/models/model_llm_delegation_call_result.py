@@ -10,6 +10,7 @@ from decimal import Decimal
 from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
@@ -50,6 +51,11 @@ class ModelLlmDelegationCallResult(BaseModel):
     output_hash: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
+    # OMN-20910: cache usage the provider reported, None when it reported no
+    # figure (never read as zero: a provider without a cache is not a miss).
+    cache_read_tokens: int | None = None
+    cache_write_5m_tokens: int | None = None
+    cache_write_1h_tokens: int | None = None
     latency_ms: int = 0
 
     # Cost telemetry (populated on success from MEASURED API response)
@@ -72,6 +78,20 @@ class ModelLlmDelegationCallResult(BaseModel):
     # that no signal accompanied the response — never a claim that the response
     # completed.
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT
+
+    # OMN-20910: the native Messages API's own stop reason, typed, so a parser
+    # receives ``MAX_TOKENS`` as a cut reply and never a bare string. ``None``
+    # on every OpenAI-compatible call (``finish_reason`` above carries theirs);
+    # on a native call ``finish_reason`` is the equivalent mapped value.
+    stop_reason: EnumAnthropicStopReason | None = None
+
+    # OMN-20910: prompt-cache usage the provider measured. ``tokens_in`` is the
+    # whole prompt (uncached + written + read); these say how much of it the
+    # cache served. Zero on a call that does not use the native protocol.
+    cache_creation_input_tokens: int = Field(default=0, ge=0)
+    cache_creation_5m_input_tokens: int = Field(default=0, ge=0)
+    cache_creation_1h_input_tokens: int = Field(default=0, ge=0)
+    cache_read_input_tokens: int = Field(default=0, ge=0)
 
     # OMN-20154: the HTTP status the provider answered and its native error
     # code, so the attempt record built from this result can say what the

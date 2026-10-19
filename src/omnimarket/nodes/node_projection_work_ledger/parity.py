@@ -54,14 +54,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.handlers.work_ledger_text import split_ledger_rows
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
+from omnimarket.handlers.work_ledger_fold import (
     WorkLedgerFoldError,
     apply_ops,
     fold_row,
     parse_stamp,
 )
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request import (
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
+from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_parity_report import (

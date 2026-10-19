@@ -123,7 +123,8 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     # OMN-20287 adds the Deployment Fact Gate, OMN-20781 adds the public-repo
     # hygiene gate and OMN-20940 adds its deployment-config job. The OCC
     # emitter golden gate left the tuple with the OCC companion producer.
-    assert len(resolved) == 57
+    # OMN-17427 adds the reviewer eval.
+    assert len(resolved) == 58
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
@@ -148,6 +149,16 @@ def test_push_cli_reports_applicable_contexts_and_enforces_them(
         {"name": name, "status": "completed", "conclusion": "success"}
         for name in (*gate.GATE_JOBS, "Tests (Split 1/1)")
     ]
+    if branch == "dev":
+        # OMN-19998: the heavy tier never runs on a dev push; its tree pass is
+        # inherited through the reuse verdict, which admits only a skipped gate.
+        jobs = [
+            {**job, "conclusion": "skipped"}
+            if job["name"] in gate.QUEUE_HEAVY_GATE_JOBS
+            else job
+            for job in jobs
+            if job["name"] != "Tests (Split 1/1)"
+        ]
     jobs_file = tmp_path / "jobs.json"
     jobs_file.write_text(json.dumps(jobs))
     contexts = gate.expected_external_contexts("push", ref_name=branch)
@@ -191,7 +202,12 @@ def test_push_cli_reports_applicable_contexts_and_enforces_them(
 def test_poller_passes_branch_to_every_gate_invocation() -> None:
     root = Path(__file__).resolve().parents[4]
     workflow = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
-    step = workflow["jobs"]["ci-summary"]["steps"][-1]
+    step = next(
+        step
+        for step in workflow["jobs"]["ci-summary"]["steps"]
+        if step.get("name")
+        == "Poll run jobs and compute fail-closed CI Summary verdict"
+    )
     invocations = [
         line
         for line in step["run"].splitlines()

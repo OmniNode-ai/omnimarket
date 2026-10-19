@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21190"
+title: "Review learning: finding identity compute and equivalence reducer with occurrence keys, lineage and ANCHOR_LOST"
+summary: >-
+  node_review_finding_identity_compute gives a finding a deterministic occurrence key, keeps its lineage when the anchor moves and classes an anchor it cannot re-find as ANCHOR_LOST, counted; node_review_equivalence_reducer owns equivalence-edge admission, rejection and revocation and advances a graph revision on each decision.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-finding-identity"
+    statement: "A finding's occurrence key is deterministic, lineage survives a moved anchor, and an anchor that cannot be re-found is ANCHOR_LOST and counted."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The same finding on the same anchor gets the same occurrence key, and a moved anchor keeps its lineage -- falsifier: pytest over node_review_finding_identity_compute with a same-anchor fixture and a moved-anchor fixture"
+      - id: "AC2"
+        statement: "AC2: An anchor that cannot be re-found is classed ANCHOR_LOST and counted -- falsifier: pytest with a refactor fixture asserting the class and the count"
+  - id: "req-equivalence-reducer"
+    statement: "The equivalence reducer owns edge admission, rejection and revocation, and each decision advances the graph revision."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: The equivalence reducer admits, rejects and revokes an edge and advances the graph revision each time -- falsifier: pytest over node_review_equivalence_reducer with an admit, reject and revoke sequence asserting the revisions"
+evidence_requirements:
+  - kind: "tests"
+    description: "Review finding identity compute and equivalence reducer for OMN-21190."
+    command: "uv run pytest tests/test_golden_chain_node_review_finding_identity_compute.py tests/test_golden_chain_node_review_equivalence_reducer.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21190-ac1-occurrence-key-and-lineage"
+    description: "The same finding on the same anchor yields the same occurrence key (also across hunk whitespace, blank lines and line numbers), every key component changes the key, and a hunk found at another line in a later snapshot keeps the lineage id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_finding_identity_compute.py -q -k 'TestOccurrenceKey or TestLineage'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21190-ac2-anchor-lost"
+    description: "A refactor that removes the hunk, an unreadable file and a hunk with no anchor lines are each classed ANCHOR_LOST with a reason, get no key, keep the lineage, and are counted beside the found ones."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_finding_identity_compute.py -q -k TestAnchorLost"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21190-ac3-graph-revisions"
+    description: "An admit, a reject and a revoke take the graph revision 0 -> 1 -> 2 -> 3; a repeat of a standing decision and a refused command leave it unchanged; revocation names the keys to relabel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_equivalence_reducer.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21190-deploy-probe"
+    description: "Deploy probe: both handlers read from GitHub at the checked-out commit declare their class. A head without them fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_equivalence_reducer/handlers/handler_review_equivalence_reducer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerReviewEquivalenceReducer'"
+        cwd: "${OMNI_HOME}/omnimarket"

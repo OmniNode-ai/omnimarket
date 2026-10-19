@@ -72,24 +72,26 @@ _HEALTH_EVENT = {
 }
 
 _DECOMPOSE_EVENT = {
-    "subtasks": [
-        {
-            "subtask_id": "st-1",
-            "description": "Define routes",
-            "model_affinity": "",
-            "depends_on": [],
-            "estimated_tokens": 100,
-            "category": "code",
-        },
-        {
-            "subtask_id": "st-2",
-            "description": "Write handlers",
-            "model_affinity": "",
-            "depends_on": ["st-1"],
-            "estimated_tokens": 200,
-            "category": "code",
-        },
-    ]
+    "decomposition": {
+        "subtasks": [
+            {
+                "subtask_id": "st-1",
+                "description": "Define routes",
+                "model_affinity": "",
+                "depends_on": [],
+                "estimated_tokens": 100,
+                "category": "code",
+            },
+            {
+                "subtask_id": "st-2",
+                "description": "Write handlers",
+                "model_affinity": "",
+                "depends_on": ["st-1"],
+                "estimated_tokens": 200,
+                "category": "code",
+            },
+        ]
+    }
 }
 
 _SELECT_EVENT = {"assignments": {"st-1": "ep-1", "st-2": "ep-2"}}
@@ -99,9 +101,9 @@ _FANOUT_EVENT = {
         {
             "subtask_id": "st-1",
             "endpoint_id": "ep-1",
-            "status": "succeeded",
+            "execution_status": "succeeded",
             "latency_ms": 800,
-            "result_text": "routes done",
+            "response_text": "routes done",
             "failure_reason": "",
             "wave": 0,
             "model_id": "qwen3",
@@ -110,9 +112,9 @@ _FANOUT_EVENT = {
         {
             "subtask_id": "st-2",
             "endpoint_id": "ep-2",
-            "status": "succeeded",
+            "execution_status": "succeeded",
             "latency_ms": 1200,
-            "result_text": "handlers done",
+            "response_text": "handlers done",
             "failure_reason": "",
             "wave": 1,
             "model_id": "deepseek",

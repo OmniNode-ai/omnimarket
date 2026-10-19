@@ -189,6 +189,28 @@ DATA_SOURCES: Final[frozenset[str]] = frozenset({DATA_SOURCE_REAL, DATA_SOURCE_F
 #: The ``ModelEnvelopeMetadata.tags`` key the seed stamps.
 DATA_SOURCE_TAG: Final[str] = "data_source"
 
+#: The wire ``payload_type`` the runtime's auto-wiring boundary stamps on the
+#: terminal it publishes when it refuses a command before any handler runs
+#: (``omnibase_infra.runtime.boundary_failure_terminal``). Spelled here because
+#: the name is the wire contract and this package does not import the runtime.
+BOUNDARY_FAILURE_TERMINAL_PAYLOAD_TYPE: Final[str] = "ModelBoundaryFailureTerminal"
+
+
+def is_boundary_failure_terminal(data: Mapping[str, Any]) -> bool:
+    """Whether this delivery is the runtime's answer to a refused command.
+
+    OMN-18389. Such a terminal rides a contract's own failure topic but is not a
+    record of the work that topic describes: it carries a failure class and
+    code, no ``task_type``, no tenant, no attempts. Keyed on the
+    ``payload_type`` the emitter stamps on the wire envelope (on the runner seam
+    :func:`unwrap_envelope` hands that envelope back under ``_envelope``), never
+    on payload shape, so a genuinely malformed terminal is still malformed.
+    """
+    envelope = data.get("_envelope")
+    if not isinstance(envelope, Mapping):
+        return False
+    return envelope.get("payload_type") == BOUNDARY_FAILURE_TERMINAL_PAYLOAD_TYPE
+
 
 def envelope_data_source(data: Mapping[str, Any]) -> str:
     """Return ``fixture`` only when the producer recorded that exact marker.

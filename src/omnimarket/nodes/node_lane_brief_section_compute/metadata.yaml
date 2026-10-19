@@ -1,0 +1,24 @@
+name: node_lane_brief_section_compute
+version: "1.0.0"
+description: "Deterministic render of a lane brief's section 3a from the lane_brief_section profile's required factors, refusing REQUIRED_FACTOR_MISSING"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lane_brief_section_compute: "omnimarket.nodes.node_lane_brief_section_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-pack", "lane-brief", "deterministic"]
+pack: "pipeline"
+display_name: "Lane Brief Section Compute"
+node_role: "compute"
+tickets: ["OMN-21118"]

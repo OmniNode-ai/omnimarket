@@ -21,6 +21,7 @@ import omnibase_core
 import omnibase_infra
 import pytest
 import pytest_asyncio
+import yaml
 
 from omnimarket.config.env_flags import env_flag
 
@@ -126,6 +127,31 @@ from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka  # noqa: E402
 from omnibase_infra.event_bus.models.config import (  # noqa: E402
     ModelKafkaEventBusConfig,
 )
+
+
+@pytest.fixture
+def promoted_context_profile_routing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Profile-data tests run with explicitly promoted fixture task classes."""
+    path = tmp_path / "routing.yaml"
+    entry = {
+        "gateway_exposure": "internal",
+        "selection": {"priority": 0, "phrases": []},
+    }
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "task_classes": {
+                    "extraction_proposer": entry,
+                    "context_compaction": entry,
+                    "context_selection": entry,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(path))
 
 
 @pytest.fixture

@@ -150,6 +150,10 @@ class TestHostileReviewerOrchestratorGoldenChain:
         assert completed.error_message is None
         assert completed.total_findings >= 1
         assert completed.pass_count == 2
+        # The event carries the merged findings, not only a count (OMN-17427).
+        assert completed.verdict in {"risks_noted", "blocking_issue"}
+        assert completed.findings
+        assert all(f.source_models for f in completed.findings)
 
     async def test_completed_event_shape_is_byte_stable(self) -> None:
         adapter = _replay_adapter(["review_primary"])
@@ -160,7 +164,9 @@ class TestHostileReviewerOrchestratorGoldenChain:
 
         # Preserved ModelHostileReviewerCompletedEvent shape (OMN-13210 replay),
         # extended by OMN-15152 with per-route status fields (additive, with
-        # defaults, so old replayed events without these keys still parse).
+        # defaults, so old replayed events without these keys still parse), by
+        # OMN-21189 with the target snapshot and per-route served-model provenance,
+        # and by OMN-17427 with the review-engine fallback record.
         assert set(payload) == {
             "correlation_id",
             "final_phase",
@@ -169,10 +175,18 @@ class TestHostileReviewerOrchestratorGoldenChain:
             "pass_count",
             "total_findings",
             "error_message",
+            "verdict",
+            "findings",
             "models_succeeded",
             "models_failed",
+            "target_snapshot",
+            "route_provenance",
+            "fallback_engine",
+            "fallback_for",
         }
         assert payload["final_phase"] == "done"
+        assert payload["fallback_engine"] is None
+        assert payload["fallback_for"] == []
         assert payload["models_succeeded"] == ["review_primary"]
         assert payload["models_failed"] == []
 
@@ -185,6 +199,8 @@ class TestHostileReviewerOrchestratorGoldenChain:
         completed = await _orchestrator(adapter).handle(command)
         assert completed.final_phase == EnumHostileReviewerPhase.DONE
         assert completed.total_findings == 0
+        assert completed.verdict == "clean"
+        assert completed.findings == []
 
     async def test_all_models_fail_yields_failed_event(self) -> None:
         """OMN-15152 fail-closed: when every requested reviewer route errors,
@@ -203,6 +219,9 @@ class TestHostileReviewerOrchestratorGoldenChain:
         assert "connection refused" in completed.error_message
         assert completed.models_succeeded == []
         assert completed.models_failed == ["review_primary"]
+        # A failed run states no verdict, so a consumer never reads it as clean.
+        assert completed.verdict is None
+        assert completed.findings == []
 
     async def test_all_models_fail_across_multiple_routes_yields_failed_event(
         self,

@@ -1,0 +1,41 @@
+# Context profile for a lane brief's section 3a (plan task TA.17, section 4.4).
+# Distinct from lane_brief.yaml (the dispatch pack profile): this one carries the
+# three factors node_lane_brief_section_compute renders section 3a from.
+# Inline binding: the lane-brief skill at dispatch, to the lane-brief standard.
+# Parity scope (TA.17 note): the v5 optional tiers (task-kind shapes, exemplars,
+# cited plan excerpts, capability digest) are excluded, so the comparison with the
+# script's section 3a is like for like; TC.10 enables them after their evaluation.
+# Budget: 12000 covers the largest of the 12 recent briefs measured for TA.17
+# (section 3a about 7.6k to 11.8k tokens, median about 8.5k at 4 characters per
+# token). The median would refuse a required factor on half of them with
+# TOKEN_BUDGET_EXCEEDED, so the first value is the measured maximum rounded up;
+# TC.9 and TC.12 tune it by a data PR that cites their measurement.
+model_id: lane-brief
+profile_version: 1.0.0
+injection_point: lane_brief
+binding_kind: inline
+required_factors:
+  - lane_rules
+  - operator_rulings
+  - open_work
+excluded_factors:
+  - invariants
+  - canonical_shapes
+  - exemplar
+  - plan_excerpts
+  - capability_digest
+# Authority order, section 4.2: rules, rulings, state.
+factor_precedence:
+  - lane_rules
+  - operator_rulings
+  - open_work
+stable_factors:
+  - lane_rules
+token_budget: 12000
+selection_task_class: context_selection
+# Window data (port item AP-B5): the consumer's window minus its reserved output and
+# system shares. The reserved shares are the plan's first values for a dispatched lane,
+# measured by TC.12.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 76738

@@ -276,9 +276,15 @@ class TestAnthropicIsACustomerOnlyProvider:
             for (provider, _plan), row in load_byok_plan_catalog().items()
             if provider == "anthropic"
         ]
-        assert [row.backend_id for row in rows] == ["byok-anthropic"]
-        assert rows[0].mirrors_house_rung is False
-        assert rows[0].customer_routable is True
+        # OMN-20910: the compatibility row is the default plan; the native
+        # Messages row is a second plan on the same account.
+        assert [row.backend_id for row in rows] == [
+            "byok-anthropic",
+            "byok-anthropic-native",
+        ]
+        assert [row.default_plan for row in rows] == [True, False]
+        assert all(row.mirrors_house_rung is False for row in rows)
+        assert all(row.customer_routable is True for row in rows)
 
     def test_the_loader_accepts_a_claude_provider_row(self, tmp_path: Path) -> None:
         """The loader no longer refuses a provider id for naming Claude."""

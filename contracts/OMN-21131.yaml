@@ -96,7 +96,7 @@ dod_evidence:
           from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import HandlerContextProfileResolver as R
           from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import ModelContextProfileResolveRequest as Q
           from omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules import HandlerContextTaskKindRules as H
-          from omnimarket.nodes.node_context_task_kind_rules_compute.models import ModelContextTaskKindRulesRequest as T
+          from omnimarket.models.context_task_kind_rules import ModelContextTaskKindRulesRequest as T
           p = R().handle(Q(profile_name="per_prompt")).profile
           hit = H().handle(T(profile_name="per_prompt", profile=p, caller_scope=S(repository="omnimarket", request_paths=("tests/unit/test_x.py",))))
           miss = H().handle(T(profile_name="per_prompt", profile=p, caller_scope=S()))

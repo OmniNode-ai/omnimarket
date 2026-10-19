@@ -1,5 +1,5 @@
 name: node_review_response_parser_compute
-version: "1.0.0"
+version: "1.1.0"
 description: "Normalizes a model's raw review response into ModelReviewFinding instances — pure COMPUTE"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
