@@ -32,7 +32,7 @@ WORKFLOW = (
     / "hostile-reviewer.yml"
 )
 # OMN-20910: the chunk-scaled review deadline revision retains the budget-timeout fix.
-BUDGET_TIMEOUT_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
+BUDGET_TIMEOUT_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
 PRE_BUDGET_TIMEOUT_PIN = "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
 _PIN = re.compile(
     r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"
