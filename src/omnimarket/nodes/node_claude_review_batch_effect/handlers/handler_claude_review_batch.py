@@ -5,9 +5,10 @@
 Per item: the cloud-refusal check, then admission (batch-priced when the
 transport batches), then one submit for the admitted items, then polling, then
 for each answer the parse and the verdict. Nothing is passed on silence: a
-refused, truncated, unparseable, empty, failed or never-answered item is
-``degraded``, and a reservation is settled when the provider may have charged
-and released when it was never dispatched or never answered.
+refused, truncated, unparseable, empty, failed, twice-answered or never-answered
+item is ``degraded``, and a reservation is settled when the provider may have
+charged and released when it was never dispatched or never answered. An answer
+for an item that was never submitted is ignored.
 
 Events are published through the sink as the chain advances, in the order the
 plan reads them back: admission decided, cost recorded, verdict recorded, then
@@ -236,7 +237,16 @@ class HandlerClaudeReviewBatch:
                 pending_item_ids=tuple(submitted),
             )
 
-        answers = {r.item_id: r for r in poll.results}
+        answers: dict[str, ModelBatchItemResult] = {}
+        submitted_ids = set(submitted)
+        duplicates: set[str] = set()
+        for r in poll.results:
+            if r.item_id not in submitted_ids:
+                continue
+            if r.item_id in answers:
+                duplicates.add(r.item_id)
+            else:
+                answers[r.item_id] = r
         verdicts = list(early)
         for item_id in submitted:
             item = items[item_id]
@@ -244,6 +254,9 @@ class HandlerClaudeReviewBatch:
             if answer is None:
                 self._admission.release(item_id)
                 verdicts.append(self._degraded(request, item, mode, "batch_expired"))
+            elif item_id in duplicates:
+                self._admission.settle(item_id, answer.usage)
+                verdicts.append(self._degraded(request, item, mode, "duplicate_answer"))
             else:
                 verdicts.append(self._judge(request, item, mode, answer))
 

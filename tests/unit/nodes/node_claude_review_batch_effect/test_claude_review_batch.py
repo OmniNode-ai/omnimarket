@@ -344,6 +344,49 @@ def test_an_item_the_ended_batch_never_answered_is_released_as_expired(
     assert expired[0].item_id in admission.released
 
 
+def test_an_answer_for_an_item_never_submitted_is_ignored(tmp_path: Path) -> None:
+    manifest = _store(tmp_path)
+
+    class _ExtraAnswer(_Transport):
+        def poll(self, batch_id: str) -> ModelBatchPoll:
+            polled = super().poll(batch_id)
+            extra = ModelBatchItemResult(
+                item_id="not-submitted",
+                success=True,
+                content=CLEAN,
+                usage=ModelBatchUsage(input_tokens=100, output_tokens=20),
+            )
+            return ModelBatchPoll(ended=True, results=(*polled.results, extra))
+
+    transport, admission = _ExtraAnswer(), _Admission()
+    result = _handler(transport, admission, _Sink()).handle(_request(manifest))
+    verdict_ids = {v.item_id for v in result.verdicts}
+    assert "not-submitted" not in verdict_ids
+    assert verdict_ids == {c.item_id for c in transport.submitted}
+    assert "not-submitted" not in admission.settled
+    assert "not-submitted" not in admission.released
+
+
+def test_an_item_answered_twice_is_degraded_never_passed(tmp_path: Path) -> None:
+    manifest = _store(tmp_path)
+
+    class _Duplicating(_Transport):
+        def poll(self, batch_id: str) -> ModelBatchPoll:
+            polled = super().poll(batch_id)
+            return ModelBatchPoll(
+                ended=True, results=(*polled.results, polled.results[0])
+            )
+
+    transport, admission = _Duplicating(), _Admission()
+    result = _handler(transport, admission, _Sink()).handle(_request(manifest))
+    first_id = transport.submitted[0].item_id
+    verdicts = [v for v in result.verdicts if v.item_id == first_id]
+    assert len(verdicts) == 1
+    assert verdicts[0].verdict is EnumBatchVerdict.DEGRADED
+    assert verdicts[0].reason == "duplicate_answer"
+    assert first_id in admission.settled
+
+
 def test_a_diff_that_no_longer_matches_the_manifest_is_refused(tmp_path: Path) -> None:
     manifest = _store(tmp_path)
     next((manifest.parent / "diffs").glob("alpha*.diff")).write_text(
