@@ -40,4 +40,3 @@ dod_evidence:
         check_value: |-
           uv run python -c 'from omnimarket.models.model_local_chain_pair_report import LOCAL_ROWS, absence_report; rows = [row for row in LOCAL_ROWS if not row.has_pair]; report = absence_report(); assert rows; assert all(any(line.startswith(row.row_id + ": ABSENT") and row.ticket in line for line in report.splitlines()) for row in rows); print(report)'
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
