@@ -127,22 +127,25 @@ def _provenance_from_response(
 ) -> ModelInferenceProvenance:
     """Read the served model and usage the delegation node reported.
 
-    The response metrics default to zero, so a call that reports no tokens at all
-    reads ``unknown`` rather than zero.
+    A text-only response may omit provenance entirely. The typed response metrics
+    default to zero, so a call that reports no tokens at all also reads
+    ``unknown`` rather than zero.
     """
-    metrics = response.metrics
-    reported = metrics.input_tokens or metrics.output_tokens or metrics.total_tokens
+    metrics = getattr(response, "metrics", None)
+    reported = metrics is not None and (
+        metrics.input_tokens or metrics.output_tokens or metrics.total_tokens
+    )
     usage = (
         ModelServedUsage(
             input_tokens=metrics.input_tokens,
             output_tokens=metrics.output_tokens,
             total_tokens=metrics.total_tokens,
         )
-        if reported
+        if metrics is not None and reported
         else ModelServedUsage()
     )
     return ModelInferenceProvenance(
-        served_model=response.model_name or UNKNOWN,
+        served_model=getattr(response, "model_name", None) or UNKNOWN,
         settings=ModelServedSettings(
             temperature=UNKNOWN if temperature is None else temperature
         ),

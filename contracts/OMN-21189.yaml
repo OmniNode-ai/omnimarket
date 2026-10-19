@@ -65,3 +65,34 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac:
       - AC3
+  - id: dod-omn-21189-deploy-model-smoke
+    description: Hosted deploy artifact probe. A disposable Python 3.12 container imports the review snapshot and inference provenance models from this checkout, checks the diff digest, refuses an unavailable snapshot carrying a sha, and reads missing model and usage as unknown while preserving reported token usage. The command fails on a checkout without these models or with incorrect model behavior. This checks the runtime artifact without claiming a deployed lane rollout.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env PYTHONPATH=/workspace/src --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
+          uv run --no-project --with 'pydantic>=2,<3' python -c '
+          import hashlib
+          from pydantic import ValidationError
+          from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
+          from omnimarket.models.model_inference_provenance import ModelInferenceProvenance, ModelServedUsage
+          snapshot = ModelReviewTargetSnapshot.established(head_sha="a" * 40, base_sha="b" * 40, diff_text="reviewed diff")
+          assert snapshot.head_sha == "a" * 40 and snapshot.base_sha == "b" * 40
+          assert snapshot.diff_digest == "sha256:" + hashlib.sha256(b"reviewed diff").hexdigest()
+          unavailable = ModelReviewTargetSnapshot.unavailable("head moved")
+          assert unavailable.head_sha is None and unavailable.unavailable_reason == "head moved"
+          try:
+              ModelReviewTargetSnapshot(status="unavailable", head_sha="a" * 40, unavailable_reason="head moved")
+          except ValidationError:
+              pass
+          else:
+              raise AssertionError("unavailable snapshot accepted a sha")
+          missing = ModelInferenceProvenance.from_chat_completion({}, temperature=None, max_tokens=None)
+          assert missing.served_model == "unknown" and missing.usage == ModelServedUsage()
+          served = ModelInferenceProvenance.from_chat_completion({"model": "served-model", "usage": {"prompt_tokens": 7}}, temperature=0.0, max_tokens=64)
+          assert served.served_model == "served-model" and served.usage.input_tokens == 7
+          assert served.usage.output_tokens == "unknown" and served.settings.temperature == 0.0
+          print("OMN-21189 runtime artifact readback passed: snapshot digest, unavailable refusal, served model, unknown usage")'

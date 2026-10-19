@@ -5,6 +5,7 @@ usage; a field the provider did not report reads ``unknown``."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -202,3 +203,32 @@ async def test_delegation_route_without_a_model_name_reads_unknown() -> None:
 
     assert result.provenance.served_model == UNKNOWN
     assert result.provenance.settings.temperature == UNKNOWN
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata",
+    [{}, {"metrics": None}, {"model_name": "served-model"}],
+)
+async def test_text_only_delegation_response_reads_missing_provenance_as_unknown(
+    metadata: dict[str, object],
+) -> None:
+    handler = MagicMock()
+    handler.handle = AsyncMock(
+        return_value=SimpleNamespace(
+            status="completed", response="reviewed", error_message=None, **metadata
+        )
+    )
+
+    result = await HandlerDelegationReviewInference(handler).infer_with_provenance(
+        model_key="requested-route",
+        system_prompt="s",
+        user_prompt="u",
+        timeout_seconds=30.0,
+        temperature=0.0,
+    )
+
+    assert result.text == "reviewed"
+    assert result.provenance.served_model == metadata.get("model_name", UNKNOWN)
+    assert result.provenance.usage == ModelServedUsage()
+    assert result.provenance.settings == ModelServedSettings(temperature=0.0)
