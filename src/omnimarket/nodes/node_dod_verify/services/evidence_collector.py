@@ -1947,7 +1947,11 @@ def _split_shell_words(s: str) -> list[str]:
 
 
 def _invalid_check_value_reason(
-    cmd_str: str, *, cwd: str | None = None, path: str | None = None
+    cmd_str: str,
+    *,
+    cwd: str | None = None,
+    path: str | None = None,
+    verifier_host_tools: frozenset[str] = frozenset(),
 ) -> str | None:
     """Return a reason string when ``cmd_str`` looks like prose, not a command.
 
@@ -2115,6 +2119,11 @@ def _invalid_check_value_reason(
             f"first token {first!r} is not a resolvable executable relative "
             f"to cwd {str(base)!r} — this looks like prose, not a command"
         )
+    if first in verifier_host_tools:
+        # OMN-20910: an authoring caller (PR create, push) judges a check that
+        # runs on the verifier host, not on its own; a tool that host declares
+        # is a command even where the writer lacks it. The verifier passes none.
+        return None
     if shutil.which(first, path=path) is not None:
         return None
     return (

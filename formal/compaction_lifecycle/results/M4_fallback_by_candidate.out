@@ -1,0 +1,281 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 53 and seed -929029557422246023 with 12 workers on 32 cores with 9102MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CompactionLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CompactionLifecycle
+Starting... (2026-10-17 22:21:42)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-17 22:21:42.
+Error: Invariant FallbackNeverConflictsWithAnotherInvocation is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ cand = <<99, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"idle", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {}
+/\ trig = <<"none", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 2: <SourceChange line 175, col 5 to line 177, col 105 of module CompactionLifecycle>
+/\ cand = <<99, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"idle", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = {}
+/\ trig = <<"none", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 3: <Start line 180, col 5 to line 187, col 84 of module CompactionLifecycle>
+/\ cand = <<1, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"started", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = {}
+/\ trig = <<"precompute", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 4: <Start line 180, col 5 to line 187, col 84 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"started", "started">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = {}
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 5: <Build line 229, col 5 to line 234, col 91 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"built", "started">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = {[c |-> 1, x |-> 0, k |-> "prepared", a |-> 0]}
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 6: <Fail line 239, col 5 to line 243, col 96 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"failed", "started">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = { [c |-> 1, x |-> 0, k |-> "fallback", a |-> 1],
+  [c |-> 1, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 7: <Build line 229, col 5 to line 234, col 91 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"failed", "built">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = { [c |-> 1, x |-> 0, k |-> "fallback", a |-> 1],
+  [c |-> 1, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 8: <Activate line 246, col 5 to line 249, col 100 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"failed", "activated">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = { [c |-> 1, x |-> 0, k |-> "activated", a |-> 2],
+  [c |-> 1, x |-> 0, k |-> "fallback", a |-> 1],
+  [c |-> 1, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {}
+
+State 9: <Next line 391, col 8 to line 391, col 32 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"failed", "activated">>
+/\ captured = {}
+/\ astate = <<"none", "activated">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = { [c |-> 1, x |-> 0, k |-> "activated", a |-> 2],
+  [c |-> 1, x |-> 0, k |-> "fallback", a |-> 1],
+  [c |-> 1, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = {[c |-> 1, x |-> 0, k |-> "activated", a |-> 2]}
+
+State 10: <Next line 391, col 8 to line 391, col 32 of module CompactionLifecycle>
+/\ cand = <<1, 1>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"fallback", "fallback">>
+/\ dropped = {}
+/\ ph = <<"failed", "activated">>
+/\ captured = {}
+/\ astate = <<"none", "activated">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 1
+/\ bus = { [c |-> 1, x |-> 0, k |-> "activated", a |-> 2],
+  [c |-> 1, x |-> 0, k |-> "fallback", a |-> 1],
+  [c |-> 1, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"precompute", "precompute">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = ( 0 :> "none" @@
+  1 :> "none" @@
+  10 :> "none" @@
+  11 :> "none" @@
+  20 :> "none" @@
+  21 :> "none" )
+/\ complete = {}
+/\ seen = { [c |-> 1, x |-> 0, k |-> "activated", a |-> 2],
+  [c |-> 1, x |-> 0, k |-> "fallback", a |-> 1] }
+
+177838 states generated, 60044 distinct states found, 35093 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 13 and the 95th percentile is 7).
+Finished in 01s at (2026-10-17 22:21:43)
+exit=12

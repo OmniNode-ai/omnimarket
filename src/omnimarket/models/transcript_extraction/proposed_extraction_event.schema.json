@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "EnumExtractionKind": {
+      "description": "Role A proposes these four kinds, plan section 5.1.",
+      "enum": [
+        "ruling",
+        "correction",
+        "constraint",
+        "decision"
+      ],
+      "title": "EnumExtractionKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A proposal, never prose: a kind, the verbatim quote, its source and its offsets.\n\ncovers_start and covers_end are character offsets into the cited prompt's text,\nend exclusive. scope is the scope the words name, or None. Its JSON schema is\ncommitted beside this module as proposed_extraction_event.schema.json.",
+  "properties": {
+    "covers_end": {
+      "minimum": 1,
+      "title": "Covers End",
+      "type": "integer"
+    },
+    "covers_start": {
+      "minimum": 0,
+      "title": "Covers Start",
+      "type": "integer"
+    },
+    "event_id": {
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/EnumExtractionKind"
+    },
+    "prompt_id": {
+      "minLength": 1,
+      "title": "Prompt Id",
+      "type": "string"
+    },
+    "quote": {
+      "minLength": 1,
+      "title": "Quote",
+      "type": "string"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scope"
+    }
+  },
+  "required": [
+    "kind",
+    "quote",
+    "event_id",
+    "prompt_id",
+    "covers_start",
+    "covers_end"
+  ],
+  "title": "ModelProposedExtractionEvent",
+  "type": "object"
+}

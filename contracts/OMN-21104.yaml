@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21104"
+title: "Compaction mod TA.1: model the compaction lifecycle"
+summary: >-
+  A TLA+ model of the compaction lifecycle (formal/compaction_lifecycle) checked by TLC before the compaction orchestrator and install confirmation are built: candidate, activation and invocation states, the triggers, concurrent invocations on the same inputs, an edge that misses its deadline while the orchestrator completes, capture delay, drop and duplicate, and event delivery in any order with duplicates. Each property fails on a one-knob mutation; a design-review verdict names the model's digest.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-compaction-lifecycle-safety"
+    statement: |-
+      The compaction lifecycle's safety properties hold in the design and each fails on a one-knob mutation.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: NoInstallWithoutActivation, OneStatePerIdentityUnderAnyArrivalOrder, StaleCandidateNeverInstalled (version vector changed), FallbackNeverConflictsWithAnotherInvocation and NoCompleteBeforeInstalled hold in formal/compaction_lifecycle's design config, and each mutant targeting one records a TLC trace -- falsifier: uv run pytest tests/formal/test_compaction_lifecycle_model.py -k "no_install_without_activation or one_state_per_identity or stale_candidate or fallback_never or no_complete_before or design_passes"
+  - id: "req-compaction-lifecycle-liveness"
+    statement: |-
+      Every activation resolves once the session's captured stream advances.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: every activation reaches one of installed, install_mismatch, not_installed or uncertain in every fair behaviour in which the session's captured stream advances: the design_live config passes EveryActivationResolves and the mutant without the capture-gap rule records a TLC lasso -- falsifier: uv run pytest tests/formal/test_compaction_lifecycle_model.py -k "every_activation_resolves or design_passes"
+  - id: "req-compaction-lifecycle-verdict"
+    statement: |-
+      A design-review verdict names the model's digest.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: formal/compaction_lifecycle/README.txt is the design note, and formal/compaction_lifecycle/VERDICT.txt holds exactly one verdict line, an APPROVE naming the sha256 of the committed CompactionLifecycle.tla -- falsifier: uv run pytest tests/formal/test_compaction_lifecycle_model.py -k verdict_names_model_digest
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the compaction lifecycle model, its TLC results and its verdict agree."
+    command: "uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21104-ac1-safety"
+    description: "The design config passes the five safety properties and each safety mutant records a counterexample to the one property it targets."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov -k 'no_install_without_activation or one_state_per_identity or stale_candidate or fallback_never or no_complete_before or design_passes'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21104-ac2-liveness"
+    description: "The design_live config passes EveryActivationResolves and the no-gap-rule mutant records a temporal violation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov -k 'every_activation_resolves or design_passes'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21104-ac3-verdict"
+    description: "VERDICT.txt holds one APPROVE line naming the committed model's sha256."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov -k verdict_names_model_digest"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

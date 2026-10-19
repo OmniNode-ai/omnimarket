@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21187"
+title: "Review learning: preregistration of quotas, cutting rule and acceptance, with the review quota reducer"
+summary: "The review-learning collection is preregistered before it starts: preregistration.v1.yaml beside node_review_quota_reducer fixes the weekly quota of each eligible route, the minimum counts and gate behaviour, the 14-day pilot inside the 30-day window, the train/evaluation/final cutting rule and the final acceptance criteria, and its sha256 sits in a sha256sum-format sidecar. node_review_quota_reducer is a pure definition-B reducer: it loads the preregistration only when the file hashes to the sidecar, reserves, consumes and releases one request id against its route's weekly quota, and refuses a reservation for a route not on the list, a full quota window, a clock outside the collection window and a request naming another preregistration hash. The eligible-route roster is the one in force on 2026-10-18; the read-only inventory of review producers is a separate dependency, and a route it adds enters through a version 2 of the preregistration before collection starts. Nothing calls the reducer yet: no producer reserves before a model call in this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21187-preregistration-record"
+    statement: "The preregistration record is a versioned file whose sha256 is stated beside it in sha256sum format; any change to its bytes makes the stated hash wrong and the reducer refuse to load it."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The preregistration record fixes the quotas, eligible routes, minimum counts, pilot window and cutting rule before any collection starts, and carries its own sha256 -- falsifier: sha256sum of the preregistration file equals the hash the record states"
+  - id: "req-omn21187-quota-reducer"
+    statement: "The quota reducer admits a reservation only while the route's weekly quota has room and refuses it otherwise."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: node_review_quota_reducer admits a review only while its route quota has room and refuses it otherwise -- falsifier: pytest over the reducer with an under-quota fixture and an at-quota fixture"
+evidence_requirements:
+  - kind: "tests"
+    description: "The preregistration hash and required sections, and the reducer over an under-quota and an at-quota fixture."
+    command: "uv run pytest tests/unit/nodes/node_review_quota_reducer/test_review_quota_reducer.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21187-preregistration-sha256"
+    description: "sha256sum of the preregistration file equals the hash its sidecar states; a tampered copy fails to load."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_quota_reducer/test_review_quota_reducer.py -q -k 'sidecar_hash or required_section or changed_preregistration or unchanged_preregistration'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21187-quota-reducer-admission"
+    description: "The reducer admits at 119 of 120 used and refuses at 120 of 120; at the merge base the node does not exist and the module fails to import."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_quota_reducer/test_review_quota_reducer.py -q -k 'under_quota or at_quota or not_on_the_preregistered or per_route or per_week or idempotent'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21187-deploy-preregistration-published"
+    description: "Hosted deploy source probe at the evaluated commit: the preregistration file published at this commit hashes to the value its published sidecar states. The pre-change tree has neither file, so the fetch fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'B="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_review_quota_reducer"; test "$(curl --fail --silent --show-error --location --max-time 30 "$B/preregistration.v1.yaml" | sha256sum | cut -d" " -f1)" = "$(curl --fail --silent --show-error --location --max-time 30 "$B/preregistration.v1.yaml.sha256" | cut -d" " -f1)"'

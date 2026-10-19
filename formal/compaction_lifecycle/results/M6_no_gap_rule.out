@@ -1,0 +1,300 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 35 and seed -8997007447805051967 with 12 workers on 32 cores with 9102MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CompactionLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CompactionLifecycle
+Starting... (2026-10-17 22:21:52)
+Implied-temporal checking--satisfiability problem has 2 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-17 22:21:52.
+Checking 2 branches of temporal properties for the current state space with 188000 total distinct states at (2026-10-17 22:21:55)
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ cand = <<99, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"idle", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {}
+/\ trig = <<"none", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {}
+
+State 2: <Start line 180, col 5 to line 187, col 84 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 1
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"started", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {}
+/\ trig = <<"manual", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {}
+
+State 3: <Build line 229, col 5 to line 234, col 91 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 1
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"built", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = {[c |-> 0, x |-> 0, k |-> "prepared", a |-> 0]}
+/\ trig = <<"manual", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {}
+
+State 4: <Activate line 246, col 5 to line 249, col 100 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 1
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"activated", "idle">>
+/\ captured = {}
+/\ astate = <<"none", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {}
+
+State 5: <Next line 391, col 8 to line 391, col 32 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 1
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"activated", "idle">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 6: <Send line 254, col 5 to line 258, col 95 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 1
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "idle">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"wait", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 7: <EdgeTimeout line 275, col 5 to line 278, col 105 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 1
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "idle">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "none">>
+/\ tr = <<>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 8: <Compact line 194, col 5 to line 203, col 90 of module CompactionLifecycle>
+/\ cand = <<0, 99>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "idle">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "none">>
+/\ tr = <<[kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99]>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 9: <Start line 180, col 5 to line 187, col 84 of module CompactionLifecycle>
+/\ cand = <<0, 10>>
+/\ holding = 2
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "started">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "wait">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "manual">>
+/\ tr = <<[kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99]>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 10: <EdgeTimeout line 275, col 5 to line 278, col 105 of module CompactionLifecycle>
+/\ cand = <<0, 10>>
+/\ holding = 2
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "started">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "native">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "manual">>
+/\ tr = <<[kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99]>>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 11: <Compact line 194, col 5 to line 203, col 90 of module CompactionLifecycle>
+/\ cand = <<0, 10>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "started">>
+/\ captured = {}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "native">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "manual">>
+/\ tr = << [kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99],
+   [kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99] >>
+/\ trunc = {}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 12: <Capture line 285, col 5 to line 291, col 105 of module CompactionLifecycle>
+/\ cand = <<0, 10>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "started">>
+/\ captured = {2}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "native">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "manual">>
+/\ tr = << [kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99],
+   [kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99] >>
+/\ trunc = {2}
+/\ cstate = (0 :> "none" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = {[c |-> 0, x |-> 0, k |-> "activated", a |-> 1]}
+
+State 13: <Next line 391, col 8 to line 391, col 32 of module CompactionLifecycle>
+/\ cand = <<0, 10>>
+/\ holding = 0
+/\ overGap = {}
+/\ istate = <<"none", "none">>
+/\ dropped = {}
+/\ ph = <<"sent", "started">>
+/\ captured = {2}
+/\ astate = <<"activated", "none">>
+/\ er = <<"native", "native">>
+/\ kept = {}
+/\ sv = 0
+/\ bus = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+/\ trig = <<"manual", "manual">>
+/\ tr = << [kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99],
+   [kind |-> "boundary", act |-> 0, altered |-> FALSE, tv |-> 99] >>
+/\ trunc = {2}
+/\ cstate = (0 :> "h0" @@ 10 :> "none" @@ 20 :> "none")
+/\ complete = {}
+/\ seen = { [c |-> 0, x |-> 0, k |-> "activated", a |-> 1],
+  [c |-> 0, x |-> 0, k |-> "prepared", a |-> 0] }
+
+State 14: Stuttering
+Finished checking temporal properties in 00s at 2026-10-17 22:21:55
+457713 states generated, 94000 distinct states found, 18108 states left on queue.
+Finished in 03s at (2026-10-17 22:21:55)
+exit=13

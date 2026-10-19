@@ -12,8 +12,8 @@ Cross-node types for the report-only OCC-companion auto-authoring window:
     it the window counter cannot distinguish machine-minted from emitter-minted.
 
   * :class:`ModelOccAutoauthorObservation` — one typed observation record emitted
-    by the report-only attestation-observe pass (``node_occ_attestation_observe``)
-    and aggregated by the window counter (``node_occ_autoauthor_window``). It is
+    by the report-only attestation-observe pass (retired with its node) and
+    aggregated by the window counter (``node_occ_autoauthor_window``). It is
     the durable evidence unit for the future fail-closed flip (OMN-14393 §4).
 
 These live under ``omnimarket.events`` so neither node reaches into the other's

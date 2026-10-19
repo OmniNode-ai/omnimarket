@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction loss measurement (OMN-21122).
+# Splits a Claude Code transcript at each compact_boundary record into the window the compaction
+# replaced and the summary that replaced it, keyed by session and boundary uuid, then scores which
+# must-carry items of the window (lane CLAIMs, promises, rulings and consents, PRs, tickets,
+# operator instructions and silent mode) survive in the summary. The caller reads the transcript
+# or the captured session-content rows and passes the records in; the node performs no I/O.
+name: compaction_loss_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pair each compaction's replaced window with its summary, extract the window's must-carry items,
+  and report recall per item kind, the dropped items and an eval case with the replay eval
+  presence-case field names so a context pack is judged on what the stock summary dropped.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: pair_compactions
+      handler:
+        name: HandlerCompactionPairs
+        module: omnimarket.nodes.node_compaction_loss_compute.handlers.handler_compaction_loss
+      input_model: omnimarket.nodes.node_compaction_loss_compute.models.model_compaction_loss.ModelCompactionPairsRequest
+      output_model: omnimarket.nodes.node_compaction_loss_compute.models.model_compaction_loss.ModelCompactionPairs
+    - operation: measure_compaction_loss
+      handler:
+        name: HandlerCompactionLoss
+        module: omnimarket.nodes.node_compaction_loss_compute.handlers.handler_compaction_loss
+      input_model: omnimarket.nodes.node_compaction_loss_compute.models.model_compaction_loss.ModelCompactionLossRequest
+      output_model: omnimarket.nodes.node_compaction_loss_compute.models.model_compaction_loss.ModelCompactionLossResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.compaction-loss-measured.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.compaction-loss-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.compaction-loss-measured.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.compaction-loss-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.compaction-loss-measured.v1
+
+metadata:
+  ticket: OMN-21122
+  transport_type: kafka

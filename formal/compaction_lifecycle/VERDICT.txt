@@ -1,0 +1,44 @@
+CompactionLifecycle model verdict (OMN-21104)
+=============================================
+
+Reviewer: Codex (codex-cli, its configured default model, reasoning effort high), run
+read-only in the lane's worktree as an adversarial reviewer of the model, its configs, the
+TLC results and the design note (README.txt), against plan task TA.1 and the plan's
+compaction transaction and boundary algorithm. The rule given to the reviewer: APPROVE only
+with no BLOCKER and no MAJOR finding.
+
+Rounds
+------
+
+round 1  model sha256=a7a54c5eda316de1374d5dcd6ed581d4e066610bab0312d0ca4c201206a86449  REJECT  1 BLOCKER, 5 MAJOR
+         (not_selected derived from an ordinary turn and from a boundary predating the
+         activation; no candidate assembly hash or candidate conflict; no source-completeness
+         barrier; staleness by transcript length only; the fallback invariant vacuous in the
+         design; record-level boundary evidence and the current-context projection absent)
+round 2  model sha256=2cfabd52cc6133b201ee45bb3ec63b3c4a8409c4c77017577913ad775087f6eb  REJECT  2 MAJOR
+         (the full version vector checked for precompute only; the activation's publication
+         point read from the harness transcript, which the orchestrator cannot see)
+round 3  model sha256=6fe9fd078133ea141f94ea41215b9aa3877c66ed82d9c8a3dc08af4572dc9cee  APPROVE 0 MAJOR, 1 MINOR
+
+Round 1's sixth finding was answered by scope: record-level boundary extraction and the
+current-context projection are TA.13's and are listed as out of scope in README.txt. After
+round 3 the README's P6 row was reworded for its MINOR (the condition is the request's
+session high-water, not publication). The model and every config are unchanged since the
+round-3 review.
+
+Round 3 review, as returned (worktree paths made repo-relative)
+-------------------------------------------------------------------
+
+Reviewed model SHA-256 `6fe9fd078133ea141f94ea41215b9aa3877c66ed82d9c8a3dc08af4572dc9cee`. The completed TLC summary records both design checks passing and all seven mutants violating their intended properties. Model, config and output hashes match.
+
+1. **MINOR — P6’s description still refers to publication.** [README.txt:55](formal/compaction_lifecycle/README.txt:55) says “advances past its publication.” The implemented condition is advancement beyond the **request’s session high-water**, which can precede publication. Update that description to match.
+
+No BLOCKER or MAJOR findings remain:
+
+- P3 checks the complete trigger-fixed vector. The README explicitly reconciles request-fixed manual/auto inputs with kept-precompute revalidation.
+- The request high-water removes the unsupported harness read. Within this abstraction, turn holding, boundary invalidation and revalidation justify using the first boundary after that high-water.
+- All seven properties are non-vacuous, and every mutant changes one constant representing a meaningful design decision.
+- Required lifecycle actors and states are represented. Activation conflict remains a defensive alarm; candidate conflict is reachable. Record extraction and current-context retirement remain explicitly outside this model’s verification scope.
+- P6 still relies on the documented literal capture-gap rule. Adopting the proposed pending-evidence behavior would require revisiting its liveness claim.
+
+verdict: APPROVE model=CompactionLifecycle.tla sha256=6fe9fd078133ea141f94ea41215b9aa3877c66ed82d9c8a3dc08af4572dc9cee

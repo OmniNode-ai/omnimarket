@@ -1,0 +1,70 @@
+# Context profile for the lane-brief skill at dispatch (plan tasks TA.17 and TC.10, section 4.4).
+# Inline: the skill calls the pack orchestrator itself; no hook is involved. The optional
+# factors are the v5 tiers, enabled here for TC.10. A brief missing a required factor is
+# refused (REQUIRED_FACTOR_MISSING), which carries the lane-brief standard's
+# refuse-on-missing rule: a missing cited ruling never renders.
+# token_budget is a first value, not a measurement of these tiers: the 2026-10-19 replay
+# evaluation built a 677-token lane-brief pack from lane_rules and operator_rulings
+# alone, without the v5 tiers. TC.9 and TC.12 read the measured size, and this value
+# changes only through a data PR that cites that evidence.
+model_id: claude-code-subagent
+profile_version: 1.0.0
+binding_kind: inline
+required_factors:
+  - lane_rules
+  - operator_rulings
+  - open_work
+optional_factors:
+  - invariants
+  - canonical_shapes
+  - exemplar
+  - plan_excerpts
+  - capability_digest
+# Authority order, section 4.2: standing rules, invariants, shapes and exemplars (the
+# stable tiers), rulings, state, then cited plans.
+factor_precedence:
+  - lane_rules
+  - invariants
+  - canonical_shapes
+  - exemplar
+  - operator_rulings
+  - open_work
+  - capability_digest
+  - plan_excerpts
+stable_factors:
+  - lane_rules
+  - invariants
+  - canonical_shapes
+  - exemplar
+scopes:
+  - architecture
+  - process
+token_budget: 20000
+# Window data (port item AP-B5): the same consumer as the agent_spawn profile (a
+# claude-code-subagent session), so the same first values; TC.12 measures them.
+context_window_tokens: 200000
+reserved_output_tokens: 32000
+reserved_system_tokens: 76738
+selection_task_class: context_selection
+# Shapes and exemplars load only for a node archetype the caller names.
+task_kind_rules:
+  - rule_id: archetype_compute
+    task_kind: node_compute
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: compute}
+    factors: [canonical_shapes, exemplar]
+  - rule_id: archetype_effect
+    task_kind: node_effect
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: effect}
+    factors: [canonical_shapes, exemplar]
+  - rule_id: archetype_reducer
+    task_kind: node_reducer
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: reducer}
+    factors: [canonical_shapes, exemplar]
+  - rule_id: archetype_orchestrator
+    task_kind: node_orchestrator
+    conditions:
+      - {scope_field: node_archetype, operator: equals, value: orchestrator}
+    factors: [canonical_shapes, exemplar]
