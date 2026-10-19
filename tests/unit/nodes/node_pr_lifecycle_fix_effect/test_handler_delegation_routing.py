@@ -46,9 +46,6 @@ class _MockAgentDispatchAdapter:
         self.review_fix_calls.append((repo, pr_number, ticket_id))
         return f"[mock] dispatched review-fix on {repo}#{pr_number}"
 
-    async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
-        raise AssertionError("not used in these tests")
-
 
 class _MockDelegationFixAdapter:
     """Configurable delegated-fix adapter: always succeeds, or raises N times."""
@@ -166,7 +163,7 @@ class TestDelegationRoutingSafetyBar:
             two_strike_store=_InMemoryTwoStrikeStore(),
         )
         command = _make_command(
-            review_context_text="CodeRabbit: this touches the auth middleware"
+            review_context_text="Reviewer: this touches the auth middleware"
         )
 
         result = await handler.handle(command)
