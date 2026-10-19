@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_round_one_eval_compute
+version: 1.0.0
+description: Scores recorded compaction rung runs against labelled propositions (recall, controls,
+  baselines, precision, cost, identity and replay hashes).
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Context Round One Eval Compute
+entry_points:
+  onex.nodes:
+    node_context_round_one_eval_compute: omnimarket.nodes.node_context_round_one_eval_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- context
+- compaction
+- evaluation
