@@ -146,6 +146,26 @@ def test_rows_none_for_machine_and_drop_rows_for_drops() -> None:
     )
 
 
+def test_every_capture_row_names_the_capture_handler_as_its_actor() -> None:
+    """The ruling audit counts a mechanism acting only by a row whose actor= names it (OMN-19854)."""
+    rows = (
+        HandlerCaptureRows()
+        .handle(
+            ModelCaptureRowsRequest(
+                utterance=_utterance(),
+                classification=_classification(
+                    DECISION, ASK, drops=("ask-0123456789",)
+                ),
+                stamp=NOW,
+            )
+        )
+        .rows
+    )
+    assert len(rows) == 3
+    for row in rows:
+        assert row.count(" | actor=script:handler-capture-process | ") == 1
+
+
 def test_rows_carry_the_drift_flag() -> None:
     drift = HandlerRulingDrift().handle(
         ModelRulingDriftRequest(

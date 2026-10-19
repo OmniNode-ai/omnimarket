@@ -13,6 +13,9 @@ A ledger row is one line split on `` | ``, so three characters of the words cann
 byte for byte: a line break becomes `` / ``, a pipe becomes a broken bar and a double quote
 becomes two single quotes. A row that needed any of these says ``verbatim=normalized``; the
 untouched text stays in the local capture store under ``capture=<id>``.
+
+Every row carries ``actor=script:handler-capture-process``: the ruling audit counts a mechanism acting
+only by a row whose ``actor=`` names it, and these rows carried none (OMN-19854).
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from omnimarket.models.operator_capture import (
 
 STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 _CELL_UNSAFE = re.compile(r"[|\n\r=]")
+ACTOR = "script:handler-capture-process"
 
 
 def ledger_words(text: str) -> tuple[str, bool]:
@@ -59,6 +63,7 @@ class HandlerCaptureRows:
         else:
             classifier = "heuristic"
         common = [
+            f"actor={ACTOR}",
             f"session={_cell(utterance.session_id)}",
             f"source={_cell(utterance.source)}",
             f"capture={utterance.capture_id}",
