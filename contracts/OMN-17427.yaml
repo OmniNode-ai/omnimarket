@@ -378,6 +378,11 @@ requirements:
     acceptance:
       - id: "AC68"
         statement: "AC68: node_lab_first_routing_check_compute passes the shipped task-class and routing-tier contracts, and refuses a tier_order that does not open on the lab tier, an entry_share off the lab tier, a cloud model pin, a missing rubric, a verdict its measurement does not earn and a ladder that does not open on the lab tier -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q fails on any of those mutations of the real contract"
+  - id: "req-reviewer-eval-gate"
+    statement: "The hostile reviewer is scored on every change to it against an eval set from recorded history (true catches a later fix confirmed, blocks later overturned, merged heads with no revert), as recall on true catches and the false-block rate on clean heads, and the change fails when either score is worse than the set's baseline or the set shrinks, relabels a case or lowers its baseline; the score is published as an event."
+    acceptance:
+      - id: "AC80"
+        statement: "AC80: node_reviewer_eval_effect scores the recorded set at recall 1.0 and false-block rate 0.25 and regresses on a missed true catch, a new block on a clean head, a case with no verdict, a dropped case, a flipped label or a lowered baseline, and publishes the score on onex.evt.omnimarket.reviewer-eval-scored.v1 -- falsifier: uv run pytest tests/unit/nodes/node_reviewer_eval_effect/test_reviewer_eval.py -q fails at the merge base"
   - id: "req-review-finding-dispositions"
     statement: "A fix worker's result carries a typed disposition (fixed, wrong, intentional, not_applicable) with the finding's id and class for each hostile-reviewer finding it answered, published as events; a pure compute folds them with the review pass signal into per-repo noise share, one-round pass share and rounds-to-pass, and names each finding class that appears on three distinct PRs inside seven days with one stable dedupe key."
     acceptance:
@@ -445,6 +450,11 @@ requirements:
     acceptance:
       - id: "AC79"
         statement: "AC79: the summarization definition of done carries within_word_limit when the prompt states an at-most-N-words limit, an answer over that limit is refused, an answer at the limit and a prompt with no limit pass, and no other task class carries the check -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py -q fails"
+  - id: "req-hostile-reviewer-overflow-deadline-pin"
+    statement: "The Hostile Reviewer clones omniintelligence at the revision whose overflow endpoint is bounded by the vote deadline, not by its chunk share, and skips an endpoint that already failed over in the same vote."
+    acceptance:
+      - id: "AC80"
+        statement: "AC80: the hostile-reviewer workflow clones omniintelligence at 921b322b8e43f695961a06a04759dc88bb3e88ff and at no other sha -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q fails at the merge base, which pins aeba95945f22b3027d4010b53cb01b3f1217923c"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1486,6 +1496,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "lab_first_policy:" in source; assert "lab_rubric:" in source; print("lab-first routing deploy probe: PASS")'
+  - id: "dod-omn17427-ac80-reviewer-eval"
+    description: "The reviewer eval scores the recorded set and refuses every kind of drop."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_reviewer_eval_effect/test_reviewer_eval.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC80"]
+  - id: "dod-omn17427-reviewer-eval-deploy-probe"
+    description: "Deploy probe. GitHub serves the reviewer eval handler and its case set at the checked-out HEAD with the overturned omnimarket#4063 block in the set. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_reviewer_eval_effect/eval_cases.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("reviewer_eval_cases.v1", "d25be197856ff515cd1fd1d5e13396f03a54a91f", "true_catch", "known_clean")); print("reviewer eval deploy probe: PASS")'
   - id: "dod-omn17427-ac63-review-finding-dispositions"
     description: "The review finding disposition golden chain passes: noise share, convergence shares, recurring-class detection and the worker result field."
     source: "manual"
@@ -1650,3 +1675,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "- within_word_limit"
+  - id: "dod-omn17427-ac80-hr-overflow-pin"
+    description: "The hostile-reviewer workflow pins omniintelligence at the overflow-deadline revision, and a workflow at the previous pin is caught."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC80"]
+  - id: "dod-omn17427-hr-overflow-pin-probe"
+    description: "Deploy probe. GitHub serves the hostile-reviewer workflow at the checked-out HEAD cloning omniintelligence at the overflow-deadline revision. The probe fails at the merge base, which pins aeba95945f22, and needs only GitHub access on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
