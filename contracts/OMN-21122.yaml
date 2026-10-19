@@ -1,0 +1,102 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21122"
+title: "Capture kind compact: the producer call as an omnimarket node (plan task TA.20b, omnimarket half)"
+summary: >-
+  node_compact_package_read_effect reads an installed compaction out of a session transcript: its stdlib-only handler, which the onex plugin's hook_content_capture.py loads by file path, returns the newest compact_boundary record and every record after it exactly as written (a boundary quoted inside a tool result is not one, and a transcript not yet flushed is read again briefly). The capture keeps the opt-out, the drainer refusal, the size policy and the topic. node_projection_session_content stores the compact kind as a row per chunk. The omniclaude side (the capture entry accepting the kind and the PostCompact call) is a separate thin-shim change in its repository. node_compaction_loss_compute pairs each compaction's replaced window with its summary from the same transcript and scores which must-carry items survive (requirement req-omn21122-compaction-loss-compute, AC5 and AC6).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21122-compact-package-read-node"
+    statement: "node_compact_package_read_effect returns the newest compact_boundary record and every record after it, verbatim, from a session transcript."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the package starts at the newest boundary, holds every later record byte for byte, and holds no older boundary or earlier record -- falsifier: uv run pytest tests/test_compact_package_read_effect.py -q --no-cov -k 'newest_boundary or older_boundary or unmodified'"
+      - id: "AC2"
+        statement: "AC2: a transcript with no boundary, a missing transcript, and a boundary quoted inside a tool result have no package, a boundary flushed after the hook fired is found by polling, polling gives up after its attempts, and a window that cuts the boundary off finds nothing rather than a partial -- falsifier: uv run pytest tests/test_compact_package_read_effect.py -q --no-cov -k 'no_boundary or missing_transcript or quoted or polling or window'"
+      - id: "AC3"
+        statement: "AC3: the handler module imports only the standard library at module level, handle returns the typed result, a request without a transcript is refused by the model, and the contract declares its terminal topic and outputs -- falsifier: uv run pytest tests/test_compact_package_read_effect.py tests/test_golden_chain_compact_package_read_effect.py -q --no-cov -k 'standard_library or golden_chain or error_chain or contract_declares'"
+      - id: "AC4"
+        statement: "AC4: node_projection_session_content stores a compact record of more than one chunk as one row per chunk, and the chunks reassemble to the package's sha256 and hold the boundary uuid and every replacement record -- falsifier: uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_compact_kind_omn21122.py -q --no-cov"
+  - id: "req-omn21122-compaction-loss-compute"
+    statement: "node_compaction_loss_compute pairs each compaction with its replaced window and scores the must-carry items that survive in its summary."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: a transcript splits into one pair per compact_boundary keyed by its uuid, the window opens with the previous summary and leaves out tool results, thinking and meta records, and each must-carry kind is scored with recall per kind and the dropped items listed -- falsifier: uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'pairs_then_scores or no_boundary or paraphrased'"
+      - id: "AC6"
+        statement: "AC6: a summary equal to its window keeps every item, an empty window has no items and no recall, a malformed request is refused, and the contract declares its topics and resolves its handlers -- falsifier: uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'identical or empty_window or error_chain or contract or entry_point'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Compact package read effect and session-content projection tests for OMN-21122."
+    command: "uv run pytest tests/test_compact_package_read_effect.py tests/test_golden_chain_compact_package_read_effect.py tests/unit/nodes/node_projection_session_content/test_session_content_compact_kind_omn21122.py -q --no-cov"
+  - kind: "tests"
+    description: "Compaction loss compute tests for OMN-21122."
+    command: "uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21122-ac1-package"
+    description: "The package starts at the newest boundary and holds every later record byte for byte."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compact_package_read_effect.py -q --no-cov -k 'newest_boundary or older_boundary or unmodified'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21122-ac2-outcomes"
+    description: "No boundary, a missing transcript and a quoted boundary have no package; polling finds a late boundary and gives up; a cut window finds nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compact_package_read_effect.py -q --no-cov -k 'no_boundary or missing_transcript or quoted or polling or window'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21122-ac3-shape"
+    description: "Stdlib-only module level, typed handle, a request without a transcript refused by the model, and the contract's terminal topic and outputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compact_package_read_effect.py tests/test_golden_chain_compact_package_read_effect.py -q --no-cov -k 'standard_library or golden_chain or error_chain or contract_declares'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21122-ac4-projection"
+    description: "The session-content projection stores the compact kind as rows that reassemble to the package."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_compact_kind_omn21122.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21122-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines package_when_flushed. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_compact_package_read_effect/handlers/handler_compact_package_read.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def package_when_flushed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21122-ac5-loss-pairs"
+    description: "Pairs per boundary, the window's contents, and recall per kind with the dropped items."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'pairs_then_scores or no_boundary or paraphrased'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21122-ac6-loss-controls"
+    description: "Full-recall positive control, empty window, refused request, contract topics and handlers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'identical or empty_window or error_chain or contract or entry_point'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21122-deploy-probe-loss"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines HandlerCompactionLoss. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_compaction_loss_compute/handlers/handler_compaction_loss.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerCompactionLoss'"
+        cwd: "${OMNI_HOME}/omnimarket"
