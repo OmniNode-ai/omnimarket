@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-20680: host filesystem effects; the second slice owns the sweep node.
+name: node_hourly_tick_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+runtime_profiles: [effects]
+description: >
+  Prepare an hourly checkpoint and rotate the Linear sweep pointer, then record the
+  sweep result and the fire result channel. Read-only on Linear and Slack. Posting
+  needs per-message operator approval. The host caller invokes the single sweep implementation.
+input_model:
+  module: omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick
+  name: ModelHourlyTickRequest
+output_model:
+  module: omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick
+  name: ModelHourlyTickResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: prepare
+      handler:
+        name: HandlerHourlyTick
+        module: omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick
+      input_model: omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick.ModelHourlyTickRequest
+      output_model: omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick.ModelHourlyTickResult
+    - operation: record
+      handler:
+        name: HandlerHourlyTick
+        module: omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick
+      input_model: omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick.ModelHourlyTickRequest
+      output_model: omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick.ModelHourlyTickResult
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.hourly-tick.v1]
+  publish_topics: [onex.evt.omnimarket.hourly-tick-completed.v1]
+terminal_event: onex.evt.omnimarket.hourly-tick-completed.v1
+descriptor:
+  runtime_profiles: [effects]
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  side_effects: [checkpoint append, sweep pointer rotation, prepared snapshot write, fire result write]
+env_dependencies:
+  OMNI_HOME:
+    required: true
+    description: Host registry root holding the checkpoint and pointer files.
+metadata:
+  ticket: OMN-20680
+  transport_type: inmemory
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hourly-tick.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.hourly-tick-completed.v1
+lifecycle: experimental

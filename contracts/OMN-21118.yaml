@@ -1,0 +1,71 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21118"
+title: "TA.17 Lane-brief profile (omnimarket slice)"
+summary: "The lane_brief_section context profile (LANE_RULES, OPERATOR_RULINGS and OPEN_WORK required, the v5 optional tiers excluded) and node_lane_brief_section_compute, which renders a lane brief's section 3a from those three factors in the lane-brief standard's layout and refuses with REQUIRED_FACTOR_MISSING when a required factor, an entry slot or a cited ruling is missing. The switch of the lane-brief script to onex skill context_pack and the live sources are not in this slice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-lane-brief-profile"
+    statement: "The omnimarket slice of plan task TA.17: the lane_brief_section profile data and the section 3a render with its refusal."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: for 10 recent briefs, section 3a from the profile equals the script's output byte for byte, except rows the PR lists where the script showed a superseded ruling or released hold as in force -- falsifier: an unlisted diff."
+      - id: "AC2"
+        statement: "AC2: the refuse-on-missing rule survives as `REQUIRED_FACTOR_MISSING` -- falsifier: a brief with a missing cited RULING renders."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2 in the section 3a render tests and the lane_brief_section profile tests."
+    command: "uv run pytest tests/nodes/node_lane_brief_section_compute tests/pack/test_lane_brief_section_profile.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21118-ac1"
+    description: "AC1: the render lays out the ten parts of section 3a in the standard's order, each reader's output fenced verbatim, and returns the same bytes for the same request. The recorded-brief round trip (12 recent briefs, equal modulo trailing newlines) is lab evidence in the PR body."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_brief_section_compute/test_section_3a.py -q -p no:randomly --no-cov -k 'ten_parts or same_bytes or empty_reader or no_route_line'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21118-ac2"
+    description: "AC2: a factor not supplied or not resolved, a missing or ambiguous slot, and a cited ruling stamp no OPERATOR_RULINGS entry backs each refuse with REQUIRED_FACTOR_MISSING and render nothing; the lane_brief_section profile makes the pack builder refuse the same way."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_brief_section_compute/test_section_3a.py tests/pack/test_lane_brief_section_profile.py -q -p no:randomly --no-cov -k 'refuses or does_not_render or must_be_backed or refused_required_factor_missing or ambiguous or missing_slot'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21118-deploy-container-build"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout, renders a section 3a through the product handler over synthetic factors and asserts status rendered, then asserts a brief whose OPERATOR_RULINGS source is unresolved is refused required_factor_missing with no section. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import hashlib, datetime as d
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus as S
+          from omnibase_core.models.context.model_context_source_entry import ModelContextSourceEntry as E
+          from omnibase_core.models.context.model_context_source_result import ModelContextSourceResult as R
+          from omnimarket.models.lane_brief_section import ModelLaneBriefSectionRequest as Q
+          from omnimarket.nodes.node_lane_brief_section_compute.handlers.handler_lane_brief_section import HandlerLaneBriefSection as H
+          def res(f, items):
+              return R(status=S.RESOLVED, entries=tuple(E(factor=f, text=t, source_ref=s, text_sha256=hashlib.sha256(t.encode()).hexdigest(), status=S.RESOLVED, as_of=d.datetime(2026, 10, 19, tzinfo=d.UTC)) for s, t in items))
+          row = "2026-09-29T06:34:17Z | RULING | lane=lane-a | probe\n"
+          rules = res(F.LANE_RULES, [("preamble", "p"), ("landing-rules", "l"), ("claim-template", "c\n"), ("delegation", "d"), ("lab", "b")])
+          rulings = res(F.OPERATOR_RULINGS, [("landing-ruling", row), ("standing-rulings", row)])
+          work = res(F.OPEN_WORK, [("inbox", "i\n"), ("holds", "h\n")])
+          q = dict(lane="lane-x", ledger_t0="2026-10-12T04:30:00Z", hours=24, rulings_tail=15, inbox_rc=0, holds_rc=0, landing_lane="landing-controller", landing_ruling="2026-09-29T06:34:17Z", landing_ruling_lane="lane-a", model="sonnet", effort="high", out_of_scope="probe", lane_rules=rules, operator_rulings=rulings, open_work=work)
+          ok = H().handle(Q(**q))
+          assert ok.status.value == "rendered" and ok.section_3a.startswith("## 3a. Constraints"), ok
+          bad = H().handle(Q(**{**q, "operator_rulings": R(status=S.UNRESOLVED)}))
+          assert bad.status.value == "refused" and bad.failure_class.value == "required_factor_missing" and bad.section_3a is None, bad
+          print(ok.section_sha256)'
+  - id: "dod-omn21118-deploy-hosted-source"
+    description: "Hosted deploy source probe: GitHub serves the section 3a render handler at the checked-out commit. The content read must contain the handler class; it fails at the merge base where the handler is absent. This checks source identity, not a running deployment. The preceding behavioral probe exercises the handler."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_brief_section_compute/handlers/handler_lane_brief_section.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class HandlerLaneBriefSection:\")' | grep -qx true"

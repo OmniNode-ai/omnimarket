@@ -306,6 +306,9 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_hourly_tick_effect = "omnimarket.nodes.node_hourly_tick_effect"
+node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
+node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_table_compute"
 node_friction_synthesis_effect = "omnimarket.nodes.node_friction_synthesis_effect"
 node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
 node_patch_apply_dispatch_effect = "omnimarket.nodes.node_patch_apply_dispatch_effect"
@@ -455,6 +458,7 @@ node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_
 node_context_install_confirm_compute = "omnimarket.nodes.node_context_install_confirm_compute"
 node_context_pack_orchestrator = "omnimarket.nodes.node_context_pack_orchestrator"
 node_context_pack_render_compute = "omnimarket.nodes.node_context_pack_render_compute"
+node_lane_brief_section_compute = "omnimarket.nodes.node_lane_brief_section_compute"
 node_transcript_parse_compute = "omnimarket.nodes.node_transcript_parse_compute"
 node_transcript_read_effect = "omnimarket.nodes.node_transcript_read_effect"
 node_retrieval_eval_compute = "omnimarket.nodes.node_retrieval_eval_compute"
@@ -962,6 +966,7 @@ node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_d
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 
 [project.scripts]
+onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"
 onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.handler_host_thermal_cli:main"
 onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
