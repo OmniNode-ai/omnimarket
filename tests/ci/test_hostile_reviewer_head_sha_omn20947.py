@@ -32,7 +32,7 @@ HEAD_SHA_EXPR = "${{ github.event.pull_request.head.sha }}"
 HEAD_SHA_ARG = '--head-sha "$HEAD_SHA"'
 # OMN-20910: the chunk-scaled review deadline revision descends from the existing
 # receipt-substitution revision and retains the exact-head receipt boundary.
-SUBSTITUTE_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
+SUBSTITUTE_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
 
 
 def review_step(workflow_text: str) -> dict[str, Any]:
