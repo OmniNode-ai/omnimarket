@@ -597,9 +597,15 @@ jobs:
       # 'dod-verify-local-reads-guard'.
       - name: dod_verify local reads guard (OMN-20838)
         run: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
-      # OMN-20890: paired with the landing-decision-park-ladder hook.
-      - name: Landing decision park ladder (OMN-20890)
+      # OMN-20890: paired with the landing-decision-park-ladder hook. OMN-17427: the step name
+      # spells the handler that decides the ladder, for the ruling audit.
+      - name: Landing decision park ladder, decided by src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py (OMN-20890)
         run: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
+      # OMN-20905: operator decisions and asks are recorded from the bus by the capture nodes. Paired
+      # with the operator-capture-nodes hook; OMN-17427: the name spells the two handlers, for the
+      # ruling audit.
+      - name: Operator capture nodes, src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_process.py and src/omnimarket/nodes/node_operator_capture_compute/handlers/handler_utterance_classify.py (OMN-20905)
+        run: uv run pytest tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly
       # OMN-20032: node_dod_verify refuses a contract whose acceptance criteria are
       # only partly bound (ruling 2026-10-10T11:04:11Z). SYNC with pre-commit hook
       # 'dod-verify-every-criterion-bound'.
