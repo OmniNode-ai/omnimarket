@@ -70,10 +70,19 @@ class EnumParseStatus(StrEnum):
     PARSE_FAILURE = "parse_failure"
 
 
+class EnumParseFailureKind(StrEnum):
+    """Why a ``compact_strict`` parse failed (None for tolerant-mode results)."""
+
+    TRUNCATED = "truncated"
+    SCHEMA_INVALID = "schema_invalid"
+    OVERFLOW = "overflow"
+
+
 class ModelParseResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     status: EnumParseStatus = Field(...)
+    failure_kind: EnumParseFailureKind | None = Field(default=None)
     findings: list[ModelReviewFinding] = Field(default_factory=list)
     error_message: str = Field(default="")
     raw_length: int = Field(default=0)
@@ -204,6 +213,7 @@ def parse_model_response(raw_text: str, source_model: str) -> ModelParseResult:
 
 
 __all__: list[str] = [
+    "EnumParseFailureKind",
     "EnumParseStatus",
     "ModelParseResult",
     "parse_model_response",
