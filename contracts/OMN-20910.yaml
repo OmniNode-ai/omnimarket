@@ -34,6 +34,16 @@ requirements:
     acceptance:
       - id: "AC9"
         statement: "AC9: each fail-closed case has a failed result with no findings, the valid verdict is the positive control, and the v1 reply passes unchanged -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-review-replay-set-node"
+    statement: "node_review_replay_set_effect freezes 40 merged diffs stratified by repo and size under a manifest hash."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: the set holds the target count balanced across repo x size strata, the same inputs give the same manifest hash, a changed diff or seed changes it, pinned items are always in, and a tampered frozen manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_replay_set_effect -q -p no:randomly --no-cov fails at the merge base"
+  - id: "req-claude-review-batch-node"
+    statement: "node_claude_review_batch_effect submits replay items through admission and records a cost and a verdict per item."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: each item goes admission, call, parse, verdict with an event per step in order; a refused item is never submitted; a failed call releases its reservation; a truncated, unparseable or empty answer is degraded and never passed; a diff that no longer matches the manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_claude_review_batch_effect -q -p no:randomly --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -115,3 +125,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn20910-ac12-review-replay-set-node"
+    description: "The replay set freezes a stratified set under a stable manifest hash."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_replay_set_effect -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn20910-ac13-claude-review-batch-node"
+    description: "The batch effect runs each item through admission, call, parse and verdict with an event per step."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
