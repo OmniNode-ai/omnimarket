@@ -337,6 +337,7 @@ profiles:
     model_name_patterns:
       - "*qwen*"
     task_types:
+      - "brief_drafting"
       - "document"
       - "documentation"
       - "summarization"
