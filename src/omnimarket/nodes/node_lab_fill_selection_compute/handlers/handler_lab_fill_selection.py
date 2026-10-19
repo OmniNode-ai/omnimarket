@@ -302,18 +302,45 @@ def _changed(
     return changed
 
 
+def _repeat_count(attempts: list[_Attempt]) -> int:
+    """How many of the newest lanes in a row ended blocked, partial or no-op."""
+    count = 0
+    for attempt in reversed(attempts):
+        outcome = (
+            attempt.terminal.values.get("outcome", "").lower()
+            if attempt.terminal is not None
+            else ""
+        )
+        if outcome not in _UNCHANGED_OUTCOMES:
+            break
+        count += 1
+    return count
+
+
+def _updated_after(ticket_updated_at: str, attempt: _Attempt) -> bool:
+    """The ticket was updated later than the lane's TERMINAL: its input moved."""
+    updated = _stamp(ticket_updated_at)
+    return (
+        updated is not None
+        and attempt.terminal is not None
+        and updated > attempt.terminal.ts
+    )
+
+
 def dod_verify_fallback(
     decisions: list[ModelLabFillDecision],
     slots: int,
     request: ModelLabFillSelectionRequest,
     history: _History,
     now: datetime,
+    updated_at: dict[str, str],
 ) -> tuple[ModelLabFillDecision, ...]:
     """The implementation-merged decisions that fill ``slots`` idle slots, one per ticket.
 
     A ticket whose last lab-fill lane is still open is owned; one whose last lane ended
     blocked, partial or no-op inside the cooldown, or that reached the attempt limit inside
-    the window, waits, as an ordinary ticket does.
+    the window, waits, as an ordinary ticket does. One whose last ``repeat_limit`` lanes all
+    ended that way waits for the ticket to be updated, however long ago they ended.
     """
     chosen: list[ModelLabFillDecision] = []
     seen: set[str] = set()
@@ -332,8 +359,12 @@ def dod_verify_fallback(
             if latest.terminal is None:
                 continue
             outcome = latest.terminal.values.get("outcome", "").lower()
-            if outcome in _UNCHANGED_OUTCOMES and now - latest.terminal.ts < timedelta(
-                hours=request.cooldown_hours
+            if outcome in _UNCHANGED_OUTCOMES and (
+                now - latest.terminal.ts < timedelta(hours=request.cooldown_hours)
+                or (
+                    _repeat_count(attempts) >= request.repeat_limit
+                    and not _updated_after(updated_at.get(d.ticket, ""), latest)
+                )
             ):
                 continue
             if sum(a.ts >= window for a in attempts) >= request.attempt_limit:
@@ -401,7 +432,14 @@ class HandlerLabFillSelection:
             tuple(decisions),
             tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
             pr_land,
-            dod_verify_fallback(decisions, left, request, history, now),
+            dod_verify_fallback(
+                decisions,
+                left,
+                request,
+                history,
+                now,
+                {c.ticket: c.ticket_updated_at for c in request.candidates},
+            ),
         )
 
     @staticmethod
@@ -582,7 +620,14 @@ class HandlerLabFillSelection:
             changed = _changed(baseline, candidate, deployment)
             if changed:
                 return decision(detail="input-changed:" + ",".join(changed)), None
-        if (
+        repeats = _repeat_count(attempts)
+        if reason is EnumLabFillSkipReason.UNCHANGED_INPUT and (
+            repeats >= request.repeat_limit
+        ):
+            # The cooldown does not release a ticket the last lanes all left unchanged; a
+            # change to the ticket or its PRs, read above against the baseline, does.
+            caller = f"{caller}:repeated:{repeats}"
+        elif (
             reason is EnumLabFillSkipReason.UNCHANGED_INPUT
             and now - latest.terminal.ts >= timedelta(hours=request.cooldown_hours)
         ):

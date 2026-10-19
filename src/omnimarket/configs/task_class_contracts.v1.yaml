@@ -363,6 +363,16 @@ quality_rules:
       in that prompt's definition of done and moves no score.
     waived_unless_prompt_matches:
       - "\\b(?:at\\s+most|no\\s+more\\s+than)\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+sentences?\\b"
+  # OMN-17427: the prompt's own "at most N words", enforced.
+  within_word_limit:
+    enforcement: blocking
+    rationale: >-
+      A countable instruction the prompt gave. An answer over the limit is a
+      breach of the task, not a weaker answer, and no score makes it usable.
+      Reject-only. A prompt that states no limit waives the rule, so it is not
+      in that prompt's definition of done and moves no score.
+    waived_unless_prompt_matches:
+      - "\\b(?:at\\s+most|no\\s+more\\s+than)\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+words?\\b(?!\\s+(?:per|a|each|every)\\b)"
   semantic_adequacy:
     enforcement: blocking
     rationale: >-
@@ -1895,9 +1905,21 @@ task_classes:
         - local
         - cheap_cloud
   review:
-    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    # OMN-17427: the lab model scored 25 of 60 on this class, below the policy bar.
+    # 60 merged omnimarket source diffs (2026-10-01 to 2026-10-18), one local
+    # review each through the delegate with the house tenant, one blind Sonnet
+    # rater per answer (a second rater on 15 of them agreed on 13): adequate
+    # means no finding the diff contradicts and either a real defect found or a
+    # clean "No defects found" on a diff the rater found clean. The class gate
+    # accepted all 60 at score 1.0 and 35 of them were inadequate (58 percent,
+    # Wilson 95 percent interval 46 to 70), so the gate cannot be the evidence.
     lab_rubric:
-      verdict: unmeasured
+      verdict: fail
+      measured:
+        model: Qwen3.8-27B
+        adequate: 25
+        of: 60
+        source: "OMN-17427 lane deleg-exp-replicate-1-2200, 2026-10-18, replication of the criteria false-accept experiment"
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
     prompt_shape: facts_first
     gateway_exposure: public
@@ -2119,6 +2141,9 @@ task_classes:
         # sentences"), counted with a list item as one sentence. Reject-only;
         # without a stated limit it passes.
         - within_sentence_limit
+        # OMN-17427: the word limit the prompt states ("in at most 80 words").
+        # Reject-only; without a stated limit it is waived.
+        - within_word_limit
         # OMN-13218: semantic_adequacy replaces the blunt min_length_chars_100 floor.
         # A correct short summary (one complete sentence) passes at tier 1 instead
         # of escalating on a length floor; an empty/truncated stub still fails.

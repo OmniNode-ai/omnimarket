@@ -18,6 +18,12 @@ description: >
   cover, each declared source that no longer exists, and each lifecycle state its installers
   contradict.
 
+handler:
+  module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
+  class: HandlerAutomationLivenessOverlayCheck
+  input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+  output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
+
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -43,12 +49,16 @@ descriptor:
   purity: pure
   idempotent: true
   side_effects: []
+  runtime_profiles: []
+
+runtime_dispatch:
+  external_trigger: "The onex-automation-liveness-check console script invokes the local node with the overlay, the sources declaration and the scanned installer files it read from the checkouts."
 
 event_bus:
   subscribe_topics: []
   publish_topics: []
 
 metadata:
-  transport_type: none
+  transport_type: local
   description: "Pure compute node: completeness check of the private automation-liveness overlay"
   author: "OmniNode Platform Team"

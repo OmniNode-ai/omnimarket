@@ -49,6 +49,22 @@ DELEGATION_DISPOSITION_RECORDED_TOPIC_V1 = "onex.evt.omnimarket.delegation-dispo
 DELEGATION_ACCEPTANCE_JUDGED_TOPIC_V1 = "onex.evt.omnimarket.delegation-acceptance-judged.v1"  # onex-topic-allow: canonical topic registry; offline calibrated verdicts, producer and consumer contracts follow in J.2/J.5
 DELEGATE_SKILL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
 DELEGATE_SKILL_FAILED_TOPIC_V1 = "onex.evt.omnimarket.delegate-skill-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegate_skill_orchestrator contract.yaml terminal events
+
+# OMN-21112: compaction topics. The two commands are on the restricted
+# omniintelligence command family (the package reply carries messages; the
+# request names a session's compaction). The six receipts carry ids, hashes and
+# failure classes only. Prepared, activated, fallback and the package reply are
+# declared in node_context_compaction_orchestrator's contract.yaml; the three
+# installation receipts get their producing contract with the install-confirm
+# compute.
+CONTEXT_COMPACTION_REQUESTED_TOPIC_V1 = "onex.cmd.omniintelligence.context-compaction-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_compaction_orchestrator contract.yaml subscribe_topics
+CONTEXT_COMPACTION_PACKAGE_TOPIC_V1 = "onex.cmd.omniintelligence.context-compaction-package.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_compaction_orchestrator contract.yaml publish_topics
+CONTEXT_COMPACTION_PREPARED_TOPIC_V1 = "onex.evt.omnimarket.context-compaction-prepared.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_compaction_orchestrator contract.yaml published_events
+CONTEXT_COMPACTION_ACTIVATED_TOPIC_V1 = "onex.evt.omnimarket.context-compaction-activated.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_compaction_orchestrator contract.yaml published_events
+CONTEXT_COMPACTION_FALLBACK_TOPIC_V1 = "onex.evt.omnimarket.context-compaction-fallback.v1"  # onex-topic-allow: canonical topic registry; declared in node_context_compaction_orchestrator contract.yaml published_events
+CONTEXT_COMPACTION_INSTALLED_TOPIC_V1 = "onex.evt.omnimarket.context-compaction-installed.v1"  # onex-topic-allow: canonical topic registry; producer contract follows with the install-confirm compute (OMN-21112)
+CONTEXT_COMPACTION_INSTALL_MISMATCH_TOPIC_V1 = "onex.evt.omnimarket.context-compaction-install-mismatch.v1"  # onex-topic-allow: canonical topic registry; producer contract follows with the install-confirm compute (OMN-21112)
+CONTEXT_COMPACTION_INSTALL_UNCERTAIN_TOPIC_V1 = "onex.evt.omnimarket.context-compaction-install-uncertain.v1"  # onex-topic-allow: canonical topic registry; producer contract follows with the install-confirm compute (OMN-21112)
 DELEGATION_CALL_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.delegation-call-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_llm_delegation_projection contract.yaml subscribe_topics
 DELEGATION_ESCALATION_TRIGGERED_TOPIC_V1 = "onex.evt.omnimarket.delegation-escalation-triggered.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_routing_feedback_reducer contract.yaml subscribe_topics
 DELEGATION_ALL_TIERS_FAILED_TOPIC_V1 = "onex.evt.omnimarket.delegation-all-tiers-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_delegation_routing_feedback_reducer contract.yaml subscribe_topics

@@ -27,7 +27,7 @@ WORKFLOW = (
     / "hostile-reviewer.yml"
 )
 # OMN-20910: the chunk-scaled review deadline revision descends from the prior fix.
-RETRY_BUDGET_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
+RETRY_BUDGET_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
 # The pin before this change, which retries at the same 4096-token cap.
 PRE_RETRY_BUDGET_PIN = "64b950973a5686d33e0b439fb80749d66362d06d"
 _PIN = re.compile(

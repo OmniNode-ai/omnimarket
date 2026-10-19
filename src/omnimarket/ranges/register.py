@@ -85,6 +85,7 @@ REQUIRED_GATE_CHECKS: tuple[str, ...] = (
     "task_completed",
     "uses_pytest_mark_unit",
     "within_sentence_limit",
+    "within_word_limit",
 )
 
 
