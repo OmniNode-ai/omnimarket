@@ -678,6 +678,12 @@ def read_merged_pr(
     pr = _checked(pr_request, transport.send_sync(pr_request))
     merged = bool(pr.get("merged", False))
     merge_sha = pr.get("merge_commit_sha")
+    if merged and not isinstance(merge_sha, str):
+        # OMN-19528: REST leaves the key out of a merged PR on the deployed
+        # lane; GraphQL still names the merge commit.
+        merge_sha = transport.fetch_pr_detail(request.repo, pr_number).get(
+            "mergeCommitOid"
+        )
     merged_at = pr.get("merged_at")
     return ModelMergedPrResult(
         repo=request.repo,
