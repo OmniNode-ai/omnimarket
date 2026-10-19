@@ -117,15 +117,18 @@ def current_pricing_manifest_version(baseline_model: str) -> str | None:
 
 @cache
 def refresh_metering_summary_topic() -> str:
-    """The metering node's command topic, as its contract declares it."""
+    """The metering node's fold command topic, as its contract declares it.
+
+    The node subscribes two commands (OMN-17427): this one, carrying a complete
+    snapshot, and the shared lanes' store refresh, naming tenants and days.
+    """
     contract = yaml.safe_load(_NODE_CONTRACT.read_text(encoding="utf-8"))
-    topics = contract["event_bus"]["subscribe_topics"]
-    if len(topics) != 1:
+    topic = str(contract["config"]["metering_summary"]["fold_command_topic"])
+    if topic not in contract["event_bus"]["subscribe_topics"]:
         raise ValueError(
-            f"{_NODE_CONTRACT} must subscribe exactly one refresh command topic, "
-            f"got {topics!r}"
+            f"{_NODE_CONTRACT} names fold command {topic!r} but does not subscribe it"
         )
-    return str(topics[0])
+    return topic
 
 
 class ProtocolMeteringRefreshPublisher(Protocol):

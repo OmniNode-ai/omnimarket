@@ -4082,6 +4082,7 @@
       "accessor_nodes": [
         "node_projection_delegation",
         "node_projection_delegation_disposition",
+        "node_projection_metering_summary",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -4094,7 +4095,8 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
-        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml",
+        "src/omnimarket/nodes/node_projection_metering_summary/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -4160,6 +4162,7 @@
         "node_projection_delegation_disposition",
         "node_projection_dod_verdict",
         "node_projection_live_events",
+        "node_projection_metering_summary",
         "node_projection_pattern_learning",
         "node_projection_registration",
         "node_projection_replay_check_compute",

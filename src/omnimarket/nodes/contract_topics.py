@@ -65,6 +65,22 @@ def contract_secret_ref(contract_path: Path, secret_name: str) -> str:
     return secret_name
 
 
+def contract_section(contract_path: Path, *keys: str) -> object:
+    """Return the value at ``keys`` (a top-level key, then nested keys) of a node contract.
+
+    Raises ``ValueError`` when the contract is not a mapping or a key is absent,
+    so a handler fails closed instead of substituting a code default.
+    """
+    node: object = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    for depth, key in enumerate(keys):
+        if not isinstance(node, dict) or key not in node:
+            raise ValueError(
+                f"{contract_path}: {'.'.join(keys[: depth + 1])} is missing"
+            )
+        node = node[key]
+    return node
+
+
 def _contract_topics(contract_path: Path, key: str) -> tuple[str, ...]:
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
@@ -83,5 +99,6 @@ def _contract_topics(contract_path: Path, key: str) -> tuple[str, ...]:
 __all__ = [
     "contract_publish_topics",
     "contract_secret_ref",
+    "contract_section",
     "contract_subscribe_topics",
 ]
