@@ -80,6 +80,9 @@ class ModelLabFillSelectionRequest:
     # A ticket held for unchanged input after a blocked, partial or no-op lane is tried again this
     # long after that lane's TERMINAL even when nothing changed (OMN-17427).
     cooldown_hours: int = 6
+    # This many consecutive blocked, partial or no-op lanes on one ticket end the cooldown retry:
+    # the ticket is tried again only after the ticket or one of its PRs changes (OMN-17427).
+    repeat_limit: int = 2
     project_id: str = ""  # the declared sprint project: its defects are in scope
     scope_repos: tuple[
         str, ...

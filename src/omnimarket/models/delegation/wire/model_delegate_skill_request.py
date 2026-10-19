@@ -50,6 +50,12 @@ NO_ESCALATION_WIRE_KEY = "no_escalation"
 # ``_tolerate_model_before_it_is_declared``.
 MODEL_WIRE_KEY = "model"
 
+# OMN-21098 (step 1 of 2): the request key that carries the client-call identity
+# (client, session id, tool-use id, client host, client max mode) the delegation
+# adapter stamps on an Agent call. Decoded, not declared, by
+# ``_tolerate_client_call_before_it_is_declared``.
+CLIENT_CALL_WIRE_KEY = "client_call"
+
 # OMN-19437 AC1: the keys the CLI and RuntimeLocal stamp on a command so its
 # terminal can carry the same ids. Declared on the request below; the released
 # step-1 decoder ``_tolerate_trace_context_before_it_is_declared`` is now a no-op
@@ -392,6 +398,30 @@ class ModelDelegateSkillRequest(BaseModel):
             )
         return {key: item for key, item in data.items() if key != MODEL_WIRE_KEY}
 
+    # OMN-21098, step 1 of 2: decode ``client_call`` before it is declared, the
+    # same tolerate-before-declare order as ``model`` above. Declaring it
+    # outright is refused by the Wire Compatibility Gate: the last release
+    # forbids the key and the gate grades the maximal key set. A null is the
+    # ordinary request and is dropped. A set value is refused by name rather
+    # than dropped, so a client call is never run as an ordinary delegation
+    # with no claim, admission or echo. Step 2 declares the field once a release
+    # carrying this is out.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_client_call_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or CLIENT_CALL_WIRE_KEY not in data:
+            return data
+        if CLIENT_CALL_WIRE_KEY in cls.model_fields:
+            return data
+        if data[CLIENT_CALL_WIRE_KEY] is not None:
+            raise ValueError(
+                f"{CLIENT_CALL_WIRE_KEY} is not honoured by this release: a "
+                "client-call identity is applied only once the field is "
+                "declared (OMN-21098). Refused rather than dropped, so the call "
+                "is not run as an ordinary delegation with no claim or admission."
+            )
+        return {key: item for key, item in data.items() if key != CLIENT_CALL_WIRE_KEY}
+
     # OMN-19437, step 2 is done: ``trace_id`` and ``span_id`` are now declared
     # (below), so this released step-1 decoder is a no-op for this class. Keep it
     # in place for a subclass or an older payload that still routes through it:
@@ -489,6 +519,7 @@ class ModelDelegateSkillRequest(BaseModel):
 
 
 __all__: list[str] = [
+    "CLIENT_CALL_WIRE_KEY",
     "MODEL_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
     "TRACE_CONTEXT_WIRE_KEYS",
