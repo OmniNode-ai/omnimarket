@@ -910,7 +910,7 @@ async def test_a_write_that_produces_no_row_fails_closed(
     )
 
 
-def _tenant_relation_operations() -> list[object]:
+def _tenant_relation_cases() -> list[tuple[str, ProjectionDatabaseTarget, str, str]]:
     """Enumerate the registry's tenant read/write seams from real topology.
 
     Contracts now declare the physical ``public`` schema, so a literal search
@@ -920,7 +920,7 @@ def _tenant_relation_operations() -> list[object]:
     manifest = discover_contracts_from_paths(sorted(_SRC_ROOT.glob("*/contract.yaml")))
     assert not manifest.errors, manifest.errors
     topology = load_topology_profile("local")
-    cases: list[object] = []
+    cases: list[tuple[str, ProjectionDatabaseTarget, str, str]] = []
     for contract in manifest.contracts:
         if contract.db_io is None or not contract.db_io.db_tables:
             continue
@@ -935,16 +935,52 @@ def _tenant_relation_operations() -> list[object]:
             if table.access in {"read", "read_write"}:
                 operations.append("query")
             for operation in operations:
-                cases.append(
-                    pytest.param(
-                        target,
-                        table.name,
-                        operation,
-                        id=f"{contract.name}-{table.name}-{operation}",
-                    )
-                )
+                case_id = f"{contract.name}-{table.name}-{operation}"
+                cases.append((case_id, target, table.name, operation))
     assert cases, "the tenant-domain registry gate must cover at least one relation"
     return cases
+
+
+def _tenant_relation_operations() -> list[object]:
+    return [
+        pytest.param(target, table, operation, id=case_id)
+        for case_id, target, table, operation in _tenant_relation_cases()
+    ]
+
+
+def test_the_enumeration_names_every_delegation_relation_by_domain() -> None:
+    """The gate's enumeration is resolved from topology, so name what it must hold.
+
+    OMN-16831 AC5 asks which relations a tenant refusal can reach. The
+    enumeration above answers it only if it actually lists them: a resolver that
+    quietly dropped ``delegation_events`` would leave the parametrized gate green
+    over everything else. Pin the four delegation relations the ticket names as
+    TENANT domain with the operations their declared access implies, and the one
+    it names as OMNINODE_INTERNAL as absent.
+    """
+    enumerated = {case_id for case_id, _, _, _ in _tenant_relation_cases()}
+    expected = {
+        "projection_delegation-delegation_events-upsert",
+        "projection_delegation-delegation_events-upsert_returning",
+        "projection_delegation-delegation_events-query",
+        "projection_delegation-delegation_shadow_comparisons-upsert",
+        "projection_delegation-delegation_shadow_comparisons-upsert_returning",
+        "projection_delegation-delegation_judge_verdict_events-upsert",
+        "projection_delegation-delegation_judge_verdict_events-upsert_returning",
+        "projection_delegation-delegation_budget_state-upsert",
+        "projection_delegation-delegation_budget_state-upsert_returning",
+        "projection_delegation-delegation_budget_state-query",
+    }
+    missing = expected - enumerated
+    assert not missing, (
+        f"the tenant-relation enumeration dropped {sorted(missing)}; the "
+        f"parametrized gate no longer covers a relation OMN-16831 names"
+    )
+    internal = {item for item in enumerated if "-generation_events-" in item}
+    assert not internal, (
+        f"generation_events is OMNINODE_INTERNAL and must not be enumerated as a "
+        f"tenant relation: {sorted(internal)}"
+    )
 
 
 @pytest.mark.parametrize(
