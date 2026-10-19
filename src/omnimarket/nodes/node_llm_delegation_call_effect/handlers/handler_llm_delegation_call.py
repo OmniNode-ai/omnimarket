@@ -23,6 +23,7 @@ absent, unknown, or the registry is unavailable.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -41,6 +42,7 @@ from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
 from omnimarket.delegation.reasoning_preamble import strip_leading_inline_reasoning
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.provider_quota import (
@@ -89,6 +91,14 @@ from omnimarket.nodes.contract_topics import (
     contract_subscribe_topics,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.review_cost_recorder import (
+    TOPIC_REVIEW_CALL_COST_RECORDED,
+    attempt_counter,
+    cache_usage_figures,
+    next_attempt,
+    record_cancelled_review_attempt,
+    record_finished_attempt,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
@@ -180,7 +190,11 @@ TOPIC_DELEGATION_MODEL_DEGRADED = _single_contract_topic(
     _publish, _DELEGATION_MODEL_DEGRADED_SUFFIX, "publish_topics"
 )
 
-__all__ = ["HandlerLlmDelegationCall"]
+__all__ = [
+    "TOPIC_REVIEW_CALL_COST_RECORDED",
+    "HandlerLlmDelegationCall",
+    "record_cancelled_review_attempt",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -546,6 +560,19 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
+        """Run one invocation, numbering its provider attempts from 1 (OMN-20910)."""
+        token = attempt_counter.set(iter(range(1, 1_000_000)))
+        try:
+            return self._execute_call_attempts(request, endpoint_url, event_publisher)
+        finally:
+            attempt_counter.reset(token)
+
+    def _execute_call_attempts(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
         """Execute the call, resolving a customer route's model from its key.
 
         OMN-20157. A customer's BYOK route (a tenant-shaped credential reference
@@ -783,19 +810,41 @@ class HandlerLlmDelegationCall:
         endpoint_url: str,
         event_publisher: Any,
     ) -> ModelLlmDelegationCallResult:
-        """Make one provider call and report it to the bound observer when it ends."""
-        result = self._post_one_call(request, endpoint_url, event_publisher)
-        _report_call(
-            ModelLlmDelegationCallObservation(
-                phase="finished",
-                model_id=request.model_id,
-                secret_source=result.secret_source,
-                success=result.success,
-                failure_class=result.failure_class,
-                http_status=result.http_status,
-                error_message=result.error_message or "",
-            )
+        """Make one provider call and report it to the bound observer when it ends.
+
+        OMN-20910: the same ``finished`` observation is the cost record's
+        source, so the attempt is recorded here, as it ends, whatever becomes of
+        the invocation after it.
+        """
+        attempt = next_attempt()
+        result = self._post_one_call(
+            request, endpoint_url, event_publisher, attempt=attempt
         )
+        observation = ModelLlmDelegationCallObservation(
+            phase="finished",
+            model_id=request.model_id,
+            attempt=attempt,
+            served_model_id=result.served_model_id,
+            secret_source=result.secret_source,
+            success=result.success,
+            failure_class=result.failure_class,
+            http_status=result.http_status,
+            error_message=result.error_message or "",
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_write_5m_tokens=result.cache_write_5m_tokens,
+            cache_write_1h_tokens=result.cache_write_1h_tokens,
+            finish_reason=(
+                result.finish_reason.value
+                if result.finish_reason is not EnumProviderFinishReason.ABSENT
+                else None
+            ),
+            latency_ms=result.latency_ms,
+            cost_usd=result.actual_cost_usd,
+        )
+        _report_call(observation)
+        record_finished_attempt(request, endpoint_url, observation, event_publisher)
         return result
 
     def _post_one_call(
@@ -803,6 +852,8 @@ class HandlerLlmDelegationCall:
         request: ModelLlmDelegationCallRequest,
         endpoint_url: str,
         event_publisher: Any,
+        *,
+        attempt: int = 1,
     ) -> ModelLlmDelegationCallResult:
         messages: list[dict[str, str]] = []
         if request.system_prompt:
@@ -882,6 +933,7 @@ class HandlerLlmDelegationCall:
             served_model_id = request.model_id
 
         secret_source: EnumSecretSource | None = None
+        request_left_at: float | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
             # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
@@ -895,9 +947,11 @@ class HandlerLlmDelegationCall:
                 ModelLlmDelegationCallObservation(
                     phase="started",
                     model_id=request.model_id,
+                    attempt=attempt,
                     secret_source=secret_source,
                 )
             )
+            request_left_at = time.monotonic()
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.
@@ -911,6 +965,19 @@ class HandlerLlmDelegationCall:
             )
             latency_ms = response.latency_ms
             response_json: dict[str, Any] = response.json_body
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # OMN-20910: the invocation ended while this attempt was in flight.
+            # Its usage is unknown, but it was made, so it is recorded as cancelled.
+            if request_left_at is not None:
+                record_cancelled_review_attempt(
+                    request,
+                    ModelLlmDelegationCallObservation(
+                        phase="started", model_id=request.model_id, attempt=attempt
+                    ),
+                    elapsed_ms=int((time.monotonic() - request_left_at) * 1000),
+                    event_publisher=event_publisher,
+                )
+            raise
         except httpx.TimeoutException:
             observation, _ = self._observe_quota(
                 request,
@@ -1147,6 +1214,9 @@ class HandlerLlmDelegationCall:
         )
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
+        cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
+            response_json.get("usage") or {}
+        )
         actual_cost, opus_cost, savings, cost_basis = _compute_cost(
             request.model_id,
             tokens_in,
@@ -1170,6 +1240,9 @@ class HandlerLlmDelegationCall:
             output_hash=output_hash,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            cache_read_tokens=cache_read,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
             latency_ms=latency_ms,
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,

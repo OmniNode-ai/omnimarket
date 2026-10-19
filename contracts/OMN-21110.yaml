@@ -1,0 +1,121 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21110"
+title: "TA.8 node_context_pack_orchestrator (omnimarket node slice)"
+summary: "An orchestrator node resolves a context profile by name, reads each tier the profile selects from the source bound to that factor through ProtocolContextSource, passing the caller scope and the envelope access into every source request, builds the pack and renders it. It returns candidate_id, assembly_hash, final_pack_hash, body_hash and stable_prefix_hash, consumes onex.cmd.omniintelligence.context-pack-requested.v1 and replies on onex.cmd.omniintelligence.context-pack-built.v1. The onex skill context_pack mapping and its remote dispatch locus (omnibase_infra) are not in this slice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-pack-orchestrator-node"
+    statement: "The omnimarket node of plan task TA.8: tier statuses, budget failures, caller scope pass-through, section 6 identities and the restricted topic pair."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the same sources and code under a handler change that leaves every contract unchanged return a different `candidate_id` (through `implementation_identity`) -- falsifier: an equal `candidate_id`."
+      - id: "AC4"
+        statement: "AC4: a `caller_scope` field reaches every source request unchanged, and a profile whose task-kind rule names a descriptor absent from `caller_scope` yields `task_kind: unknown` -- falsifier: a source request without the scope, or a descriptor inferred from prompt text."
+      - id: "AC5"
+        statement: "AC5: the same fixture run twice returns the same `candidate_id`, `assembly_hash`, `final_pack_hash` and `body_hash`; the same sources with a changed profile file or a bumped render contract return a different `candidate_id` -- falsifier: any of these reversed."
+      - id: "AC6"
+        statement: "AC6: `TOKEN_BUDGET_EXCEEDED` and `REQUIRED_FACTOR_MISSING` surface as `status=failed` with the class -- falsifier: ok with truncated content."
+      - id: "AC7"
+        statement: "AC7: the result topic is in the restricted `onex.cmd.omniintelligence.*` family and no `onex.evt.*` topic carries package text -- falsifier: a fixture sentinel string found on any evt topic."
+      - id: "AC8"
+        statement: "AC8: with a required tier's source returning `unavailable`, the build fails `REQUIRED_FACTOR_MISSING`; with an optional tier's source returning `unavailable` or `stale`, the build succeeds, omits that tier and lists its status -- falsifier: a partial package with a required tier missing, or an optional tier dropped without its status."
+      - id: "AC9"
+        statement: "AC9: a `lane_brief` fixture builds with no `session_id` -- falsifier: a validation error on the missing session."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC3 to AC9 in the orchestrator handler and contract tests."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21110-ac3"
+    description: "AC3: a changed implementation identity under unchanged contracts changes candidate_id, and the default identity digests the handler code of every node on the pack path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'handler_change_under_unchanged_contract or default_implementation_identity'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21110-ac4"
+    description: "AC4: caller_scope and access reach every source request unchanged; an absent rule descriptor yields task_kind unknown and a supplied one matches."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'caller_scope_and_access or task_kind'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21110-ac5"
+    description: "AC5: two runs return equal identities; a changed profile file, a bumped render contract or changed source content changes candidate_id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'same_fixture_twice or changed_profile_file or bumped_render_contract or changed_source_content or generated_at'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21110-ac6"
+    description: "AC6: a required tier over budget fails TOKEN_BUDGET_EXCEEDED with no messages; a required tier not resolved fails REQUIRED_FACTOR_MISSING; a budget override above the profile is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'over_budget or budget_override or required_factor_missing'"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21110-ac7"
+    description: "AC7: the contract subscribes and publishes only the restricted onex.cmd.omniintelligence pair; the sentinel is in the package messages and no publish topic is onex.evt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_contract.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21110-ac8"
+    description: "AC8: a required tier answering unavailable, stale, denied or unresolved fails the build; an optional tier answering unavailable or stale is omitted and listed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'required_tier_not_resolved or optional_tier_not_resolved or unbound_required or raising_source'"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21110-ac9"
+    description: "AC9: a lane_brief fixture profile builds ok with no session_id and no session scope in any source request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -p no:randomly --no-cov -k 'lane_brief_builds_without_session'"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21110-deploy-container-build"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and builds an agent_spawn package through the product handler over four inline sources (the profile resolves against the packaged routing authority, which promotes no model-role task class) and asserts status ok with the candidate id in the trailer only, then asserts a required tier answering unavailable fails required_factor_missing. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import hashlib, datetime as d
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus as S
+          from omnibase_core.models.context.model_context_access import ModelContextAccess as A
+          from omnibase_core.models.context.model_context_caller_scope import ModelContextCallerScope as M
+          from omnibase_core.models.context.model_context_source_entry import ModelContextSourceEntry as E
+          from omnibase_core.models.context.model_context_source_result import ModelContextSourceResult as R
+          from omnimarket.models.context_pack_orchestrator import ModelContextPackCommand as C, ModelContextPackRequest as Q
+          from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import HandlerContextPackOrchestrator as H
+          class Src:
+              synchronous_execution = True
+              def __init__(self, f, s=S.RESOLVED): self.f, self.s = f, s
+              def handle(self, q):
+                  if self.s is not S.RESOLVED: return R(status=self.s)
+                  t = "probe " + self.f.value
+                  return R(status=S.RESOLVED, entries=(E(factor=self.f, text=t, source_ref="probe@1", text_sha256=hashlib.sha256(t.encode()).hexdigest(), status=S.RESOLVED, as_of=d.datetime(2026, 10, 17, tzinfo=d.UTC)),))
+          req = (F.LANE_RULES, F.INVARIANTS, F.CANONICAL_SHAPES, F.EXEMPLAR)
+          cmd = C(request=Q(profile_name="agent_spawn", caller_scope=M(node_archetype="orchestrator")), access=A(tenant_id="t1"))
+          ok = H({f: Src(f) for f in req}).handle(cmd)
+          assert ok.status.value == "ok", ok.errors
+          assert ok.candidate_id in ok.messages[-1].text and ok.candidate_id not in ok.messages[0].text, ok
+          bad = H({**{f: Src(f) for f in req}, F.LANE_RULES: Src(F.LANE_RULES, S.UNAVAILABLE)}).handle(cmd)
+          assert bad.status.value == "failed" and bad.failure_class.value == "required_factor_missing", bad
+          print(ok.candidate_id, ok.assembly_hash, ok.body_hash)'
+  - id: "dod-omn21110-deploy-probe"
+    description: "Deploy probe. Reads the orchestrator handler from GitHub at the checked-out head and requires the HandlerContextPackOrchestrator class. It fails at the merge base, which has no such file."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_pack_orchestrator/handlers/handler_context_pack_orchestrator.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c \"^class HandlerContextPackOrchestrator\"'"

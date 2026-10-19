@@ -21,14 +21,14 @@ from omnimarket.inference.task_class_authority import (
     load_task_class_authority,
     resolve_task_class_context_profile,
 )
-from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
-    HandlerContextProfileResolver,
-)
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import (
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
 )
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_result import (
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_result import (
     EnumContextProfileResolveStatus,
+)
+from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
+    HandlerContextProfileResolver,
 )
 
 pytestmark = pytest.mark.unit

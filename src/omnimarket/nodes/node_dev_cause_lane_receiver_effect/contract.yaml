@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Cause Lane Receiver Effect (OMN-17427)
+#
+# The receiver node_pr_lifecycle_orchestrator names on onex.cmd.omnimarket.dev-cause-lane-requested.v1.
+# Ruling 2026-10-14T03:57:46Z (item 5): a component alarm starts a fix lane automatically, one per
+# cause. The orchestrator decides and asks; this node starts the lane, once per dispatch_key.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that dispatches lanes (it holds the remote-lane
+# runner, the canonical clones and the lane receipts). Shared runtimes must NOT attach it, so the
+# contract declares runtime_dispatch and NO event_bus block, as node_remote_lane_effect does.
+#
+# ACT. The node answers dry_run and starts nothing until the host sets
+# ONEX_DEV_CAUSE_LANE_RECEIVER_ACT=true. Acting needs ONEX_DEV_CAUSE_LANE_STATE_DIR (the durable
+# dispatch-key ledger and the briefs), ONEX_REMOTE_LANE_RUNNER (the runner's path) and
+# ONEX_DEV_CAUSE_LANE_TICKET (the ticket the lane's CLAIM and PRs carry); an unset one fails at load.
+name: "node_dev_cause_lane_receiver_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Takes a dev cause-lane request and starts one detached cause lane through the remote-lane
+  runner (run --cause <repo>:<check>), at most once per dispatch_key. The key is taken in a
+  durable ledger before the runner is called; a duplicate, a dry run and a failed start are
+  answered, never dropped.
+input_model:
+  name: "ModelDevCauseLaneRequest"
+  module: "omnimarket.models.dev_head_red"
+  description: "One cause-lane request with its dispatch_key, lane, cause and head."
+output_model:
+  name: "ModelDevCauseLaneStartResult"
+  module: "omnimarket.nodes.node_dev_cause_lane_receiver_effect.models.model_dev_cause_lane_start"
+  description: "The outcome: started, duplicate, dry_run or failed, with the runner's detail."
+handler:
+  module: "omnimarket.nodes.node_dev_cause_lane_receiver_effect.handlers.handler_dev_cause_lane_start"
+  class: "HandlerDevCauseLaneStart"
+  input_model: "omnimarket.models.dev_head_red.ModelDevCauseLaneRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_dev_cause_lane_receiver_effect.handlers.handler_dev_cause_lane_start:HandlerDevCauseLaneStart"
+  handlers:
+    - operation: "start_dev_cause_lane"
+      handler:
+        name: "HandlerDevCauseLaneStart"
+        module: "omnimarket.nodes.node_dev_cause_lane_receiver_effect.handlers.handler_dev_cause_lane_start"
+      input_model: "omnimarket.models.dev_head_red.ModelDevCauseLaneRequest"
+      output_model: "omnimarket.nodes.node_dev_cause_lane_receiver_effect.models.model_dev_cause_lane_start.ModelDevCauseLaneStartResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 320000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.dev-cause-lane-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.dev-cause-lane-start-completed.v1"
+    failure: "onex.evt.omnimarket.dev-cause-lane-start-failed.v1"
+published_events:
+  - event_type: ModelDevCauseLaneStartResult
+    topic: onex.evt.omnimarket.dev-cause-lane-start-completed.v1
+    description: "The outcome of one cause-lane request, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-cause-lane-start-completed.v1
+  - onex.evt.omnimarket.dev-cause-lane-start-failed.v1
+dev_cause_lane_receiver:
+  act: "${env.ONEX_DEV_CAUSE_LANE_RECEIVER_ACT:false}"
+metadata:
+  transport_type: kafka
+  ticket: OMN-17427
+  description: "Starts one cause lane per dev cause-lane request"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "remote-lane"
+    - "OMN-17427"
+  related_tickets:
+    - "OMN-17427"

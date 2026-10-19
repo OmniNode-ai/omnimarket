@@ -50,6 +50,11 @@ class ModelLlmDelegationCallResult(BaseModel):
     output_hash: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
+    # OMN-20910: cache usage the provider reported, None when it reported no
+    # figure (never read as zero: a provider without a cache is not a miss).
+    cache_read_tokens: int | None = None
+    cache_write_5m_tokens: int | None = None
+    cache_write_1h_tokens: int | None = None
     latency_ms: int = 0
 
     # Cost telemetry (populated on success from MEASURED API response)

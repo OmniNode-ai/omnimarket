@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Finding Identity Compute (OMN-21190)
+#
+# Pure COMPUTE: the occurrence key of a review finding (repository, PR and immutable
+# snapshot id, path, normalized hunk hash, category, claim-instance discriminator),
+# the lineage that ties one finding's occurrences across snapshots, and ANCHOR_LOST
+# for a hunk that cannot be re-found.
+---
+name: node_review_finding_identity_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE over findings' anchors. A new finding gets a deterministic, namespaced
+  occurrence key and starts its own lineage. A prior occurrence is re-anchored in a
+  later snapshot's file: found unchanged or moved, it keeps its lineage and gets the
+  later snapshot's key; not found, it is classed ANCHOR_LOST, keeps its lineage, gets
+  no key, and is counted. No I/O and no clock.
+
+input_model:
+  name: ModelFindingIdentityInput
+  module: omnimarket.nodes.node_review_finding_identity_compute.models.model_review_finding_identity
+  description: "Findings to key and prior occurrences to re-anchor."
+
+output_model:
+  name: ModelFindingIdentityOutput
+  module: omnimarket.nodes.node_review_finding_identity_compute.models.model_review_finding_identity
+  description: "Resolved identities in request order, with per-status counts."
+
+handler:
+  module: omnimarket.nodes.node_review_finding_identity_compute.handlers.handler_review_finding_identity
+  class: HandlerReviewFindingIdentityCompute
+  input_model: omnimarket.nodes.node_review_finding_identity_compute.models.model_review_finding_identity.ModelFindingIdentityInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: review_finding_identity
+      handler:
+        name: HandlerReviewFindingIdentityCompute
+        module: omnimarket.nodes.node_review_finding_identity_compute.handlers.handler_review_finding_identity
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-finding-identity-resolve.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-finding-identity-resolved.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-finding-identity-resolve.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-finding-identity-resolved.v1
+
+terminal_event: onex.evt.omnimarket.review-finding-identity-resolved.v1
+
+# The resolved identities are consumed by the review-learning outcome path and the
+# equivalence reducer's candidate matching; neither consumer exists in this graph yet.
+externally_consumed_topics:
+  - onex.evt.omnimarket.review-finding-identity-resolved.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Review finding occurrence keys, lineage and ANCHOR_LOST - pure COMPUTE"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "review"
+    - "identity"
+    - "lineage"
+  related_tickets:
+    - "OMN-21190"

@@ -1,0 +1,141 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21139"
+title: "TE.2 Extraction event, verifier, chunker and fold"
+summary: "Plan task TE.2: the typed proposed-event model and its JSON schema, and three pure definition-B nodes: node_extraction_verify_compute (admits a model-proposed quote only as verbatim, sentence-widened operator words with a candidate_digest), node_transcript_chunk_compute (a lossless chunker) and node_extraction_fold_compute (an order-independent fold of segment results)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-te2-extraction"
+    statement: "A model proposes typed extraction events and deterministic nodes admit, chunk and fold them; no model writes a word of a ruling."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: an event whose quote is absent from the cited prompt, present at other offsets, or present only in a synthetic record (a compact summary, a tool result) is rejected with a counted reason; a quote spanning a whitespace difference is admitted -- falsifier: a fabricated or synthetic-source quote admitted, or a whitespace variant rejected"
+      - id: "AC2"
+        statement: "AC2: an admitted quote is widened to its enclosing sentence or sentences by the versioned splitter, so a proposal of \"deploy\" from \"Do not deploy without approval.\" is admitted as the whole sentence with both offset pairs recorded -- falsifier: an admitted span that starts or ends inside a sentence, or a missing proposed-offset record"
+      - id: "AC3"
+        statement: "AC3: each admitted event carries `candidate_digest` (section 5 item 1) computed over its canonical JSON -- falsifier: a digest that does not reproduce from the event"
+      - id: "AC4"
+        statement: "AC4: the fold of the same segment results is identical under every arrival order and under duplicate segments -- falsifier: two orders giving different lists"
+      - id: "AC5"
+        statement: "AC5: a ruling placed across a segment boundary appears whole in at least one segment -- falsifier: a fixture where no segment holds the full quote"
+      - id: "AC6"
+        statement: "AC6: none of the nodes imports a model client or reads the ledger -- falsifier: an import or a file read in a unit-test sandbox"
+      - id: "AC7"
+        statement: "AC7: an admitted event becomes an artifact with factor `TRANSCRIPT_EXTRACTS`, `verbatim_verified: true`, its `source_ref` and offsets, and nothing on this path appends to the ledger -- falsifier: an admitted event under `OPERATOR_RULINGS`, or a ledger append"
+      - id: "AC8"
+        statement: "AC8: the chunker's spans partition `[0, len)` of the transcript text, carry offsets, and `\"\".join(spans)` equals the original for every fixture and a generated set; it terminates when the final span ends at the end of the text -- falsifier: a join that differs, a span gap or overlap beyond the declared overlap, or a non-terminating case"
+      - id: "AC9"
+        statement: "AC9: code fences and tables are not cut, chunk ids are content hashes and identical on rerun, and no chunk is dropped by a size or word-count filter -- falsifier: a cut fence, an id that differs on rerun, or a dropped chunk"
+      - id: "AC10"
+        statement: "AC10: `candidate_digest` is over a canonical JSON that excludes the timestamp and generated ids, so two events equal in content give one digest -- falsifier: equal events with different digests"
+evidence_requirements:
+  - kind: "tests"
+    description: "The verifier, chunker and fold tests, and the three node contract tests."
+    command: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21139-ac1"
+    description: "AC1: absent, wrong-offset, synthetic-source, unknown-source and unparseable proposals are each rejected and counted; a whitespace variant is admitted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py -q -p no:randomly --no-cov -k 'admitted or rejected or wrong_offsets or unknown_source or parse_failure or every_reason or absent'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21139-ac2"
+    description: "AC2: deploy from 'Do not deploy without approval.' is admitted as the whole sentence with proposed and admitted offsets; every admitted span starts and ends on a splitter boundary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py -q -p no:randomly --no-cov -k 'widen or sentence or whole or splitter or curly'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21139-ac3"
+    description: "AC3: candidate_digest reproduces from the admitted event's canonical JSON."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py -q -p no:randomly --no-cov -k 'digest'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21139-ac4"
+    description: "AC4: the fold of the same segment results is identical under every permutation, with and without duplicate segments."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_fold_compute/test_fold.py -q -p no:randomly --no-cov -k 'arrival_order or duplicate or kept_once or one_segment_id or sum_over'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21139-ac5"
+    description: "AC5: a ruling straddling a core boundary lies whole in one window, and every generated span no longer than the overlap lies whole in some window; with no overlap the straddling ruling is split (negative control)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_chunk_compute/test_chunk.py -q -p no:randomly --no-cov -k 'ruling or no_longer_than_the_overlap'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21139-ac6"
+    description: "AC6: none of the three handlers imports a model client or a ledger module, and the verifier and fold handle requests with file access patched to raise."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_contracts.py tests/nodes/node_extraction_verify_compute/test_verify.py tests/nodes/node_transcript_chunk_compute/test_contracts.py tests/nodes/node_extraction_fold_compute/test_contracts.py tests/nodes/node_extraction_fold_compute/test_fold.py -q -p no:randomly --no-cov -k 'no_model_client or reads_no_file or never_rulings'"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21139-ac7"
+    description: "AC7: an admitted event is a TRANSCRIPT_EXTRACTS artifact with verbatim_verified true, its source_ref and both offset pairs; the result holds no ruling and the path has no ledger writer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py tests/nodes/node_extraction_verify_compute/test_contracts.py -q -p no:randomly --no-cov -k 'transcript_extracts_artifact or no_model_client'"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21139-ac10"
+    description: "AC10: two proposals that widen to the same candidate, with different proposed spans and scope, give one digest; kind and source change it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute/test_verify.py -q -p no:randomly --no-cov -k 'one_digest or digest_changes'"
+    binds_ac: ["AC10"]
+  - id: "dod-omn21139-ac8"
+    description: "AC8: the chunk cores partition [0, len), join to the original for the fixtures and 157 generated texts at five budgets, and the loop ends at the end of the text."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_chunk_compute/test_chunk.py -q -p no:randomly --no-cov -k 'partition or join or terminates or empty_text or overlap_not_below'"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21139-ac9"
+    description: "AC9: no cut falls inside a code fence or a table, an oversize block is kept whole, chunk ids are content hashes identical on rerun, and no chunk is dropped."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_chunk_compute/test_chunk.py -q -p no:randomly --no-cov -k 'fence or table or oversize or chunk_ids or dropped or prefer'"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21139-contracts"
+    description: "Each of the three node contracts declares restricted-family topics, resolves its handler, is an onex.nodes entry point and imports no event envelope; the committed JSON schema equals the model's."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_verify_compute tests/nodes/node_transcript_chunk_compute tests/nodes/node_extraction_fold_compute -q -p no:randomly --no-cov -k 'contract or entry_point or envelope or topic or json_schema'"
+  - id: "dod-omn21139-deploy-container-verify"
+    description: "Hosted deploy probe. uv run --frozen --no-dev installs the checkout and runs the product handler on one prompt: 'deploy' is admitted widened to 'Do not deploy without approval.' as a TRANSCRIPT_EXTRACTS artifact, and a fabricated quote is counted absent. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import json
+          from omnimarket.models.transcript_extraction import EnumCapturedPromptOrigin as O, ModelCapturedPrompt as P, ModelExtractionVerifyRequest as Q
+          from omnimarket.nodes.node_extraction_verify_compute.handlers.handler_extraction_verify import HandlerExtractionVerify as H
+          t = "Ship it. Do not deploy without approval."
+          def e(q, s): return json.dumps({"kind": "ruling", "quote": q, "event_id": "e1", "prompt_id": "p1", "covers_start": s, "covers_end": s + len(q)})
+          r = H().handle(Q(segment_id="s1", prompts=(P(event_id="e1", prompt_id="p1", text=t, origin=O.OPERATOR_TYPED),), proposals=(e("deploy", t.index("deploy")), e("Deploy now.", 0))))
+          (a,) = r.admitted
+          assert a.quote == "Do not deploy without approval." and a.factor.value == "transcript_extracts" and a.verbatim_verified, r
+          assert r.rejection_counts["absent"] == 1, r
+          print(a.candidate_digest)'
+  - id: "dod-omn21139-deploy-hosted-source"
+    description: "Hosted source identity probe: the published verifier at the checked-out commit contains its handler class. The handler is absent at the merge base. The preceding behavioral probe checks admitted and rejected proposals; this source probe does not claim a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_extraction_verify_compute/handlers/handler_extraction_verify.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -Fq "class HandlerExtractionVerify:"'
