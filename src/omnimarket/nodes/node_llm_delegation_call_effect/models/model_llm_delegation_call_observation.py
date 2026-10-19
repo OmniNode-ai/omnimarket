@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 
@@ -32,6 +33,12 @@ class ModelLlmDelegationCallObservation(BaseModel):
     failure_class: EnumDelegationFailureClass | None = None
     http_status: int | None = None
     error_message: str = ""
+    # OMN-20910: the native call's stop reason and measured cache usage, on a
+    # ``finished`` observation, so a cost event built per attempt sees them even
+    # when the effect is cancelled before it returns.
+    stop_reason: EnumAnthropicStopReason | None = None
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
 
 
 __all__ = ["ModelLlmDelegationCallObservation"]

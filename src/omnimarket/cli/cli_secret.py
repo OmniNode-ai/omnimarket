@@ -1702,6 +1702,7 @@ def review_gateway(
 ) -> None:
     """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
         run_dry,
     )
@@ -1738,10 +1739,12 @@ def review_gateway(
             "ONEX_LAB_RUN_HOSTS to the lab host table."
         )
     bind_host, _, bind_port = bind.rpartition(":")
-    backend = resolve_byok_provider_backend("anthropic")
+    # OMN-20910: the gateway names the native Messages plan explicitly; a caller
+    # that names no plan keeps the OpenAI-compatible default row.
+    backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
     if backend is None:
         raise click.ClickException(
-            "the provider catalogue offers no anthropic backend."
+            "the provider catalogue offers no anthropic api_native backend."
         )
     try:
         request = ModelClaudeReviewGatewayRequest(

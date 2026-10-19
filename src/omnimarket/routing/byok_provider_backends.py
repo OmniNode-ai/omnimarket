@@ -303,6 +303,11 @@ class ModelByokProviderBackend(BaseModel):
     #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
     #: ever sent by ``models_auth``.
     models_headers: dict[str, str] = Field(default_factory=dict)
+    #: OMN-20910. The wire protocol of ``endpoint_url``. ``openai_chat`` is the
+    #: OpenAI-compatible chat shape every row used before; ``anthropic_messages``
+    #: is Anthropic's native Messages API, the only one that supports prompt
+    #: caching, cache-usage accounting and a typed ``stop_reason``.
+    inference_protocol: Literal["openai_chat", "anthropic_messages"] = "openai_chat"
     #: OMN-20844. ``true`` declares that the customer names the model their key
     #: runs: registration takes the model they choose (checked against the
     #: key's own list) and never picks one from ``model_preference`` for them,
