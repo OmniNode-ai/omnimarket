@@ -810,7 +810,6 @@ dod_evidence:
           print("Claude token pool revoked-token artifact probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC101"]
   - id: "dod-omn17427-ac74-patch-apply-dispatch"
     description: "The portable patch dispatch behavior and host adapter boundaries pass the focused suite."
     source: "manual"
