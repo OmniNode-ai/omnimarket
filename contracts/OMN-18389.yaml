@@ -14,7 +14,7 @@ requirements:
       - id: "AC1"
         statement: "AC1: a delegate-skill-failed delivery whose wire envelope payload_type is ModelBoundaryFailureTerminal is neither written to the malformed sink nor to the database, and the offset advances -- falsifier: uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q -n 0 -k boundary_terminal_is_not_dead_lettered"
       - id: "AC2"
-        statement: "AC2: the same payload without that payload_type, or with another one, is still routed to the malformed sink naming task_type -- falsifier: uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q -n 0 -k still_dead_lettered"
+        statement: "AC2: the same payload without that payload_type, or with another one, is still routed to the malformed sink naming task_type, while the boundary terminal is skipped -- falsifier: uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Boundary failure terminal handling in the delegation projection for OMN-18389."
@@ -33,11 +33,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn18389-ac2-malformed-still-dead-lettered"
-    description: "Negative controls: the payload with no payload_type and with a different payload_type is still dead-lettered, so the skip keys on the emitter's stamp and not on payload shape."
+    description: "The boundary terminal is skipped while the payload with no payload_type and with a different payload_type is still dead-lettered. Run the boundary regression together with both negative controls so this distinction fails at the merge base."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q -n 0 -k still_dead_lettered"
+        check_value: "uv run pytest tests/test_omn18389_boundary_failure_terminal_not_dead_lettered.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn18389-deploy-probe"
