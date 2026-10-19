@@ -5,9 +5,10 @@
 # handle(ModelContextSourceRequest) -> ModelContextSourceResult.
 # The scope names the mode: `case:<case_id>` reads a pinned replay case from the bundle under
 # ONEX_CONTEXT_REPLAY_ROOT (required, no default) and its revision must be the case's
-# transcript-chain sha256; `session:<session_id>` is live mode, whose captured-row reader is not
-# built yet, so every live factor but REPO_STATE is refused with a typed error and REPO_STATE is
-# `unavailable` (never filled from a cwd).
+# transcript-chain sha256; `session:<session_id>` is live mode (OMN-21111): OPERATOR_WORDS_UNRECORDED
+# reads the session transcript under ONEX_SESSION_TRANSCRIPT_ROOT and the ledger at ONEX_LEDGER_PATH
+# (both required, no default), every other live factor but REPO_STATE is refused with a typed error,
+# and REPO_STATE is `unavailable` (never filled from a cwd).
 name: node_session_context_sources_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
@@ -18,8 +19,10 @@ description: >
   hashes. OPERATOR_WORDS_UNRECORDED carries each operator prompt of the session up to the case's
   last boundary verbatim and whole, unless a ledger row covers all of it but whitespace or an
   operator review row names it; compaction summary text is never carried. REPO_STATE is
-  unavailable where the case excludes it. Failures are typed error results, never an empty
-  resolved read.
+  unavailable where the case excludes it. Live mode reads the session's transcript and the
+  markdown ledger up to the revision watermark and applies the same carry rule, where a RULING or
+  OPERATOR-CONSENT row also records the words it quotes verbatim. Failures are typed error
+  results, never an empty resolved read.
 
 handler_routing:
   routing_strategy: operation_match

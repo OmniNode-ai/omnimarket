@@ -1,6 +1,6 @@
 name: node_session_context_sources_effect
 version: "1.0.0"
-description: "Session tiers of a context pack: pinned replay-case read of operator words and repo state"
+description: "Session tiers of a context pack: pinned replay-case and live transcript reads of operator words, and repo state"
 omnibase_core_compat: ">=0.47.46,<0.48.0"
 entry_points:
   onex.nodes:
@@ -22,4 +22,4 @@ tags: ["effect", "context-pack", "context-source", "compaction", "deterministic"
 pack: "pipeline"
 display_name: "Session Context Sources Effect"
 node_role: "effect"
-tickets: ["OMN-21108"]
+tickets: ["OMN-21108", "OMN-21111"]

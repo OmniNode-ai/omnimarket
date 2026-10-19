@@ -545,11 +545,16 @@ requirements:
     acceptance:
       - id: "AC103"
         statement: "AC103: config/test_file_durations.json records every collected non-kafka test file that dev 9978f18ad left unrecorded, and test_committed_record_names_nearly_every_test_file passes -- falsifier: the test fails at 9978f18ad with 161 of 3189 files (5.0%) unrecorded"
+  - id: "req-occ-autobind-clone-timeout-retry"
+    statement: "The occ-autobind producer's shallow clone of onex_change_control is attempted a second time after a git timeout, with the partial clone removed first, inside the node's declared descriptor timeout; any other clone failure is not retried."
+    acceptance:
+      - id: "AC104"
+        statement: "AC104: OccCompanionEmitter._clone_and_branch retries a clone that raised TimeoutExpired once after removing the partial clone directory, raises the final TimeoutExpired after 2 attempts, raises a CalledProcessError after 1 attempt, and 2 attempts at the per-op git timeout stay under the node's contract descriptor timeout_ms -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q fails at the merge base"
   - id: "req-step-by-step-causal-connectives"
     statement: "The step_by_step_explanation check accepts a correct causal explanation walked through with a connective outside the six OMN-19401 shipped, matched only at the start of a word, and still vetoes an answer that asserts without explaining."
     acceptance:
-      - id: "AC104"
-        statement: "AC104: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
+      - id: "AC105"
+        statement: "AC105: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -728,7 +733,10 @@ evidence_requirements:
     description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
   - kind: "tests"
-    description: "AC104: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
+    description: "AC104: the occ-autobind producer retries a timed-out OCC clone once and no other clone failure."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q"
+  - kind: "tests"
+    description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
 emergency_bypass:
   enabled: false
@@ -813,7 +821,6 @@ dod_evidence:
           print("Claude token pool revoked-token artifact probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC101"]
   - id: "dod-omn17427-ac74-patch-apply-dispatch"
     description: "The portable patch dispatch behavior and host adapter boundaries pass the focused suite."
     source: "manual"
@@ -2131,6 +2138,21 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC103"]
+  - id: "dod-omn17427-ac104-occ-clone-timeout-retry"
+    description: "The occ-autobind producer's OCC clone is retried once after a git timeout with the partial clone removed, the final timeout and any non-timeout failure propagate, and the attempts fit the node's descriptor timeout. Against the merge base 3 of the 4 tests fail; after the change all 4 pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC104"]
+  - id: "dod-omn17427-occ-clone-retry-deploy-probe"
+    description: "Deploy probe. The checked-out emitter declares two clone attempts and the clone budget test passes against the node's own contract.yaml. It fails at the merge base, where the constant is absent, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q --no-cov -k test_clone_attempts_fit_contract_timeout"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-causal-connectives"
     description: "The causal connective fixture proves correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     source: "manual"
@@ -2138,7 +2160,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC104"]
+    binds_ac: ["AC105"]
   - id: "dod-omn17427-causal-connectives-deploy-probe"
     description: "Deploy probe. The quality gate handler's step_by_step_explanation check is run over the causal connective fixture and the OMN-19401 causal prose tests: every correct causal answer passes and every non-explanation is vetoed. The hosted runner needs uv and this checkout, with no external provider or credentials."
     source: "manual"
