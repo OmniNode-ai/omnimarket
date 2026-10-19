@@ -17,7 +17,10 @@ A dev push run that goes red names no PR, so it rides a second chain to the same
 6. node_pr_state_emit_effect consumes branch-head and routes it to its dev-head red detector;
 7. node_pr_state_emit_effect publishes dev-head-red;
 8. node_pr_lifecycle_orchestrator consumes dev-head-red and routes it to the cause-lane dispatcher;
-9. node_pr_lifecycle_orchestrator publishes dev-cause-lane-requested and dev-head-red-decided.
+9. node_pr_lifecycle_orchestrator publishes dev-cause-lane-requested and dev-head-red-decided;
+10. node_dev_cause_lane_receiver_effect takes dev-cause-lane-requested as its command topic and
+    routes it to an existing handler (ruling 2026-10-14T03:57:46Z, item 5: the request starts a
+    lane; without this leg a red dev head asks and nothing starts, OMN-17427).
 
 ``chain_violations`` reads those legs from the node contracts. A dropped subscription, a
 dropped publication, a missing route or a handler module that no longer exists is a violation,
@@ -52,6 +55,7 @@ _NODES = _ROOT / "src" / "omnimarket" / "nodes"
 _EMITTER = "node_pr_state_emit_effect"
 _ORCHESTRATOR = "node_pr_lifecycle_orchestrator"
 _REDUCER = "node_pr_lifecycle_state_reducer"
+_RECEIVER = "node_dev_cause_lane_receiver_effect"
 _THIS_TEST = "tests/ci/test_red_ci_bus_chain_omn20730.py"
 _HOOK_ID = "red-ci-event-chain"
 
@@ -59,7 +63,7 @@ _HOOK_ID = "red-ci-event-chain"
 def _load_contracts() -> dict[str, dict[str, Any]]:
     return {
         node: yaml.safe_load((_NODES / node / "contract.yaml").read_text("utf-8"))
-        for node in (_EMITTER, _ORCHESTRATOR, _REDUCER)
+        for node in (_EMITTER, _ORCHESTRATOR, _REDUCER, _RECEIVER)
     }
 
 
@@ -94,6 +98,7 @@ def chain_violations(contracts: dict[str, dict[str, Any]]) -> list[str]:
     emitter = contracts[_EMITTER]
     orchestrator = contracts[_ORCHESTRATOR]
     reducer = contracts[_REDUCER]
+    receiver = contracts[_RECEIVER]
 
     if not _subscribes(emitter, PR_STATE_OBSERVED_TOPIC_V1):
         violations.append(
@@ -142,6 +147,20 @@ def chain_violations(contracts: dict[str, dict[str, Any]]) -> list[str]:
     ):
         if not _publishes(contract, published):
             violations.append(f"{node} does not publish {published}")
+
+    if (receiver.get("runtime_dispatch") or {}).get(
+        "command_topic"
+    ) != DEV_CAUSE_LANE_REQUESTED_TOPIC_V1:
+        violations.append(
+            f"{_RECEIVER} does not take {DEV_CAUSE_LANE_REQUESTED_TOPIC_V1} as its command topic"
+        )
+    started = (
+        (receiver.get("handler_routing") or {}).get("handlers", [{}])[0].get("handler")
+    )
+    if not started or not _handler_module_exists(started):
+        violations.append(
+            f"{_RECEIVER} routes {DEV_CAUSE_LANE_REQUESTED_TOPIC_V1} to no existing handler"
+        )
     return violations
 
 
@@ -161,6 +180,22 @@ def _drop_publication(node: str, topic: str) -> dict[str, dict[str, Any]]:
     contracts[node]["event_bus"]["publish_topics"] = [
         t for t in contracts[node]["event_bus"]["publish_topics"] if t != topic
     ]
+    return contracts
+
+
+def _repoint_receiver_command_topic() -> dict[str, dict[str, Any]]:
+    contracts = copy.deepcopy(_load_contracts())
+    contracts[_RECEIVER]["runtime_dispatch"]["command_topic"] = (
+        "onex.cmd.omnimarket.some-other-request.v1"
+    )
+    return contracts
+
+
+def _point_receiver_at_a_missing_module() -> dict[str, dict[str, Any]]:
+    contracts = copy.deepcopy(_load_contracts())
+    contracts[_RECEIVER]["handler_routing"]["handlers"][0]["handler"]["module"] = (
+        "omnimarket.nodes.handler_that_was_deleted"
+    )
     return contracts
 
 
@@ -238,6 +273,14 @@ _PLANTED = {
         _drop_publication(_ORCHESTRATOR, DEV_CAUSE_LANE_REQUESTED_TOPIC_V1),
         f"{_ORCHESTRATOR} does not publish {DEV_CAUSE_LANE_REQUESTED_TOPIC_V1}",
     ),
+    "receiver stops taking the cause-lane request": (
+        _repoint_receiver_command_topic(),
+        f"{_RECEIVER} does not take {DEV_CAUSE_LANE_REQUESTED_TOPIC_V1} as its command topic",
+    ),
+    "receiver handler names a deleted module": (
+        _point_receiver_at_a_missing_module(),
+        f"{_RECEIVER} routes {DEV_CAUSE_LANE_REQUESTED_TOPIC_V1} to no existing handler",
+    ),
     "orchestrator stops publishing the dev-head decision": (
         _drop_publication(_ORCHESTRATOR, DEV_HEAD_RED_DECIDED_TOPIC_V1),
         f"{_ORCHESTRATOR} does not publish {DEV_HEAD_RED_DECIDED_TOPIC_V1}",
@@ -275,6 +318,8 @@ def test_hook_files_filter_selects_the_chain_inputs() -> None:
         f"src/omnimarket/nodes/{_EMITTER}/contract.yaml",
         f"src/omnimarket/nodes/{_ORCHESTRATOR}/contract.yaml",
         f"src/omnimarket/nodes/{_REDUCER}/contract.yaml",
+        f"src/omnimarket/nodes/{_RECEIVER}/contract.yaml",
+        f"src/omnimarket/nodes/{_RECEIVER}/handlers/handler_dev_cause_lane_start.py",
         "src/omnimarket/events/topics.py",
     ):
         assert re.search(files, path), path

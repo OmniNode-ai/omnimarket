@@ -33,7 +33,7 @@ from omnimarket.models.context_pack.model_context_task_kind_rule import (
     TASK_KIND_UNKNOWN,
     ModelContextTaskKindRule,
 )
-from omnimarket.nodes.node_context_task_kind_rules_compute.models import (
+from omnimarket.models.context_task_kind_rules import (
     EnumContextTaskKindRulesStatus,
     ModelContextTaskKindConditionOutcome,
     ModelContextTaskKindRuleOutcome,

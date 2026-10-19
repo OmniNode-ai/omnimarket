@@ -55,3 +55,10 @@ dod_evidence:
         check_value: "grep -cF 'review-recorded.v1' src/omnimarket/nodes/node_review_record_compute/contract.yaml"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn21188-deploy-probe"
+    description: "Deploy probe. Reads the review record handler from GitHub at the checked-out head and requires the HandlerReviewRecordCompute class. It fails at the merge base, which has no such file."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_record_compute/handlers/handler_review_record.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c \"^class HandlerReviewRecordCompute\"'"
+        cwd: "${OMNI_HOME}/omnimarket"
