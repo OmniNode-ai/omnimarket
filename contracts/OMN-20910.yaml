@@ -105,7 +105,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
+          env docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20910-ac9-compact-strict-parser"
     description: "compact_strict fails closed on every listed case; a mandatory R finding is critical; v1 replies pass unchanged."
