@@ -301,7 +301,6 @@ def _green(pr_number: int) -> PrRecord:
         # continue to pass under the merge-queue governor's fail-closed arm
         # gate. Harmless for scenarios that never reach MERGING.
         is_draft=False,
-        coderabbit_unresolved=0,
         merge_state_status="CLEAN",
     )
 

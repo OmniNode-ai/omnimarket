@@ -75,12 +75,6 @@ CODEX_SKILL_SPECS: tuple[CodexSkillSpec, ...] = (
         "src/omnimarket/nodes/node_bus_audit_compute/contract.yaml",
     ),
     CodexSkillSpec(
-        "coderabbit-triage",
-        "coderabbit_triage",
-        "node_coderabbit_triage",
-        "src/omnimarket/nodes/node_coderabbit_triage/contract.yaml",
-    ),
-    CodexSkillSpec(
         "dep-cascade-dedup",
         "dep_cascade_dedup_orchestrator",
         "node_dep_cascade_dedup_orchestrator",

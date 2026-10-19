@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """HandlerCommentResolution — auto-resolve trivial bot review threads.
 
-Resolves trivial CodeRabbit/bot review threads before merge attempt.
+Resolves trivial bot review threads before merge attempt.
 "Trivial" = comment body matches known bot patterns (nit, style, minor, nitpick)
 AND has no human reply.
 
@@ -58,8 +58,6 @@ _TRIVIAL_BOT_PATTERNS = re.compile(
 # Bot login names to detect
 _BOT_LOGINS = frozenset(
     {
-        "coderabbitai",
-        "coderabbitai[bot]",
         "github-actions[bot]",
         "dependabot[bot]",
     }

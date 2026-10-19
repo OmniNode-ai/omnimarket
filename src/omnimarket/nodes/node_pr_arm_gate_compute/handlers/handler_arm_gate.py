@@ -62,7 +62,7 @@ class HandlerPrArmGate:
         """Evaluate one candidate against the operator policy.
 
         ARM iff action_mode == ENFORCE AND not kill_switch AND is_draft is
-        False AND coderabbit_unresolved == 0 AND merge_state_status == CLEAN
+        False AND merge_state_status == CLEAN
         AND the checks criterion holds AND occ_companion_verified is True.
         The checks criterion is head_check_verdict == GREEN when
         head_check_verdict is set, else status_checks == SUCCESS. Any
@@ -79,10 +79,6 @@ class HandlerPrArmGate:
             reasons.append("kill_switch_engaged")
         if candidate.is_draft is not False:
             reasons.append(f"is_draft={candidate.is_draft!r} (not confirmed False)")
-        if candidate.coderabbit_unresolved != 0:
-            reasons.append(
-                f"coderabbit_unresolved={candidate.coderabbit_unresolved!r} (not confirmed 0)"
-            )
         if candidate.merge_state_status != _REQUIRED_MERGE_STATE_STATUS:
             reasons.append(
                 f"merge_state_status={candidate.merge_state_status!r} "

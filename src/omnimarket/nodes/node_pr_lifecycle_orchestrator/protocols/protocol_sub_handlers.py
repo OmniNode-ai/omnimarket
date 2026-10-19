@@ -109,14 +109,6 @@ class PrRecord(BaseModel):
             "cancelled/stale/infra checks are never treated as product failures."
         ),
     )
-    coderabbit_unresolved: int | None = Field(
-        default=None,
-        description=(
-            "Count of unresolved CodeRabbit threads. None means the count was "
-            "never collected (OMN-14151) — the arm-gate treats that as "
-            "unknown, never as 0."
-        ),
-    )
     merge_state_status: str | None = Field(
         default=None,
         description="GitHub merge state: CLEAN | DIRTY | BLOCKED | BEHIND | UNKNOWN",
