@@ -39,7 +39,7 @@ Design invariants
 - **Fail closed on absence of evidence.** A hold probe that observed *nothing*
   (no title, no labels) returns :attr:`EnumMergeHoldStatus.INDETERMINATE`, which
   callers must treat as held. This mirrors the OMN-14151 tri-state idiom already
-  used by ``coderabbit_unresolved`` / ``is_draft``: ``None`` means unknown and
+  used by ``is_draft``: ``None`` means unknown and
   withholds, it never decays to "clear".
 - **No network I/O, stdlib only.** Callers pass the observed facts in.
 """

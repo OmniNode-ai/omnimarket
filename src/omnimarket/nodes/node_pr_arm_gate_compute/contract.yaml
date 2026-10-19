@@ -4,7 +4,7 @@
 #
 # Pure computation: the merge-queue governor's SOLE ARM/WITHHOLD decider. Zero
 # network calls, zero re-derivation of the facts it is handed. ARM requires
-# every criterion (action_mode, kill_switch, is_draft, coderabbit_unresolved,
+# every criterion (action_mode, kill_switch, is_draft,
 # merge_state_status, the checks criterion, occ_companion_verified) to
 # positively hold; any None/unknown fact fails closed to WITHHOLD. The checks
 # criterion is head_check_verdict == GREEN when the candidate carries a

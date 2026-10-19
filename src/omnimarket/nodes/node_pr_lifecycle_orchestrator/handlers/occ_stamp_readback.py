@@ -13,7 +13,7 @@ counting the fix.
 This generalizes the OMN-14173 ``OccCompanionVerifier`` read-back (which gated
 only the OCC-autobind arm) to EVERY fix arm, closing OMN-14174's
 dispatch-vs-effect over-count: mixed-failure PRs that fell through to
-``CODE_FAILURE`` / ``CI_FAILURE`` / ``CODERABBIT`` / ``CONFLICT`` used to set
+``CODE_FAILURE`` / ``CI_FAILURE`` / ``CONFLICT`` used to set
 ``fix_applied=True`` on dispatch and inflate ``prs_fixed`` with zero landed
 effect.
 

@@ -34,11 +34,12 @@ import httpx
 import pytest
 from click.testing import CliRunner
 
-from omnimarket.cli.cli_secret import models_group
+from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
+    resolve_local_byok_credential_plan,
 )
 from omnimarket.inference.protocol_config import (
     resolve_inference_protocol_default_temperature,
@@ -180,6 +181,21 @@ class TestModelsAddAnthropicRefusedKey:
 
 
 class TestModelsAddAnthropicAcceptedKey:
+    def test_secret_set_can_select_native_protocol_explicitly(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models, _ = _arrange(monkeypatch, tmp_path)
+        result = CliRunner().invoke(
+            secret_group,
+            ["set", "llm.anthropic.api_key", "--plan", "api_native"],
+            input=f"{_KEY}\n",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert len(models.calls) == 1
+        assert resolve_local_byok_credential_model("anthropic") == "claude-haiku-5-5"
+        assert resolve_local_byok_credential_plan("anthropic") == "api_native"
+
     def test_models_add_anthropic_stores_the_key_and_registers_its_route(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

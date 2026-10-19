@@ -21,6 +21,10 @@ description: >
   so the voter's overflow list moves the review on. A refused or credit-
   exhausted key is set aside and the next key on the host serves. A dry run
   plans one review without an upstream call. No key value is logged or returned.
+  Each review is one native Messages call (OMN-20910): the system message is split
+  into cached system blocks, the user message into a cached diff block and an
+  uncached persona block, a json_schema response_format becomes a forced tool, and
+  the reply carries finish_reason length on a max_tokens stop and the cache usage.
   Operator ruling 2026-10-13T20:50:03Z keeps exactly one repository's code away
   from cloud models and allows every other repository, with the refused list
   supplied by a private overlay and never named here, so reviews whose
@@ -59,7 +63,7 @@ dependencies:
     required: true
   - name: endpoint_url
     dependency_type: service
-    description: The BYOK catalogue's anthropic chat endpoint.
+    description: The BYOK catalogue's anthropic api_native endpoint (the native Messages API, OMN-20910).
     required: true
 
 handler:

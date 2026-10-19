@@ -29,9 +29,13 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
+
+if TYPE_CHECKING:
+    from _pytest.mark.structures import ParameterSet
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     compute_contract_summary,
@@ -89,7 +93,7 @@ def _real_occ_yamlfmt() -> Path | None:
     return None
 
 
-def _yamlfmt_configs() -> list[pytest.param]:
+def _yamlfmt_configs() -> list[ParameterSet]:
     """Every yamlfmt config this property is asserted against.
 
     The vendored copy always runs (so the property has force in CI, where no OCC
@@ -178,12 +182,16 @@ class TestTheCompanionContractSurvivesTheConsumingRepoFormatter:
     def test_the_longest_repo_at_a_five_digit_pr_is_a_fixpoint(
         self, conf: Path, tmp_path: Path
     ) -> None:
-        _assert_fixpoint(
-            _contract(_LONGEST_REPO, _FIVE_DIGIT_PR),
-            conf,
-            tmp_path,
-            f"the compute companion contract for {_LONGEST_REPO}#{_FIVE_DIGIT_PR}",
-        )
+        """Cover both ends of the five-digit range used by live companions."""
+        for pr_number in (10000, _FIVE_DIGIT_PR):
+            pr_dir = tmp_path / str(pr_number)
+            pr_dir.mkdir()
+            _assert_fixpoint(
+                _contract(_LONGEST_REPO, pr_number),
+                conf,
+                pr_dir,
+                f"the compute companion contract for {_LONGEST_REPO}#{pr_number}",
+            )
 
     @pytest.mark.parametrize("conf", _yamlfmt_configs())
     def test_the_omn_18669_recurrence_is_a_fixpoint(

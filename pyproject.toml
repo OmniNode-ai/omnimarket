@@ -754,7 +754,6 @@ node_occ_observation_source_effect = "omnimarket.nodes.node_occ_observation_sour
 node_push_validation_effect = "omnimarket.nodes.node_push_validation_effect"
 node_pr_delegated_fix_effect = "omnimarket.nodes.node_pr_delegated_fix_effect"
 node_ci_watch = "omnimarket.nodes.node_ci_watch"
-node_coderabbit_triage = "omnimarket.nodes.node_coderabbit_triage"
 node_overnight = "omnimarket.nodes.node_overnight"
 node_pr_lifecycle_state_reducer = "omnimarket.nodes.node_pr_lifecycle_state_reducer"
 node_pr_lifecycle_orchestrator = "omnimarket.nodes.node_pr_lifecycle_orchestrator"
@@ -1082,6 +1081,13 @@ code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:Plugi
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
+# OMN-19998: infra#5036 vendors the PR merge dedupe migration 0003.
+# OMN-19988: infra#5067 vendors node_projection_local_environment 0000-0002;
+# the Sibling Release gate needs them in the pinned revision. Pin #5067's dev
+# tag, which descends from #5036. uv.lock resolves the tag to commit
+# 4c36425ce840 and installs that commit, so the install is content-addressed;
+# drop this override once a registry release after 0.38.75 carries both.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261018092007-4c36425ce840" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and

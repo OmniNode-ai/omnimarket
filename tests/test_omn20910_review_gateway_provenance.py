@@ -83,7 +83,8 @@ def test_a_review_missing_part_of_its_identity_is_not_recorded_as_one(
     metadata = {key: value for key, value in _METADATA.items() if key != missing}
     request = _translate(metadata)
     assert request.review is None
-    assert request.prompt == "review this"
+    # OMN-20910: the native Messages protocol carries the user turn in blocks.
+    assert [block.text for block in request.messages[0].blocks] == ["review this"]
 
 
 @pytest.mark.parametrize("pr", ["not-a-number", "0", "-3", True, None])

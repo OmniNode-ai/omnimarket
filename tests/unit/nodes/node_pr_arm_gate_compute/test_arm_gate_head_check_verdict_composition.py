@@ -72,7 +72,6 @@ _ARM_READY_BASE = ModelArmCandidate(
     repo=_REPO,
     pr_number=_PR_NUMBER,
     is_draft=False,
-    coderabbit_unresolved=0,
     merge_state_status="CLEAN",
     occ_companion_verified=True,
 )

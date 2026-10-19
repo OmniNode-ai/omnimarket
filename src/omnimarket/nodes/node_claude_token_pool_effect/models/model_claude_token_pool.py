@@ -19,13 +19,14 @@ class ModelClaudeTokenPoolRequest(BaseModel):
 
     ``add``: store the token found in ``setup_token_output`` under ``label``.
     ``resolve``: choose the first token, in the order they were added, whose
-    limit has passed. ``mark_limited``: the account behind ``label`` hit its
-    usage limit, out for ``seconds``. ``status``: read the pool.
+    limit has passed and whose OAuth login is not revoked. ``mark_limited``:
+    the account behind ``label`` hit its usage limit, out for ``seconds``.
+    ``mark_revoked``: skip ``label`` until re-added. ``status``: read the pool.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["add", "resolve", "mark_limited", "status"]
+    operation: Literal["add", "resolve", "mark_limited", "mark_revoked", "status"]
     label: str | None = None
     setup_token_output: SecretStr | None = None
     seconds: float | None = Field(default=None, gt=0)
@@ -42,19 +43,22 @@ class ModelClaudeTokenPoolEntry(BaseModel):
     added_at: str
     until: str | None = None
     limited: bool = False
+    revoked: bool = False
 
 
 class ModelClaudeTokenPoolResult(BaseModel):
-    """The pool after the operation, and the token ``resolve`` chose."""
+    """The pool after the operation, the token ``resolve`` chose and any new ``mark_revoked`` alert."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["add", "resolve", "mark_limited", "status"]
+    operation: Literal["add", "resolve", "mark_limited", "mark_revoked", "status"]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
     chosen: str | None = None
     token: SecretStr | None = Field(default=None, exclude=True, repr=False)
     limited: int = 0
+    revoked: tuple[str, ...] = ()
+    alert: str | None = None
     all_limited: bool = False
     next_reset: str | None = None
     status_line: str
