@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19854"
+title: "A mechanism the ruling audit counts must write a row it can read: the operator capture rows carry the capture handler as actor"
+summary: >-
+  The ruling audit (ruling_mechanisms.py) counts an installed mechanism as acting only when a ledger row of the last 24 hours carries an actor= that names it. The operator capture handlers append one STATUS row per decision, ask, idea or preference under lane=operator-capture, but no row carried an actor=, so the two rulings that name node_operator_capture_effect and node_operator_capture_compute read NOT-ACTING although rows were being written. HandlerCaptureRows now puts actor=script:handler-capture-process on every row it builds, drop rows included. No reader of these rows keys on the cell.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-capture-rows-name-their-actor"
+    statement: "Every ledger row the capture rows handler builds carries actor=script:handler-capture-process, so the ruling audit reads the capture mechanism as acting when it writes a row."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every row the capture rows handler builds, a decision, an ask and a drop, carries exactly one actor=script:handler-capture-process cell, and the rows readers of the capture and digest nodes still pass -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute tests/unit/nodes/node_operator_capture_effect -q -k 'actor or rows or digest or asks'"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the capture rows carry the actor and the capture compute and effect suites pass."
+    command: "uv run pytest tests/unit/nodes/node_operator_capture_compute tests/unit/nodes/node_operator_capture_effect -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19854-ac1-capture-rows-actor"
+    description: "AC1: every capture row carries actor=script:handler-capture-process; the test fails on the tree before this change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_operator_capture_decisions.py -q -p no:randomly -k actor"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19854-deploy-probe"
+    description: "Deploy probe. The capture rows handler's ACTOR constant is read from GitHub at the checked-out commit; the probe exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_capture_compute/handlers/handler_capture_rows.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^ACTOR = \"script:handler-capture-process\"'"
+        cwd: "${OMNI_HOME}/omnimarket"

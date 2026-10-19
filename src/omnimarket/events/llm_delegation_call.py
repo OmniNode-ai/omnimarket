@@ -16,6 +16,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.review_cost.model_review_call_provenance import (
+    ModelReviewCallProvenance,
+)
+
 
 class ModelLlmDelegationCallRequest(BaseModel):
     """Input to HandlerLlmDelegationCall — one LLM API call to execute.
@@ -137,3 +141,9 @@ class ModelLlmDelegationCallRequest(BaseModel):
     fallback at the effect boundary when ``secret_ref``'s dotted convention
     mapping misses — distinct from ``secret_ref``, never a substitute for it.
     ``None`` when the backend config declares no ``api_key_env``."""
+
+    review: ModelReviewCallProvenance | None = Field(default=None)
+    """OMN-20910: the Hostile Review run this call is made for, copied by the
+    review gateway from the review's request metadata. When set, the effect
+    records the cost of every provider attempt of this call under it. ``None``
+    (the default) records nothing, so no other caller is affected."""

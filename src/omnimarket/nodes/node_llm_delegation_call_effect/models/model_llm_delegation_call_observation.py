@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +33,21 @@ class ModelLlmDelegationCallObservation(BaseModel):
     failure_class: EnumDelegationFailureClass | None = None
     http_status: int | None = None
     error_message: str = ""
+    # OMN-20910: the attempt's place in its invocation (1-based, in the order
+    # the effect made them) and, on ``finished``, what the provider reported.
+    # These are what a cost record is built from, so an attempt made before a
+    # cancellation is recorded from its own observation, not from a result the
+    # cancelled caller never receives. ``None`` is "the provider said nothing".
+    attempt: int = Field(default=1, ge=1)
+    served_model_id: str | None = None
+    tokens_in: int = Field(default=0, ge=0)
+    tokens_out: int = Field(default=0, ge=0)
+    cache_read_tokens: int | None = Field(default=None, ge=0)
+    cache_write_5m_tokens: int | None = Field(default=None, ge=0)
+    cache_write_1h_tokens: int | None = Field(default=None, ge=0)
+    finish_reason: str | None = None
+    latency_ms: int = Field(default=0, ge=0)
+    cost_usd: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 __all__ = ["ModelLlmDelegationCallObservation"]

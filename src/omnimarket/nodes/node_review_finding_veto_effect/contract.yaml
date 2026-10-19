@@ -20,6 +20,16 @@ description: >
   other class, syntax claims that hold, and claims the check cannot tie to the file it parsed
   are left exactly as the reviewers raised them.
 
+  The finding policy then lets only an Important finding the pull request introduced block. A
+  finding on a line the pull request did not add or change exists at the base and is
+  Pre-existing; a finding with no file and line inside the diff is refused; a finding of a
+  style or cleanup class is a Nit; each is dropped from the blocking set with a logged reason.
+  A security, logic, integration, contract or scope category, a title that names a defect and
+  a finding bound to a standing rule are never read as a Nit. From the fourth review of one
+  pull request only the diff since the previous round is re-reviewed and a finding already
+  posted is not repeated; the round and the posted findings ride in a marker in the gate's own
+  comment.
+
 input_model: omnimarket.nodes.node_review_finding_veto_effect.models.model_review_finding_veto.ModelReviewFindingVetoRequest
 
 output_model:
@@ -41,6 +51,13 @@ handler_routing:
         module: omnimarket.nodes.node_review_finding_veto_effect.handlers.handler_review_finding_veto
       handler_module: omnimarket.nodes.node_review_finding_veto_effect.handlers.handler_review_finding_veto
       event_model: omnimarket.nodes.node_review_finding_veto_effect.models.model_review_finding_veto.ModelReviewFindingVetoRequest
+
+    - operation: review_finding_veto.apply_finding_policy
+      handler:
+        name: HandlerReviewFindingPolicy
+        module: omnimarket.nodes.node_review_finding_veto_effect.handlers.handler_review_finding_policy
+      handler_module: omnimarket.nodes.node_review_finding_veto_effect.handlers.handler_review_finding_policy
+      event_model: omnimarket.nodes.node_review_finding_veto_effect.models.model_review_finding_policy.ModelReviewFindingPolicyRequest
 
 descriptor:
   node_archetype: effect
@@ -78,6 +95,15 @@ dod_evidence:
       the omnimarket#4063 test file at its blocked head parses and its finding is dropped with a
       reason; a file that does not parse keeps its finding; findings of other classes, non-blocking
       findings and syntax claims about another file are untouched.
+
+  PYTEST_POLICY:
+    description: "only an Important finding the pull request introduced, with evidence inside its diff and not of a style class, blocks; rounds past three re-review only the new diff"
+    command: "uv run pytest tests/unit/nodes/node_review_finding_veto_effect/test_review_finding_policy.py tests/ci/test_hostile_reviewer_finding_policy_omn17427.py -q"
+    pass_criteria: >
+      a finding on an unchanged line is Pre-existing, one in an unchanged file or past the end of
+      the file is refused, style and cleanup titles are Nits, a title that names a defect and a
+      standing-rule finding keep blocking, and past round three a posted finding is not repeated
+      and a line outside the diff since the previous round does not block.
 
 metadata:
   transport_type: filesystem

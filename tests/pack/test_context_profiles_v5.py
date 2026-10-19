@@ -34,7 +34,13 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "omnimarket"
 PROFILES_DIR = SRC / "pack" / "profiles"
 PROFILE_NAMES = sorted(path.stem for path in PROFILES_DIR.glob("*.yaml"))
 SECTION_4_4_PROFILES = frozenset(
-    {"compaction_orchestrator", "session_start", "agent_spawn", "per_prompt"}
+    {
+        "compaction_orchestrator",
+        "lane_brief",
+        "session_start",
+        "agent_spawn",
+        "per_prompt",
+    }
 )
 
 

@@ -1,0 +1,121 @@
+# Review-learning collection: preregistration, version 1.
+#
+# Fixed before any collection starts. This file is sealed by its sha256 in
+# preregistration.v1.yaml.sha256 (sha256sum format: `sha256sum -c` verifies it).
+# A change to any line is a new version with a new hash; this version is never
+# edited in place. node_review_quota_reducer refuses every admission when this
+# file's bytes do not hash to the sidecar, and refuses a request that names a
+# different hash.
+#
+# What is fixed here: the procedure (quotas, eligible routes, minimum counts,
+# gate behaviour, pilot window, cutting rule, final acceptance). What is NOT
+# fixed here: the numeric thresholds of the promotion metrics. Those are chosen
+# from the pilot and frozen before any evaluation data is scored.
+#
+# The route list is the roster in force on 2026-10-18 (one lab reviewer and one
+# Sonnet reviewer, plus the Opus review the rubric is distilled from). The
+# read-only inventory of which nodes perform review today is a separate piece
+# of work; when it names a route not listed here, that route enters through a
+# version 2 of this file, before collection starts, never by editing version 1.
+preregistration_id: "review-learning-collection.v1"
+version: 1
+status: "sealed-before-collection"
+sealed_for: "node_review_quota_reducer"
+
+# The collection clock is an event, not a date in this file: the caller of the
+# reducer supplies the collection-start instant, and the reducer refuses every
+# admission while none is supplied.
+collection:
+  window_days: 30
+  # The pilot is the first pilot_days of the window. Its targets feed the
+  # `train` manifest at most: never `evaluation`, never `final`.
+  pilot_days: 14
+  pilot_excluded_from_evaluation: true
+  # The quota window: a week is 7 days counted from the collection start, so
+  # window index 0 is days 0-6. The last window (index 4) is days 28-29 and
+  # carries the full weekly quota.
+  quota_window_days: 7
+
+# Frontier reviews feed the rubric only from the routes below. Admission through
+# the reducer is required before every model call on a listed route. A route not
+# listed is refused. weekly_quota counts reservations and consumptions together
+# per quota window; a release returns a reservation that never reached the model.
+#
+# Basis of the numbers: the review budget ruling of 2026-10-18 prices a Sonnet
+# review at about 0.10 USD and an Opus review at about 0.18 USD against about
+# 800 USD a month for all review spend. 120 Sonnet reviews a week is about 12 USD
+# and 40 Opus reviews a week about 7.20 USD, a small share of that budget; the
+# lab reviewer has no per-call price.
+eligible_routes:
+  - route_id: "claude_sonnet_review_voter"
+    tier: "frontier"
+    feeds_rubric: true
+    weekly_quota: 120
+    served_model_recorded: "required"
+  - route_id: "claude_opus_review"
+    tier: "frontier"
+    feeds_rubric: true
+    weekly_quota: 40
+    served_model_recorded: "required"
+  - route_id: "lab_local_reviewer"
+    tier: "local"
+    feeds_rubric: false
+    weekly_quota: 300
+    served_model_recorded: "required"
+
+# The minimum counts that open the gate. Counted over targets outside the pilot
+# window unless stated otherwise.
+minimum_counts:
+  labeled_findings_real: 100
+  labeled_findings_false: 100
+  negative_evidence_sample: 50
+  distinct_pull_requests: 60
+  distinct_repositories: 3
+  # Label coverage (labeled over all recorded findings) and the unlabelable
+  # share are reported as numbers; the gate below bounds coverage from below.
+  label_coverage_minimum_fraction: 0.30
+
+gate_behaviour:
+  # Two checkpoints, both publish the label counts and coverage to the ledger.
+  pilot_checkpoint_day: 14
+  stop_or_continue_day: 30
+  at_pilot_checkpoint: "report the counts and the pilot-derived thresholds; change no quota; start no evaluation scoring"
+  at_stop_or_continue: "continue to rubric evaluation only when every minimum_counts entry is met, including the negative sample; otherwise stop and report the counts"
+  on_any_minimum_unmet: "stop; the program stays collection-only; the rubric evaluation, distillation, experiment and activation work does not start"
+  empty_or_undersized_set: "refuses promotion"
+
+cutting_rule:
+  version: "split.v1"
+  unit: "patch_group_id"
+  # Related patches (backports, cherry-picks, repeated submissions, defect
+  # lineages) share one patch_group_id before hashing, by patch identity and
+  # the equivalence graph.
+  hash: "sha256"
+  salt: "review-learning-split.v1"
+  # bucket = int(sha256(salt + ":" + patch_group_id).hexdigest()[:8], 16) % 100
+  buckets:
+    train: [0, 59]
+    evaluation: [60, 79]
+    final: [80, 99]
+  # Targets first observed inside the pilot window are cut by the same hash,
+  # then any that land in `evaluation` or `final` are moved to `train`.
+  pilot_override: "evaluation and final targets observed in the pilot move to train"
+  repository_holdout: "none in release one; cross-repository generalisation is not claimed"
+  manifests_immutable: true
+
+final_acceptance:
+  # The numbers are set from the pilot and frozen before any evaluation data is
+  # scored. The criteria below are fixed now.
+  numbers_set_from: "pilot"
+  numbers_frozen_before: "any evaluation data is scored"
+  criteria:
+    - "global false-emission rate on evaluation, with its numerator and denominator stated (false-labelled emissions over labelled emissions); label coverage, the UNLABELABLE rate and the CONTESTED rate are each bounded separately"
+    - "a sample of the candidate's novel emissions, those with no counterpart in the baseline's, is sent through the truth producers and assessed rather than assumed unknown-and-harmless"
+    - "recall on REAL findings, overall and per severity stratum, is no lower than the baseline's"
+    - "targeted-cluster emission reduction meets a minimum sample size per stratum"
+    - "an empty or undersized set refuses the promotion"
+    - "a confidence interval excludes a change in the wrong direction"
+    - "both baseline and candidate are scored against the same scoring manifest, so a decision reproduces from its hash"
+  candidate_hash_frozen_before_scoring: true
+  failed_final_candidate_permanently_rejected: true
+  receipt_bound_to_activation_event: "manifest hashes, candidate hash and metrics"

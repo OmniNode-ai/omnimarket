@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_friction_synthesis_effect
+version: 0.1.0
+description: >
+  Counts the enumerated (source, anchor) friction evidence in morning friction sweep handoffs, writes the merged handoff, and verifies that later analysis leaves the accounting unchanged.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_friction_synthesis_effect: omnimarket.nodes.node_friction_synthesis_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+pack: operator_tooling
+display_name: Friction Synthesis Effect
+node_role: effect
