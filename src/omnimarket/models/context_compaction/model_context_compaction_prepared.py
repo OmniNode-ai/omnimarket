@@ -4,21 +4,30 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+from omnimarket.models.context_compaction.model_context_compaction_fields import (
+    Name,
+    SessionId,
+    Sha256Hex,
+)
 
 
 class ModelContextCompactionPrepared(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    IDENTITY_FIELD: ClassVar[str] = "candidate_id"
+
     candidate_id: UUID
-    session_id: str
-    input_messages_hash: str
-    assembly_hash: str
-    version_vector_hash: str
-    profile_name: str
-    profile_content_hash: str
+    session_id: SessionId
+    input_messages_hash: Sha256Hex
+    assembly_hash: Sha256Hex
+    version_vector_hash: Sha256Hex
+    profile_name: Name
+    profile_content_hash: Sha256Hex
 
 
 __all__ = ["ModelContextCompactionPrepared"]

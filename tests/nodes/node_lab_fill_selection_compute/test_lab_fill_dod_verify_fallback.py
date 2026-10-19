@@ -194,6 +194,33 @@ def test_a_blocked_verify_lane_waits_out_the_cooldown() -> None:
     ] == ["OMN-2"]
 
 
+def _verify_lane(ticket: str, day: int, outcome: str) -> tuple[str, str]:
+    lane = f"lab-fill-verify-omn{ticket[4:]}-1017{day:02d}00"
+    return (
+        _claim(lane, ticket, f"2026-10-{day:02d}T01:00:00Z"),
+        _terminal(lane, ticket, outcome, f"2026-10-{day:02d}T01:30:00Z"),
+    )
+
+
+def test_two_unchanged_verify_lanes_end_the_loop_until_the_ticket_moves() -> None:
+    """OMN-17427: a merged ticket whose last criterion needs a lab step (OMN-18931, OMN-20117) got a
+    verify lane every cooldown; two partial lanes in a row hold it until the ticket is updated."""
+    lines = _verify_lane("OMN-2", 15, "partial") + _verify_lane("OMN-2", 16, "partial")
+    assert _select((_merged(2),), idle_slots=1, ledger_lines=lines).dod_verify == ()
+    moved = _merged(2, ticket_updated_at="2026-10-17T10:00:00Z")
+    assert [
+        d.ticket for d in _select((moved,), idle_slots=1, ledger_lines=lines).dod_verify
+    ] == ["OMN-2"]
+
+
+def test_one_unchanged_verify_lane_is_still_retried_after_the_cooldown() -> None:
+    lines = _verify_lane("OMN-2", 15, "partial")
+    assert [
+        d.ticket
+        for d in _select((_merged(2),), idle_slots=1, ledger_lines=lines).dod_verify
+    ] == ["OMN-2"]
+
+
 def test_dod_verify_ranks_after_every_other_kind_and_names_its_lane() -> None:
     plan = _plan(
         [dod_verify_item(_enumerated(2), "omnimarket#2"), _enumerated(9)],

@@ -353,7 +353,7 @@ CORRECTION = "2026-10-01T09:10:00Z | CORRECTION | lane=orch | ticket=OMN-1 | cor
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_the_closure_read_back_from_the_tables_is_order_independent() -> None:
-    from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
+    from omnimarket.handlers.work_ledger_fold import (
         close_relationships,
         links_for_rows,
     )
