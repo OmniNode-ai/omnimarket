@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21099"
+title: "Client-call wire fields and identity for the delegate-skill command"
+summary: >-
+  OMN-21099 is task TB.4 of the context and delegation adapter plan, whose client path depends on
+  TB.3 in omnimarket. The TB.3 client_call wire model, the step-1 request decoder and the
+  admission-decided event model are on the base already (OMN-21098). This change adds the identity
+  derivations of the plan's section 7.2 on top of them: request_fingerprint, the client-call
+  correlation id derived from the key and the fingerprint under a fixed namespace, and the client
+  mode ordering observe, selective, required with the lesser of two modes. The client-call claim
+  table, the admission topic publish, the orchestrator handler changes, the step-2 field
+  declaration and the omnibase_infra and omniclaude halves of TB.4 are not in this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-client-call-wire-identity"
+    statement: |-
+      A client call's request fingerprint and correlation id are derived deterministically, and its effective mode is the lesser of two ordered modes.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the client modes are ordered observe < selective < required and the derived correlation id uses the documented namespace -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k "modes_are_ordered or namespace"
+      - id: "AC2"
+        statement: |-
+          AC2: the fingerprint excludes only correlation, timestamps and trace ids, and the correlation id is uuid5 of key and fingerprint so a changed request under the same key gets a different id -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k "fingerprint or correlation"
+      - id: "AC3"
+        statement: |-
+          AC3: an admission-decided event built from the derived values carries no prompt text, and the effective mode is the lesser of the client maximum and the cohort mode -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k "admission_decided or effective_mode"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the client-call identity derivation tests and the step-1 wire tests."
+    command: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py tests/unit/models/delegation/wire/test_client_call_wire_step1.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21099-ac1-mode-order"
+    description: "AC1: client modes are ordered and the correlation namespace is the documented value."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k \"modes_are_ordered or namespace\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21099-ac2-identity"
+    description: "AC2: fingerprint and correlation id derivations."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k \"fingerprint or correlation\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21099-ac3-admission-event"
+    description: "AC3: the admission event model holds no prompt text and the effective mode is the lesser of two modes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k \"admission_decided or effective_mode\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21099-deploy-identity-derivation"
+    description: "Deploy probe: read the client-call wire module at the checked-out commit from GitHub and require the correlation id derivation. The base has no such function and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_client_call.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qE '^def client_call_correlation_id\('
