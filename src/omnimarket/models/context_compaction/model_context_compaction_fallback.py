@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -11,13 +12,18 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.context_compaction.enum_context_compaction_failure_class import (
     EnumContextCompactionFailureClass,
 )
+from omnimarket.models.context_compaction.model_context_compaction_fields import (
+    SessionId,
+)
 
 
 class ModelContextCompactionFallback(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    IDENTITY_FIELD: ClassVar[str] = "invocation_id"
+
     invocation_id: UUID
-    session_id: str
+    session_id: SessionId
     candidate_id: UUID | None = None
     failure_class: EnumContextCompactionFailureClass
 
