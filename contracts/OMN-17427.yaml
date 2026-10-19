@@ -557,6 +557,13 @@ requirements:
     acceptance:
       - id: "AC104"
         statement: "AC104: OccCompanionEmitter._clone_and_branch retries a clone that raised TimeoutExpired once after removing the partial clone directory, raises the final TimeoutExpired after 2 attempts, raises a CalledProcessError after 1 attempt, and 2 attempts at the per-op git timeout stay under the node's contract descriptor timeout_ms -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q fails at the merge base"
+  - id: "req-private-hosted-minutes-watch"
+    statement: "Once a day, one read of the organization's billing usage for the month sums GitHub-hosted Actions minutes per repository and per UTC day, appends one ledger STATUS row for the day, and raises one alert through the alert channel when any repository used any billed hosted minute that day."
+    acceptance:
+      - id: "AC105"
+        statement: "AC105: from fixture billing JSON, node_private_hosted_minutes_watch_effect counts only Actions minutes with a positive gross amount on a GitHub-hosted sku, per repository and per UTC day, and carries workflow names when the usage items name them -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_hosted_minutes_tally.py -q fails on a free public item, a self-hosted item or a non-Actions item that is counted"
+      - id: "AC106"
+        statement: "AC106: one watch run makes one billing read, sends the alert before it appends the STATUS row that records the alert outcome, never sends or appends twice for one day, appends a STATUS row on a quiet day, refuses before the billing read when ONEX_LEDGER_PATH is unset, and exits nonzero when the alert channel is dead or unconfigured -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_handler_private_hosted_minutes_watch.py tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_main.py -q fails on a second send, a second append or a healthy exit with a dead alert"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2174,4 +2181,27 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q --no-cov -k test_clone_attempts_fit_contract_timeout"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-private-hosted-minutes-tally"
+    description: "The pure tally over fixture billing JSON counts billed GitHub-hosted Actions minutes per repository and per day and excludes free, self-hosted and non-Actions items. The node and its tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_hosted_minutes_tally.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC105"]
+  - id: "dod-omn17427-private-hosted-minutes-watch"
+    description: "One billing read per run, the alert before the STATUS row, one send and one append per day, a STATUS row on a quiet day, fail-fast on an unset ledger path, and a nonzero exit on a dead or unconfigured alert channel, with fakes for gh, the ledger command and the alert channel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_handler_private_hosted_minutes_watch.py tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_main.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC106"]
+  - id: "dod-omn17427-private-hosted-minutes-deploy-probe"
+    description: "Deploy probe. Run the node's whole focused suite on the hosted runner with fakes for gh, the ledger command and the alert channel; it needs the locked dependencies and no credentials or network. This exercises the checked-out node, not an installed host timer."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
