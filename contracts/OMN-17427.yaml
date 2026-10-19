@@ -444,6 +444,11 @@ requirements:
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-rehome-lab-nodes-slice-3"
+    statement: "The hourly tick effect, the lab disk growth effect and the lab fill receipt table compute live in the portable node package with their handlers, contracts and bus topics."
+    acceptance:
+      - id: "AC94"
+        statement: "AC94: each of the three nodes resolves its onex.nodes entry point to the omnimarket package, runs its handler through the declared contract, and keeps the topics it declared in the source repository under the omnimarket namespace -- falsifier: uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q fails when a node is absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1650,5 +1655,28 @@ dod_evidence:
               handle.write('{"workflow_runs": "bad"}')
           assert gate["_load_workflow_runs"](handle.name) is None
           print("external sweep provenance deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac94-rehome-lab-nodes-slice-3"
+    description: "The hourly tick, lab disk growth and lab fill receipt table nodes pass their focused suites in the portable package."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC94"]
+  - id: "dod-omn17427-rehome-lab-nodes-slice-3-deploy-probe"
+    description: "Deploy probe. The checked-out package lists the three nodes as onex.nodes entry points and their contracts parse. It fails at the merge base, where the nodes are absent, and needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import pathlib, yaml
+          for name in ("node_hourly_tick_effect", "node_lab_disk_growth_effect", "node_lab_fill_receipt_table_compute"):
+              contract = yaml.safe_load(pathlib.Path(f"src/omnimarket/nodes/{name}/contract.yaml").read_text())
+              assert contract["name"] == name, name
+              assert f"{name} = " in pathlib.Path("pyproject.toml").read_text(), name
+          print("rehome lab nodes slice 3 deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
