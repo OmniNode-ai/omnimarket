@@ -396,6 +396,11 @@ requirements:
     acceptance:
       - id: "AC71"
         statement: "AC71: the token-pool CLI and contract handler add accounts from stdin, rotate to the next account after a usage limit, resolve nothing and report ALARM when all accounts are limited, reuse an account after reset and keep token values out of status, metadata and refusal output -- falsifier: the focused token-pool unit or golden-chain test file fails"
+  - id: "req-claude-pool-revoked-token"
+    statement: "A Claude pool token whose OAuth login was revoked is marked revoked on its own label, resolve skips it while another token is usable, one alert names the revoked label, and only a pool with no usable token reports ALARM."
+    acceptance:
+      - id: "AC101"
+        statement: "AC101: in a pool holding one revoked and one good token, one mark-revoked of the revoked label makes resolve return the good token, the first mark carries one ALERT naming the label and a repeat mark carries none, a forced re-add clears the revocation, and a pool whose every token is limited or revoked resolves nothing and exits 4 with an ALARM status line -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q -k 'revoked or revocation' fails at the merge base"
   - id: "req-publisher-fixture-one-copy"
     statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
     acceptance:
@@ -528,6 +533,18 @@ requirements:
         statement: "AC99: register-tenant-key anthropic preserves the discovered model and expiry through its catalog event when no plan is named."
       - id: "AC100"
         statement: "AC100: api_native can still be named explicitly, automatic Anthropic plan detection makes no provider request, and GLM detection still refuses a Coding Plan-only key."
+  - id: "req-dev-push-reuse-queue-off"
+    statement: "A dev push is admitted by the queue tree pass whenever a merge_queue rule is active on dev, and while none is active the verdict passes with a warning instead of failing every dev push."
+    acceptance:
+      - id: "AC101"
+        statement: "AC101: with no merge_queue rule active on dev and no tree pass, the Dev Push Full Suite Reuse step exits 0 with a warning; with the rule active it still exits 1 without a verified queue pass, and an unreadable rules endpoint exits 1."
+      - id: "AC102"
+        statement: "AC102: the verdict's rules filter counts merge_queue rules from the branch-rules API shape."
+  - id: "req-shard-record-names-the-tree"
+    statement: "The committed shard duration record names at least 95% of the discovered test files again, so the shard plan test and its pre-commit hook pass on dev."
+    acceptance:
+      - id: "AC103"
+        statement: "AC103: config/test_file_durations.json records every collected non-kafka test file that dev 9978f18ad left unrecorded, and test_committed_record_names_nearly_every_test_file passes -- falsifier: the test fails at 9978f18ad with 161 of 3189 files (5.0%) unrecorded"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -758,6 +775,37 @@ dod_evidence:
           assert {"main", "_pasted"} <= {node.name for node in cli.body if isinstance(node, ast.FunctionDef)}
           print("Claude token pool artifact probe: PASS")
           PY
+  - id: "dod-omn17427-claude-pool-revoked-unit"
+    description: "A revoked token is skipped, the good token resolves after one mark, the alert is raised once, a forced re-add clears it, and a pool with no usable token raises the ALARM, against a temporary local secret store. The revoked tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q -k 'revoked or revocation'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC101"]
+  - id: "dod-omn17427-claude-pool-revoked-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's token-pool handler and CLI using git and Python's standard library and checks the mark_revoked operation and the mark-revoked verb. The merge base has neither. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          import subprocess
+
+          root = "src/omnimarket/nodes/node_claude_token_pool_effect/"
+          def committed(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + root + path], text=True)
+
+          handler = ast.parse(committed("handlers/handler_claude_token_pool.py"))
+          pool = next(node for node in handler.body if isinstance(node, ast.ClassDef) and node.name == "HandlerClaudeTokenPool")
+          assert "_revoke" in {node.name for node in pool.body if isinstance(node, ast.FunctionDef)}
+          assert '"mark_revoked"' in committed("models/model_claude_token_pool.py")
+          assert '"mark-revoked"' in committed("__main__.py")
+          print("Claude token pool revoked-token artifact probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC101"]
   - id: "dod-omn17427-ac74-patch-apply-dispatch"
     description: "The portable patch dispatch behavior and host adapter boundaries pass the focused suite."
     source: "manual"
@@ -2044,3 +2092,34 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-dev-push-reuse-queue-off"
+    description: "The dev verdict warns and passes with no active queue rule, stays strict with an active rule, and fails closed when the rules endpoint is unreadable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov -k 'test_dev_reuses_queue_tree_across_squash_commit_identity or test_dev_verdict_is_strict_while_a_queue_rule_is_active'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC101"]
+  - id: "dod-omn17427-dev-push-reuse-rules-filter"
+    description: "The branch-rules filter counts active merge_queue rules from the API response."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py::test_queue_provenance_jq_filters_match_api_shapes -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC102"]
+  - id: "dod-omn17427-dev-push-reuse-deploy-probe"
+    description: "Deploy probe. Run the whole run-once admission suite against the checked-out ci.yml and ci_summary_gate.py with a fake gh; the hosted runner needs the locked dependencies, bash and jq, and no credentials. This reads the workflow text, not a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-shard-record-names-the-tree"
+    description: "The committed record names all but the kafka-marked test files, and the shard plan stays balanced. At 9978f18ad 161 of 3189 test files were unrecorded and the record test failed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC103"]
