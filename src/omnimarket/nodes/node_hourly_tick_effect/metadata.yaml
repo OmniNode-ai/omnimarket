@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hourly_tick_effect
+version: 1.0.0
+description: >
+  Prepares an hourly checkpoint and rotates the Linear sweep pointer, then records the sweep result and the fire result channel on the host filesystem.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_hourly_tick_effect: omnimarket.nodes.node_hourly_tick_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- hourly
+- tick
+pack: operator_tooling
+display_name: Hourly Tick Effect
+node_role: effect

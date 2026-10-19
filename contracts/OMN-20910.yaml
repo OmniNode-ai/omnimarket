@@ -39,11 +39,41 @@ requirements:
     acceptance:
       - id: "AC9"
         statement: "AC9: each fail-closed case has a failed result with no findings, the valid verdict is the positive control, and the v1 reply passes unchanged -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-review-independent-judge-flag"
+    statement: "The answer gate applies an independent cross-family judge to the review class only when the answer gate contract arms it; the flag ships empty, a judge that is not the selected model is refused, and a pin-only judge backend is used only when no ordinary backend qualifies."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: with the flag empty a review answer makes no judge call and keeps its contract verdict; with review armed a judge reject refuses it, an accept passes it, and a reviewer other than the selected judge is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_review_judge_flag_omn20910.py -q -n 0 --no-cov fails at the merge base"
   - id: "req-review-cost-events"
     statement: "Every provider attempt of a Hostile Review call, including one cut off by a cancellation, leaves one cost record from the delegation call effect's per-attempt observation boundary, carrying the review provenance the gateway passes in the request."
     acceptance:
       - id: "AC11"
         statement: "AC11: a review call records one cost event per provider attempt with its usage, outcome and review provenance, an attempt that was cut off is recorded as cancelled, a call that names no review records nothing, and the gateway copies the review identity from the request metadata -- falsifier: uv run pytest tests/test_omn20910_review_call_cost_events.py tests/test_omn20910_review_gateway_provenance.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: "req-review-replay-set-node"
+    statement: "node_review_replay_set_effect freezes 40 merged diffs stratified by repo and size under a manifest hash."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: the set holds the target count balanced across repo x size strata, the same inputs give the same manifest hash, a changed diff or seed changes it, pinned items are always in, and a tampered frozen manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_replay_set_effect/test_review_replay_set.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: "req-claude-review-batch-node"
+    statement: "node_claude_review_batch_effect submits replay items through admission and records a cost and a verdict per item."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: each item goes admission, call, parse, verdict with an event per step in order; a refused item is never submitted; a failed call releases its reservation; a truncated, unparseable or empty answer is degraded and never passed; a diff that no longer matches the manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov fails at the merge base"
+
+  - id: "req-native-messages-protocol"
+    statement: "node_llm_delegation_call_effect calls the native Anthropic Messages API for the api_native BYOK row, with prompt caching of the catalog and persona blocks and a typed stop_reason, and node_claude_review_gateway_effect serves the voter surface over it; a call naming no plan still uses the compatibility row."
+    acceptance:
+      - id: "AC30"
+        statement: "AC30: two calls differing only in the persona block report the diff's tokens as cache_read_input_tokens on the second -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k 'second_persona_reads_the_diff_from_cache or two_voter_calls' fails at the merge base"
+      - id: "AC31"
+        statement: "AC31: stop_reason max_tokens reaches the review parser as a typed stop reason and the gateway answers finish_reason length -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn20910_native_messages_protocol.py tests/unit/nodes/node_claude_review_gateway_effect -q -n 0 --no-cov -k 'max_tokens' fails at the merge base"
+      - id: "AC32"
+        statement: "AC32: a call naming no plan still uses the compatibility row and the OpenAI-compatible chat shape -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k TestCallsNamingNoPlanKeepTheCompatibilityRow"
+  - id: "req-defect-catalog-node"
+    statement: "node_review_defect_catalog_compute validates the review defect-code catalog, refuses a duplicate or reused code, a family-letter mismatch, an enforced_by entry with no validator version and a section over its token budget, and renders the reviewer's catalog section and allowed-code set for one repository."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: the packaged catalog resolves within 5,000 rendered tokens and each refusal has a passing positive control -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -133,6 +163,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC9"]
+  - id: "dod-omn20910-ac10-review-judge-flag"
+    description: "The review judge flag ships off, the armed path refuses a judge reject and a reviewer that is not the selected judge, and the unarmed path makes no judge call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_review_judge_flag_omn20910.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
   - id: "dod-omn20910-ac11-review-cost-events"
     description: "One cost event per provider attempt from the effect's observation boundary (including a cancelled attempt), and the gateway's review provenance."
     source: "manual"
@@ -141,3 +179,60 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn20910_review_call_cost_events.py tests/test_omn20910_review_gateway_provenance.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn20910-ac12-review-replay-set-node"
+    description: "The replay set freezes a stratified set under a stable manifest hash."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_replay_set_effect/test_review_replay_set.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn20910-ac13-claude-review-batch-node"
+    description: "The batch effect runs each item through admission, call, parse and verdict with an event per step."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
+
+  - id: "dod-omn20910-ac30-native-prompt-cache"
+    description: "Over a provider that simulates the prompt cache from the wire payload, the second of two calls differing only in the persona block reads the tool, both system blocks and the diff from the cache, through the call effect and through the gateway."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k 'second_persona_reads_the_diff_from_cache or two_voter_calls'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC30"]
+  - id: "dod-omn20910-ac31-typed-stop-reason"
+    description: "A max_tokens stop is a typed EnumAnthropicStopReason on the result, the compact-strict parser refuses it as truncated, and the gateway answers finish_reason length."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py tests/unit/nodes/node_claude_review_gateway_effect -q -n 0 --no-cov -k 'max_tokens'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
+  - id: "dod-omn20910-ac32-compat-row-default"
+    description: "The catalogue resolves the compatibility row for a caller naming no plan, and a request naming no protocol posts the chat shape with a Bearer key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20910_native_messages_protocol.py -q -n 0 --no-cov -k TestCallsNamingNoPlanKeepTheCompatibilityRow"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]
+  - id: "dod-omn20910-deploy-native-messages-smoke"
+    description: "Run the checked-out native Messages tests in a disposable container: the call effect posts the block layout with cache breakpoints, the key in x-api-key, the typed stop_reason and cache usage, and a call naming no plan keeps the chat shape. No key, no network and no lab service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/native-messages-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/test_omn20910_native_messages_protocol.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/native-messages-tests
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20910-ac8-defect-catalog-node"
+    description: "The defect-code catalog node validates and renders the packaged catalog; every refusal has a positive control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]

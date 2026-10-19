@@ -24,7 +24,8 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
 from importlib.resources import files
@@ -317,6 +318,63 @@ CREATE TABLE IF NOT EXISTS run_trace (
 )
 """
 
+# OMN-19988: the latest environment report per (tenant, mode, service), with the
+# verdict and open alert the alert compute gave it. A row changes in place, so its
+# cursor is re-stamped from a one-row sequence on every insert and update, as
+# usage_by_model_day does: a row read again after it changed sorts after the rest.
+_LOCAL_ENVIRONMENT_DDL = """
+CREATE TABLE IF NOT EXISTS local_environment (
+    tenant_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    service TEXT NOT NULL,
+    observed_state TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    versions TEXT NOT NULL DEFAULT '{}',
+    last_seen TEXT NOT NULL,
+    last_change TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    verdict_reason TEXT NOT NULL,
+    alert_code TEXT,
+    alert_severity TEXT,
+    alert_since TEXT,
+    store_kind TEXT,
+    store_location TEXT,
+    access_mode TEXT,
+    token_minted_at TEXT,
+    rotate_hint TEXT,
+    report_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    projection_cursor INTEGER,
+    PRIMARY KEY (tenant_id, mode, service)
+)
+"""
+_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL = """
+CREATE TABLE IF NOT EXISTS local_environment_projection_cursor_seq (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_value INTEGER NOT NULL
+)
+"""
+_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED = (
+    "INSERT OR IGNORE INTO local_environment_projection_cursor_seq "
+    "(id, last_value) VALUES (1, 0)"
+)
+_LOCAL_ENVIRONMENT_CURSOR_STAMP = """
+    UPDATE local_environment_projection_cursor_seq SET last_value = last_value + 1;
+    UPDATE local_environment
+    SET projection_cursor = (
+        SELECT last_value FROM local_environment_projection_cursor_seq
+    )
+    WHERE rowid = NEW.rowid;
+"""
+_LOCAL_ENVIRONMENT_CURSOR_TRIGGERS = (
+    "CREATE TRIGGER IF NOT EXISTS local_environment_cursor_on_insert "
+    "AFTER INSERT ON local_environment BEGIN" + _LOCAL_ENVIRONMENT_CURSOR_STAMP + "END",
+    "CREATE TRIGGER IF NOT EXISTS local_environment_cursor_on_update "
+    "AFTER UPDATE OF updated_at ON local_environment BEGIN"
+    + _LOCAL_ENVIRONMENT_CURSOR_STAMP
+    + "END",
+)
+
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
     tenant_id TEXT NOT NULL,
@@ -599,6 +657,10 @@ _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view_unpriced.sql",
 )
+# OMN-19988: the local environment table, its cursor sequence and triggers. A
+# store step, not a statement on every connect: the sequence seed is a write, so
+# a read-only store, or a reader on a busy one, must not run it.
+_LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -853,6 +915,14 @@ class SqliteDatabaseAdapter:
                     "listed each tier's models in the delegation model-routing view",
                 )
             )
+        if not cls._store_step_recorded(conn, _LOCAL_ENVIRONMENT_STEP):
+            pending.append(
+                (
+                    _LOCAL_ENVIRONMENT_STEP,
+                    cls._create_local_environment,
+                    "created the local environment table and its cursor",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -1008,6 +1078,15 @@ class SqliteDatabaseAdapter:
             conn.execute(ddl)
 
     @staticmethod
+    def _create_local_environment(conn: sqlite3.Connection) -> None:
+        """OMN-19988: the local environment table, its cursor sequence and triggers."""
+        conn.execute(_LOCAL_ENVIRONMENT_DDL)
+        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL)
+        conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
+        for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
+            conn.execute(trigger)
+
+    @staticmethod
     def _replace_delegation_model_routing_view(conn: sqlite3.Connection) -> None:
         """OMN-21015 AC2: the model-routing view whose tiers list their models.
 
@@ -1086,6 +1165,31 @@ class SqliteDatabaseAdapter:
             # sqlite cannot bind Decimal; store cost columns as float text-safe.
             return float(value)
         return value
+
+    @contextmanager
+    def write_transaction(self) -> Iterator[SqliteWriteTransaction]:
+        """One write transaction: every read and write inside it, or none of them.
+
+        Taken with BEGIN IMMEDIATE, so a second writer waits for the lock rather
+        than interleaving its read and its writes with this one's (OMN-19988).
+        It carries plain reads and upserts only: a table whose columns are not
+        all declared, an expression column or a derived write goes through
+        ``upsert_returning`` instead.
+        """
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            yield SqliteWriteTransaction(
+                conn,
+                encode=self._encode,
+                columns=lambda table: self._existing_columns(conn, table),
+            )
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def reconcile(self) -> None:
         """Bring an existing store's tables and one-time steps up to date.
@@ -1284,6 +1388,46 @@ class SqliteDatabaseAdapter:
             conn.close()
 
 
+class SqliteWriteTransaction:
+    """Reads and upserts on the one connection of a ``write_transaction``."""
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        encode: Callable[[str, object], object],
+        columns: Callable[[str], set[str]],
+    ) -> None:
+        self._conn = conn
+        self._encode = encode
+        self._columns = columns
+
+    def query(
+        self, table: str, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]:
+        existing = self._columns(table)
+        if not filters:
+            rows = self._conn.execute(f"SELECT * FROM {table}").fetchall()
+            return [dict(row) for row in rows]
+        unknown = [key for key in filters if key not in existing]
+        if unknown:
+            raise ValueError(f"unknown column(s) {unknown} for table {table!r}")
+        where = " AND ".join(f"{key} = :{key}" for key in filters)
+        params = {key: self._encode(key, value) for key, value in filters.items()}
+        rows = self._conn.execute(
+            f"SELECT * FROM {table} WHERE {where}", params
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
+        statement = build_upsert_plan(
+            table=table, conflict_key=conflict_key, row=row
+        ).render(dialect="qmark_named")
+        params = {column: self._encode(column, value) for column, value in row.items()}
+        self._conn.execute(statement, params)
+        return True
+
+
 def reconcile_existing_store(db_path: Path) -> None:
     """Upgrade an existing local store before something only reads it (OMN-20226).
 
@@ -1306,6 +1450,7 @@ def reconcile_existing_store(db_path: Path) -> None:
 __all__ = [
     "SQLITE_SCHEMES",
     "SqliteDatabaseAdapter",
+    "SqliteWriteTransaction",
     "default_evidence_db_path",
     "reconcile_existing_store",
     "sqlite_path_from_dsn",

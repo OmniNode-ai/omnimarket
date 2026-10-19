@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeLaneBriefSectionCompute (OMN-21118, plan task TA.17)
+
+name: node_lane_brief_section_compute
+version: "1.0.0"
+contract_name: node_lane_brief_section_compute
+node_name: node_lane_brief_section_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure render of a lane brief's section 3a from the three required factors of the
+  lane_brief_section profile (LANE_RULES, OPERATOR_RULINGS, OPEN_WORK), each as the source
+  result a context source returned. Ten numbered parts in the lane-brief standard's
+  order, each reader's output fenced verbatim. A required factor that did not
+  resolve, a missing entry slot, or a cited ruling stamp that no OPERATOR_RULINGS
+  entry backs refuses with REQUIRED_FACTOR_MISSING and renders nothing. The result
+  carries brief text, so it is published only on the restricted omniintelligence
+  command family, never on an event topic. Deterministic; no I/O.
+
+input_model:
+  name: ModelLaneBriefSectionRequest
+  module: omnimarket.models.lane_brief_section
+
+output_model:
+  name: ModelLaneBriefSectionResult
+  module: omnimarket.models.lane_brief_section
+
+handler:
+  module: omnimarket.nodes.node_lane_brief_section_compute.handlers.handler_lane_brief_section
+  class: HandlerLaneBriefSection
+  input_model: omnimarket.models.lane_brief_section.ModelLaneBriefSectionRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerLaneBriefSection
+        module: omnimarket.nodes.node_lane_brief_section_compute.handlers.handler_lane_brief_section
+      event_model:
+        name: ModelLaneBriefSectionRequest
+        module: omnimarket.models.lane_brief_section
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.lane_brief.section_3a
+    description: Render section 3a of a lane brief from the lane_brief_section profile's factors
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.lane-brief-section-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.lane-brief-section-rendered.v1
+
+# The reply is awaited by the caller that published the command (the lane-brief
+# skill), not by another node.
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.lane-brief-section-rendered.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.lane-brief-section-requested.v1
+  terminal_events:
+    success: onex.cmd.omniintelligence.lane-brief-section-rendered.v1
+
+terminal_event: onex.cmd.omniintelligence.lane-brief-section-rendered.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21118
+  maturity: alpha
+  tags:
+    - context-pack
+    - lane-brief

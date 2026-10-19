@@ -276,6 +276,9 @@ class ModelByokProviderBackend(BaseModel):
     #: from third-party systems; the row's ``refusal_code`` and
     #: ``refusal_message`` say so to the customer.
     customer_routable: bool = True
+    #: A protocol variant using the same account and key is selected explicitly,
+    #: rather than probed as a different billing product during registration.
+    auto_detect_plan: bool = True
     #: Required on a detection-only row, forbidden on a routable one: the typed
     #: code a caller refuses a key or a named plan with.
     refusal_code: str | None = Field(default=None, pattern=r"^BYOK_[A-Z][A-Z0-9_]*$")
@@ -303,6 +306,11 @@ class ModelByokProviderBackend(BaseModel):
     #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
     #: ever sent by ``models_auth``.
     models_headers: dict[str, str] = Field(default_factory=dict)
+    #: OMN-20910. The wire protocol of ``endpoint_url``. ``openai_chat`` is the
+    #: OpenAI-compatible chat shape every row used before; ``anthropic_messages``
+    #: is Anthropic's native Messages API, the only one that supports prompt
+    #: caching, cache-usage accounting and a typed ``stop_reason``.
+    inference_protocol: Literal["openai_chat", "anthropic_messages"] = "openai_chat"
     #: OMN-20844. ``true`` declares that the customer names the model their key
     #: runs: registration takes the model they choose (checked against the
     #: key's own list) and never picks one from ``model_preference`` for them,
@@ -326,6 +334,13 @@ class ModelByokProviderBackend(BaseModel):
 
     @model_validator(mode="after")
     def _a_detection_only_row_declares_its_refusal(self) -> ModelByokProviderBackend:
+        if not self.auto_detect_plan and (
+            self.default_plan or not self.customer_routable
+        ):
+            raise ValueError(
+                "a default or detection-only plan must participate in automatic "
+                "plan detection"
+            )
         if self.customer_routable:
             if self.refusal_code is not None or self.refusal_message is not None:
                 raise ValueError(
@@ -656,6 +671,22 @@ def byok_routable_plans(provider: str) -> tuple[str, ...]:
     )
 
 
+def byok_automatic_plans(provider: str) -> tuple[str, ...]:
+    """Plans considered when registering a key without an explicit plan.
+
+    Detection-only products still count, so a prohibited product is refused.
+    Explicit protocol variants remain available through ``byok_provider_plans``.
+    """
+    normalized = provider.strip().lower()
+    return tuple(
+        sorted(
+            plan
+            for (name, plan), row in load_byok_plan_catalog().items()
+            if name == normalized and row.auto_detect_plan
+        )
+    )
+
+
 def resolve_byok_declared_plan(
     provider: str, plan: str
 ) -> ModelByokProviderBackend | None:
@@ -885,6 +916,7 @@ __all__: list[str] = [
     "ModelByokPricing",
     "ModelByokProviderBackend",
     "ModelCatalogueParityGap",
+    "byok_automatic_plans",
     "byok_backend_max_retries",
     "byok_declared_price_per_1m",
     "byok_limit_counter_key",

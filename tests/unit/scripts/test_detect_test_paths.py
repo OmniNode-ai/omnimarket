@@ -682,7 +682,7 @@ def test_protection_globs_reject_invalid_types(invalid: object) -> None:
 
 def test_empty_selection_fallback_uses_full_suite_shard_matrix() -> None:
     sel = compute_selection(
-        changed_files=[".github/workflows/some-other.yml"],
+        changed_files=["README.md"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",

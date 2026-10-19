@@ -348,6 +348,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
 # plan makes explicit: a job strict in omnibase_core may legitimately skip in
 # omnimarket — here the entire E2E/golden/typecheck lane is docs-only-gated.
 SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
+    "Dev Full Suite Reuse / Full Suite Reuse Probe",
+    "Dev Full Suite Reuse / Full Suite Pass Marker",
+    "Dev Push Full Suite Reuse",
     "typecheck",  # if: docs_only != 'true'
     "Detect Changes",  # if: docs_only != 'true' (also drives the matrix rule)
     "Integration Silent-Skip Guard (OMN-14172)",  # if: docs_only != 'true'
@@ -379,6 +382,21 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
     # success OR skipped, real failure still fails closed.
     "Merge test durations",  # merge-test-durations
 )
+
+# OMN-19998: these jobs must actually pass on the queue commit. PR-scoped
+# metadata verdicts may be inherited; the full-suite verdict never is.
+QUEUE_HEAVY_GATE_JOBS: tuple[str, ...] = (
+    "Detect Changes",
+    "Integration Silent-Skip Guard (OMN-14172)",
+    "E2E Workflow Runner (inmemory bus)",
+    "Golden Chain Suite (inmemory bus)",
+    "SEA E2E Acceptance + Error Chains (OMN-12660)",
+    "Generated-Node Golden Chain Gate (OMN-13624)",
+    "Generated Event Chains (walker paths)",
+    "Coverage Sweep Gate",
+    "Merge test durations",
+)
+DEV_SUITE_REUSE_JOB = "Dev Push Full Suite Reuse"
 
 # --------------------------------------------------------------------------- #
 # OMN-16662: the docs-only skip tier.
@@ -433,20 +451,6 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
 DOCS_ONLY_MARKER_JOB = "Docs-Only Marker (OMN-16662)"
 
 DOCS_ONLY_SKIPPABLE_GATE_JOBS: tuple[str, ...] = ("Coverage Sweep Gate",)
-
-# OMN-19998, operator RULING 2026-10-18T00:50:42Z: tests run once, on the pull
-# request. A merge_group run, or a push to dev after the squash merge, skips the
-# heavy tier that already ran on the pull request head, and this marker job
-# (ci.yml `queue-retest-waiver`, gated only on those two events) is what lets
-# the poller accept that skip. It relaxes exactly the docs-only tier above and
-# nothing else; the matrix waiver follows from `Detect Changes` skipping, and
-# every other heavy job is already in SKIPPABLE_GATE_JOBS. Only a marker that
-# ran and concluded success relaxes anything, as with the docs-only marker.
-# EXPIRY: short term only, until the merge queue clears and test deduplication
-# works. Remove this constant, the ci.yml marker job and the waiver clause on
-# the heavy jobs when the long-term run-once design (tests-once-merge-queue,
-# inherited from omnibase_core CI) lands in this repository.
-RETEST_WAIVER_MARKER_JOB = "Queue Re-test Waiver (OMN-19998)"
 
 # Every job the completeness anchor must observe present+good for SUCCESS.
 GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
@@ -1017,6 +1021,7 @@ def _evaluate_test_matrix(
     *,
     detect_changes_job: str = DETECT_CHANGES_JOB,
     split_prefix: str = TEST_SPLIT_PREFIX,
+    require_full_suite: bool = False,
 ) -> str:
     """Return one of ``"ok"``, ``"pending"``, ``"waived"`` for the test matrix.
 
@@ -1043,6 +1048,10 @@ def _evaluate_test_matrix(
         return "pending"
     if any(s.status != "completed" for s in splits):
         return "pending"
+    if require_full_suite and {
+        name for name in latest if name.startswith(split_prefix)
+    } != {f"Tests (Split {i}/20)" for i in range(1, 21)}:
+        return "pending"
     return "ok"
 
 
@@ -1058,11 +1067,30 @@ def evaluate(
     allowlist: frozenset[str] = SOFT_ALLOWLIST,
     docs_only_marker: str = DOCS_ONLY_MARKER_JOB,
     docs_only_gates: tuple[str, ...] = DOCS_ONLY_SKIPPABLE_GATE_JOBS,
-    retest_waiver_marker: str = RETEST_WAIVER_MARKER_JOB,
+    event: str | None = None,
+    ref_name: str | None = None,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the current job snapshot."""
 
     latest = dedup_latest(jobs, run_attempt=run_attempt)
+    queue_run = event == "merge_group"
+    dev_push = event == "push" and ref_name == "dev"
+    reuse_state = latest.get(DEV_SUITE_REUSE_JOB)
+    dev_reuse = (
+        dev_push
+        and reuse_state is not None
+        and reuse_state.status == "completed"
+        and reuse_state.conclusion == "success"
+    )
+    # A job-level skipped reusable caller has no inner job rows. The verdict
+    # job below waits for the caller and verifies its outputs; these optional
+    # inner rows remain covered by the default-deny failure/running sweep.
+    skippable_gates = tuple(
+        g for g in skippable_gates if not g.startswith("Dev Full Suite Reuse / ")
+    )
+    if queue_run:
+        strict_gates = tuple(dict.fromkeys((*strict_gates, *QUEUE_HEAVY_GATE_JOBS)))
+        skippable_gates = tuple(g for g in skippable_gates if g not in strict_gates)
     gate_names = frozenset(strict_gates) | frozenset(skippable_gates)
     provisional_own_cancellations = sorted(
         name
@@ -1084,25 +1112,26 @@ def evaluate(
     # why the bit travels as a job rather than as `needs.<job>.outputs`.
     marker_state = latest.get(docs_only_marker)
     docs_only = (
-        marker_state is not None
+        not queue_run
+        and marker_state is not None
         and marker_state.status == "completed"
         and marker_state.conclusion == "success"
     )
-    # OMN-19998: the re-test waiver marker relaxes the same tier, on the same
-    # fail-closed terms (see RETEST_WAIVER_MARKER_JOB).
-    waiver_state = latest.get(retest_waiver_marker)
-    retest_waived = (
-        waiver_state is not None
-        and waiver_state.status == "completed"
-        and waiver_state.conclusion == "success"
-    )
-    tier_markers = tuple(m for m in (marker_state, waiver_state) if m is not None)
     # Relaxed ⊆ strict_gates: a name that is not strict cannot be "relaxed" into
     # existence, so a tier entry dropped from STRICT_GATE_JOBS degrades to a
     # no-op here instead of silently becoming permanently skippable.
     relaxed = (
         frozenset(docs_only_gates) & frozenset(strict_gates)
-        if docs_only or retest_waived
+        if docs_only
+        else frozenset()
+    )
+    # A verified tree pass admits only the heavy tier NOT running on this dev
+    # push: each strict heavy gate it relaxes must have concluded `skipped`.
+    # Any other conclusion (success, failure, cancelled, neutral) means the gate
+    # ran here, outside the reuse contract, and keeps the strict verdict.
+    reuse_skips = (
+        frozenset(QUEUE_HEAVY_GATE_JOBS) & frozenset(strict_gates)
+        if dev_reuse
         else frozenset()
     )
     # The tier can skip before the marker finishes on another runner. Only
@@ -1111,11 +1140,22 @@ def evaluate(
     pending_docs_only_skips = frozenset(
         g
         for g in frozenset(docs_only_gates) & frozenset(strict_gates)
-        if any(m.status != "completed" for m in tier_markers)
+        if not queue_run
+        and marker_state is not None
+        and marker_state.status != "completed"
         and (st := latest.get(g)) is not None
         and st.status == "completed"
         and st.conclusion == "skipped"
     )
+    if dev_push and (reuse_state is None or reuse_state.status != "completed"):
+        pending_docs_only_skips |= frozenset(
+            g
+            for g in QUEUE_HEAVY_GATE_JOBS
+            if g in strict_gates
+            and (st := latest.get(g)) is not None
+            and st.status == "completed"
+            and st.conclusion == "skipped"
+        )
 
     # (1) Strict aggregate gates: present + completed + conclusion == success.
     #     Members of `relaxed` widen to success/skipped for THIS run only; a
@@ -1129,7 +1169,9 @@ def evaluate(
             and g not in provisional_names
             and g not in pending_docs_only_skips
             and (
-                st.conclusion not in GOOD_CONCLUSIONS
+                st.conclusion != "skipped"
+                if g in reuse_skips
+                else st.conclusion not in GOOD_CONCLUSIONS
                 if g in relaxed
                 else st.conclusion != "success"
             )
@@ -1162,6 +1204,22 @@ def evaluate(
         and name not in provisional_names
         and j.conclusion not in GOOD_CONCLUSIONS
     )
+    if queue_run:
+        sweep_failures.extend(
+            name
+            for name, state in latest.items()
+            if name.startswith(TEST_SPLIT_PREFIX)
+            and state.status == "completed"
+            and state.conclusion == "skipped"
+        )
+    # A dev push has no heavy fallback: only a verified tree pass admits it.
+    if (
+        dev_push
+        and not dev_reuse
+        and reuse_state is not None
+        and reuse_state.status == "completed"
+    ):
+        sweep_failures.append(DEV_SUITE_REUSE_JOB)
     sweep_running = sorted(
         j.name
         for name, j in latest.items()
@@ -1173,7 +1231,7 @@ def evaluate(
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
-    matrix_state = _evaluate_test_matrix(latest)
+    matrix_state = _evaluate_test_matrix(latest, require_full_suite=queue_run)
 
     # Completeness anchor: every named gate present AND completed.
     gate_missing_or_pending = [
@@ -1200,8 +1258,8 @@ def evaluate(
             gate_missing_or_pending,
             matrix_state,
             docs_only=docs_only,
-            retest_waived=retest_waived,
             relaxed=relaxed,
+            reuse_skips=reuse_skips,
             sweep_running=sweep_running,
             provisional_own_cancellations=provisional_own_cancellations,
         )
@@ -1231,8 +1289,8 @@ def _report(
     matrix_state: str,
     *,
     docs_only: bool = False,
-    retest_waived: bool = False,
     relaxed: frozenset[str] = frozenset(),
+    reuse_skips: frozenset[str] = frozenset(),
     sweep_running: list[str] | None = None,
     provisional_own_cancellations: list[str] | None = None,
 ) -> str:
@@ -1251,25 +1309,26 @@ def _report(
         )
         + f" -> docs_only={str(docs_only).lower()}"
     )
-    waiver_state = latest.get(RETEST_WAIVER_MARKER_JOB)
-    lines.append(
-        "  re-test waiver marker: "
-        + (
-            "<absent>"
-            if waiver_state is None
-            else f"{waiver_state.status}/{waiver_state.conclusion}"
-        )
-        + f" -> retest_waived={str(retest_waived).lower()}"
-    )
     if relaxed:
         lines.append(
-            "  skip tier ACTIVE (success|skipped accepted for): "
+            "  docs-only skip tier ACTIVE (success|skipped accepted for): "
             + ", ".join(sorted(relaxed))
+        )
+    if reuse_skips:
+        lines.append(
+            "  dev tree-reuse tier ACTIVE (only skipped accepted for): "
+            + ", ".join(sorted(reuse_skips))
         )
     lines.append("  strict gates (must be completed + success):")
     for g in strict_gates:
         st = latest.get(g)
-        marker = "  [docs-only tier]" if g in relaxed else ""
+        marker = (
+            "  [dev tree-reuse tier]"
+            if g in reuse_skips
+            else "  [docs-only tier]"
+            if g in relaxed
+            else ""
+        )
         lines.append(
             f"    - {g}: <absent>{marker}"
             if st is None
@@ -2545,6 +2604,8 @@ def main(argv: list[str] | None = None) -> int:
         run_attempt=args.run_attempt,
         now=observation_time,
         superseded_by_newer_run=superseded_by_newer_run,
+        event=args.event,
+        ref_name=args.ref_name,
     )
     print(report)
 

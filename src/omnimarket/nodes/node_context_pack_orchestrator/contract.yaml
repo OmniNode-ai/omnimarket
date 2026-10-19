@@ -29,8 +29,11 @@ description: >
   every source request, builds the pack and renders it. A required tier that is
   not resolved fails REQUIRED_FACTOR_MISSING; an optional tier's other statuses
   are listed per tier and the tier is omitted; optional tiers that do not fit
-  the budget are listed in excluded_by_budget and a required tier over budget
-  fails TOKEN_BUDGET_EXCEEDED. Returns candidate_id, assembly_hash,
+  the budget are listed in excluded_by_budget. Required tiers still over budget
+  are selected inside their share of it, cited entries first and then the
+  newest, whole entries only; operator_words_unrecorded is carried whole, and a
+  cited entry that does not fit fails TOKEN_BUDGET_EXCEEDED. Each tier is read
+  at its own revision when the request names one in tier_revisions. Returns candidate_id, assembly_hash,
   final_pack_hash, body_hash and stable_prefix_hash. The result carries package
   text, so it is published only on the restricted omniintelligence command
   family declared under event_bus, never on an event topic.

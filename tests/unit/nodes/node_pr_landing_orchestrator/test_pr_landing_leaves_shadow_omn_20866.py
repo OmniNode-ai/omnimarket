@@ -231,7 +231,6 @@ def test_config_the_contract_declares_the_canary() -> None:
     # The other M4 repositories' entries: test_pr_landing_m4_repositories_omn_20866.
     assert CANARY not in config.queue_repos
     assert CANARY in config.observed_prompt_repos
-    assert CANARY in config.review_threads_not_required_repos
     assert config.arm_policy.action_mode is EnumArmActionMode.ENFORCE
     assert config.arm_policy.kill_switch is False
 
@@ -263,7 +262,6 @@ async def test_config_a_dry_run_declared_for_the_canary_is_obeyed() -> None:
         "github_mode": "dry_run",
         "github_mode_by_repository": {CANARY: "dry_run"},
         "companion_exempt_repositories": [CANARY],
-        "review_threads_not_required_repositories": [CANARY],
         "observed_prompt_repositories": [CANARY],
         "arm_policy": {"action_mode": "enforce", "kill_switch": False},
     }
@@ -518,13 +516,6 @@ _SHIPPED_BLOCK: dict[str, object] = {
     "dry_run_operations": ["rerun_runs", "update_branch", "disarm"],
     "companion_exempt_repositories": [CANARY, "OmniNode-ai/omnibase_infra"],
     "queue_repositories": ["OmniNode-ai/omnibase_infra"],
-    "review_threads_not_required_repositories": [
-        CANARY,
-        "OmniNode-ai/omnibase_infra",
-        "OmniNode-ai/omnibase_core",
-        "OmniNode-ai/omniclaude",
-        "OmniNode-ai/omnidash",
-    ],
     "observed_prompt_repositories": [CANARY, "OmniNode-ai/omnibase_infra"],
     "arm_policy": {"action_mode": "enforce", "kill_switch": False},
 }

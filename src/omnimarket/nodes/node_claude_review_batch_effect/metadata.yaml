@@ -1,0 +1,25 @@
+name: node_claude_review_batch_effect
+version: "1.0.0"
+description: "Submits frozen replay items for review through admission and records a verdict and a cost per item"
+omnibase_core_compat: ">=0.47.0,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_claude_review_batch_effect: "omnimarket.nodes.node_claude_review_batch_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.47.0"
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "review", "hostile-reviewer", "batch"]
+pack: "review"
+display_name: "Claude Review Batch Effect"
+node_role: "effect"
