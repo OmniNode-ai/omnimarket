@@ -3,9 +3,10 @@
 # factors are the v5 tiers, enabled here for TC.10. A brief missing a required factor is
 # refused (REQUIRED_FACTOR_MISSING), which carries the lane-brief standard's
 # refuse-on-missing rule: a missing cited ruling never renders.
-# token_budget is a first value, not a measurement: the median of the briefs TA.17
-# compares plus the v5 tiers' sizes is read by TC.9 and TC.12, and this value changes
-# only through a data PR that cites that evidence.
+# token_budget is a first value, not a measurement of these tiers: the 2026-10-19 replay
+# evaluation built a 677-token lane-brief pack from lane_rules and operator_rulings
+# alone, without the v5 tiers. TC.9 and TC.12 read the measured size, and this value
+# changes only through a data PR that cites that evidence.
 model_id: claude-code-subagent
 profile_version: 1.0.0
 binding_kind: inline

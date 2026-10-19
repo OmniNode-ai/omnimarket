@@ -1,0 +1,64 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21188"
+title: "Review learning: review record model, recorded-finding envelope and the review-recorded topic with per-arm records"
+summary: "A review invocation that runs several routes now becomes one typed review record per arm under a shared invocation id, with each finding wrapped in a lossless recorded-finding envelope over the existing finding type. The records go to a review-recorded topic that node_review_record_compute declares in its contract and its handler reads from there."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21188-review-record"
+    statement: |-
+      A review invocation becomes one typed review record per arm, each finding is wrapped in a lossless envelope, and the topic comes from the contract.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The envelope wraps the existing finding type and converts in both directions without loss -- falsifier: pytest round-tripping a fixture of findings through the envelope and back, asserting equality
+      - id: "AC2"
+        statement: |-
+          AC2: One invocation that runs several routes writes one record per arm under a shared invocation_id -- falsifier: pytest with a two-arm invocation fixture asserting two records and one invocation_id
+      - id: "AC3"
+        statement: |-
+          AC3: The review-recorded topic is declared in the contract and not spelt in code -- falsifier: pytest over the contract and the handler asserting the topic comes from the contract
+evidence_requirements:
+  - kind: "tests"
+    description: "The cited tests pass at the PR head."
+    command: "uv run pytest tests/test_golden_chain_node_review_record_compute.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21188-ac1-envelope-round-trip"
+    description: "AC1: findings round-trip through the envelope, in memory and through wire JSON, with equality asserted. The test file and the envelope are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_record_compute.py -q -p no:randomly --no-cov -k 'envelope'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21188-ac2-one-record-per-arm"
+    description: "AC2: a two-arm invocation yields two records under one invocation_id, and failed and partial arms write their own record. The handler is absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_record_compute.py -q -p no:randomly --no-cov -k 'two_arm or attributed_to_exactly_one_arm or failed_and_partial or redelivery'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21188-ac3-topic-from-contract"
+    description: "AC3: the contract declares the topic, the handler returns the contract's value (including for a changed contract), and no node Python file spells it. Deploy probe: the contract at the checked-out commit carries the topic literal under publish_topics, absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_node_review_record_compute.py -q -p no:randomly --no-cov -k 'topic'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -cF 'review-recorded.v1' src/omnimarket/nodes/node_review_record_compute/contract.yaml"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21188-deploy-probe"
+    description: "Deploy probe. Reads the review record handler from GitHub at the checked-out head and requires the HandlerReviewRecordCompute class. It fails at the merge base, which has no such file."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_record_compute/handlers/handler_review_record.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c \"^class HandlerReviewRecordCompute\"'"
+        cwd: "${OMNI_HOME}/omnimarket"

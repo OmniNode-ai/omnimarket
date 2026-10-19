@@ -13,6 +13,8 @@ Layout under the store directory (``ONEX_OPERATOR_CAPTURE_DIR``, else
   atomically before anything else happens, so a crash later loses nothing;
 * ``sessions/<session>.digests``: one digest per line of every prompt taken in for a session,
   so a redelivered record is taken in once;
+* ``replies/<session>.json``: the session's last few assistant replies with the time each was
+  taken in, so a prompt is joined to the reply it answered (OMN-19513);
 * ``captures.jsonl``: one record per processed prompt (text, classification, rows written);
 * ``pushed.json``: which overdue asks were pushed on which day;
 * ``lock``: the fcntl lock one worker holds while it processes the inbox.
@@ -128,6 +130,45 @@ def ingest(
     return path
 
 
+REPLIES_KEPT = 8
+
+
+def _replies_path(root: Path, session_id: str) -> Path:
+    return root / "replies" / f"{_SAFE.sub('_', session_id)}.json"
+
+
+def _read_replies(root: Path, session_id: str) -> list[dict[str, str]]:
+    try:
+        loaded: object = json.loads(_replies_path(root, session_id).read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(loaded, list):
+        return []
+    return [
+        {"at": str(r["at"]), "text": str(r["text"])}
+        for r in loaded
+        if isinstance(r, dict) and "at" in r and "text" in r
+    ]
+
+
+def remember_reply(root: Path, *, session_id: str, text: str, at: datetime) -> None:
+    """Keep one assistant reply of the session, the last ``REPLIES_KEPT`` only."""
+    replies = _read_replies(root, session_id)
+    replies.append({"at": at.astimezone(UTC).isoformat(), "text": text})
+    replies.sort(key=lambda r: r["at"])
+    _atomic_write(
+        _replies_path(root, session_id),
+        json.dumps(replies[-REPLIES_KEPT:], ensure_ascii=False),
+    )
+
+
+def reply_before(root: Path, *, session_id: str, at: datetime) -> str | None:
+    """The session's latest assistant reply taken in before ``at``: the one a prompt answered."""
+    when = at.astimezone(UTC).isoformat()
+    earlier = [r for r in _read_replies(root, session_id) if r["at"] < when]
+    return earlier[-1]["text"] if earlier else None
+
+
 def pending(root: Path) -> list[Path]:
     inbox = root / "inbox"
     if not inbox.is_dir():
@@ -192,6 +233,8 @@ __all__ = [
     "read_pending",
     "read_pushed",
     "record_capture",
+    "remember_reply",
+    "reply_before",
     "rewrite_pending",
     "session_digests",
     "store_dir",
