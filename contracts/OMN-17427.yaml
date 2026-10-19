@@ -466,6 +466,15 @@ requirements:
     acceptance:
       - id: "AC83"
         statement: "AC83: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
+  - id: "req-release-staleness-dev-merge-tags"
+    statement: "Release staleness counts commits reached by immutable dev merge tags as published while preserving the age limit for untagged packaged commits."
+    acceptance:
+      - id: "AC92"
+        statement: "AC92: a dev merge tag covers packaged commits after the last version release and supplies a measurable base when no version release exists."
+      - id: "AC93"
+        statement: "AC93: an untagged packaged commit after a dev merge tag still ages against the 24-hour limit, and malformed dev tag names do not cover stale debt."
+      - id: "AC94"
+        statement: "AC94: changing the dev tag matcher to ignore valid dev merge tags makes the workflow's devtag positive control refuse the measurement."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1748,3 +1757,49 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_hostile_reviewer_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_fallback_route", "fallback_engine", "fallback_for")); print("hostile-reviewer codex fallback deploy probe: PASS")'
+  - id: "dod-omn17427-release-staleness-dev-tags-published"
+    description: "Immutable dev merge tags cover packaged release debt and work without a version release. These tests fail against the merge-base workflow, which only counts version tags."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly --no-cov -k 'test_dev_merge_tag_covers_packaged_commit_past_the_release or test_dev_tag_alone_is_a_measurable_base'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC92"]
+  - id: "dod-omn17427-release-staleness-untagged-debt"
+    description: "Untagged packaged commits still age and malformed dev tags do not publish them. The tests read the real measurement after the workflow's four controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly --no-cov -k 'test_untagged_packaged_commit_after_dev_tag_still_ages or test_malformed_dev_tag_cannot_cover_stale_debt'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC93"]
+  - id: "dod-omn17427-release-staleness-devtag-control"
+    description: "Ignoring valid dev merge tags trips the devtag positive control before the real measurement. The merge-base workflow has no dev tag matcher or devtag control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py::test_ignored_dev_tags_are_refused_by_positive_control -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC94"]
+  - id: "dod-omn17427-release-staleness-dev-tags-deploy-probe"
+    description: "Deploy probe. Execute the checked-out workflow's measurement on temporary git histories: tagged old packaged commits are fresh, a dev tag works without a release, and an untagged old packaged commit stays stale. The hosted runner needs Python, the locked test dependencies, bash, git and GNU date; no service or credentials are needed. This is a workflow runtime readback, not a running application deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          import runpy
+          import tempfile
+          from pathlib import Path
+          probe = runpy.run_path("tests/ci/test_release_staleness_gate_omn18010.py")
+          for name in (
+              "test_dev_merge_tag_covers_packaged_commit_past_the_release",
+              "test_dev_tag_alone_is_a_measurable_base",
+              "test_untagged_packaged_commit_after_dev_tag_still_ages",
+          ):
+              with tempfile.TemporaryDirectory() as directory:
+                  probe[name](Path(directory))
+              print(name + ": PASS")
+          print("release staleness deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
