@@ -444,6 +444,11 @@ requirements:
     acceptance:
       - id: "AC80"
         statement: "AC80: the hostile-reviewer workflow clones omniintelligence at 921b322b8e43f695961a06a04759dc88bb3e88ff and at no other sha -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q fails at the merge base, which pins aeba95945f22b3027d4010b53cb01b3f1217923c"
+  - id: "req-ci-summary-sweep-provenance-and-unreadable-runs"
+    statement: "CI Summary's external sweep reads a check-run's Actions run id from its check suite when its URLs carry none, and an unreadable or malformed workflow-runs file exempts nothing instead of crashing the gate."
+    acceptance:
+      - id: "AC81"
+        statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -605,6 +610,10 @@ evidence_requirements:
   - kind: "tests"
     description: "AC79: the summarization gate refuses an answer over a stated word limit and waives the rule for a prompt with no limit."
     command: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py tests/test_omn19320_check_register.py -q"
+  - kind: "tests"
+    description: "AC81: check-suite run provenance and unreadable workflow-runs files in the external sweep."
+    command: >-
+      uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1630,3 +1639,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
+  - id: "dod-omn17427-ac79-sweep-provenance-unreadable-runs"
+    description: "The external sweep reads run provenance from the check suite and an unreadable or malformed workflow-runs file still sweeps an unregistered red. The tests fail against the dev gate, which reads only URLs and raises on a malformed payload."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC81"]
+  - id: "dod-omn17427-ac79-sweep-provenance-deploy-probe"
+    description: "Deploy probe. The checked-out CI Summary gate resolves a run id from the check suite alone and loads a malformed workflow-runs file as unavailable. The hosted runner needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import runpy, tempfile
+          gate = runpy.run_path("scripts/ci/ci_summary_gate.py")
+          assert gate["check_run_workflow_run_id"]({"check_suite": {"workflow_run": {"id": 42}}}) == 42
+          assert gate["check_run_workflow_run_id"]({"check_suite": {"workflow_run_id": "bad"}}) is None
+          with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+              handle.write('{"workflow_runs": "bad"}')
+          assert gate["_load_workflow_runs"](handle.name) is None
+          print("external sweep provenance deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
