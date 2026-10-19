@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21112"
+title: "TA.10 compaction receipt schemas and topic constants with no free-text receipt field"
+summary: "The six compaction receipt events (prepared, activated, fallback, installed, install-mismatch, install-uncertain) as typed models in omnimarket.models.context_compaction, each carrying session_id (the partition key) and naming its contracted identity field in IDENTITY_FIELD, with every string fenced by an enum or a pattern so no receipt holds free text, and the eight compaction topic constants in omnimarket.events.topics. Registration of the events in node_emit_daemon/registries/topics.yaml is not in this change: the drift validator refuses an event registered only on the omnimarket side unless the drift baseline declares it, and the canonical-file-shape ratchet refuses a new baseline entry."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "events"
+  - "topics"
+  - "public_api"
+requirements:
+  - id: "req-receipt-no-free-text"
+    statement: "Every receipt event schema carries ids, hashes, enum members and names only."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: every receipt event schema contains no free-text content field -- falsifier: a string field other than an id, hash, enum or name."
+evidence_requirements:
+  - kind: "tests"
+    description: "The receipt schema tests, including the free-text schema walk and its positive control."
+    command: "uv run pytest tests/unit/models/context_compaction -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21112-ac2-no-free-text"
+    description: "AC2: the schema walk over each of the six receipt models finds no string leaf without an enum, pattern, format or const; its positive control is a model with two unbounded strings, which the walk reports. The tests fail at the merge base, whose models package has no COMPACTION_RECEIPT_MODELS."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/models/context_compaction/test_context_compaction_receipt_schemas.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21112-deploy-receipt-schemas"
+    description: "Deploy probe. The checkout's own environment imports the six receipt models, asserts each names the identity field the plan contracts, and asserts that a free-text value in a bounded field is refused. It fails at the merge base, which has no COMPACTION_RECEIPT_MODELS. The hosted runner can run it inside the check budget; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from omnimarket.models.context_compaction import COMPACTION_RECEIPT_MODELS as M, ModelContextCompactionFallback as F
+          ids = {m.__name__: m.IDENTITY_FIELD for m in M}
+          assert ids == {"ModelContextCompactionPrepared": "candidate_id", "ModelContextCompactionActivated": "activation_id", "ModelContextCompactionFallback": "invocation_id", "ModelContextCompactionInstalled": "activation_id", "ModelContextCompactionInstallMismatch": "activation_id", "ModelContextCompactionInstallUncertain": "activation_id"}, ids
+          try:
+              F.model_validate({"invocation_id": "11111111-1111-4111-8111-111111111111", "session_id": "s", "failure_class": "the barrier timed out"})
+          except ValueError:
+              print(sorted(ids))
+          else:
+              raise SystemExit("free text accepted")'

@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: context_source_ledger_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-source-ledger-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-source-ledger-completed.v1
+input_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+output_model: omnimarket.nodes.node_context_source_ledger_effect.models.model_ledger_source_entry.ModelLedgerSourceResult
+description: >
+  The work-ledger context source (ProtocolContextSource). Answers the
+  operator_rulings factor at a ledger watermark: every RULING and
+  OPERATOR-CONSENT row in force (or the caller scope's cited stamps), read
+  whole from work_ledger_rows.raw_row by row id, folded through the
+  projection's relationship rules, each entry carrying every CORRECTION that
+  cites it and, where a correction types operator_span, exactly that span as
+  operator words with the rest labelled recorded framing. A tenant the binding
+  does not list is denied; a failed read is unavailable, never an empty
+  resolved.
+handler:
+  module: omnimarket.nodes.node_context_source_ledger_effect.handlers.handler_context_source_ledger
+  class: HandlerContextSourceLedger
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: context_source_ledger_requested
+      topic: onex.cmd.omnimarket.context-source-ledger-requested.v1
+      message_category: command
+      event_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+      handler_module: omnimarket.nodes.node_context_source_ledger_effect.handlers.handler_context_source_ledger
+      handler:
+        name: HandlerContextSourceLedger
+        module: omnimarket.nodes.node_context_source_ledger_effect.handlers.handler_context_source_ledger
+terminal_event: onex.evt.omnimarket.context-source-ledger-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.context-source-ledger-requested.v1]
+  publish_topics: [onex.evt.omnimarket.context-source-ledger-completed.v1]
+  dlq_topics: [onex.dlq.omnimarket.context-source-ledger-malformed.v1]
+context_source_ledger:
+  ledger_source:
+    relation: omninode_internal.work_ledger_rows
+    binding_ref: omninode_runtime_service
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    # Tenants are overlay data: the deploy overlay lists the one lab tenant.
+    # An empty list denies every request.
+    tenant_ids: []
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+golden_path:
+  - "Command arrives with the factor, caller scope, access and a ledger watermark"
+  - "Read every row up to the watermark, whole, by row id"
+  - "Fold through the projection's relationship rules"
+  - "Return each ruling and consent with its corrections on terminal_event"
+dod_evidence:
+  - test: tests/test_golden_chain_context_source_ledger_effect.py::test_context_source_ledger_golden_chain_real_runtime_typed_dispatch
+    description: "Command reaches the node through real runtime typed dispatch and the terminal event carries the D1 ruling with its correction"
+  - test: tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py::test_entry_text_equals_markdown_row_text_for_every_authority_row_of_a_day
+    description: "Every RULING and OPERATOR-CONSENT row of a UTC day comes back with text equal to the markdown row"
+  - test: tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py::test_d1_ruling_carries_its_correction
+    description: "The D1 ruling carries the correction's full text and stamp in corrected_by"
+  - test: tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py::test_operator_span_is_exactly_the_typed_span
+    description: "A CORRECTION with operator_span yields exactly that span as operator words"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-21127]
