@@ -30,10 +30,9 @@ class ModelArtifactSource(BaseModel):
     """One pre-read artifact eligible to populate a factor's content.
 
     ``is_markdown_sectioned`` selects the resolution strategy:
-      - True  -> the body is split into ATX-heading sections by the existing
-                 GuidanceSectionParser and the highest-precedence sections are
-                 selected up to the factor budget (claude_md, architecture
-                 patterns).
+      - True  -> the body is split into ATX-heading sections and every
+                 section becomes one artifact (claude_md, architecture
+                 patterns); the pack builder selects among them.
       - False -> the whole body becomes a single artifact (golden_chain,
                  exemplar, local_failures).
     """
@@ -67,8 +66,8 @@ class ModelArtifactSource(BaseModel):
     is_markdown_sectioned: bool = Field(
         default=False,
         description=(
-            "True -> split into heading sections and select within the factor "
-            "budget (markdown guidance/architecture docs). "
+            "True -> split into heading sections, one artifact per section "
+            "(markdown guidance/architecture docs). "
             "False -> use the whole body as one artifact."
         ),
     )

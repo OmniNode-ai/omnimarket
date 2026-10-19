@@ -9,6 +9,10 @@ then runs the capture worker over the store's inbox: classification through ``on
 (deterministic fallback when it cannot answer), drift against earlier rulings, one ledger row per
 item through the ledger's own append command. A prompt whose rows are not all appended stays in
 the inbox and is retried, never dropped. Every decision is node_operator_capture_compute's.
+
+An assistant reply (``content_kind`` ``assistant_reply``) is kept in the store, not processed:
+with a promotion lane, the next operator prompt of the session is joined to it and the words
+become a RULING, an OPERATOR-CONSENT or an orchestrator inbox MSG (OMN-19513).
 """
 
 from __future__ import annotations
@@ -60,6 +64,7 @@ class HandlerOperatorCaptureEffect:
         append: LedgerAppender,
         clock: Callable[[], datetime] | None = None,
         max_captures: int = 20,
+        promotion_lane: str | None = None,
     ) -> None:
         self._store = store_dir
         self._ledger = ledger_path
@@ -68,6 +73,7 @@ class HandlerOperatorCaptureEffect:
         self._append = append
         self._clock = clock or (lambda: datetime.now(UTC))
         self._max = max_captures
+        self._promotion_lane = promotion_lane
 
     @property
     def host_name(self) -> str:
@@ -87,19 +93,38 @@ class HandlerOperatorCaptureEffect:
             self._delegate, self._append, now=self._clock()
         ).handle(
             ModelCaptureProcessRequest(
-                store_dir=self._store, ledger_path=self._ledger, max_captures=self._max
+                store_dir=self._store,
+                ledger_path=self._ledger,
+                max_captures=self._max,
+                promotion_lane=self._promotion_lane,
             )
         )
 
     def handle(self, record: ModelOperatorPromptRecord) -> ModelOperatorCaptureReceipt:
-        if not record.is_operator_prompt:
-            msg = f"not an operator prompt: content_kind={record.content_kind!r}"
-            raise ValueError(msg)
         said_at = (
             _parse_time(record.said_at)
             or _parse_time(record.emitted_at)
             or self._clock()
         )
+        if record.is_assistant_reply:
+            # Kept so the session's next operator prompt is joined to the question it answered.
+            capture_store.remember_reply(
+                self._store,
+                session_id=record.session_id,
+                text=record.content,
+                at=said_at,
+            )
+            return ModelOperatorCaptureReceipt(
+                host=self._host,
+                session_id=record.session_id,
+                prompt_id=record.prompt_id,
+                status=EnumOperatorCaptureStatus.REPLY_NOTED,
+                result=ModelCaptureProcessResult(),
+                answered_at=self._clock(),
+            )
+        if not record.is_operator_prompt:
+            msg = f"not an operator prompt: content_kind={record.content_kind!r}"
+            raise ValueError(msg)
         taken = capture_store.ingest(
             self._store,
             session_id=record.session_id,

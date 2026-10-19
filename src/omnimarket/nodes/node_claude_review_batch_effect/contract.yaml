@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: "node_claude_review_batch_effect"
+# Submits frozen replay items for review through admission and collects a verdict per
+# item. The required gate never uses it: a batch can take up to 24 hours.
+lifecycle: experimental
+contract_name: node_claude_review_batch_effect
+node_name: node_claude_review_batch_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  For each replay item of a frozen manifest: refuses a cloud-refused repository,
+  asks admission (the budget reducer's seam; batch-priced when the transport
+  batches), submits the admitted items in one batch, polls, parses each answer
+  and records a verdict (blocked, passed or degraded). A refused, truncated,
+  unparseable, empty, failed or never-answered item is degraded, never passed.
+  One admission event, one cost event and one verdict event per item, then the
+  terminal event; a batch still running returns its id and its pending items to
+  resume on the next tick.
+
+input_model: omnimarket.nodes.node_claude_review_batch_effect.models.model_claude_review_batch.ModelClaudeReviewBatchRequest
+
+output_model:
+  name: ModelClaudeReviewBatchResult
+  module: omnimarket.nodes.node_claude_review_batch_effect.models.model_claude_review_batch
+  description: The batch's status and id, the verdict per item and the items still pending.
+
+handler:
+  module: omnimarket.nodes.node_claude_review_batch_effect.handlers.handler_claude_review_batch
+  class: HandlerClaudeReviewBatch
+  input_model: omnimarket.nodes.node_claude_review_batch_effect.models.model_claude_review_batch.ModelClaudeReviewBatchRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_claude_review_batch_effect.handlers.handler_claude_review_batch:HandlerClaudeReviewBatch
+  handlers:
+    - operation: claude_review_batch.run
+      handler:
+        name: HandlerClaudeReviewBatch
+        module: omnimarket.nodes.node_claude_review_batch_effect.handlers.handler_claude_review_batch
+      handler_module: omnimarket.nodes.node_claude_review_batch_effect.handlers.handler_claude_review_batch
+      event_model: omnimarket.nodes.node_claude_review_batch_effect.models.model_claude_review_batch.ModelClaudeReviewBatchRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.claude-review-batch-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.claude-review-batch-completed.v1
+
+terminal_event: onex.evt.omnimarket.claude-review-batch-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.claude-review-batch-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.review-call-admission-decided.v1"
+    - "onex.evt.omnimarket.claude-review-batch-item-cost-recorded.v1"
+    - "onex.evt.omnimarket.claude-review-batch-item-verdict-recorded.v1"
+    - "onex.evt.omnimarket.claude-review-batch-completed.v1"
+
+published_events:
+  - event_type: ModelReviewCallAdmissionDecided
+    topic: onex.evt.omnimarket.review-call-admission-decided.v1
+    description: "One admission decision, before the call it admits."
+  - event_type: ModelReviewBatchItemCost
+    topic: onex.evt.omnimarket.claude-review-batch-item-cost-recorded.v1
+    description: "One item's measured usage, stop reason and outcome."
+  - event_type: ModelReviewBatchItemVerdict
+    topic: onex.evt.omnimarket.claude-review-batch-item-verdict-recorded.v1
+    description: "One item's verdict: blocked, passed or degraded."
+  - event_type: ModelClaudeReviewBatchResult
+    topic: onex.evt.omnimarket.claude-review-batch-completed.v1
+    description: "The batch collected: every item's verdict."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.review-call-admission-decided.v1
+  - onex.evt.omnimarket.claude-review-batch-item-cost-recorded.v1
+  - onex.evt.omnimarket.claude-review-batch-item-verdict-recorded.v1
+
+side_effects:
+  reads:
+    - filesystem
+  writes: []
+  posts_to_github: false
+
+dod_evidence:
+  PYTEST:
+    description: "each replay item goes admission, call, parse, verdict with an event per step; refused, truncated, unparseable, empty, failed and unanswered items are degraded"
+    command: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect -q"
+    pass_criteria: "the event chain per item in order; a refused item is never submitted; a failed call releases its reservation; a diff that no longer matches the manifest is refused"

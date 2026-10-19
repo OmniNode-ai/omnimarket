@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for HandlerArtifactResolver (OMN-12948).
+"""Unit tests for HandlerArtifactResolver (OMN-12948, OMN-21137).
 
-Verifies the resolver materialises a real per-factor content map from pre-read
-artifact sources, reusing the GuidanceSectionParser for section selection and
-the pack-builder's budget/precedence authority. Pure COMPUTE: no I/O.
+Verifies the resolver turns pre-read artifact sources into pack-builder
+artifacts with provenance and applies none of the builder's policy: no section
+selection, no dedup, no token budget and no pack hash. Pure COMPUTE: no I/O.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.enums.enum_context_pack_provenance import (
     EnumContextPackProvenance,
 )
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_context_artifact_resolver_compute.handlers.handler_artifact_resolver import (
     HandlerArtifactResolver,
@@ -24,6 +25,7 @@ from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifa
 )
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_resolver_result import (
     EnumArtifactResolverStatus,
+    ModelArtifactResolverResult,
 )
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_source import (
     ModelArtifactSource,
@@ -51,17 +53,11 @@ def _source(
     )
 
 
-def _request(
-    *sources: ModelArtifactSource,
-    token_budget: int = 16000,
-    per_factor_token_budget: int = 3000,
-) -> ModelArtifactResolverRequest:
+def _request(*sources: ModelArtifactSource) -> ModelArtifactResolverRequest:
     return ModelArtifactResolverRequest(
         contract_hash=_CONTRACT_HASH,
         generated_at=_GENERATED_AT,
         sources=tuple(sources),
-        token_budget=token_budget,
-        per_factor_token_budget=per_factor_token_budget,
     )
 
 
@@ -87,46 +83,52 @@ def test_estimate_tokens_non_empty_at_least_one() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_whole_body_factor_resolves_real_content() -> None:
-    handler = HandlerArtifactResolver()
-    result = handler.handle(
+def test_whole_body_factor_resolves_one_artifact_with_provenance() -> None:
+    body = "chains:\n  - name: registration"
+    result = HandlerArtifactResolver().handle(
         _request(
-            _source(EnumContextFactor.GOLDEN_CHAIN, "chains:\n  - name: registration"),
+            _source(
+                EnumContextFactor.GOLDEN_CHAIN, body, source_name="golden_chains.yaml"
+            ),
         )
     )
     assert result.status is EnumArtifactResolverStatus.OK
-    assert "golden_chain" in result.artifact_content_map
-    assert (
-        result.artifact_content_map["golden_chain"] == "chains:\n  - name: registration"
-    )
+    assert len(result.artifacts) == 1
+    artifact = result.artifacts[0]
+    assert artifact.factor is EnumContextFactor.GOLDEN_CHAIN
+    assert artifact.content == body
+    assert artifact.token_estimate == estimate_tokens(body)
+    assert artifact.provenance is EnumContextPackProvenance.CURATED
+    assert artifact.source_contract_hash == _CONTRACT_HASH
+    assert artifact.source_file == "golden_chains.yaml"
+    assert artifact.heading_path is None
+    assert artifact.char_count == len(body)
+    assert artifact.reason_selected == "whole_body"
     assert result.resolved_factors == ("golden_chain",)
-    assert result.pack_hash is not None
 
 
 def test_no_stub_placeholder_text_in_output() -> None:
-    handler = HandlerArtifactResolver()
-    result = handler.handle(
+    result = HandlerArtifactResolver().handle(
         _request(
             _source(EnumContextFactor.GOLDEN_CHAIN, "real golden chain text"),
             _source(EnumContextFactor.EXEMPLAR, "real exemplar code"),
         )
     )
     assert result.status is EnumArtifactResolverStatus.OK
-    for content in result.artifact_content_map.values():
-        assert "stub content for" not in content
+    for artifact in result.artifacts:
+        assert "stub content for" not in artifact.content
 
 
 # ---------------------------------------------------------------------------
-# markdown section selection
+# markdown section parsing: every section kept, none selected away
 # ---------------------------------------------------------------------------
 
 
-def test_sectioned_markdown_splits_and_selects_within_budget() -> None:
-    # Each section ~ 200 chars => ~50 tokens. per_factor budget 120 tokens fits
-    # ~2 sections, the third overflows and is dropped.
+def test_sectioned_markdown_keeps_every_section() -> None:
+    # Each section ~ 200 chars => ~50 tokens; the resolver keeps all four and
+    # leaves selection to the pack builder.
     body = "\n".join(f"# Section {i}\n" + ("x" * 196) for i in range(1, 5))
-    handler = HandlerArtifactResolver()
-    result = handler.handle(
+    result = HandlerArtifactResolver().handle(
         _request(
             _source(
                 EnumContextFactor.CLAUDE_MD,
@@ -134,21 +136,32 @@ def test_sectioned_markdown_splits_and_selects_within_budget() -> None:
                 sectioned=True,
                 source_name="CLAUDE.md",
             ),
-            per_factor_token_budget=120,
         )
     )
     assert result.status is EnumArtifactResolverStatus.OK
-    content = result.artifact_content_map["claude_md"]
-    # Leading sections selected, later ones dropped.
-    assert "Section 1" in content
-    assert "Section 4" not in content
-    # A selection warning is emitted when sections are dropped.
-    assert any("selected" in w for w in result.warnings)
+    assert [a.heading_path for a in result.artifacts] == [
+        (f"Section {i}",) for i in range(1, 5)
+    ]
+    assert all(a.reason_selected == "markdown_section" for a in result.artifacts)
+    assert all(a.source_file == "CLAUDE.md" for a in result.artifacts)
+    assert not any("selected" in w for w in result.warnings)
+
+
+def test_sectioned_markdown_keeps_text_before_first_heading() -> None:
+    body = "Preamble prose.\n\n# First\nbody one"
+    result = HandlerArtifactResolver().handle(
+        _request(_source(EnumContextFactor.CLAUDE_MD, body, sectioned=True))
+    )
+    assert result.status is EnumArtifactResolverStatus.OK
+    assert [a.content for a in result.artifacts] == [
+        "Preamble prose.",
+        "# First\nbody one",
+    ]
+    assert result.artifacts[0].heading_path is None
 
 
 def test_sectioned_markdown_without_headings_uses_whole_body() -> None:
-    handler = HandlerArtifactResolver()
-    result = handler.handle(
+    result = HandlerArtifactResolver().handle(
         _request(
             _source(
                 EnumContextFactor.ARCHITECTURE_PATTERNS,
@@ -158,19 +171,20 @@ def test_sectioned_markdown_without_headings_uses_whole_body() -> None:
         )
     )
     assert result.status is EnumArtifactResolverStatus.OK
-    assert "no headings here" in result.artifact_content_map["architecture_patterns"]
+    assert len(result.artifacts) == 1
+    assert "no headings here" in result.artifacts[0].content
+    assert result.artifacts[0].reason_selected == "whole_body"
     assert any("no headings" in w for w in result.warnings)
 
 
 # ---------------------------------------------------------------------------
-# precedence ordering
+# no assembly policy: no ordering, dedup, budget or pack hash
 # ---------------------------------------------------------------------------
 
 
-def test_resolved_factors_in_canonical_precedence_order() -> None:
-    handler = HandlerArtifactResolver()
-    # Supply sources out of precedence order; expect canonical order back.
-    result = handler.handle(
+def test_artifacts_keep_source_order() -> None:
+    # Precedence ordering is the pack builder's; the resolver keeps input order.
+    result = HandlerArtifactResolver().handle(
         _request(
             _source(EnumContextFactor.CLAUDE_MD, "# C\nclaude md", sectioned=True),
             _source(EnumContextFactor.GOLDEN_CHAIN, "golden"),
@@ -178,29 +192,57 @@ def test_resolved_factors_in_canonical_precedence_order() -> None:
         )
     )
     assert result.status is EnumArtifactResolverStatus.OK
-    # golden_chain < exemplar < claude_md
-    assert result.resolved_factors == ("golden_chain", "exemplar", "claude_md")
+    assert result.resolved_factors == ("claude_md", "golden_chain", "exemplar")
 
 
-# ---------------------------------------------------------------------------
-# budget hard-reject (negative control path)
-# ---------------------------------------------------------------------------
-
-
-def test_token_budget_exceeded_fails_closed() -> None:
-    # Whole-body source way over the overall budget; the pack-builder
-    # TOKEN_BUDGET_EXCEEDED hard-reject must fire (never silent truncation).
-    huge = "x" * 80000  # ~20000 tokens, over a 16000 budget
-    handler = HandlerArtifactResolver()
-    result = handler.handle(
+def test_duplicate_content_is_not_deduplicated() -> None:
+    result = HandlerArtifactResolver().handle(
         _request(
-            _source(EnumContextFactor.CLAUDE_MD, huge),
-            token_budget=16000,
+            _source(EnumContextFactor.EXEMPLAR, "same body", source_name="a.py"),
+            _source(EnumContextFactor.EXEMPLAR, "same body", source_name="b.py"),
         )
     )
-    assert result.status is EnumArtifactResolverStatus.FAILED
-    assert result.failure_class == "token_budget_exceeded"
-    assert result.artifact_content_map == {}
+    assert result.status is EnumArtifactResolverStatus.OK
+    assert [a.source_file for a in result.artifacts] == ["a.py", "b.py"]
+
+
+def test_over_budget_source_is_resolved_not_rejected() -> None:
+    # ~20000 tokens: the budget hard-reject is the pack builder's, not ours.
+    huge = "x" * 80000
+    result = HandlerArtifactResolver().handle(
+        _request(_source(EnumContextFactor.CLAUDE_MD, huge))
+    )
+    assert result.status is EnumArtifactResolverStatus.OK
+    assert result.artifacts[0].token_estimate == 20000
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("token_budget", 16000),
+        ("per_factor_token_budget", 3000),
+        ("factor_precedence", ()),
+        ("model_id", "resolver"),
+    ],
+)
+def test_request_refuses_assembly_policy_inputs(field: str, value: object) -> None:
+    with pytest.raises(ValidationError):
+        ModelArtifactResolverRequest.model_validate(
+            {
+                "contract_hash": _CONTRACT_HASH,
+                "generated_at": _GENERATED_AT,
+                "sources": (),
+                field: value,
+            }
+        )
+
+
+def test_result_carries_no_pack_hash_or_content_map() -> None:
+    fields = set(ModelArtifactResolverResult.model_fields)
+    assert "pack_hash" not in fields
+    assert "artifact_content_map" not in fields
+    assert "total_token_estimate" not in fields
+    assert "failure_class" not in fields
 
 
 # ---------------------------------------------------------------------------
@@ -214,17 +256,14 @@ def test_resolution_is_deterministic() -> None:
         _source(EnumContextFactor.GOLDEN_CHAIN, "golden"),
         _source(EnumContextFactor.EXEMPLAR, "exemplar body"),
     )
-    first = handler.handle(req)
-    second = handler.handle(req)
-    assert first.artifact_content_map == second.artifact_content_map
-    assert first.pack_hash == second.pack_hash
+    assert handler.handle(req) == handler.handle(req)
 
 
 def test_empty_sources_fails() -> None:
-    handler = HandlerArtifactResolver()
-    result = handler.handle(_request())
+    result = HandlerArtifactResolver().handle(_request())
     assert result.status is EnumArtifactResolverStatus.FAILED
     assert result.errors
+    assert result.artifacts == ()
 
 
 @pytest.mark.parametrize(
@@ -238,7 +277,6 @@ def test_empty_sources_fails() -> None:
     ],
 )
 def test_every_canonical_factor_resolves(factor: EnumContextFactor) -> None:
-    handler = HandlerArtifactResolver()
     sectioned = factor in (
         EnumContextFactor.CLAUDE_MD,
         EnumContextFactor.ARCHITECTURE_PATTERNS,
@@ -248,7 +286,9 @@ def test_every_canonical_factor_resolves(factor: EnumContextFactor) -> None:
         if sectioned
         else f"real {factor.value}"
     )
-    result = handler.handle(_request(_source(factor, body, sectioned=sectioned)))
+    result = HandlerArtifactResolver().handle(
+        _request(_source(factor, body, sectioned=sectioned))
+    )
     assert result.status is EnumArtifactResolverStatus.OK
-    assert factor.value in result.artifact_content_map
-    assert result.artifact_content_map[factor.value].strip() != ""
+    assert result.resolved_factors == (factor.value,)
+    assert result.artifacts[0].content.strip() != ""

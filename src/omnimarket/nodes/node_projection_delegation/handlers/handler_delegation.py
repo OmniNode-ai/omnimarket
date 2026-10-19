@@ -99,6 +99,7 @@ from omnimarket.projection.envelope import (
     envelope_data_source,
     envelope_event_timestamp,
     envelope_tenant_identity,
+    is_boundary_failure_terminal,
     strip_runner_injected_keys,
 )
 from omnimarket.projection.models import ProjectionTableConfig
@@ -1905,6 +1906,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     async def _project_delegate_skill_terminal(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        if is_boundary_failure_terminal(data):
+            # OMN-18389: the runtime's answer to a command it refused before any
+            # handler ran. It is not a delegation (no task_type, no tenant), so
+            # it is neither projected nor malformed; the offset advances.
+            logger.info(
+                "OMN-18389: skipping boundary failure terminal "
+                "(correlation_id=%s, failure_code=%s): not a delegation terminal",
+                data.get("correlation_id", meta.fallback_id),
+                data.get("failure_code"),
+            )
+            return True
         try:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
         except ValidationError as exc:
@@ -2033,6 +2045,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
+        # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
+        if event.trace_id is not None:
+            row["trace_id"] = str(event.trace_id)
         # OMN-20755: the routing tier, by the sync builder's rule.
         _stamp_routing_tier(row, reduction.attempt_history)
         # Same rule as the sync builder: a terminal that was never scored names

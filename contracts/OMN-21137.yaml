@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21137"
+title: "Strip the artifact resolver to primitives (TC.15)"
+summary: "node_context_artifact_resolver_compute kept its own assembly policy: greedy per-factor section selection, chunk dedup, a token-budget rejection and its own pack hash, so a source passed through it could lose sections before the pack builder applied precedence and budget. The resolver now keeps only section parsing and source resolution and returns ModelContextPackArtifact entries with provenance (source_file, heading_path, char_count, reason_selected), one per whole-body source and one per markdown section. Its request drops token_budget, per_factor_token_budget, factor_precedence and model_id; its result drops artifact_content_map, pack_hash, total_token_estimate and failure_class. node_context_roi_runner gains an artifacts input and passes the resolver's artifacts whole to node_context_pack_builder_compute, which alone selects, budgets and hashes."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-resolver-primitives"
+    statement: "The resolver applies no section selection, dedup, budget or pack hash, and returns every section of a sectioned source as a pack artifact with provenance."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a four-section source is returned as four artifacts with heading_path, a duplicate body from two sources is returned twice, a source over the 16k budget is returned, and the request refuses token_budget, per_factor_token_budget, factor_precedence and model_id -- falsifier: uv run pytest tests/nodes/node_context_artifact_resolver_compute/test_handler_artifact_resolver.py -q --no-cov fails against the pre-change resolver"
+  - id: "req-runner-reaches-builder"
+    statement: "node_context_roi_runner passes the resolver's artifacts to node_context_pack_builder_compute, so selection, budget and the pack hash have one implementation."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: four sections totalling 4000 tokens all reach the builder as four claude_md chunks, an over-budget artifact fails as the builder's BUDGET_FAIL, a factor supplied by both artifacts and artifact_content_map is refused, and HandlerContextRoiRunner.handle injects the resolver's sections into the published generation command -- falsifier: uv run pytest tests/nodes/node_context_artifact_resolver_compute/test_runner_wiring.py -q --no-cov fails against the pre-change runner and resolver"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 and AC2, plus the existing ROI runner suite."
+    command: "uv run pytest tests/nodes/node_context_artifact_resolver_compute/ tests/nodes/node_context_roi_runner/ -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21137-ac1-resolver-primitives"
+    description: "AC1: the resolver returns every section as an artifact and carries no selection, dedup, budget or pack hash."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_artifact_resolver_compute/test_handler_artifact_resolver.py -q --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21137-ac2-runner-reaches-builder"
+    description: "AC2: the ROI runner passes resolver artifacts to the pack builder. Deploy probe: read the runner handler from GitHub at the checked-out commit and require that it passes request.artifacts to the pack build; it fails at the merge base, whose runner has no artifacts input."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_artifact_resolver_compute/test_runner_wiring.py -q --no-cov"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_roi_runner/handlers/handler_context_roi_runner.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"resolved_artifacts=request.artifacts\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
