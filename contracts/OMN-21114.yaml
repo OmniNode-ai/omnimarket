@@ -28,24 +28,28 @@ emergency_bypass:
 dod_evidence:
   - id: "dod-omn21114-n1"
     description: "N1: nearest-rank percentiles per size, host and temperature, one cell per combination, and a total summed per round trip."
+    binds_ac: ["N1"]
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'nearest_rank or one_cell_per or total_is_summed or deterministic_for'"
   - id: "dod-omn21114-n2"
     description: "N2: proposals are the worst total p95 plus margin or slack, never below it, and withheld for an incomplete table."
+    binds_ac: ["N2"]
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'proposals_are_not_below or precompute_slack or missing_size or missing_host'"
   - id: "dod-omn21114-n3"
     description: "N3: missing size, host and short cell are listed, a candidate below the p95 is listed, a candidate against an incomplete table is unchecked, and padded or invalid input is refused."
+    binds_ac: ["N3"]
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'too_few_warm or duplicate_round_trip or candidate or non_finite or fewer_than_twenty or one_required_host'"
   - id: "dod-omn21114-n4"
     description: "N4: contract topics, handler and model resolution, entry point and the golden chain."
+    binds_ac: ["N4"]
     source: "manual"
     checks:
       - check_type: "test_passes"
