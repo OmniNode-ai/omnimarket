@@ -27,16 +27,16 @@ description: >
 
 input_model:
   name: ModelContextTaskKindRulesRequest
-  module: omnimarket.nodes.node_context_task_kind_rules_compute.models
+  module: omnimarket.models.context_task_kind_rules
 
 output_model:
   name: ModelContextTaskKindRulesResult
-  module: omnimarket.nodes.node_context_task_kind_rules_compute.models
+  module: omnimarket.models.context_task_kind_rules
 
 handler:
   module: omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules
   class: HandlerContextTaskKindRules
-  input_model: omnimarket.nodes.node_context_task_kind_rules_compute.models.ModelContextTaskKindRulesRequest
+  input_model: omnimarket.models.context_task_kind_rules.ModelContextTaskKindRulesRequest
 
 handler_routing:
   routing_strategy: payload_type_match
@@ -46,7 +46,7 @@ handler_routing:
         module: omnimarket.nodes.node_context_task_kind_rules_compute.handlers.handler_context_task_kind_rules
       event_model:
         name: ModelContextTaskKindRulesRequest
-        module: omnimarket.nodes.node_context_task_kind_rules_compute.models
+        module: omnimarket.models.context_task_kind_rules
 
 descriptor:
   node_archetype: compute

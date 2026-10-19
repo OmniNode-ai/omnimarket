@@ -34,6 +34,11 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: with docker unresolvable, no dev contract is refused for 'docker', a bare docker run check passes, prose is refused, and the verifier still refuses docker -- falsifier: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov fails at the merge base"
+  - id: "req-compact-strict-parser"
+    statement: "node_review_response_parser_compute parses a v2 compact review verdict in compact_strict mode and fails closed: a verdict cut mid-array, schema-invalid, done absent, more true, an X or R finding with no family, an unknown R id or an abnormal stop reason each give a failed result with no findings, a mandatory R finding comes out critical, and a frozen v1 reply still passes in the default mode."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: each fail-closed case has a failed result with no findings, the valid verdict is the positive control, and the v1 reply passes unchanged -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -115,3 +120,11 @@ dod_evidence:
         check_value: |-
           env docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20910-ac9-compact-strict-parser"
+    description: "compact_strict fails closed on every listed case; a mandatory R finding is critical; v1 replies pass unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/review/test_compact_strict_parser.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]

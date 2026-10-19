@@ -1,0 +1,69 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21143"
+title: "Role C replay evaluator slice"
+summary: >-
+  Add evaluate_context_selection to node_context_selection_policy_compute. This
+  is the pure scoring slice over caller-supplied pinned cases and normalized
+  recordings. The live per-profile corpus, routed rung recordings, alternative
+  measurements and knowledge-base report remain pending. The slice criteria
+  below support the ticket's acceptance criteria and do not certify completion
+  of the full evaluation.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-role-c-replay-scoring"
+    statement: "Score complete recorded Role C matrices with deterministic controls before running the live experiment."
+    acceptance:
+      - id: "DoD1"
+        statement: "Per supplied profile, score three repeats of every expected rung and a deterministic baseline, report recall and token counts, and count a withheld relevant label as a miss; refuse missing observations or controls."
+      - id: "DoD2"
+        statement: "Reject successful recorded packages missing a resolved required factor or required item, containing unknown or duplicate ids, or exceeding the manifest limits."
+      - id: "DoD3"
+        statement: "Return a rung as recall-eligible only when every case and repeat has an ok observation with recall at least the baseline's; failed queries remain in the recall denominator."
+      - id: "DoD4"
+        statement: "Return alternatives_status=not_evaluated and accept no alternative measurement or recommendation input in this slice."
+evidence_requirements:
+  - kind: "tests"
+    description: "Synthetic scorer and runtime-adapter checks only; the live evaluation report is pending."
+    command: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21143-scorer-recall-control"
+    description: "Supports AC1: the scorer reports per-profile/rung/repeat recall and token counts and refuses incomplete matrices. Fixtures do not replace the pending live report."
+    source: "manual"
+    binds_ac: ["DoD1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'recall_tokens or incomplete_or_ambiguous or profile_scores or baseline'"
+  - id: "dod-omn21143-scorer-required"
+    description: "Supports AC2: invalid recorded packages yield errors and no scored rows or recommendations. Real recorded packages have not yet been collected."
+    source: "manual"
+    binds_ac: ["DoD2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'invalid_packages or budget_overflow or required_sources or labels_may_not'"
+  - id: "dod-omn21143-scorer-eligibility"
+    description: "Supports AC3: a single repeat below baseline blocks eligibility; parse failures and unavailable queries are counted separately and are ineligible. No routing recommendation is promoted."
+    source: "manual"
+    binds_ac: ["DoD3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'one_repeat or parse_failure or unavailable or profile_scores'"
+  - id: "dod-omn21143-alternatives-unmeasured"
+    description: "Supports AC4's measurement boundary only: alternatives are explicitly not_evaluated. TF-IDF and Jaccard measurement remains pending."
+    source: "manual"
+    binds_ac: ["DoD4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov -k 'recall_tokens or input_rejects'"
+  - id: "dod-omn21143-deploy-probe"
+    description: "Hosted source-artifact deploy probe: the published contract at this head declares the evaluation handler and its distinct command topic. Live model experiments remain pending."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_selection_policy_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys,yaml; c=yaml.safe_load(sys.stdin.read()); r=next(r for r in c["handler_routing"]["handlers"] if r["operation"]=="evaluate_context_selection"); assert r["handler"]["name"]=="HandlerContextSelectionEvaluation"; assert r["topic"] in c["event_bus"]["subscribe_topics"]; assert r["topic"] != c["runtime_dispatch"]["command_topic"]; assert c["evaluation_policy"]["repeats"]==3'

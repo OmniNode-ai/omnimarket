@@ -796,3 +796,108 @@ def test_a_text_answer_the_runtime_had_to_cut_is_a_scored_output_only_refusal(
     contract = receipt["contracts"][0]
     assert contract["measured_trials"] == 1
     assert contract["measured_pass_rate"] == 0.0
+
+
+@pytest.mark.unit
+def test_contract_rates_and_failure_counts_stay_independent_with_unmeasured_trials(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    manifest = _manifest()
+    contracts = manifest["contracts"]
+    assert isinstance(contracts, list)
+    markdown, plain_text = contracts[1:]
+    markdown["trials"] = 3
+    plain_text["trials"] = 2
+    manifest["contracts"] = [markdown, plain_text]
+    outcomes = iter(
+        [
+            [_attempt()],
+            [
+                _attempt(
+                    decision="climb", reason="deterministic_floor_failed", passed=False
+                ),
+                _attempt(tier="cheap_cloud", model_id="cloud-model"),
+            ],
+            [_attempt(tier="cheap_cloud", model_id="cloud-model")],
+            [_attempt()],
+            [_attempt()],
+        ]
+    )
+
+    def build(command: list[str]) -> dict[str, Any]:
+        attempts = next(outcomes)
+        local_answered = attempts[-1]["tier"] == "local"
+        return _terminal(
+            command,
+            attempts=attempts,
+            provider=_LAB_ENDPOINT if local_answered else _CLOUD_ENDPOINT,
+            model_name=_MODEL if local_answered else "cloud-model",
+        )
+
+    _serve(monkeypatch, build)
+    receipt: dict[str, Any] = run_live_manifest(
+        manifest, timeout_seconds=30, locus="in-process"
+    )
+
+    markdown_result, plain_text_result = receipt["contracts"]
+    assert markdown_result["contract_id"] == "markdown-deliverable"
+    assert markdown_result["trials_run"] == 3
+    assert markdown_result["conformant_trials"] == 1
+    assert markdown_result["pass_rate"] == pytest.approx(1 / 3)
+    assert markdown_result["measured_trials"] == 2
+    assert markdown_result["measured_pass_rate"] == 0.5
+    assert markdown_result["failure_counts"] == dict.fromkeys(FAILURE_CLASSES, 0) | {
+        "contract_nonconformant": 1,
+        "served_model_not_observed": 1,
+    }
+    assert plain_text_result["contract_id"] == "plain-text-deliverable"
+    assert plain_text_result["trials_run"] == 2
+    assert plain_text_result["conformant_trials"] == 2
+    assert plain_text_result["pass_rate"] == 1.0
+    assert plain_text_result["measured_trials"] == 2
+    assert plain_text_result["measured_pass_rate"] == 1.0
+    assert plain_text_result["failure_counts"] == dict.fromkeys(FAILURE_CLASSES, 0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("accepted_local_retries", [1, 3])
+def test_later_local_acceptances_do_not_erase_the_first_contract_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    trusted_workspace: Path,
+    accepted_local_retries: int,
+) -> None:
+    _serve(
+        monkeypatch,
+        lambda c: _terminal(
+            c,
+            provider=_CLOUD_ENDPOINT,
+            model_name="cloud-model",
+            attempts=[
+                _attempt(
+                    decision="climb", reason="deterministic_floor_failed", passed=False
+                ),
+                *[_attempt() for _ in range(accepted_local_retries)],
+                _attempt(tier="cheap_cloud", model_id="cloud-model"),
+            ],
+        ),
+    )
+    receipt: dict[str, Any] = run_live_manifest(
+        _single_contract_manifest(_MARKDOWN_INDEX),
+        timeout_seconds=30,
+        locus="in-process",
+    )
+
+    trial = _only_trial(receipt)
+    assert trial["passed"] is False
+    assert trial["failure_class"] == "contract_nonconformant"
+    assert trial["failure_family"] == "model_contract"
+    assert trial["local_attempts"] == accepted_local_retries + 1
+    assert trial["local_acceptance_reason"] == "deterministic_floor_failed"
+    contract = receipt["contracts"][0]
+    assert contract["conformant_trials"] == 0
+    assert contract["pass_rate"] == 0.0
+    assert contract["measured_trials"] == 1
+    assert contract["measured_pass_rate"] == 0.0
+    assert contract["failure_counts"] == dict.fromkeys(FAILURE_CLASSES, 0) | {
+        "contract_nonconformant": 1
+    }
