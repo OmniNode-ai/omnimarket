@@ -68,6 +68,10 @@ inputs:
     type: str
     required: false
     nullable: true
+  barrier_id:
+    type: str
+    required: false
+    nullable: true
 
 outputs:
   reply:

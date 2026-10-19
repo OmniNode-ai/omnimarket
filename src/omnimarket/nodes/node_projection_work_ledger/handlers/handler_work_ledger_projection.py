@@ -37,10 +37,26 @@ from omnibase_core.models.events.work.model_work_ledger_line import (
 )
 from omnibase_core.models.events.work.model_work_ledger_render import ROW_TYPE_BY_KIND
 
+from omnimarket.enums.enum_work_ledger_entity_kind import (
+    EnumWorkLedgerStateOp,
+)
 from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
 from omnimarket.events.model_ledger_row_event import (
     work_ledger_event_id,
     work_ledger_row_id,
+)
+from omnimarket.handlers.work_ledger_fold import (
+    WorkLedgerFoldError,
+    fold_records,
+    fold_row,
+    rows_for_records,
+)
+from omnimarket.models.model_work_ledger_fold_request import (
+    ModelWorkLedgerFoldRequest,
+)
+from omnimarket.models.model_work_ledger_fold_result import (
+    ModelWorkLedgerFoldResult,
+    ModelWorkLedgerStateOp,
 )
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     ALL_SUBSCRIBE_TOPICS,
@@ -49,22 +65,6 @@ from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_write_guard import (
     HandlerWorkLedgerWriteGuard,
-)
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
-    WorkLedgerFoldError,
-    fold_records,
-    fold_row,
-    rows_for_records,
-)
-from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity_kind import (
-    EnumWorkLedgerStateOp,
-)
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request import (
-    ModelWorkLedgerFoldRequest,
-)
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_result import (
-    ModelWorkLedgerFoldResult,
-    ModelWorkLedgerStateOp,
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_projection import (
     ModelWorkLedgerProjectionConfig,
