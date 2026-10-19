@@ -83,7 +83,7 @@ def test_pr_merged_passes_when_github_state_is_merged() -> None:
     cmd, response = _gh_view("12", state="MERGED")
     resolver = HandlerClaimResolver(FakeRunner({cmd: response}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(kind=EnumAgentClaimKind.PR_MERGED, ref="omniclaude#12")
         )
@@ -97,7 +97,7 @@ def test_pr_merged_fails_when_github_state_is_open() -> None:
     cmd, response = _gh_view("12", state="OPEN")
     resolver = HandlerClaimResolver(FakeRunner({cmd: response}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(kind=EnumAgentClaimKind.PR_MERGED, ref="omniclaude#12")
         )
@@ -111,7 +111,7 @@ def test_pr_opened_passes_when_pr_exists() -> None:
     cmd, response = _gh_view("77", state="OPEN")
     resolver = HandlerClaimResolver(FakeRunner({cmd: response}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(kind=EnumAgentClaimKind.PR_OPENED, ref="omniclaude#77")
         )
@@ -144,7 +144,7 @@ def test_ci_passing_fails_on_failing_check() -> None:
     )
     resolver = HandlerClaimResolver(FakeRunner({cmd: response}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(kind=EnumAgentClaimKind.CI_PASSING, ref="omniclaude#77")
         )
@@ -160,7 +160,7 @@ def test_commit_sha_passes_when_git_finds_commit() -> None:
         FakeRunner({cmd: subprocess.CompletedProcess(list(cmd), 0, "", "")})
     )
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(ModelAgentClaim(kind=EnumAgentClaimKind.COMMIT_SHA, ref="abc1234"))
     )
 
@@ -179,7 +179,7 @@ def test_file_committed_fails_when_head_path_missing() -> None:
         )
     )
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(
                 kind=EnumAgentClaimKind.FILE_COMMITTED,
@@ -195,7 +195,7 @@ def test_file_committed_fails_when_head_path_missing() -> None:
 def test_blocker_on_x_fails_without_quoted_gh_json_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(ModelAgentClaim(kind=EnumAgentClaimKind.BLOCKER_ON_X, ref="OMN-9107"))
     )
 
@@ -206,7 +206,7 @@ def test_blocker_on_x_fails_without_quoted_gh_json_evidence() -> None:
 def test_blocker_on_x_passes_with_quoted_gh_json_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(
                 kind=EnumAgentClaimKind.BLOCKER_ON_X,
@@ -223,7 +223,7 @@ def test_blocker_on_x_passes_with_quoted_gh_json_evidence() -> None:
 def test_thread_resolved_passes_with_graphql_resolved_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(
                 kind=EnumAgentClaimKind.THREAD_RESOLVED,
@@ -239,7 +239,7 @@ def test_thread_resolved_passes_with_graphql_resolved_evidence() -> None:
 def test_thread_resolved_fails_with_unresolved_graphql_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(
                 kind=EnumAgentClaimKind.THREAD_RESOLVED,
@@ -256,7 +256,7 @@ def test_thread_resolved_fails_with_unresolved_graphql_evidence() -> None:
 def test_linear_state_skips_without_api_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(
                 kind=EnumAgentClaimKind.LINEAR_STATE,
@@ -273,7 +273,7 @@ def test_linear_state_skips_without_api_evidence() -> None:
 def test_linear_state_fails_with_conflicting_api_evidence() -> None:
     resolver = HandlerClaimResolver(FakeRunner({}))
 
-    result = resolver.verify(
+    result = resolver.handle(
         _request(
             ModelAgentClaim(
                 kind=EnumAgentClaimKind.LINEAR_STATE,
@@ -296,7 +296,7 @@ def test_cli_reports_runtime_errors(
     monkeypatch.setattr(sys, "stdin", StringIO(request))
 
     class RaisingResolver:
-        def verify(self, request: ModelClaimResolutionRequest) -> None:
+        def handle(self, request: ModelClaimResolutionRequest) -> None:
             raise RuntimeError("boom")
 
     monkeypatch.setattr(claim_resolver_main, "HandlerClaimResolver", RaisingResolver)
