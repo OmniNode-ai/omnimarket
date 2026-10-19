@@ -68,6 +68,13 @@ class ModelReviewFinding(BaseModel):
     confidence: EnumReviewConfidence = Field(...)
     source_model: str = Field(..., min_length=1)
     detection_method: str = Field(default="")
+    defect_code: str | None = Field(
+        default=None,
+        description=(
+            "Defect-catalog code the finding cites: a catalog code, 'R:<standing "
+            "rule id>' or 'X'. None for findings from the free-text v1 format."
+        ),
+    )
 
 
 __all__: list[str] = [
