@@ -4082,6 +4082,7 @@
       "accessor_nodes": [
         "node_projection_delegation",
         "node_projection_delegation_disposition",
+        "node_projection_metering_summary",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -4094,7 +4095,8 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
-        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml"
+        "src/omnimarket/nodes/node_projection_delegation_disposition/contract.yaml",
+        "src/omnimarket/nodes/node_projection_metering_summary/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -4160,6 +4162,7 @@
         "node_projection_delegation_disposition",
         "node_projection_dod_verdict",
         "node_projection_live_events",
+        "node_projection_metering_summary",
         "node_projection_pattern_learning",
         "node_projection_registration",
         "node_projection_replay_check_compute",
@@ -8974,6 +8977,7 @@
       "accessor_nodes": [
         "node_branch_claim_check_effect",
         "node_context_source_ledger_effect",
+        "node_context_source_work_state_effect",
         "node_projection_work_ledger",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect",
@@ -8990,6 +8994,7 @@
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_ledger_effect/contract.yaml",
+        "src/omnimarket/nodes/node_context_source_work_state_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_seq_gap_effect/contract.yaml"
@@ -9032,6 +9037,7 @@
       "readers": [
         "node_branch_claim_check_effect",
         "node_context_source_ledger_effect",
+        "node_context_source_work_state_effect",
         "node_lab_job_check_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",

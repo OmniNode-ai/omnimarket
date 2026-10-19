@@ -1,0 +1,24 @@
+name: node_lab_sli_compute
+version: "0.1.0"
+description: "Evaluates the lab service-level indicators against the contract's indicator table"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_sli_compute: "omnimarket.nodes.node_lab_sli_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "observability", "lab", "sli", "OMN-17427"]
+pack: "pipeline"
+display_name: "Lab SLI Evaluate"
+node_role: "compute"

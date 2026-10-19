@@ -144,7 +144,10 @@ dependencies = [
     # Raised in BOTH places.
     # OMN-17427: floor raised 0.47.44 -> 0.47.46, the first release carrying the
     # ported OCC contract checks (core#2023). Raised in BOTH places.
-    "omnibase-core>=0.47.46,<0.48.0",
+    # OMN-17427: floor raised 0.47.46 -> 0.47.47, the first release whose
+    # delegation wire request admits the brief_drafting task class (core#2029).
+    # Raised in BOTH places.
+    "omnibase-core>=0.47.47,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -364,6 +367,7 @@ node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
 node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
 node_context_invariants_select_compute = "omnimarket.nodes.node_context_invariants_select_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
+node_context_compaction_latency_compute = "omnimarket.nodes.node_context_compaction_latency_compute"
 node_context_gate_cascade_compute = "omnimarket.nodes.node_context_gate_cascade_compute"
 node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
 node_rescue_patch_review_compute = "omnimarket.nodes.node_rescue_patch_review_compute"
@@ -375,6 +379,7 @@ node_pr_title_check_compute = "omnimarket.nodes.node_pr_title_check_compute"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
+node_metering_summary_refresh_compute = "omnimarket.nodes.node_metering_summary_refresh_compute"
 node_savings_estimate_compute = "omnimarket.nodes.node_savings_estimate_compute"
 node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_history_read_effect"
 node_claude_code_hook_adapter_effect = "omnimarket.nodes.node_claude_code_hook_adapter_effect"
@@ -439,6 +444,7 @@ node_delegation_acceptance_judged_replay_compute = "omnimarket.nodes.node_delega
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_tier_comparison_compute = "omnimarket.nodes.node_delegation_tier_comparison_compute"
 node_delegation_experiment_record_compute = "omnimarket.nodes.node_delegation_experiment_record_compute"
+node_lane_brief_draft_compute = "omnimarket.nodes.node_lane_brief_draft_compute"
 node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
@@ -475,6 +481,8 @@ node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact
 node_context_exploration_policy_compute = "omnimarket.nodes.node_context_exploration_policy_compute"
 node_context_selection_policy_compute = "omnimarket.nodes.node_context_selection_policy_compute"
 node_context_source_ledger_effect = "omnimarket.nodes.node_context_source_ledger_effect"
+node_context_source_work_state_effect = "omnimarket.nodes.node_context_source_work_state_effect"
+node_context_source_guidance_effect = "omnimarket.nodes.node_context_source_guidance_effect"
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_delivery_replay_projection_compute = "omnimarket.nodes.node_delivery_replay_projection_compute"
@@ -528,6 +536,10 @@ node_automation_liveness_watchdog_compute = "omnimarket.nodes.node_automation_li
 node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liveness_watchdog_effect"
 node_automation_liveness_overlay_check_compute = "omnimarket.nodes.node_automation_liveness_overlay_check_compute"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
+node_lab_sli_alert_effect = "omnimarket.nodes.node_lab_sli_alert_effect"
+node_lab_sli_board_compute = "omnimarket.nodes.node_lab_sli_board_compute"
+node_lab_sli_collect_effect = "omnimarket.nodes.node_lab_sli_collect_effect"
+node_lab_sli_compute = "omnimarket.nodes.node_lab_sli_compute"
 node_lab_job_check_effect = "omnimarket.nodes.node_lab_job_check_effect"
 node_ledger_stats_compute = "omnimarket.nodes.node_ledger_stats_compute"
 node_lab_story_log_effect = "omnimarket.nodes.node_lab_story_log_effect"
@@ -928,6 +940,7 @@ node_chain_diff = "omnimarket.nodes.node_chain_diff"
 node_kb_adr_publisher = "omnimarket.nodes.node_kb_adr_publisher"
 node_post_merge_knowledge_sync_orchestrator = "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator"
 node_knowledge_health_probe_effect = "omnimarket.nodes.node_knowledge_health_probe_effect"
+node_provider_rung_canary_effect = "omnimarket.nodes.node_provider_rung_canary_effect"
 node_knowledge_health_compute = "omnimarket.nodes.node_knowledge_health_compute"
 node_kb_repowise_index_effect = "omnimarket.nodes.node_kb_repowise_index_effect"
 node_swarm_decomposer_compute = "omnimarket.nodes.node_swarm_decomposer_compute"
@@ -1220,7 +1233,8 @@ override-dependencies = [
     # refusals Contract Compliance Check relies on. Raised in BOTH places.
     # OMN-21106 / OMN-21109: floor raised 0.47.39 -> 0.47.44 (core#1987, TA.2).
     # OMN-17427: floor raised 0.47.44 -> 0.47.46 (core#2023).
-    "omnibase-core>=0.47.46,<0.48.0",
+    # OMN-17427: floor raised 0.47.46 -> 0.47.47 (core#2029, brief_drafting).
+    "omnibase-core>=0.47.47,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

@@ -120,8 +120,10 @@ _CONTRACT = (
 
 
 def _refresh_topic() -> str:
-    """The node's own command topic, read from its contract (not a literal)."""
-    (topic,) = yaml.safe_load(_CONTRACT.read_text())["event_bus"]["subscribe_topics"]
+    """The node's own fold command topic, read from its contract (not a literal)."""
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    topic = contract["config"]["metering_summary"]["fold_command_topic"]
+    assert topic in contract["event_bus"]["subscribe_topics"]
     return str(topic)
 
 
