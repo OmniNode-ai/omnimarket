@@ -4,6 +4,10 @@
 
 OMN-19998: the check runs and reports on every PR, and CI Summary no longer
 gates on it (operator ruling 2026-10-16T07:34:18Z: no release wait).
+
+OMN-17427: internal consumers pin the dev merge tag (dev-merge-tag.yml,
+ruling 2026-10-16T09:35:49Z), so a packaged commit covered by a dev merge tag
+is published and counts as released; only an untagged packaged commit ages.
 """
 
 from __future__ import annotations
@@ -134,8 +138,25 @@ def _measurement(result: subprocess.CompletedProcess[str]) -> str:
         for line in result.stdout.splitlines()
         if line.startswith("release-staleness:")
     ]
-    assert len(lines) == 3, result.stdout + result.stderr
+    # Four controls (src, docs, dev-tagged src, malformed dev tag) then the repo.
+    assert len(lines) == 5, result.stdout + result.stderr
     return lines[-1]
+
+
+def _dev_tag(repo: Path, rev: str = "HEAD") -> str:
+    """Tag a commit the way dev-merge-tag.yml names it."""
+    sha = _git(repo, "rev-parse", rev)
+    stamp = _git(
+        repo,
+        "log",
+        "-1",
+        "--format=%cd",
+        "--date=format-local:%Y%m%d%H%M%S",
+        rev,
+    )
+    tag = f"dev-{stamp}-{sha[:12]}"
+    _git(repo, "tag", tag, sha)
+    return tag
 
 
 def test_absent_or_conditional_job_is_refused() -> None:
@@ -470,3 +491,70 @@ def test_git_tree_read_failure_cannot_look_like_docs_only(tmp_path: Path) -> Non
     assert result.returncode == 1, result.stdout + result.stderr
     assert "ERROR" in _measurement(result)
     assert "fatal:" in result.stderr
+
+
+def test_dev_merge_tag_covers_packaged_commit_past_the_release(
+    tmp_path: Path,
+) -> None:
+    """The live shape: dev is days past the last vX.Y.Z but every merge is tagged."""
+    repo = _fixture_repo(tmp_path, (("src/a.py", 72),))
+    _dev_tag(repo)
+    _commit(repo, "src/a.py", 48)
+    tag = _dev_tag(repo)
+    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    result = _run(repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    line = _measurement(result)
+    assert f"FRESH base={tag}" in line
+    assert "unreleased=0 unreleased_packaged=0 oldest=-" in line
+
+
+def test_untagged_packaged_commit_after_dev_tag_still_ages(tmp_path: Path) -> None:
+    """Negative control: a dev merge tag only covers what it reaches."""
+    repo = _fixture_repo(tmp_path, (("src/a.py", 96),))
+    tag = _dev_tag(repo)
+    _commit(repo, "src/a.py", 48)
+    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    result = _run(repo)
+    assert result.returncode == 1, result.stdout + result.stderr
+    line = _measurement(result)
+    assert f"STALE base={tag}" in line
+    assert "unreleased=1 unreleased_packaged=1" in line
+    assert "age_hours=48.0 limit=24" in line
+    assert ".github/workflows/dev-merge-tag.yml" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "name", ["dev-latest", "dev-2026101900000-abcdef012345", "dev-20261019000000"]
+)
+def test_malformed_dev_tag_cannot_cover_stale_debt(tmp_path: Path, name: str) -> None:
+    repo = _fixture_repo(tmp_path, (("src/a.py", 48),))
+    _git(repo, "tag", name)
+    result = _run(repo)
+    assert result.returncode == 1, result.stdout + result.stderr
+    line = _measurement(result)
+    assert "STALE base=v0.4.10" in line
+    assert "unreleased=1 unreleased_packaged=1" in line
+
+
+def test_dev_tag_alone_is_a_measurable_base(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path, tag=None)
+    tag = _dev_tag(repo)
+    _commit(repo, "src/a.py", 2)
+    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    result = _run(repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    line = _measurement(result)
+    assert f"FRESH base={tag}" in line
+    assert "age_hours=2.0 limit=24" in line
+
+
+def test_ignored_dev_tags_are_refused_by_positive_control(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path, (("src/a.py", 2),))
+    original = _run_text()
+    pattern = "^dev-[0-9]{14}-[0-9a-f]{12}$"
+    assert original.count(pattern) == 1, "positive control: mutation target exists"
+    mutated = original.replace(pattern, "^never-a-tag$")
+    result = _run(repo, mutated)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "POSITIVE CONTROL FAILED: devtag returned 1, expected 0" in result.stdout

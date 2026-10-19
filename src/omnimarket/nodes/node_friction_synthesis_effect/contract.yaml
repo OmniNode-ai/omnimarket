@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_friction_synthesis_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+description: Count enumerated friction anchors and verify analysis preserves mechanical accounting.
+input_model: omnimarket.nodes.node_friction_synthesis_effect.models.model_friction_synthesis_request.ModelFrictionSynthesisRequest
+handler:
+  module: omnimarket.nodes.node_friction_synthesis_effect.handlers.handler_friction_synthesis
+  class: HandlerFrictionSynthesis
+  input_model: omnimarket.nodes.node_friction_synthesis_effect.models.model_friction_synthesis_request.ModelFrictionSynthesisRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: synthesize
+      handler:
+        name: HandlerFrictionSynthesis
+        module: omnimarket.nodes.node_friction_synthesis_effect.handlers.handler_friction_synthesis
+      input_model: omnimarket.nodes.node_friction_synthesis_effect.models.model_friction_synthesis_request.ModelFrictionSynthesisRequest
+      output_model: omnimarket.nodes.node_friction_synthesis_effect.models.model_friction_synthesis_result.ModelFrictionSynthesisResult
+published_events:
+  - event_type: ModelFrictionSynthesisResult
+    topic: onex.evt.omnimarket.friction-synthesized.v1
+terminal_event: onex.evt.omnimarket.friction-synthesized.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.friction-synthesis-requested.v1]
+  publish_topics: [onex.evt.omnimarket.friction-synthesized.v1]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.friction-synthesis-requested.v1
+externally_consumed_topics: [onex.evt.omnimarket.friction-synthesized.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  side_effects: [reads source handoffs, writes or verifies merged handoff]
+  runtime_profiles:
+    - effects
+metadata:
+  ticket: OMN-17427
+  transport_type: event_bus
+lifecycle: experimental

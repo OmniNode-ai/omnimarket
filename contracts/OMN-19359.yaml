@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19359"
+title: "Focused test run operation on the push validation effect, one throwaway container per task on a lab docker host"
+summary: "Evidence-only contract for the merged focused test run operation (omnimarket #2824, b1499fe4e). It carries the acceptance-criterion bindings a second lane accepted for AC1, AC2 and AC6. AC3, AC4 and AC5 need live per-task container runs on the lab docker host and AC7 is PR-body text, so none of them is bound here. Touches no runtime path."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused test run invocation builder and handler tests pass."
+    command: "uv run pytest tests/nodes/node_push_validation_effect/test_focused_test_run_invocation.py tests/nodes/node_push_validation_effect/test_handler_focused_test_run_effect.py tests/nodes/node_push_validation_effect/test_focused_test_run_regressions_omn19359.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19359-ac1-one-mount-under-task-root"
+    description: "AC1: build_docker_run_argv emits exactly one mount flag, -v, whose source is the task worktree under the task root, mounted at /work. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: passed. The test file does not exist at the parent of the implementing merge."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_push_validation_effect/test_focused_test_run_invocation.py::TestTheBuilderEmitsOneMount::test_exactly_one_mount_whose_source_is_the_task_worktree tests/nodes/node_push_validation_effect/test_focused_test_run_regressions_omn19359.py::test_each_role_and_retry_mounts_only_its_own_worktree -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19359-ac2-forbidden-flags-refused"
+    description: "AC2: each of 25 forbidden forms inserted into a built argument list (second -v, --volume, --mount, --volumes-from, --privileged, --network host and bridge, --net, --cap-add, --device, --env, -e, --env-file, --user 0:0, --pid, --ipc, --security-opt, -p, --tmpfs) makes validate_docker_run_argv raise DtlInvocationRefusedError. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: 25 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_push_validation_effect/test_focused_test_run_invocation.py::TestTheBuilderRefusesAnythingElse::test_builder_refuses_a_second_mount tests/nodes/node_push_validation_effect/test_focused_test_run_regressions_omn19359.py::test_validator_rechecks_a_replaced_mount_source tests/nodes/node_push_validation_effect/test_focused_test_run_regressions_omn19359.py::test_options_outside_the_allowlist_are_refused -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19359-ac6-non-unique-mutation-refused"
+    description: "AC6: a zero-match and a two-match mutation each return INFRA_ERROR with 'exactly one' in the detail, the run step is never called, and teardown is the last call. Re-run by the accepting lane on h202 at omnimarket dev 86e09b7060b3: 2 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_push_validation_effect/test_handler_focused_test_run_effect.py::test_a_mutation_that_does_not_match_exactly_once_is_refused tests/nodes/node_push_validation_effect/test_focused_test_run_regressions_omn19359.py::test_a_later_non_unique_mutation_refuses_the_entire_batch -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+context:
+  ac_binding_provenance:
+    "dod-omn19359-ac1-one-mount-under-task-root":
+      - label: "AC1"
+        criterion_hash: "420ef6148e7a5345e55908b24fe99296548e0ab868b6f1d342a44a2df689631b"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
+    "dod-omn19359-ac2-forbidden-flags-refused":
+      - label: "AC2"
+        criterion_hash: "da31ae7f8f4d477711c7fe0eaf49ca8cb80e7554759ec18f526a3d3b1d3d09db"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
+    "dod-omn19359-ac6-non-unique-mutation-refused":
+      - label: "AC6"
+        criterion_hash: "d7cca7eabaee90c29d715f332e064b8ccb8c685c3b50f7e3875435ede73cb51a"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c1"
