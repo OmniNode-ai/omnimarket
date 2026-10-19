@@ -355,6 +355,7 @@ node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compac
 node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
 node_context_invariants_select_compute = "omnimarket.nodes.node_context_invariants_select_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
+node_context_compaction_latency_compute = "omnimarket.nodes.node_context_compaction_latency_compute"
 node_context_gate_cascade_compute = "omnimarket.nodes.node_context_gate_cascade_compute"
 node_prrp_snapshot_publish_effect = "omnimarket.nodes.node_prrp_snapshot_publish_effect"
 node_rescue_patch_review_compute = "omnimarket.nodes.node_rescue_patch_review_compute"
