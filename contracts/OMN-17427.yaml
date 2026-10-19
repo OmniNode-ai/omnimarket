@@ -1415,6 +1415,26 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_docs_assets_evidence_removed_omn17427.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC76"]
+  - id: "dod-omn17427-docs-assets-evidence-deploy-probe"
+    description: "Deploy probe. The hosted runner checks the removed and retained docs paths at this head using Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          root = Path.cwd()
+          tree = ast.parse((root / "tests/ci/test_docs_assets_evidence_removed_omn17427.py").read_text())
+          paths = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id in {"REMOVED_DOCS_FILES", "KEPT_BECAUSE_READ"}}
+          assert len(paths["REMOVED_DOCS_FILES"]) == 33
+          assert all(not (root / path).exists() for path in paths["REMOVED_DOCS_FILES"])
+          assert len(paths["KEPT_BECAUSE_READ"]) == 3
+          assert all((root / path).is_file() for path in paths["KEPT_BECAUSE_READ"])
+          assert not [path for path in (root / "docs").rglob("*") if path.is_dir() and not any(path.iterdir())]
+          print("docs assets and evidence deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac61-linear-triage-local-github"
     description: "The local GitHub PR reads and the handler's local source pass their focused tests."
     source: "manual"
