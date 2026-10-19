@@ -7,10 +7,10 @@ from __future__ import annotations
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_context_task_kind_rules_compute.models.enum_context_task_kind_rules_status import (
+from omnimarket.models.context_task_kind_rules.enum_context_task_kind_rules_status import (
     EnumContextTaskKindRulesStatus,
 )
-from omnimarket.nodes.node_context_task_kind_rules_compute.models.model_context_task_kind_rule_outcome import (
+from omnimarket.models.context_task_kind_rules.model_context_task_kind_rule_outcome import (
     ModelContextTaskKindRuleOutcome,
 )
 

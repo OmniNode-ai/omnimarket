@@ -1572,10 +1572,20 @@ repos:
       # the base head moves, and files one ticket on first stick. SYNC with
       # the ci.yml lint step "Landing decision park ladder (OMN-20890)".
       - id: landing-decision-park-ladder
-        name: Landing decision park ladder (OMN-20890)
+        name: Landing decision park ladder, decided by src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py (OMN-20890)
         language: system
         entry: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -n 0 -p no:randomly
         files: ^(src/omnimarket/nodes/node_pr_landing_decision_compute/|tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes\.py$|\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20905: operator decisions and asks are recorded from the bus by the capture nodes, not by
+      # hooks. SYNC with the ci.yml lint step of the same name.
+      - id: operator-capture-nodes
+        name: Operator capture nodes, src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_process.py and src/omnimarket/nodes/node_operator_capture_compute/handlers/handler_utterance_classify.py (OMN-20905)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/nodes/node_operator_capture_(effect|compute)/|src/omnimarket/models/operator_capture\.py$|tests/unit/nodes/node_operator_capture_(effect|compute)/|\.pre-commit-config\.yaml$)
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1647,7 +1657,19 @@ repos:
         name: red CI bus chain stays connected (OMN-20730)
         language: system
         entry: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov
-        files: ^(src/omnimarket/nodes/(node_pr_state_emit_effect|node_pr_lifecycle_orchestrator|node_pr_lifecycle_state_reducer)/(contract\.yaml|handlers/)|src/omnimarket/events/topics\.py$|tests/ci/test_red_ci_bus_chain_omn20730\.py$)
+        files: ^(src/omnimarket/nodes/(node_pr_state_emit_effect|node_pr_lifecycle_orchestrator|node_pr_lifecycle_state_reducer|node_dev_cause_lane_receiver_effect)/(contract\.yaml|handlers/)|src/omnimarket/events/topics\.py$|tests/ci/test_red_ci_bus_chain_omn20730\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17427: ruling 2026-10-14T03:57:46Z (item 5), a component alarm starts a fix lane, one
+      # per cause. handler_dev_cause_lane_start.py starts one lane per dispatch_key and never a
+      # second for a redelivery or a restart. Check-only. SYNC with the ci.yml lint step
+      # "dev cause-lane receiver starts one lane per dispatch key (OMN-17427)".
+      - id: dev-cause-lane-receiver
+        name: dev cause-lane receiver starts one lane per dispatch key (OMN-17427)
+        language: system
+        entry: uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect -q -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_dev_cause_lane_receiver_effect/|tests/nodes/node_dev_cause_lane_receiver_effect/|src/omnimarket/models/dev_head_red\.py$)
         pass_filenames: false
         stages: [pre-commit]
 

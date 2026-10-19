@@ -13,10 +13,10 @@ from pydantic import ValidationError
 
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.task_class_authority import load_task_class_authority
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_request import (
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
 )
-from omnimarket.nodes.node_context_profile_resolver_effect.models.model_context_profile_resolve_result import (
+from omnimarket.models.context_profile_resolve.model_context_profile_resolve_result import (
     EnumContextProfileResolveStatus,
     ModelContextProfileResolveResult,
 )
