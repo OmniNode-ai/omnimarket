@@ -1473,13 +1473,23 @@ def check_run_workflow_run_id(raw: dict[str, object]) -> int | None:
 
     Read from the row's ``html_url``/``details_url``
     (``.../actions/runs/<run id>/job/<job id>``). ``None`` for a row no Actions
-    run wrote, or whose URL is unreadable.
+    run wrote, or whose URL and check suite carry no readable run id.
     """
 
     for key in ("html_url", "details_url"):
         match = _RUN_ID_RE.search(str(raw.get(key) or ""))
         if match:
             return int(match.group(1))
+    suite = raw.get("check_suite")
+    if isinstance(suite, dict):
+        run = suite.get("workflow_run")
+        run_id = (
+            run.get("id") if isinstance(run, dict) else suite.get("workflow_run_id")
+        )
+        try:
+            return int(str(run_id))
+        except (TypeError, ValueError):
+            pass
     return None
 
 
@@ -2436,19 +2446,13 @@ def _load_workflow_runs(path: str | None) -> list[dict[str, object]] | None:
         return None
     try:
         with open(path, encoding="utf-8") as handle:
-            raw = handle.read()
-    except OSError:
+            data = json.load(handle)
+    except (OSError, ValueError):
         return None
-    if not raw.strip():
-        return None
-    data = json.loads(raw)
     workflow_runs = data.get("workflow_runs", []) if isinstance(data, dict) else data
     if not isinstance(workflow_runs, list):
-        raise ValueError(
-            "workflow-runs payload must be a list or an object with a "
-            "'workflow_runs' array"
-        )
-    return workflow_runs
+        return None
+    return [run for run in workflow_runs if isinstance(run, dict)]
 
 
 def main(argv: list[str] | None = None) -> int:
