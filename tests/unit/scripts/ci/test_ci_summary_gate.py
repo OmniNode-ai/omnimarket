@@ -1912,6 +1912,24 @@ class TestExternalDefaultDenySweep:
         assert gate.resolve_check_run_event({}, events) is None
         assert gate.check_run_event_index(None) == {}
 
+    @pytest.mark.parametrize("source", ["suite_run", "suite_id"])
+    def test_check_suite_run_id_establishes_provenance(self, source: str) -> None:
+        row = _check_run("Unregistered Gate", conclusion="failure")
+        if source == "suite_run":
+            row["check_suite"] = {"workflow_run": {"id": "42"}}
+        else:
+            row["check_suite"] = {"workflow_run_id": 42}
+        assert gate.check_run_workflow_run_id(row) == 42
+        assert gate.evaluate_external_sweep([row], now=self.NOW)[0] == EXIT_FAILURE
+        assert (
+            gate.evaluate_external_sweep(
+                [row], workflow_runs=[{"id": 42, "event": "push"}], now=self.NOW
+            )[0]
+            == EXIT_SUCCESS
+        )
+        row["check_suite"] = {"workflow_run_id": "bad"}
+        assert gate.check_run_workflow_run_id(row) is None
+
     def test_scope_before_dedup_so_push_cannot_hide_pr_failure(self) -> None:
         pr = {
             **_check_run(
@@ -2324,7 +2342,9 @@ class TestSweepIsWiredIntoProductionPoller:
         assert self._main(tmp_path, rows, [], event=event) == EXIT_SUCCESS
         assert self._main(tmp_path, rows, [], event="pull_request") == EXIT_FAILURE
 
-    @pytest.mark.parametrize("contents", [None])
+    @pytest.mark.parametrize(
+        "contents", [None, "", "invalid JSON", '{"workflow_runs": "bad"}']
+    )
     def test_unreadable_index_still_sweeps(
         self, tmp_path: Path, contents: str | None
     ) -> None:
