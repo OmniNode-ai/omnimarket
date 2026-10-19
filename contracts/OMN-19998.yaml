@@ -150,11 +150,11 @@ requirements:
     acceptance:
       - id: "AC28"
         statement: "AC28: hostile-reviewer.yml clones omniintelligence at 037af72c2a7f49fda953fed6a99edd5ec588dede, the merge commit of omniintelligence#1095 and a descendant of the previous pin 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q fails over the merge base's workflow, which pins 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
-  - id: "req-tests-run-once-on-the-pull-request"
-    statement: "Operator RULING 2026-10-18T00:50:42Z, short term until the merge queue clears and test deduplication works: a merge_group run or a push to dev skips the heavy ci.yml tier (test splits, coverage census, integration, golden and event chains, e2e) that already ran on the pull request head, a Queue Re-test Waiver (OMN-19998) marker job runs only on those two events, and CI Summary accepts the skip only when that marker succeeded, while pull request runs and main pushes are unchanged."
+  - id: "req-queue-full-suite-once"
+    statement: "The native queue tests the full selection on its synthetic commit; pull requests use changed-zone tests with CI changes escalating to the full suite; dev pushes inherit a verified tree pass and run no heavy tests."
     acceptance:
-      - id: "AC29"
-        statement: "AC29: the marker's if names only merge_group and a push to refs/heads/dev, every heavy job's if carries the waiver clause, CI Summary passes a waived snapshot with the marker succeeded and fails it with the marker absent, skipped, failed or cancelled, and a skipped light gate still fails it -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest fails at the merge base"
+      - id: "AC31"
+        statement: "AC31: merge_group runs all twenty full-suite shards and the heavy gates, CI Summary refuses skipped heavy jobs or incomplete shards, every required dev context has a queue producer without mirroring full-suite gates, pull_request selection narrows code changes but runs the full suite for CI changes including mixed diffs, and dev push skips heavy jobs only admitting a verified full-suite tree pass -- falsifier: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 fails at the merge base"
   - id: "req-internal-release-path-guard"
     statement: "Internal consumer remediation uses tested git tags or immutable commits instead of a release cut or release wait."
     acceptance:
@@ -195,6 +195,20 @@ emergency_bypass:
   follow_up_ticket_id: ""
 
 dod_evidence:
+  - id: "dod-omn19998-queue-full-suite-once"
+    description: "Queue admission, skipped and missing shard refusal, required-context coverage, PR selection and dev tree-pass verification are covered by the focused tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
+  - id: "dod-omn19998-queue-full-suite-deploy-probe"
+    description: "The hosted runner parses the checked-out workflow and exercises the same admission evaluator against healthy and refused queue snapshots; no lab service is needed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov -k 'queue_refuses or workflow_admission or required_contexts'"
   - id: "dod-omn19998-mirror-durable-outbox"
     description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
     source: "manual"
@@ -645,21 +659,6 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC28"]
-  - id: "dod-omn19998-tests-run-once-on-the-pull-request"
-    description: "The re-test waiver tests pass at the head; at the merge base ci.yml has no queue-retest-waiver job and ci_summary_gate.py has no RETEST_WAIVER_MARKER_JOB, so they fail."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC29"]
-  - id: "dod-omn19998-tests-run-once-deploy-probe"
-    description: "Hosted-runner probe reads ci.yml at this head: the queue-retest-waiver job runs only on merge_group and a dev push, and detect-changes and coverage-sweep-gate carry the waiver clause; the merge base has no such job and fails the probe."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: >-
-          uv run python -c 'import yaml; j=yaml.safe_load(open(".github/workflows/ci.yml"))["jobs"]; c="!(github.event_name == \x27merge_group\x27 || (github.event_name == \x27push\x27 && github.ref == \x27refs/heads/dev\x27))"; w=j["queue-retest-waiver"]["if"]; assert "merge_group" in w and "refs/heads/dev" in w and "pull_request" not in w; assert all(c in " ".join(j[k]["if"].split()) for k in ("detect-changes", "coverage-sweep-gate"))'
   - id: "dod-omn19998-internal-release-path-guard"
     description: "Refusal, passing-pin, lane dispatch, controller brief, CLI and bus controls for the shared policy."
     source: "manual"

@@ -537,6 +537,9 @@ providers:
   # same list.
   - provider: anthropic
     plan: api
+    # OMN-20910: a provider with two rows has exactly one default. A caller that
+    # names no plan keeps the OpenAI-compatible endpoint it always had.
+    default_plan: true
     mirrors_house_rung: false
     backend_id: byok-anthropic
     endpoint_url: "https://api.anthropic.com/v1/chat/completions"
@@ -567,6 +570,47 @@ providers:
             Anthropic rate limits (platform.claude.com/docs/en/api/rate-limits):
             per-model RPM, input TPM and output TPM by usage tier. Not a single
             published number.
+
+  # OMN-20910. The SAME Anthropic account and key as the `api` row above, on
+  # Anthropic's native Messages API. The compatibility endpoint does not support
+  # prompt caching and ignores `response_format`, and it reports no `stop_reason`;
+  # the native endpoint does all three. A caller opts in by naming this plan
+  # (`resolve_byok_provider_backend("anthropic", "api_native")`): the Claude
+  # review gateway does, every other caller keeps the default `api` row. The call
+  # effect (`node_llm_delegation_call_effect`) speaks the protocol this row
+  # declares: key in `x-api-key`, `anthropic-version` header, system and message
+  # content blocks with cache breakpoints, a forced tool for schema output.
+  - provider: anthropic
+    plan: api_native
+    auto_detect_plan: false
+    inference_protocol: anthropic_messages
+    mirrors_house_rung: false
+    backend_id: byok-anthropic-native
+    endpoint_url: "https://api.anthropic.com/v1/messages"
+    models_url: "https://api.anthropic.com/v1/models"
+    models_auth: x_api_key
+    models_headers:
+      anthropic-version: "2023-06-01"
+    model_preference:
+      - pattern: 'claude-haiku-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
+        tags: [cheapest, haiku]
+      - pattern: 'claude-sonnet-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
+        tags: [sonnet]
+    max_retries: 2
+    timeout_ms: 120000
+    max_tokens: 8192
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            Anthropic rate limits (platform.claude.com/docs/en/api/rate-limits):
+            per-model RPM, input TPM and output TPM by usage tier. Not a single
+            published number. Cached input tokens that are read do not count
+            toward input TPM on current models.
 
 # House-keyed platform providers a customer may NOT (yet) bring a key for.
 # Silence is not allowed: a rung the platform ships a house key for is either

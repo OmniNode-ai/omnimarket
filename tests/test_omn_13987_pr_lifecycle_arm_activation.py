@@ -102,17 +102,12 @@ class _RecordingGitHubAdapter:
 class _RecordingAgentAdapter:
     def __init__(self) -> None:
         self.review_fix_calls: list[tuple[str, int, str | None]] = []
-        self.coderabbit_calls: list[tuple[str, int]] = []
 
     async def dispatch_review_fix(
         self, repo: str, pr_number: int, ticket_id: str | None
     ) -> str:
         self.review_fix_calls.append((repo, pr_number, ticket_id))
         return f"[mock] review-fix {repo}#{pr_number}"
-
-    async def dispatch_coderabbit_reply(self, repo: str, pr_number: int) -> str:
-        self.coderabbit_calls.append((repo, pr_number))
-        return f"[mock] coderabbit {repo}#{pr_number}"
 
 
 class _RecordingOccContractAdapter:
@@ -433,13 +428,6 @@ class TestChokepoint1Classifier:
     def test_conflicted_still_routes_to_conflict(self) -> None:
         pr = _record(category=EnumPrCategory.CONFLICTED)
         assert _block_reason_for_fix(pr) == EnumPrBlockReason.CONFLICT
-
-    def test_coderabbit_signature_still_routes_to_coderabbit(self) -> None:
-        pr = _record(
-            category=EnumPrCategory.RED,
-            failed_check_names=("CodeRabbit",),
-        )
-        assert _block_reason_for_fix(pr) == EnumPrBlockReason.CODERABBIT
 
 
 # ===========================================================================

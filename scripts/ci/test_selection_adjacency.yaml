@@ -37,6 +37,12 @@ always_selected_paths:
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
+  # OMN-19998: CI changes invalidate narrowing even in a mixed code diff.
+  - .github/
+  - .pre-commit-config.yaml
+  - scripts/
+  - .pre-commit-hooks/
+  - uv.lock
   - tests/conftest.py
   - tests/fixtures/
   - pytest.ini

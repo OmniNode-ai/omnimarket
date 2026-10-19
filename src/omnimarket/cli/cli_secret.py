@@ -130,6 +130,7 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
+    byok_automatic_plans,
     byok_provider_plans,
     byok_routable_plans,
     require_byok_plan_permitted,
@@ -218,7 +219,7 @@ def _resolve_plan(
             )
         _refuse_plan_not_permitted(provider, named)
         return named, None
-    if len(declared) <= 1:
+    if len(byok_automatic_plans(provider)) <= 1:
         return None, None
     click.echo(
         f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
@@ -1702,6 +1703,7 @@ def review_gateway(
 ) -> None:
     """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
         run_dry,
     )
@@ -1738,10 +1740,12 @@ def review_gateway(
             "ONEX_LAB_RUN_HOSTS to the lab host table."
         )
     bind_host, _, bind_port = bind.rpartition(":")
-    backend = resolve_byok_provider_backend("anthropic")
+    # OMN-20910: the gateway names the native Messages plan explicitly; a caller
+    # that names no plan keeps the OpenAI-compatible default row.
+    backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
     if backend is None:
         raise click.ClickException(
-            "the provider catalogue offers no anthropic backend."
+            "the provider catalogue offers no anthropic api_native backend."
         )
     try:
         request = ModelClaudeReviewGatewayRequest(
